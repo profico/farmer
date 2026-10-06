@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
 import {
@@ -25,6 +25,11 @@ import {
 	shiftMonth,
 } from "../../src/time/calendar";
 import { DateJump } from "../../src/time/components/date-field";
+import {
+	FAB_CLEARANCE,
+	LogTimeFab,
+	useFabExtended,
+} from "../../src/time/components/log-time-fab";
 import { MoreMenu } from "../../src/time/components/more-menu";
 import { type Notice, Snackbar } from "../../src/time/components/snackbar";
 import { TargetsStrip } from "../../src/time/components/targets-strip";
@@ -245,13 +250,19 @@ function Timesheet({
 				].flatMap((action) => (action ? [action] : []))
 			: []),
 	];
+	const logTime = () =>
+		router.push({
+			pathname: "/entry",
+			params: { date: selected, from: weekFrom, to: weekTo },
+		});
+	// The main action: a FAB on Android, a "+" in the title row on iOS, as
+	// each platform draws it. The menu keeps "Log time" too.
+	const fab = Platform.OS === "android";
+	const fabState = useFabExtended();
 	const onAction = (id: string) => {
 		switch (id) {
 			case "log":
-				router.push({
-					pathname: "/entry",
-					params: { date: selected, from: weekFrom, to: weekTo },
-				});
+				logTime();
 				return;
 			case "copy-day":
 				copyPreviousDay();
@@ -277,7 +288,16 @@ function Timesheet({
 				title="Time"
 				refreshing={entries.isRefetching}
 				onRefresh={refresh}
-				actions={<MoreMenu actions={actions} onAction={onAction} />}
+				bottomSpace={fab ? FAB_CLEARANCE : 0}
+				onScrollOffset={fab ? fabState.onScroll : undefined}
+				actions={
+					<View style={{ flexDirection: "row", alignItems: "center" }}>
+						{fab ? null : (
+							<IconButton icon="add" label="Log time" onPress={logTime} />
+						)}
+						<MoreMenu actions={actions} onAction={onAction} />
+					</View>
+				}
 			>
 				<Inset>
 					<SegmentedControl options={VIEWS} value={view} onChange={setView} />
@@ -357,7 +377,15 @@ function Timesheet({
 					/>
 				)}
 			</Screen>
-			<Snackbar notice={notice} onHide={hideNotice} floating />
+			{fab ? (
+				<LogTimeFab extended={fabState.extended} onPress={logTime} />
+			) : null}
+			<Snackbar
+				notice={notice}
+				onHide={hideNotice}
+				floating
+				lift={fab ? FAB_CLEARANCE : 0}
+			/>
 		</View>
 	);
 }

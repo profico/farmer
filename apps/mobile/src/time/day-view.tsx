@@ -116,8 +116,6 @@ export function DayView({
 		: undefined;
 	const holiday = holidays?.get(selected);
 	const timerFree = timer.isSuccess && timer.data.timer === null;
-	const logTime = () =>
-		router.push({ pathname: "/entry", params: { date: selected, from, to } });
 
 	return (
 		<>
@@ -160,7 +158,6 @@ export function DayView({
 								onPress={onAssemble}
 							/>
 						) : null}
-						<ActionButton label="Log time" variant="text" onPress={logTime} />
 					</View>
 				</View>
 			</Inset>

@@ -54,6 +54,10 @@ export type ScreenProps = {
 	onRefresh?: () => void;
 	/** False under a navigation header, which already clears the status bar. */
 	topInset?: boolean;
+	/** Space below the last row, for a floating button over the list. */
+	bottomSpace?: number;
+	/** The vertical scroll offset, on each scroll event. */
+	onScrollOffset?: (offset: number) => void;
 	children: ReactNode;
 };
 
@@ -66,6 +70,8 @@ export function Screen({
 	refreshing,
 	onRefresh,
 	topInset = true,
+	bottomSpace = 0,
+	onScrollOffset,
 	children,
 }: ScreenProps) {
 	const palette = usePalette();
@@ -77,9 +83,15 @@ export function Screen({
 				style={{ flex: 1, backgroundColor: palette.background }}
 				contentContainerStyle={{
 					paddingTop: (topInset ? insets.top : 0) + SPACE.s,
-					paddingBottom: insets.bottom + SPACE.xxl,
+					paddingBottom: insets.bottom + SPACE.xxl + bottomSpace,
 					gap: SPACE.l,
 				}}
+				onScroll={
+					onScrollOffset
+						? (event) => onScrollOffset(event.nativeEvent.contentOffset.y)
+						: undefined
+				}
+				scrollEventThrottle={onScrollOffset ? 32 : undefined}
 				contentInsetAdjustmentBehavior="never"
 				keyboardShouldPersistTaps="handled"
 				refreshControl={

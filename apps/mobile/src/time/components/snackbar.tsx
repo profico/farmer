@@ -29,10 +29,14 @@ export function Snackbar({
 	notice,
 	onHide,
 	floating = false,
+	lift = 0,
 }: {
 	notice: Notice | null;
 	onHide: () => void;
 	floating?: boolean;
+	/** How far a floating bar sits above the bottom, in dp: the space of a
+	 *  floating action button under it. */
+	lift?: number;
 }) {
 	const palette = usePalette();
 	const { reduceMotion } = useMotionPreference();
@@ -132,7 +136,7 @@ export function Snackbar({
 		<SafeAreaView
 			edges={["bottom"]}
 			pointerEvents="box-none"
-			style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
+			style={{ position: "absolute", left: 0, right: 0, bottom: lift }}
 		>
 			{bar}
 		</SafeAreaView>
