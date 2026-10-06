@@ -230,8 +230,10 @@ function OrganizationForm({
 			/>
 
 			<Inset>
+				{/* The heading names the setting and the field names what goes in
+				    it, so the two never show the same words. */}
 				<Text variant="titleSmall" color={palette.primary}>
-					{uploads ? "Logo" : "Logo URL"}
+					Logo
 				</Text>
 				{uploadedLogo && settings.logo ? (
 					<View
@@ -262,7 +264,7 @@ function OrganizationForm({
 					</View>
 				) : (
 					<Field
-						label="Logo URL"
+						label="Image address"
 						value={logo}
 						onChangeText={setLogo}
 						placeholder="https://example.com/logo.svg"
