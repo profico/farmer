@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 
 import { DataProvider } from "../src/api/data-provider";
+import { useSystemBack } from "../src/navigation/system-back";
 import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
 import { DialogHost } from "../src/ui/dialog-host";
@@ -17,6 +18,7 @@ function Navigator() {
 	const { state } = useSession();
 	const palette = usePalette();
 	const { reduceMotion } = useMotionPreference();
+	useSystemBack();
 
 	// The window behind every screen follows the theme, so a transition
 	// never shows a colour from another theme behind a screen.

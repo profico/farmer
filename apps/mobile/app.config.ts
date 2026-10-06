@@ -172,6 +172,9 @@ const config: ExpoConfig = {
 	},
 	android: {
 		package: "com.profico.farmer",
+		// Lets Android play the back-to-home preview. `modules/back-gesture`
+		// hands the gesture to the system where the app would only exit.
+		predictiveBackGestureEnabled: true,
 		backgroundColor: BACKGROUND_LIGHT,
 		adaptiveIcon: {
 			foregroundImage: "./assets/adaptive-icon.png",
