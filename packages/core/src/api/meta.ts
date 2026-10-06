@@ -65,6 +65,11 @@ export type ApiMeta = {
 	 *  False in single-org mode. A server before API version 3 sends no
 	 *  field: read it as off. */
 	organizationCreation: boolean;
+	/** Whether `POST /api/auth/mobile/exchange` exists: the provider sign-in
+	 *  then ends in a one-time code, not in the session (ADR 0005). A server
+	 *  from before the exchange sends no field: read it as off, and sign in
+	 *  with the old `cookie` link. */
+	signInExchange: boolean;
 };
 
 const parts = (version: string): [number, number, number] | null => {

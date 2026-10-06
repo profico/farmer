@@ -43,6 +43,10 @@ export const metaSchema = z.object({
 	/** A person may make a workspace (`createOrganization`). False in
 	 *  single-org mode. Absent before API version 3: read it as false. */
 	organizationCreation: z.boolean().optional(),
+	/** The provider sign-in ends in a one-time code that
+	 *  `POST /api/auth/mobile/exchange` turns into the session. Absent on a
+	 *  server from before the exchange: read it as false. */
+	signInExchange: z.boolean().optional(),
 });
 export type Meta = z.output<typeof metaSchema>;
 export type SignInMethod = Meta["signInMethods"][number];

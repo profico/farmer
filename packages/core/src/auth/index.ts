@@ -73,6 +73,7 @@ import {
 	OAUTH_CONSENT_PATH,
 	oauthConsentRequest,
 } from "./mcp-consent";
+import { mobileExchange } from "./mobile-exchange";
 import {
 	assertExpoProxyTarget,
 	EXPO_PROXY_PATH,
@@ -1095,6 +1096,9 @@ const buildAuth = () => {
 			}),
 			// The mobile app's sign-in (ADR 0005). See `./mobile-sign-in.ts`.
 			expo(),
+			// After `expo()`: it turns the session in the `farmer://` link into a
+			// one-time code. See `./mobile-exchange.ts`.
+			mobileExchange(),
 			// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 			tanstackStartCookies(),
 		],
