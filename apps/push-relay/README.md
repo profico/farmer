@@ -27,7 +27,7 @@ accounts exist.
 |---|---|---|
 | `PORT` | `3000` | The HTTP port. |
 | `RELAY_DB_PATH` | `./data/relay.sqlite` | The SQLite file. The relay makes the directory on start. The image sets `/data/relay.sqlite` on the `/data` volume. |
-| `TRUSTED_IP_HEADER` | `cf-connecting-ip` | The one header that the proxy in front of the relay sets with the client address. For `x-forwarded-for` the relay reads the last entry. `none` means the socket address only: behind a proxy, every caller then shares the proxy's bucket, so do not set `none` there. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. |
+| `TRUSTED_IP_HEADER` | `cf-connecting-ip` | The one header that the proxy in front of the relay sets with the client address. For `x-forwarded-for` the relay reads the last entry. `none` means the socket address only: behind a proxy, every caller then shares the proxy's bucket, so do not set `none` there. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. |
 | `APNS_KEY_P8` | (none) | The `.p8` key from Apple, as PEM. Literal `\n` sequences count as line breaks. |
 | `APNS_KEY_ID` | (none) | The key id of the `.p8` key. |
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
