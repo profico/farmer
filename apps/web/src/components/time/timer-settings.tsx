@@ -15,7 +15,6 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { queryKeys } from "#/queries/keys.ts";
 import { timerSettingsQuery } from "#/queries/timer.ts";
 import { setTimerSettings } from "#/server/timer.ts";
 
@@ -43,7 +42,7 @@ export function TimerSettings() {
 			setTimerSettings({ data: { maxSeconds } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timer],
+				queryKey: timerSettingsQuery(orgSlug).queryKey,
 			});
 			toast.success("Timer limit saved");
 		},

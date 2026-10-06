@@ -33,4 +33,20 @@ describe("confirmTimerInput", () => {
 		expect(absent.projectId).toBeUndefined();
 		expect(cleared.projectId).toBeNull();
 	});
+
+	// An absent field takes the live value on the server (issue #121).
+	test("accepts a body with nothing but the overtime flag", () => {
+		const parsed = confirmTimerInput.parse({});
+
+		expect(parsed.date).toBeUndefined();
+		expect(parsed.taskId).toBeUndefined();
+		expect(parsed.durationSeconds).toBeUndefined();
+		expect(parsed.overtime).toBe(false);
+	});
+
+	test("still refuses a duration that is not a quarter hour", () => {
+		expect(confirmTimerInput.safeParse({ durationSeconds: 100 }).success).toBe(
+			false,
+		);
+	});
 });

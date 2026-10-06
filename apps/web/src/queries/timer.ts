@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { type QueryClient, queryOptions } from "@tanstack/react-query";
 
 import { getTimer, getTimerSettings } from "#/server/timer.ts";
 
@@ -22,4 +22,16 @@ export const timerSettingsQuery = (org: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).timer, "settings"],
 		queryFn: () => getTimerSettings(),
+	});
+
+/**
+ * Refetch the timer row alone. Not the bare `queryKeys(org).timer` root: that
+ * is a prefix of `timerSettingsQuery`, so it would refetch the cap as well.
+ * Call it after any write that can change a timed entry (its task, project,
+ * note or hours), because the timer reads those from the entry (issue #121).
+ */
+export const invalidateTimer = (queryClient: QueryClient, org: string) =>
+	queryClient.invalidateQueries({
+		queryKey: timerQuery(org).queryKey,
+		exact: true,
 	});

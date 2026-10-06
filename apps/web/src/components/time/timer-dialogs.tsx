@@ -36,10 +36,11 @@ import { Label } from "#/components/ui/label.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { readLastPick, rememberLastPick } from "#/lib/entry-options.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { stopPayloadFields } from "#/lib/timer-stop.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
-import { timerSettingsQuery } from "#/queries/timer.ts";
+import { invalidateTimer, timerSettingsQuery } from "#/queries/timer.ts";
 import type { getTimer } from "#/server/timer.ts";
 import {
 	confirmTimer,
@@ -58,9 +59,7 @@ const invalidateAfterTimer = async (
 	orgSlug: string,
 	wroteAnEntry: boolean,
 ) => {
-	await queryClient.invalidateQueries({
-		queryKey: [...queryKeys(orgSlug).timer],
-	});
+	await invalidateTimer(queryClient, orgSlug);
 	if (wroteAnEntry) {
 		await queryClient.invalidateQueries({
 			queryKey: [...queryKeys(orgSlug).timeEntries],
@@ -327,6 +326,14 @@ export function StartTimerDialog({
 	);
 }
 
+type StopFormValues = {
+	duration: string;
+	date: string;
+	projectId: string | null;
+	taskId: string;
+	description: string;
+};
+
 /**
  * Stopping it (issue #59).
  *
@@ -371,24 +378,46 @@ export function StopTimerDialog({
 	const [taskId, setTaskId] = useState(timer.taskId);
 	const [description, setDescription] = useState(timer.description);
 
-	// Every OPENING reads the timer as it stands: the figure grew while the
-	// dialog was closed, and the person is about to confirm this one. Once only,
-	// which the ref is for — the timer query refetches on window focus and the
-	// pause that opening this dialog performs invalidates it as well, and either
-	// answer arriving would otherwise wipe out what somebody had typed.
-	const filled = useRef(false);
+	// The form follows the timer prop while the dialog is open. Opening fills
+	// every field from it. A later change of the prop (the refetch that the
+	// pause behind this dialog starts, a refetch on window focus, an edit of the
+	// entry saved elsewhere) takes a field only if the person has not edited it:
+	// a field that still holds the value the form was last filled with takes the
+	// new server value, and an edited field stays (issue #121). The dialog starts
+	// no refetch of its own. One that raced with the pause's invalidation would
+	// be cancelled, and the form would keep the stale note.
+	const filledFrom = useRef<StopFormValues | null>(null);
 	useEffect(() => {
 		if (!open) {
-			filled.current = false;
+			filledFrom.current = null;
 			return;
 		}
-		if (filled.current) return;
-		filled.current = true;
-		setDuration(formatClock(timer.snappedSeconds));
-		setDate(timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone));
-		setProjectId(timer.projectId);
-		setTaskId(timer.taskId);
-		setDescription(timer.description);
+		const next: StopFormValues = {
+			duration: formatClock(timer.snappedSeconds),
+			date: timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone),
+			projectId: timer.projectId,
+			taskId: timer.taskId,
+			description: timer.description,
+		};
+		const from = filledFrom.current;
+		filledFrom.current = next;
+		if (!from) {
+			setDuration(next.duration);
+			setDate(next.date);
+			setProjectId(next.projectId);
+			setTaskId(next.taskId);
+			setDescription(next.description);
+			return;
+		}
+		const keep =
+			<T,>(was: T, now: T) =>
+			(value: T) =>
+				value === was ? now : value;
+		setDuration(keep(from.duration, next.duration));
+		setDate(keep(from.date, next.date));
+		setProjectId(keep(from.projectId, next.projectId));
+		setTaskId(keep(from.taskId, next.taskId));
+		setDescription(keep(from.description, next.description));
 	}, [open, timer, timezone]);
 
 	const projectsQ = useQuery({ ...myProjectsQuery(orgSlug), enabled: open });
@@ -408,18 +437,19 @@ export function StopTimerDialog({
 		mutationFn: () =>
 			confirmTimer({
 				data: {
-					date,
-					// Null and "" rather than absent: on a timer that continues an
-					// entry, an absent project or note keeps the entry's, and this
-					// form shows both, so what it holds is what is meant.
-					projectId,
-					taskId,
-					description: description.trim(),
-					durationSeconds: seconds,
+					// A field the person did not edit is left out, so the server
+					// fills it with the live value. Null and "" still clear the
+					// project and the note.
+					...stopPayloadFields({
+						form: { duration, date, projectId, taskId, description },
+						filled: filledFrom.current,
+						seconds,
+						entrySeconds: timer.entrySeconds,
+					}),
 					overtime: false,
 				},
 			}),
-		onSuccess: async () => {
+		onSuccess: async (entry) => {
 			// What was LOGGED is the habit, not what was started: somebody who
 			// starts on one project and files the measurement against another has
 			// told you where the next timer belongs.
@@ -427,8 +457,8 @@ export function StopTimerDialog({
 			await invalidateAfterTimer(queryClient, orgSlug, true);
 			toast.success(
 				continuing
-					? `Updated the entry to ${formatClock(seconds)}`
-					: `Logged ${formatClock(seconds)}`,
+					? `Updated the entry to ${formatClock(entry.durationSeconds)}`
+					: `Logged ${formatClock(entry.durationSeconds)}`,
 			);
 			onOpenChange(false);
 		},

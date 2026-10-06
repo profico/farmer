@@ -49,20 +49,24 @@ export const updateTimerInput = z.object({
 export type UpdateTimerInput = z.infer<typeof updateTimerInput>;
 
 export const confirmTimerInput = z.object({
-	// The day the timer started, as the caller read it — or the day of the entry
-	// it continues. Sent rather than derived so the person can move the entry in
-	// the dialog that stopping opens — a timer run through midnight is the
-	// ordinary case for it.
-	date: dayKeySchema,
-	// For a timer that continues an entry, an ABSENT project or note keeps the
-	// entry's own, so a caller that sends only the duration cannot unfile the
-	// entry or wipe its note. `null` clears the project and "" clears the note.
-	// For a new entry the two mean the same thing.
+	// Every field but `overtime` is optional, and an ABSENT one takes the live
+	// value on the server (issue #121): the entry's own for a timer that
+	// continues one, else the timer's copy. A form that holds a copy can be
+	// older than an edit still in flight, so a field the person did not touch
+	// is left out. CLI and REST callers may keep sending all of them.
+	//
+	// The day the timer started — or the day of the entry it continues — when
+	// absent. Sent when the person moves the entry in the dialog that stopping
+	// opens; a timer run through midnight is the ordinary case for it.
+	date: dayKeySchema.optional(),
+	// `null` clears the project, and "" clears the note. Absent keeps the live
+	// value, for a new entry as well as a continued one.
 	projectId: z.uuid().nullable().optional(),
-	taskId: z.uuid(),
+	taskId: z.uuid().optional(),
 	description: z.string().max(10_000).optional(),
 	// The entry's new TOTAL. For a continued entry that includes what the entry
-	// held before the clock began.
+	// held before the clock began. Absent: the live entry hours plus what the
+	// clock measured, snapped to a quarter hour.
 	durationSeconds: z
 		.number()
 		.int()
@@ -70,7 +74,20 @@ export const confirmTimerInput = z.object({
 		.max(MAX_DAY_SECONDS, "A single entry cannot exceed 24 hours")
 		.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
 			message: "Time must be in 15-minute steps",
-		}),
+		})
+		.optional(),
+	// The measured part of the figure a caller showed, without the entry's
+	// hours. The server adds the entry's live hours and snaps the sum. Ignored
+	// when `durationSeconds` is sent. Absent: the server's own measured time.
+	measuredSeconds: z
+		.number()
+		.int()
+		.min(0)
+		.max(MAX_DAY_SECONDS, "A single entry cannot exceed 24 hours")
+		.describe(
+			"The measured part of the figure shown, without the entry's hours: snappedSeconds minus entry.durationSeconds. The server adds the live entry hours.",
+		)
+		.optional(),
 	overtime: z.boolean().default(false),
 });
 export type ConfirmTimerInput = z.infer<typeof confirmTimerInput>;

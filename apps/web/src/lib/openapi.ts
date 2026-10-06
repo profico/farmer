@@ -768,7 +768,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "confirmTimer",
 		summary: "Stop the timer and log the time",
 		description:
-			"Logs the entry and clears the timer. Send `snappedSeconds` from the timer as `durationSeconds`, or a figure the person corrected.",
+			"Logs the entry and clears the timer. Every field is optional, and an absent one takes the live value: the entry's own for a timer that continues one, else the timer's. Leave `durationSeconds` out to log the entry's live hours plus the measured time, snapped to a quarter hour. Send `measuredSeconds` to log the measured part you showed instead. Compute it as `snappedSeconds` minus `entry.durationSeconds` (0 without an entry). The server adds the live entry hours and snaps the sum. Send `durationSeconds` for a figure the person corrected: it wins.",
 		tag: "Timer",
 		body: confirmTimerInput,
 		response: apiTimeEntry,
