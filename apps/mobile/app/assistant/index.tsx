@@ -29,7 +29,7 @@ import {
 	ListRow,
 	Skeleton,
 } from "../../src/ui/components";
-import { Inset } from "../../src/ui/screen";
+import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
 
@@ -90,6 +90,7 @@ function ThreadRow({
  */
 export default function AssistantThreadsScreen() {
 	const router = useRouter();
+	const palette = usePalette();
 	const threads = useAssistantThreads();
 	const create = useCreateThread();
 	const rename = useRenameThread();
@@ -97,6 +98,10 @@ export default function AssistantThreadsScreen() {
 	const [renaming, setRenaming] = useState<AssistantThread | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [now] = useState(Date.now);
+	const pull = usePullToRefresh(
+		threads.isRefetching,
+		() => void threads.refetch(),
+	);
 
 	const start = () => {
 		setError(null);
@@ -176,8 +181,11 @@ export default function AssistantThreadsScreen() {
 					contentInsetAdjustmentBehavior="automatic"
 					refreshControl={
 						<RefreshControl
-							refreshing={threads.isRefetching}
-							onRefresh={() => void threads.refetch()}
+							refreshing={pull.refreshing}
+							onRefresh={pull.onRefresh}
+							colors={[String(palette.primary)]}
+							progressBackgroundColor={String(palette.surfaceContainerHigh)}
+							tintColor={palette.primary}
 						/>
 					}
 					ListHeaderComponent={

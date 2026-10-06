@@ -16,6 +16,7 @@ import {
 	usePeople,
 } from "../../../src/api/workspace";
 import { EmptyState, ErrorState } from "../../../src/ui/components";
+import { usePullToRefresh } from "../../../src/ui/screen";
 import { SegmentedControl } from "../../../src/ui/segmented";
 import { SettingsLink, SettingsSection } from "../../../src/ui/settings-list";
 import { usePalette } from "../../../src/ui/theme";
@@ -72,6 +73,10 @@ export default function AuditLogScreen() {
 		to: to ?? undefined,
 	});
 	const rows = events.data?.pages.flatMap((page) => page.events) ?? [];
+	const pull = usePullToRefresh(
+		events.isRefetching && !events.isFetchingNextPage,
+		() => void events.refetch(),
+	);
 	const today = whoami.data?.today;
 	const filtered =
 		category !== "all" ||
@@ -229,10 +234,11 @@ export default function AuditLogScreen() {
 				}}
 				refreshControl={
 					<RefreshControl
-						refreshing={events.isRefetching && !events.isFetchingNextPage}
-						onRefresh={() => void events.refetch()}
+						refreshing={pull.refreshing}
+						onRefresh={pull.onRefresh}
 						colors={[String(palette.primary)]}
 						progressBackgroundColor={String(palette.surfaceContainerHigh)}
+						tintColor={palette.primary}
 					/>
 				}
 			/>
