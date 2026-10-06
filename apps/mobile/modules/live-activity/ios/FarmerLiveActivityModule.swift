@@ -21,6 +21,38 @@ private func hex(_ data: Data) -> String {
   data.map { String(format: "%02x", $0) }.joined()
 }
 
+/// The tasks that watch the activities. JavaScript, `OnCreate`,
+/// `OnDestroy` and the watch tasks reach them from different threads, so
+/// each access holds the lock.
+private final class WatchTasks: @unchecked Sendable {
+  private let lock = NSLock()
+  private var tokens: [String: Task<Void, Never>] = [:]
+  private var others: [Task<Void, Never>] = []
+
+  /// Starts a task for the activity id, unless one runs already.
+  func watch(_ id: String, _ make: () -> Task<Void, Never>) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard tokens[id] == nil else { return }
+    tokens[id] = make()
+  }
+
+  func keep(_ task: Task<Void, Never>) {
+    lock.lock()
+    defer { lock.unlock() }
+    others.append(task)
+  }
+
+  func cancelAll() {
+    lock.lock()
+    defer { lock.unlock() }
+    others.forEach { $0.cancel() }
+    tokens.values.forEach { $0.cancel() }
+    others.removeAll()
+    tokens.removeAll()
+  }
+}
+
 /// The timer's Live Activity, for the app (`modules/live-activity/index.ts`).
 ///
 /// The app keeps at most one activity. `show` updates the activity whose
@@ -28,9 +60,7 @@ private func hex(_ data: Data) -> String {
 /// push-to-start opened without labels. The tokens of each activity go to
 /// JavaScript, which gives them to the Server.
 public class FarmerLiveActivityModule: Module {
-  private var tokenTasks: [String: Task<Void, Never>] = [:]
-  private var activityTask: Task<Void, Never>?
-  private var startTokenTask: Task<Void, Never>?
+  private let tasks = WatchTasks()
 
   public func definition() -> ModuleDefinition {
     Name("FarmerLiveActivity")
@@ -42,10 +72,7 @@ public class FarmerLiveActivityModule: Module {
     }
 
     OnDestroy {
-      self.activityTask?.cancel()
-      self.startTokenTask?.cancel()
-      self.tokenTasks.values.forEach { $0.cancel() }
-      self.tokenTasks.removeAll()
+      self.tasks.cancelAll()
     }
 
     Function("areActivitiesEnabled") { () -> Bool in
@@ -120,27 +147,28 @@ public class FarmerLiveActivityModule: Module {
     for activity in Activity<TimerAttributes>.activities {
       watchToken(of: activity)
     }
-    activityTask = Task { [weak self] in
+    tasks.keep(Task { [weak self] in
       // An activity that a push-to-start opened while the app runs.
       for await activity in Activity<TimerAttributes>.activityUpdates {
         self?.watchToken(of: activity)
       }
-    }
-    startTokenTask = Task { [weak self] in
+    })
+    tasks.keep(Task { [weak self] in
       for await data in Activity<TimerAttributes>.pushToStartTokenUpdates {
         self?.sendEvent("onPushToStartToken", ["token": hex(data)])
       }
-    }
+    })
   }
 
   private func watchToken(of activity: Activity<TimerAttributes>) {
-    guard tokenTasks[activity.id] == nil else { return }
-    tokenTasks[activity.id] = Task { [weak self] in
-      for await data in activity.pushTokenUpdates {
-        self?.sendEvent("onActivityPushToken", [
-          "activityId": activity.id,
-          "token": hex(data),
-        ])
+    tasks.watch(activity.id) {
+      Task { [weak self] in
+        for await data in activity.pushTokenUpdates {
+          self?.sendEvent("onActivityPushToken", [
+            "activityId": activity.id,
+            "token": hex(data),
+          ])
+        }
       }
     }
   }
