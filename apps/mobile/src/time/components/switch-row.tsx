@@ -6,21 +6,24 @@ import { ControlHost } from "../../ui/host";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 
+export type SwitchRowProps = {
+	title: string;
+	description?: string;
+	value: boolean;
+	onValueChange: (value: boolean) => void;
+	disabled?: boolean;
+};
+
 /** A choice in a form: its words on the left and the system switch on the
- *  right. A screen reader reads the words, then the switch. */
+ *  right. A screen reader reads the words, then the switch. iOS draws a
+ *  row of a grouped section (`switch-row.ios.tsx`). */
 export function SwitchRow({
 	title,
 	description,
 	value,
 	onValueChange,
 	disabled,
-}: {
-	title: string;
-	description?: string;
-	value: boolean;
-	onValueChange: (value: boolean) => void;
-	disabled?: boolean;
-}) {
+}: SwitchRowProps) {
 	const palette = usePalette();
 	return (
 		<View

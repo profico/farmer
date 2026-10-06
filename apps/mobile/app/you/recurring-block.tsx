@@ -2,7 +2,7 @@ import { Switch } from "@expo/ui";
 import type { RecurringBlock, Task } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
 import { useTasks, useWhoami } from "../../src/api/queries";
 import {
@@ -14,6 +14,7 @@ import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
 import { FormSection, Sheet } from "../../src/forms/sheet";
 import { DurationStepper } from "../../src/forms/steppers";
 import { formatHours } from "../../src/lib/duration";
+import { SwitchRow } from "../../src/time/components/switch-row";
 import {
 	ActionButton,
 	EmptyState,
@@ -178,7 +179,15 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 				onChangeText={setNote}
 				placeholder="What is the time for?"
 			/>
-			{block ? (
+			{block && Platform.OS === "ios" ? (
+				<SwitchRow
+					title="On"
+					description="A paused block writes nothing until you turn it on again."
+					value={active}
+					onValueChange={setActive}
+				/>
+			) : null}
+			{block && Platform.OS !== "ios" ? (
 				<Pressable
 					accessible
 					accessibilityRole="switch"

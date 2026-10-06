@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Platform } from "react-native";
 
 import { useWhoami } from "../../api/queries";
 import { Skeleton } from "../../ui/components";
@@ -31,6 +32,12 @@ export const useRange = (selection: PeriodSelection) => {
 	return { from, to };
 };
 
+const IOS = Platform.OS === "ios";
+
+/** The line that explains the switch: the subtitle of the row on Android,
+ *  and the footer of the section on iOS. */
+const ARCHIVED_NOTE = "Leave the time of archived projects out";
+
 /** The period picker of a report, and "Active projects only" where the
  *  report has projects. */
 export function ReportControls({
@@ -56,10 +63,10 @@ export function ReportControls({
 				)}
 			</Inset>
 			{activeOnly ? (
-				<SettingsSection>
+				<SettingsSection footer={IOS ? ARCHIVED_NOTE : undefined}>
 					<SettingsSwitch
 						title="Active projects only"
-						subtitle="Leave the time of archived projects out"
+						subtitle={IOS ? undefined : ARCHIVED_NOTE}
 						value={activeOnly.value}
 						onValueChange={activeOnly.onChange}
 					/>

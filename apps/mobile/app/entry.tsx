@@ -447,7 +447,7 @@ function EntryForm({
 			) : null}
 			<EntryGithubSection github={github} />
 			{absence ? null : (
-				<FormSection label="More options">
+				<FormSection label="More options" loose>
 					<SwitchRow
 						title="Overtime"
 						description="Mark this time as overtime."
