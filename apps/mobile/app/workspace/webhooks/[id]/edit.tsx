@@ -7,7 +7,12 @@ import {
 	useUpdateWebhookEndpoint,
 	useWebhookEndpoint,
 } from "../../../../src/api/workspace";
-import { FormSection, Sheet } from "../../../../src/forms/sheet";
+import {
+	FormCluster,
+	FormPart,
+	FormSection,
+	Sheet,
+} from "../../../../src/forms/sheet";
 import {
 	EmptyState,
 	ErrorBanner,
@@ -102,22 +107,29 @@ function EditForm({ endpoint }: { endpoint: WebhookEndpoint }) {
 			busy={update.isPending}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<Field
-				label="URL"
-				value={url}
-				onChangeText={setUrl}
-				keyboardType="url"
-				autoCapitalize="none"
-				autoCorrect={false}
-				error={touched ? problem : null}
-			/>
-			<Field
-				label="Description"
-				value={description}
-				onChangeText={setDescription}
-				placeholder="What is this endpoint for?"
-				maxLength={200}
-			/>
+			<FormCluster>
+				<FormPart
+					footerError={touched && problem !== null}
+					groupFooter={touched ? (problem ?? undefined) : undefined}
+				>
+					<Field
+						label="URL"
+						value={url}
+						onChangeText={setUrl}
+						keyboardType="url"
+						autoCapitalize="none"
+						autoCorrect={false}
+						error={touched ? problem : null}
+					/>
+					<Field
+						label="Description"
+						value={description}
+						onChangeText={setDescription}
+						placeholder="What is this endpoint for?"
+						maxLength={200}
+					/>
+				</FormPart>
+			</FormCluster>
 			<FormSection label="Events">
 				<View style={{ marginHorizontal: -SPACE.l }}>
 					<EventPicker chosen={events} onChange={setEvents} />

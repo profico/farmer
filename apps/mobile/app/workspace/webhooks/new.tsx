@@ -1,9 +1,14 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useCreateWebhookEndpoint } from "../../../src/api/workspace";
-import { FormSection, Sheet } from "../../../src/forms/sheet";
+import {
+	FormCluster,
+	FormPart,
+	FormSection,
+	Sheet,
+} from "../../../src/forms/sheet";
 import { ErrorBanner, Field } from "../../../src/ui/components";
 import { messageOf } from "../../../src/ui/errors";
 import { SPACE } from "../../../src/ui/type";
@@ -65,29 +70,37 @@ export default function NewWebhookSheet() {
 
 	return (
 		<Sheet
-			title="New webhook endpoint"
-			actionLabel="Add endpoint"
+			// A short title and action fit between Cancel and the action on iOS.
+			title={Platform.OS === "ios" ? "New webhook" : "New webhook endpoint"}
+			actionLabel={Platform.OS === "ios" ? "Add" : "Add endpoint"}
 			onAction={save}
 			busy={create.isPending}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<Field
-				label="URL"
-				value={url}
-				onChangeText={setUrl}
-				placeholder="https://example.com/farmer-webhook"
-				keyboardType="url"
-				autoCapitalize="none"
-				autoCorrect={false}
-				error={touched ? problem : null}
-			/>
-			<Field
-				label="Description"
-				value={description}
-				onChangeText={setDescription}
-				placeholder="What is this endpoint for?"
-				maxLength={200}
-			/>
+			<FormCluster>
+				<FormPart
+					footerError={touched && problem !== null}
+					groupFooter={touched ? (problem ?? undefined) : undefined}
+				>
+					<Field
+						label="URL"
+						value={url}
+						onChangeText={setUrl}
+						placeholder="https://example.com/farmer-webhook"
+						keyboardType="url"
+						autoCapitalize="none"
+						autoCorrect={false}
+						error={touched ? problem : null}
+					/>
+					<Field
+						label="Description"
+						value={description}
+						onChangeText={setDescription}
+						placeholder="What is this endpoint for?"
+						maxLength={200}
+					/>
+				</FormPart>
+			</FormCluster>
 			<FormSection label="Events">
 				<View style={{ marginHorizontal: -SPACE.l }}>
 					<EventPicker chosen={events} onChange={setEvents} />
