@@ -6,6 +6,8 @@
 // streaming runtime to carry them. OpenRouter is OpenAI-compatible, so what
 // follows is the chat-completions wire format and nothing else.
 
+import { z } from "zod";
+
 import { externalFetch } from "./http";
 import type { JsonRecord } from "./json";
 
@@ -77,6 +79,56 @@ export class OpenRouterError extends Error {
 	) {
 		super(message);
 		this.name = "OpenRouterError";
+	}
+}
+
+/** What OpenRouter says in the `error` object of a mid-stream error frame. */
+export type UpstreamError = { code: string | number | null; message: string };
+
+/** The `error` object of an SSE frame. Both fields are optional on the wire. */
+const upstreamErrorSchema = z.object({
+	code: z.union([z.string(), z.number()]).optional(),
+	message: z.string().optional(),
+});
+
+/** A call that failed to finish an answer.
+ *
+ *  Four causes reach this class:
+ *  - OpenRouter sent an error frame after the 200: a top-level
+ *    `error: { code, message }` and `finish_reason: "error"`. The reason is
+ *    in `upstream`.
+ *  - The connection closed with no error and no `finish_reason`. The answer
+ *    is cut at an unknown point and `upstream` is null.
+ *  - The app's own deadline fired mid-body. `timedOut` is true.
+ *  - The deadline fired before the response headers. `timedOut` is true and
+ *    `partial` is empty.
+ *
+ *  It is not a model that chose to stop and not a person who pressed Stop.
+ *
+ *  `partial` is what arrived before the failure, with its tokens and cost,
+ *  which the organization paid for. The message is for the log and for
+ *  telemetry, and `generate` writes it to the log. It can carry the
+ *  provider's own text, so it is not for the person: the loop words that
+ *  itself. */
+export class OpenRouterStreamCutError extends OpenRouterError {
+	constructor(
+		readonly partial: ChatTurn,
+		readonly upstream: UpstreamError | null = null,
+		/** Set when the app's own deadline cut the stream, not the provider. */
+		readonly timedOut = false,
+		/** Set with `timedOut` when no response headers had arrived. */
+		beforeHeaders = false,
+	) {
+		super(
+			upstream
+				? `stream failed upstream (${upstream.code ?? "no code"}): ${upstream.message}`
+				: timedOut
+					? beforeHeaders
+						? "request timed out before the response headers"
+						: "stream timed out before a finish reason"
+					: "stream ended without a finish reason",
+		);
+		this.name = "OpenRouterStreamCutError";
 	}
 }
 
@@ -184,6 +236,8 @@ export const streamChatCompletion = async (opts: {
 	signal?: AbortSignal;
 	onDelta?: (text: string) => void;
 }): Promise<ChatTurn> => {
+	// The deadline can also fire before the headers arrive. That is the same
+	// cut with nothing received, so it takes the same path as a mid-body one.
 	const response = await externalFetch(
 		`${BASE}/chat/completions`,
 		{
@@ -201,7 +255,28 @@ export const streamChatCompletion = async (opts: {
 			}),
 		},
 		OPENROUTER_STREAM_TIMEOUT_MS,
-	);
+	).catch((error: unknown) => {
+		if (
+			opts.signal?.aborted !== true &&
+			error instanceof DOMException &&
+			error.name === "TimeoutError"
+		) {
+			throw new OpenRouterStreamCutError(
+				{
+					content: "",
+					costUsd: null,
+					toolCalls: [],
+					promptTokens: null,
+					completionTokens: null,
+					finishReason: null,
+				},
+				null,
+				true,
+				true,
+			);
+		}
+		throw error;
+	});
 
 	if (!response.ok || !response.body) {
 		// The error body is JSON on a well-formed rejection and an HTML error page
@@ -233,6 +308,8 @@ export const streamChatCompletion = async (opts: {
 	let completionTokens: number | null = null;
 	let costUsd: number | null = null;
 	let finishReason: string | null = null;
+	let timedOut = false;
+	let upstream: UpstreamError | null = null;
 
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
@@ -258,6 +335,8 @@ export const streamChatCompletion = async (opts: {
 				if (payload === "[DONE]") continue;
 
 				let chunk: {
+					/** Parsed below: the wire shape is not trusted. */
+					error?: JsonRecord;
 					choices?: {
 						delta?: {
 							content?: string | null;
@@ -290,6 +369,18 @@ export const streamChatCompletion = async (opts: {
 					promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
 					completionTokens = chunk.usage.completion_tokens ?? completionTokens;
 					costUsd = chunk.usage.cost ?? costUsd;
+				}
+
+				// A failure after the 200 is committed arrives as a top-level `error`
+				// object, usually with `finish_reason: "error"` on the same frame.
+				if (chunk.error) {
+					const parsed = upstreamErrorSchema.safeParse(chunk.error);
+					upstream = {
+						code: (parsed.success ? parsed.data.code : undefined) ?? null,
+						message:
+							(parsed.success ? parsed.data.message : undefined) ??
+							"no message",
+					};
 				}
 
 				const choice = chunk.choices?.[0];
@@ -333,15 +424,32 @@ export const streamChatCompletion = async (opts: {
 		const aborted =
 			opts.signal?.aborted === true ||
 			(error instanceof Error && error.name === "AbortError");
-		if (!aborted) throw error;
-		finishReason = ABORTED;
+		// The app's own deadline reaches the body read through `AbortSignal.any`
+		// in `externalFetch`. It rejects with a `TimeoutError`, not an
+		// `AbortError`, and the caller's signal stays unfired. It is a cut, so
+		// the partial turn is kept and reported below.
+		timedOut =
+			!aborted &&
+			error instanceof DOMException &&
+			error.name === "TimeoutError";
+		if (!aborted && !timedOut) throw error;
+		if (aborted) finishReason = ABORTED;
 	} finally {
 		// Releasing the lock lets the connection be torn down when the caller
 		// aborts mid-answer, which is the common case for a user who navigates away.
 		reader.releaseLock();
 	}
 
-	return {
+	// A close with the signal already fired is the caller's doing, however the
+	// runtime ended the read. Without this a clean close after a Stop would be
+	// reported as the upstream cutting the answer.
+	if (
+		(finishReason === null || finishReason === "error") &&
+		opts.signal?.aborted
+	)
+		finishReason = ABORTED;
+
+	const turn: ChatTurn = {
 		content,
 		costUsd,
 		toolCalls: [...slots.entries()]
@@ -352,4 +460,25 @@ export const streamChatCompletion = async (opts: {
 		completionTokens,
 		finishReason,
 	};
+
+	// A close with the signal fired is a Stop, not a failure. Past that, two
+	// things fail the call. The first is an error frame, or the finish reason
+	// "error" that OpenRouter documents for it: the provider said it gave up.
+	// The second is a stream that ended with no finish reason at all, which is
+	// an upstream that closed the connection on a slow call. Returning either
+	// as a turn made a cut answer, or no answer, look like a success. Even tool
+	// calls that look whole are not trusted: the failure can come before the
+	// last fragment of their arguments.
+	if (finishReason !== ABORTED) {
+		if (upstream) throw new OpenRouterStreamCutError(turn, upstream);
+		if (finishReason === "error") {
+			throw new OpenRouterStreamCutError(turn, {
+				code: null,
+				message: 'finish reason "error" with no error object',
+			});
+		}
+		if (finishReason === null)
+			throw new OpenRouterStreamCutError(turn, null, timedOut);
+	}
+	return turn;
 };

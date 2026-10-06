@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives guidance to any coding agent that works in this repository. At each level, `AGENTS.md` is a symlink to `CLAUDE.md`, so Claude Code and the other agents read the same text.
 
 This file is the always-loaded half. The rest is split so a task pays only for
 what it touches — see **Where the rest lives** below.
@@ -86,10 +86,13 @@ The split is deliberate: `packages/core` must stay reusable from another process
 
 **Boundary rule:** `packages/core` never imports TanStack/React. All business logic lives in `src/services/`, one file per aggregate. Every exported service function takes an explicit `ctx: { organizationId, userId }` (`src/services/types.ts`) as its first argument — **tenancy is a parameter, never ambient** — so the same function is callable from a server function, a REST route, a background job or an MCP tool.
 
-`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`, loaded when you touch a
-file in them: `packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and
-`apps/cli/CLAUDE.md`. They hold the layout of the workspace and the rules that
-only apply inside it.
+`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`:
+`packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and `apps/cli/CLAUDE.md`. They
+hold the layout of the workspace and the rules that only apply inside it.
+Claude Code loads a nested file when it touches a file in that folder. Codex
+and similar tools read the `AGENTS.md` symlinks on the path from the root to
+the directory where they start. If your tool does not load a workspace file,
+read it before you change that workspace.
 
 ## Where the rest lives
 
@@ -147,3 +150,18 @@ The five canonical triage roles, each label string equal to its name. See `docs/
 ### Domain docs
 
 Single-context — one root `CONTEXT.md` plus `docs/adr/`. Neither `CONTEXT.md` nor a `CONTEXT-MAP.md` exists yet; that is expected, and their absence should not be flagged. See `docs/agents/domain.md`. This is the domain glossary, and it is not `docs/domains/` above — that is this repo's own subsystem documentation.
+
+### Skills in this repo
+
+Skills live in `.agents/skills/`. `.claude/skills` is a symlink to that folder, so every agent finds the same skills.
+
+- `pr-review` — run it before you mark a PR ready. Run it also to review the PR of another person.
+- `pr-fix` — address the review threads on a PR.
+- `deslop` — clean up your diff. Run it before `pr-review`, never instead of it.
+- `test-audit` — use it when you write, change or review tests.
+
+`.agents/skills/VENDORED.md` lists the skills copied from another project, with the source and the license.
+
+### Worktrees
+
+Run `bun run worktree:setup` after `git worktree add`. It links the `.env` files of the new worktree to the `.env` of the main checkout. It never writes a `.env` and never makes a secret. The SessionStart hook in `.claude/settings.json` runs the script for a Claude Code session that starts in a worktree.
