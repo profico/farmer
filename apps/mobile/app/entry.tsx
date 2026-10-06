@@ -497,13 +497,11 @@ function EntryForm({
 				</FormSection>
 			)}
 			{entry ? (
-				<View style={{ flexDirection: "row" }}>
-					<DestructiveButton
-						label="Delete entry"
-						onPress={confirmDelete}
-						disabled={busy}
-					/>
-				</View>
+				<DestructiveButton
+					label="Delete entry"
+					onPress={confirmDelete}
+					disabled={busy}
+				/>
 			) : null}
 		</Sheet>
 	);

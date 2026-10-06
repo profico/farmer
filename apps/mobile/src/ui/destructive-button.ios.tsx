@@ -1,10 +1,13 @@
-import { PlatformColor, Pressable, Text } from "react-native";
+import { Text } from "react-native";
 
+import { GroupIfAlone } from "../forms/form-group";
+import { FormRow } from "../forms/form-row";
 import type { DestructiveButtonProps } from "./destructive-button";
 import { usePalette } from "./theme";
+import { TYPE } from "./type";
 
-/** The red button of iOS for an action that deletes something: red text on
- *  a light red capsule, as the destructive role of a system button. */
+/** The red row of iOS for an action that deletes something: centred red
+ *  text in a section of its own, as in Contacts and Calendar. */
 export function DestructiveButton({
 	label,
 	onPress,
@@ -12,31 +15,22 @@ export function DestructiveButton({
 }: DestructiveButtonProps) {
 	const palette = usePalette();
 	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			accessibilityState={{ disabled }}
-			onPress={onPress}
-			disabled={disabled}
-			style={({ pressed }) => ({
-				minHeight: 44,
-				paddingHorizontal: 20,
-				borderRadius: 22,
-				alignItems: "center",
-				justifyContent: "center",
-				backgroundColor: palette.errorContainer,
-				opacity: disabled ? 0.4 : pressed ? 0.6 : 1,
-			})}
-		>
-			<Text
-				style={{
-					fontSize: 17,
-					fontWeight: "600",
-					color: PlatformColor("systemRed"),
-				}}
-			>
-				{label}
-			</Text>
-		</Pressable>
+		<GroupIfAlone>
+			<FormRow onPress={onPress} disabled={disabled} accessibilityLabel={label}>
+				<Text
+					style={[
+						TYPE.bodyLarge,
+						{
+							flex: 1,
+							textAlign: "center",
+							color: palette.error,
+							opacity: disabled ? 0.4 : 1,
+						},
+					]}
+				>
+					{label}
+				</Text>
+			</FormRow>
+		</GroupIfAlone>
 	);
 }

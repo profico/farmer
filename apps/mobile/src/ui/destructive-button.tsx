@@ -1,3 +1,5 @@
+import { View } from "react-native";
+
 import { ActionButton } from "./action-button";
 
 export type DestructiveButtonProps = {
@@ -16,11 +18,13 @@ export function DestructiveButton({
 	disabled,
 }: DestructiveButtonProps) {
 	return (
-		<ActionButton
-			label={label}
-			variant="text"
-			onPress={onPress}
-			disabled={disabled}
-		/>
+		<View style={{ flexDirection: "row" }}>
+			<ActionButton
+				label={label}
+				variant="text"
+				onPress={onPress}
+				disabled={disabled}
+			/>
+		</View>
 	);
 }

@@ -7,13 +7,13 @@ import { useFilingRules, useUpdateFilingRule } from "../../src/api/you";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
 import { FormSection, Sheet } from "../../src/forms/sheet";
 import {
-	ActionButton,
 	EmptyState,
 	ErrorBanner,
 	ListRow,
 	Skeleton,
 	Text,
 } from "../../src/ui/components";
+import { DestructiveButton } from "../../src/ui/destructive-button";
 import { messageOf } from "../../src/ui/errors";
 import { Icon } from "../../src/ui/icon";
 import { usePalette } from "../../src/ui/theme";
@@ -115,14 +115,11 @@ function RuleForm({ rule }: { rule: FilingRule }) {
 					onChange={(task) => setTargetTaskId(task.id)}
 				/>
 			</FormSection>
-			<View style={{ flexDirection: "row" }}>
-				<ActionButton
-					label="Remove rule"
-					variant="text"
-					onPress={confirmRemove}
-					disabled={busy}
-				/>
-			</View>
+			<DestructiveButton
+				label="Remove rule"
+				onPress={confirmRemove}
+				disabled={busy}
+			/>
 		</Sheet>
 	);
 }

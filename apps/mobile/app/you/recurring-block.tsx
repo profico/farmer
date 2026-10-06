@@ -16,13 +16,13 @@ import { DurationStepper } from "../../src/forms/steppers";
 import { formatHours } from "../../src/lib/duration";
 import { SwitchRow } from "../../src/time/components/switch-row";
 import {
-	ActionButton,
 	EmptyState,
 	ErrorBanner,
 	Field,
 	Skeleton,
 	Text,
 } from "../../src/ui/components";
+import { DestructiveButton } from "../../src/ui/destructive-button";
 import { messageOf } from "../../src/ui/errors";
 import { ControlHost } from "../../src/ui/host";
 import { usePalette } from "../../src/ui/theme";
@@ -216,14 +216,11 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 				</Pressable>
 			) : null}
 			{block ? (
-				<View style={{ flexDirection: "row" }}>
-					<ActionButton
-						label="Delete block"
-						variant="text"
-						onPress={confirmDelete}
-						disabled={busy}
-					/>
-				</View>
+				<DestructiveButton
+					label="Delete block"
+					onPress={confirmDelete}
+					disabled={busy}
+				/>
 			) : null}
 		</Sheet>
 	);

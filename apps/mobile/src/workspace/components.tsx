@@ -240,7 +240,13 @@ export function ActionRow({
 				<WorkspaceIcon name={icon} size={24} color={color} />
 			) : null}
 			<View style={{ flex: 1 }}>
-				<Text variant="bodyLarge" color={color} numberOfLines={1}>
+				<Text
+					variant="bodyLarge"
+					color={color}
+					numberOfLines={1}
+					// iOS centres the text of a destructive row, as Contacts does.
+					align={IOS && destructive ? "center" : undefined}
+				>
 					{label}
 				</Text>
 				{subtitle ? (
