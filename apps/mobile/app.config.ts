@@ -116,6 +116,31 @@ const withDialogAccent: ConfigPlugin = (config) =>
 		},
 	);
 
+/**
+ * R8 rules for the release build, appended to `android/app/proguard-rules.pro`.
+ * The libraries ship their own rules. These cover what only this app reads
+ * by reflection or by name.
+ *
+ * `modules/back-gesture` finds the private `OnBackPressedCallback` field of
+ * `ReactActivity` by its type, and tells a real Back from the default one
+ * by the method name `invokeDefaultOnBackPressed` in the call stack. R8 would
+ * remove the field, because nothing reads it by name, and it would inline or
+ * rename the method. Either change breaks Back with no error. Check these
+ * rules again on each React Native upgrade.
+ *
+ * `expo-task-manager` loads `RNHeadlessAppLoader` of `expo-modules-core` with
+ * `Class.forName`, and no library rule keeps it. Without the rule, R8 removes
+ * the class and the task manager logs `ClassNotFoundException` at start.
+ */
+const PROGUARD_RULES = `
+-keepclassmembers class com.facebook.react.ReactActivity {
+    private androidx.activity.OnBackPressedCallback *;
+    public void invokeDefaultOnBackPressed();
+}
+
+-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }
+`;
+
 const NIGHT_MODE = "com.profico.farmer.nightmode.NightMode";
 
 /**
@@ -272,6 +297,11 @@ const config: ExpoConfig = {
 					// addresses here, so the app itself refuses plain http to a host
 					// that is not local (`normalizeOrigin` in @farmer/api-client).
 					usesCleartextTraffic: true,
+					// R8 and resource shrinking, for release only. R8 removes the
+					// dead code of the libraries, which is most of the dex.
+					enableMinifyInReleaseBuilds: true,
+					enableShrinkResourcesInReleaseBuilds: true,
+					extraProguardRules: PROGUARD_RULES,
 				},
 			},
 		],
