@@ -38,7 +38,9 @@ export const KEYS = {
 	credential: "farmer.push.credential",
 	installation: "farmer.push.installation",
 	relay: "farmer.push.relay",
-	permissionAsked: "farmer.push.permission-asked",
+	/** Set when the timer card showed the hint "Notifications are off". The
+	 *  hint shows one time only. */
+	deniedHintShown: "farmer.push.denied-hint-shown",
 } as const;
 
 type Key = (typeof KEYS)[keyof typeof KEYS];

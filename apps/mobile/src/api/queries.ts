@@ -176,10 +176,15 @@ export const useTimerAction = () => {
 	});
 };
 
+/** The key of every timer start in the app. The push bridge reads the
+ *  mutation cache for it, to ask for the notification permission. */
+export const START_TIMER_KEY = ["farmer", "timer", "start"] as const;
+
 export const useStartTimer = () => {
 	const w = useWorkspace();
 	const queryClient = useQueryClient();
 	return useMutation({
+		mutationKey: START_TIMER_KEY,
 		mutationFn: (body: StartTimer) => w.client.startTimer(w.slug, body),
 		onSuccess: (state) => {
 			queryClient.setQueryData([...scope(w), "timer"], state);

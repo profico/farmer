@@ -12,17 +12,25 @@ import { AppState, Platform } from "react-native";
 import { z } from "zod";
 
 import { LiveActivity } from "../../modules/live-activity";
+import { START_TIMER_KEY } from "../api/queries";
 import { useSession } from "../session/session";
 import { appTargetOf, isSurfaceStop, localAlertData } from "./payload";
 import { onTimerPush } from "./receive";
 import {
-	askAfterFirstTimer,
 	type PushSession,
 	reportLiveActivityToken,
 	reportPushToStartToken,
 	syncPush,
 	teardownPush,
 } from "./registration";
+import { KEYS, readItem, writeItem } from "./storage";
+import {
+	askForTimerNotifications,
+	needsDeniedHint,
+	type PermissionApi,
+	hideDeniedHint,
+	showDeniedHint,
+} from "./timer-permission";
 import {
 	clearTimerSurface,
 	shareCredential,
@@ -37,8 +45,11 @@ import {
  * - On each foreground: register for push (when the Server uses a relay),
  *   read the timer, and show or clear the timer surface.
  * - Each change of the cached timer (a start, a pause, a confirm in the app)
- *   updates the surface at once. The first start in the app asks for the
- *   notification permission.
+ *   updates the surface at once.
+ * - Each start in the app asks for the notification permission while it is
+ *   not granted and the system can ask (`timer-permission.ts`). After a
+ *   grant the surface shows at once. After a refusal the timer card shows a
+ *   hint one time (Android).
  * - A tap on a notification opens the screen of its `url`.
  * - Stop on a surface opens the stop sheet. The sheet must find the clock
  *   held, in the workspace that is open (ADR 0003), so this holds it first.
@@ -47,6 +58,36 @@ import {
 
 const isTimerKey = (key: QueryKey) =>
 	key.length === 4 && key[0] === "farmer" && key[3] === "timer";
+
+const isStartKey = (key: readonly unknown[] | undefined) =>
+	key !== undefined &&
+	key.length === START_TIMER_KEY.length &&
+	START_TIMER_KEY.every((part, index) => key[index] === part);
+
+/** The system permission, through expo-notifications. */
+const notificationPermission: PermissionApi = {
+	get: () => Notifications.getPermissionsAsync(),
+	request: () =>
+		Notifications.requestPermissionsAsync({
+			ios: { allowAlert: true, allowBadge: false, allowSound: true },
+		}),
+};
+
+/** Show the surface of the timer that the cache holds now. The figure is
+ *  anchored at the time of the read, not at the end of a dialog. */
+const showCachedTimer = (queryClient: QueryClient) => {
+	const latest = queryClient
+		.getQueryCache()
+		.findAll({ predicate: (query) => isTimerKey(query.queryKey) })
+		.sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0];
+	if (!latest) return;
+	const parsed = timerStateSchema.safeParse(latest.state.data);
+	const timer = parsed.success ? parsed.data.timer : null;
+	const surface = timer
+		? surfaceOfTimer(timer, latest.state.dataUpdatedAt)
+		: null;
+	if (surface) showTimerSurface(surface);
+};
 
 /** Read the timer, and set it in the cache of its workspace. */
 const readTimer = async (
@@ -96,6 +137,13 @@ export function PushBridge() {
 		const refresh = () => {
 			void shareCredential(origin, token);
 			void syncPush(session);
+			// The person may have allowed notifications in the settings.
+			void notificationPermission
+				.get()
+				.then((permission) => {
+					if (permission.granted) hideDeniedHint();
+				})
+				.catch(() => undefined);
 			const slug = live.current.workspace;
 			if (!slug) return;
 			readTimer(client, origin, slug, queryClient)
@@ -115,8 +163,6 @@ export function PushBridge() {
 
 	// Each change of a cached timer updates the surface.
 	useEffect(() => {
-		// Whether each cached timer query held a timer, to find a start.
-		const hadTimer = new Map<string, boolean>();
 		return queryClient.getQueryCache().subscribe((event) => {
 			if (event.type !== "updated" || event.action.type !== "success") return;
 			if (!isTimerKey(event.query.queryKey)) return;
@@ -128,21 +174,31 @@ export function PushBridge() {
 				: null;
 			if (surface) showTimerSurface(surface);
 			else clearTimerSurface();
-			// A start in the app sets the answer by hand (`setQueryData`), on a
-			// query that held no timer. The first one is the moment to ask for
-			// notifications.
-			const started =
-				timer !== null &&
-				!timer.paused &&
-				event.action.manual === true &&
-				hadTimer.get(event.query.queryHash) === false;
-			hadTimer.set(event.query.queryHash, timer !== null);
-			if (started) {
-				void askAfterFirstTimer().then((asked) => {
-					const { origin: o, token: t } = live.current;
-					if (asked && o && t) void syncPush({ origin: o, token: t });
-				});
-			}
+		});
+	}, [queryClient]);
+
+	// Each start in the app: ask for the permission that the surface needs.
+	// The start sets the cached timer before this runs, so the subscription
+	// above already tried to show the surface, without the permission.
+	useEffect(() => {
+		return queryClient.getMutationCache().subscribe((event) => {
+			if (event.type !== "updated" || event.action.type !== "success") return;
+			if (!isStartKey(event.mutation.options.mutationKey)) return;
+			void askForTimerNotifications(notificationPermission).then(
+				async (result) => {
+					if (result.granted) {
+						showCachedTimer(queryClient);
+						const { origin: o, token: t } = live.current;
+						if (result.asked && o && t) void syncPush({ origin: o, token: t });
+						return;
+					}
+					if (Platform.OS !== "android") return;
+					const shown = (await readItem(KEYS.deniedHintShown)) !== null;
+					if (!needsDeniedHint(result, shown)) return;
+					await writeItem(KEYS.deniedHintShown, "1");
+					showDeniedHint();
+				},
+			);
 		});
 	}, [queryClient]);
 

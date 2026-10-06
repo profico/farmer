@@ -97,8 +97,9 @@ const notificationsAllowed = async (): Promise<boolean> => {
 
 /**
  * Ask for the notification permission. Call it at a moment when the reason
- * is clear: after the first timer start, or from Preferences. Never at
- * launch. Returns whether notifications are allowed now.
+ * is clear: from Preferences. Never at launch. A timer start asks through
+ * `askForTimerNotifications` (`timer-permission.ts`). Returns whether
+ * notifications are allowed now.
  */
 export const requestNotificationPermission = async (): Promise<boolean> => {
 	try {
@@ -112,16 +113,6 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 		logOnce("permission", `could not ask for notifications: ${String(error)}`);
 		return false;
 	}
-};
-
-/** Ask one time, after the first timer that the person starts in the app:
- *  the ongoing notification on Android needs the permission too. Returns
- *  true when the app asked now. */
-export const askAfterFirstTimer = async (): Promise<boolean> => {
-	if (await readItem(KEYS.permissionAsked)) return false;
-	await writeItem(KEYS.permissionAsked, "1");
-	await requestNotificationPermission();
-	return true;
 };
 
 /** The native push token, or null when this build cannot have one. */

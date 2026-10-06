@@ -1,10 +1,11 @@
 import { ApiClientError, type Timer } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useLayoutEffect, useRef, useState } from "react";
-import { Alert, Animated, View } from "react-native";
+import { Alert, Animated, type ColorValue, Linking, View } from "react-native";
 
 import { useTimer, useTimerAction } from "../api/queries";
 import { formatHours, formatStopwatch } from "../lib/duration";
+import { hideDeniedHint, useDeniedHint } from "../push/timer-permission";
 import { useSession } from "../session/session";
 import {
 	ActionButton,
@@ -21,6 +22,43 @@ import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { removed, toggled } from "./haptics";
 import { useElapsed } from "./use-elapsed";
+
+/**
+ * The phone does not allow notifications, so the timer does not show
+ * outside the app. The bridge sets this once, after a start that ended
+ * without the permission (`push/timer-permission.ts`). It does not block:
+ * the timer runs either way.
+ */
+function NotificationsOffHint({ ink }: { ink: ColorValue }) {
+	const visible = useDeniedHint();
+	if (!visible) return null;
+	return (
+		<View
+			accessibilityLiveRegion="polite"
+			style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
+		>
+			<Icon name="reminder" size={16} color={ink} />
+			<View style={{ flex: 1 }}>
+				<Text variant="bodySmall" color={ink}>
+					Notifications are off, so the timer does not show outside the app.
+				</Text>
+			</View>
+			<ActionButton
+				label="Settings"
+				variant="text"
+				onPress={() => {
+					hideDeniedHint();
+					void Linking.openSettings();
+				}}
+			/>
+			<IconButton
+				icon="close"
+				label="Hide this hint"
+				onPress={hideDeniedHint}
+			/>
+		</View>
+	);
+}
 
 const whatItMeasures = (timer: Timer) =>
 	[timer.project?.name ?? "No project", timer.task.name].join(" · ");
@@ -192,6 +230,7 @@ function TimerCardBody() {
 					Adds to an entry that held {formatHours(timer.entry.durationSeconds)}.
 				</Text>
 			) : null}
+			<NotificationsOffHint ink={ink} />
 			{failure ? <ErrorBanner message={failure} /> : null}
 			<View style={{ flexDirection: "row", gap: SPACE.s }}>
 				{timer.paused ? (
