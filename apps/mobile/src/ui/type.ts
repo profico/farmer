@@ -2,6 +2,9 @@ import type { TextStyle } from "react-native";
 
 /** The Material 3 type scale, in the system font. */
 export const TYPE = {
+	displayLarge: { fontSize: 57, lineHeight: 64 },
+	displayMedium: { fontSize: 45, lineHeight: 52 },
+	headlineLarge: { fontSize: 32, lineHeight: 40 },
 	headlineMedium: { fontSize: 28, lineHeight: 36 },
 	headlineSmall: { fontSize: 24, lineHeight: 32 },
 	titleLarge: { fontSize: 22, lineHeight: 28 },
@@ -17,6 +20,27 @@ export const TYPE = {
 		lineHeight: 44,
 		fontVariant: ["tabular-nums"],
 	},
+	// The Material 3 Expressive emphasized variants. The size and the line
+	// height do not change, only the weight.
+	displayLargeEmphasized: { fontSize: 57, lineHeight: 64, fontWeight: "500" },
+	displayMediumEmphasized: { fontSize: 45, lineHeight: 52, fontWeight: "500" },
+	displaySmallEmphasized: {
+		fontSize: 36,
+		lineHeight: 44,
+		fontWeight: "500",
+		fontVariant: ["tabular-nums"],
+	},
+	headlineLargeEmphasized: { fontSize: 32, lineHeight: 40, fontWeight: "500" },
+	headlineMediumEmphasized: { fontSize: 28, lineHeight: 36, fontWeight: "500" },
+	headlineSmallEmphasized: { fontSize: 24, lineHeight: 32, fontWeight: "500" },
+	titleLargeEmphasized: { fontSize: 22, lineHeight: 28, fontWeight: "500" },
+	titleMediumEmphasized: { fontSize: 16, lineHeight: 24, fontWeight: "700" },
+	titleSmallEmphasized: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+	bodyLargeEmphasized: { fontSize: 16, lineHeight: 24, fontWeight: "500" },
+	bodyMediumEmphasized: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
+	bodySmallEmphasized: { fontSize: 12, lineHeight: 16, fontWeight: "500" },
+	labelLargeEmphasized: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+	labelMediumEmphasized: { fontSize: 12, lineHeight: 16, fontWeight: "700" },
 } as const satisfies { [variant: string]: TextStyle };
 
 export type TypeVariant = keyof typeof TYPE;

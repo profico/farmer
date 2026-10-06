@@ -335,8 +335,16 @@ export const paletteOf = (
 	return {
 		background: tokens.ground,
 		surface: tokens.bg,
+		// The farmer palette has two paper levels. The extra Material 3
+		// surface roles are derived from them. Only Android screens read
+		// them for now.
+		surfaceDim: tokens.ground,
+		surfaceBright: tokens.bg,
+		surfaceContainerLowest: tokens.bg,
+		surfaceContainerLow: tokens.bg,
 		surfaceContainer: tokens.bg,
 		surfaceContainerHigh: tokens.bg2,
+		surfaceContainerHighest: mixHex(tokens.bg2, tokens.fg, 0.93),
 		onSurface: tokens.fg,
 		onSurfaceVariant: tokens.mut,
 		primary: tokens.acc,
@@ -344,9 +352,22 @@ export const paletteOf = (
 		onPrimary: tokens.bg,
 		primaryContainer: mixHex(tokens.acc, tokens.bg, dark ? 0.26 : 0.16),
 		onPrimaryContainer: tokens.fg,
+		secondary: mixHex(tokens.acc, tokens.mut, 0.45),
+		onSecondary: tokens.bg,
 		secondaryContainer: mixHex(tokens.acc, tokens.bg, dark ? 0.2 : 0.12),
 		onSecondaryContainer: tokens.fg,
 		tertiary: tokens.warn,
+		onTertiary: tokens.bg,
+		tertiaryContainer: mixHex(tokens.warn, tokens.bg, dark ? 0.24 : 0.16),
+		onTertiaryContainer: mixHex(tokens.warn, tokens.fg, 0.45),
+		inverseSurface: tokens.fg,
+		inverseOnSurface: tokens.bg,
+		// The accent on an inverse surface: lighter in light mode, darker
+		// in dark mode.
+		inversePrimary: dark
+			? mixHex(tokens.acc, "#000000", 0.55)
+			: mixHex(tokens.acc, "#ffffff", 0.45),
+		scrim: "#000000",
 		outline: high ? tokens.mut : tokens.faint,
 		// The web's `--line`: the text colour at 11% (13% dark), and at 28%
 		// (32% dark) in high contrast.
@@ -356,9 +377,14 @@ export const paletteOf = (
 			high ? (dark ? 0.32 : 0.28) : dark ? 0.13 : 0.11,
 		),
 		error: tokens.bad,
+		onError: tokens.bg,
 		errorContainer: mixHex(tokens.bad, tokens.bg, dark ? 0.22 : 0.12),
 		onErrorContainer: mixHex(tokens.bad, tokens.fg, 0.45),
 		success: tokens.ok,
+		successContainer: mixHex(tokens.ok, tokens.bg, dark ? 0.24 : 0.16),
+		onSuccessContainer: mixHex(tokens.ok, tokens.fg, 0.45),
 		warning: tokens.warn,
+		warningContainer: mixHex(tokens.warn, tokens.bg, dark ? 0.24 : 0.16),
+		onWarningContainer: mixHex(tokens.warn, tokens.fg, 0.45),
 	};
 };
