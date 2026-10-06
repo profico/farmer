@@ -271,87 +271,93 @@ function Timesheet({
 	};
 
 	return (
-		<Screen
-			overline={workspaceName}
-			title="Time"
-			refreshing={entries.isRefetching}
-			onRefresh={refresh}
-			actions={<MoreMenu actions={actions} onAction={onAction} />}
-		>
-			<Inset>
-				<SegmentedControl options={VIEWS} value={view} onChange={setView} />
-				<View
-					style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}
-				>
-					<IconButton
-						icon="back"
-						label={`The ${unit} before`}
-						onPress={() => step(-1)}
-					/>
-					<View style={{ flex: 1 }}>
-						<Text variant="titleMedium" numberOfLines={1}>
-							{label}
-						</Text>
-					</View>
-					{atNow ? null : (
-						<ActionButton
-							label="Today"
-							variant="text"
-							onPress={() => setSelected(today)}
+		<View style={{ flex: 1 }}>
+			<Screen
+				overline={workspaceName}
+				title="Time"
+				refreshing={entries.isRefetching}
+				onRefresh={refresh}
+				actions={<MoreMenu actions={actions} onAction={onAction} />}
+			>
+				<Inset>
+					<SegmentedControl options={VIEWS} value={view} onChange={setView} />
+					<View
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: SPACE.xs,
+						}}
+					>
+						<IconButton
+							icon="back"
+							label={`The ${unit} before`}
+							onPress={() => step(-1)}
 						/>
-					)}
-					<DateJump value={selected} onPick={setSelected} />
-					<IconButton
-						icon="forward"
-						label={`The ${unit} after`}
-						onPress={() => step(1)}
+						<View style={{ flex: 1 }}>
+							<Text variant="titleMedium" numberOfLines={1}>
+								{label}
+							</Text>
+						</View>
+						{atNow ? null : (
+							<ActionButton
+								label="Today"
+								variant="text"
+								onPress={() => setSelected(today)}
+							/>
+						)}
+						<DateJump value={selected} onPick={setSelected} />
+						<IconButton
+							icon="forward"
+							label={`The ${unit} after`}
+							onPress={() => step(1)}
+						/>
+					</View>
+					<TargetsStrip />
+					<UnfiledBanner
+						from={from}
+						to={to}
+						scope={view === "month" ? "this month" : "this week"}
 					/>
-				</View>
-				<TargetsStrip />
-				<UnfiledBanner
-					from={from}
-					to={to}
-					scope={view === "month" ? "this month" : "this week"}
-				/>
-				<Snackbar notice={notice} onHide={hideNotice} />
-			</Inset>
-			{view === "day" ? (
-				<DayView
-					selected={selected}
-					today={today}
-					days={days}
-					entries={entries}
-					holidays={holidays.data}
-					onSelect={setSelected}
-					onCopyPreviousDay={fullApi ? copyPreviousDay : undefined}
-					onAssemble={dayApi ? assembleDay : undefined}
-					copying={copyDay.isPending}
-				/>
-			) : view === "week" ? (
-				<WeekView
-					days={days}
-					today={today}
-					selected={selected}
-					entries={entries}
-					holidays={holidays.data}
-					onSelect={setSelected}
-					onNotify={notify}
-					onCopyPreviousWeek={fullApi ? copyPreviousWeek : undefined}
-					copying={copyWeek.isPending}
-				/>
-			) : (
-				<MonthView
-					month={month}
-					today={today}
-					weekStartsOn={weekStartsOn}
-					entries={entries}
-					holidays={holidays.data}
-					onOpenDay={(day) => {
-						setSelected(day);
-						setView("day");
-					}}
-				/>
-			)}
-		</Screen>
+				</Inset>
+				{view === "day" ? (
+					<DayView
+						selected={selected}
+						today={today}
+						days={days}
+						entries={entries}
+						holidays={holidays.data}
+						onSelect={setSelected}
+						onCopyPreviousDay={fullApi ? copyPreviousDay : undefined}
+						onAssemble={dayApi ? assembleDay : undefined}
+						copying={copyDay.isPending}
+					/>
+				) : view === "week" ? (
+					<WeekView
+						days={days}
+						today={today}
+						selected={selected}
+						entries={entries}
+						holidays={holidays.data}
+						onSelect={setSelected}
+						onNotify={notify}
+						onCopyPreviousWeek={fullApi ? copyPreviousWeek : undefined}
+						copying={copyWeek.isPending}
+					/>
+				) : (
+					<MonthView
+						month={month}
+						today={today}
+						weekStartsOn={weekStartsOn}
+						entries={entries}
+						holidays={holidays.data}
+						onOpenDay={(day) => {
+							setSelected(day);
+							setView("day");
+						}}
+					/>
+				)}
+			</Screen>
+			<Snackbar notice={notice} onHide={hideNotice} floating />
+		</View>
 	);
 }
