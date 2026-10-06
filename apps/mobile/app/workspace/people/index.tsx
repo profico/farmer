@@ -241,7 +241,7 @@ function InvitationsSection({
 					/>
 					<ActionRow
 						label="Resend"
-						icon="send"
+						icon="paperPlane"
 						busy={resend.isPending && resend.variables === invitation.id}
 						disabled={resend.isPending}
 						onPress={() =>

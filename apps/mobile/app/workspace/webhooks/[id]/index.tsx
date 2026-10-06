@@ -202,7 +202,7 @@ function EndpointBody({
 			<SettingsSection title="Actions">
 				<ActionRow
 					label="Send test event"
-					icon="send"
+					icon="paperPlane"
 					disabled={off || busy}
 					busy={test.isPending}
 					onPress={() =>
@@ -341,7 +341,7 @@ function DeliveryList({ deliveries }: { deliveries: WebhookDelivery[] }) {
 						<ActionRow
 							key={`${delivery.id}-resend`}
 							label="Resend"
-							icon="send"
+							icon="paperPlane"
 							busy={resend.isPending && resend.variables === delivery.id}
 							disabled={resend.isPending}
 							onPress={() =>

@@ -1,8 +1,7 @@
 import { Stack } from "expo-router";
 
 import { ActionButton, IconButton } from "../ui/components";
-import { HeaderButton } from "../workspace/audit/header-button";
-import { type HeaderAction, isKitIcon } from "./header-actions.shared";
+import type { HeaderAction } from "./header-actions.shared";
 
 /**
  * The buttons at the end of the navigation header of the screen that
@@ -26,20 +25,13 @@ export function HeaderActions({ actions }: { actions: HeaderAction[] }) {
 												onPress={action.onPress}
 												disabled={action.disabled}
 											/>
-										) : isKitIcon(action.icon) ? (
+										) : (
 											<IconButton
 												key={action.label}
 												icon={action.icon}
 												label={action.label}
 												onPress={action.onPress}
 												disabled={action.disabled}
-											/>
-										) : (
-											<HeaderButton
-												key={action.label}
-												icon={action.icon}
-												label={action.label}
-												onPress={action.onPress}
 											/>
 										),
 									)}

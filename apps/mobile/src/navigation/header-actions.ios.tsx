@@ -2,11 +2,7 @@ import { Stack } from "expo-router";
 
 import { ICONS } from "../ui/icons";
 import { usePalette } from "../ui/theme";
-import { WORKSPACE_ICONS } from "../workspace/icons";
-import { type HeaderAction, isKitIcon } from "./header-actions.shared";
-
-const symbolOf = (name: NonNullable<HeaderAction["icon"]>) =>
-	isKitIcon(name) ? ICONS[name].sf : WORKSPACE_ICONS[name].sf;
+import type { HeaderAction } from "./header-actions.shared";
 
 /**
  * The buttons at the end of the navigation header, as bar button items. The
@@ -20,7 +16,7 @@ export function HeaderActions({ actions }: { actions: HeaderAction[] }) {
 			{actions.map((action) => (
 				<Stack.Toolbar.Button
 					key={action.label}
-					icon={action.icon ? symbolOf(action.icon) : undefined}
+					icon={action.icon ? ICONS[action.icon].sf : undefined}
 					accessibilityLabel={action.label}
 					disabled={action.disabled}
 					variant={action.prominent ? "done" : "plain"}

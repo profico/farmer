@@ -1,10 +1,10 @@
 import { Platform, Pressable, Text as RNText, View } from "react-native";
 
 import { ActionButton, Text } from "../../ui/components";
+import { Icon } from "../../ui/icon";
 import { usePalette } from "../../ui/theme";
 import { SPACE, TYPE } from "../../ui/type";
 import { notify, notifyError } from "../components";
-import { WorkspaceIcon } from "../icon";
 import { copyText } from "../share";
 
 /**
@@ -93,7 +93,7 @@ export function SecretCard({
 						opacity: pressed ? 0.5 : 1,
 					})}
 				>
-					<WorkspaceIcon name="copy" size={20} color={palette.primary} />
+					<Icon name="copy" size={20} color={palette.primary} />
 					<Text variant="labelLarge" color={palette.primary}>
 						Copy
 					</Text>

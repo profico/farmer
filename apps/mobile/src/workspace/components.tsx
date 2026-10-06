@@ -20,6 +20,7 @@ import { Skeleton, Text } from "../ui/components";
 import { showDialog } from "../ui/dialog";
 import { ControlHost } from "../ui/host";
 import { Icon } from "../ui/icon";
+import type { IconName } from "../ui/icons";
 import { LoadingIndicator } from "../ui/loading";
 import { notifyError } from "../ui/notify-error";
 import { useRowMenu } from "../ui/row-menu";
@@ -28,8 +29,6 @@ import { SettingsChoice, SettingsSection } from "../ui/settings-list";
 import { useRowPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
 import { SPACE, TYPE } from "../ui/type";
-import { WorkspaceIcon } from "./icon";
-import type { WorkspaceIconName } from "./icons";
 
 // The primitives of the workspace screens that the kit of `src/ui` does not
 // have. They take their colours from the theme hook and sit inside a
@@ -226,7 +225,7 @@ export function ActionRow({
 	subtitle,
 }: {
 	label: string;
-	icon?: WorkspaceIconName;
+	icon?: IconName;
 	onPress: () => void;
 	destructive?: boolean;
 	disabled?: boolean;
@@ -241,9 +240,7 @@ export function ActionRow({
 			disabled={disabled || busy}
 			accessibilityLabel={[label, subtitle].filter(Boolean).join(", ")}
 		>
-			{icon && !IOS ? (
-				<WorkspaceIcon name={icon} size={24} color={color} />
-			) : null}
+			{icon && !IOS ? <Icon name={icon} size={24} color={color} /> : null}
 			<View style={{ flex: 1 }}>
 				<Text
 					variant="bodyLarge"
