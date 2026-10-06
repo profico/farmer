@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Icon } from "../../ui/icon";
 import type { IconName } from "../../ui/icons";
-import { SlideMotionProvider, useReducedMotion } from "./motion";
+import { useMotionPreference } from "../../ui/motion";
+import { SlideMotionProvider } from "./motion";
 import {
 	BigDaySlide,
 	DaysSlide,
@@ -142,7 +143,7 @@ export function RewindStoryView({
 }) {
 	const { width, height } = useWindowDimensions();
 	const insets = useSafeAreaInsets();
-	const reduce = useReducedMotion();
+	const { reduceMotion: reduce } = useMotionPreference();
 	const scroller = useRef<ScrollView>(null);
 	const [index, setIndex] = useState(0);
 	const [sharing, setSharing] = useState(false);

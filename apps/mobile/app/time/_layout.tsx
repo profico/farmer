@@ -1,6 +1,7 @@
 import { Redirect, Stack } from "expo-router";
 
 import { useSignedIn } from "../../src/session/session";
+import { useMotionPreference } from "../../src/ui/motion";
 import { usePalette } from "../../src/ui/theme";
 
 /**
@@ -14,11 +15,13 @@ import { usePalette } from "../../src/ui/theme";
 export default function TimeFormsLayout() {
 	const { workspace } = useSignedIn();
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 	if (!workspace) return <Redirect href="/" />;
 	return (
 		<Stack
 			screenOptions={{
 				headerShown: false,
+				animation: reduceMotion ? "fade" : "default",
 				contentStyle: { backgroundColor: palette.surface },
 			}}
 		/>
