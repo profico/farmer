@@ -22,15 +22,18 @@ export const headStartError = (seconds: number, limit: number) => {
 		: `A head start must be shorter than your timer limit of ${formatHours(limit)}.`;
 };
 
+/** The last step under the limit. */
+export const lastHeadStart = (limit: number) =>
+	Math.ceil(limit / HEAD_START_STEP_SECONDS) * HEAD_START_STEP_SECONDS -
+	HEAD_START_STEP_SECONDS;
+
 /** One step up or down, from zero to the last step under the limit. */
 export const stepHeadStart = (
 	seconds: number,
 	steps: number,
 	limit: number,
 ) => {
-	const last =
-		Math.ceil(limit / HEAD_START_STEP_SECONDS) * HEAD_START_STEP_SECONDS -
-		HEAD_START_STEP_SECONDS;
+	const last = lastHeadStart(limit);
 	const next = seconds + steps * HEAD_START_STEP_SECONDS;
 	return Math.max(0, Math.min(next, last));
 };

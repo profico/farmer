@@ -1,9 +1,9 @@
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { View } from "react-native";
 
+import { GroupIfAlone } from "../../forms/form-group";
+import { FormRow } from "../../forms/form-row";
 import { Text } from "../../ui/components";
-import { usePalette } from "../../ui/theme";
-import { SPACE } from "../../ui/type";
 import { pickedDay, pickerValue } from "../calendar";
 import type { DateFieldProps } from "./date-field";
 
@@ -21,32 +21,31 @@ export function DateField({
 	onChange,
 	minimum,
 	maximum,
+	disabled,
 }: DateFieldProps) {
-	const palette = usePalette();
 	return (
-		<View
-			style={{
-				flexDirection: "row",
-				alignItems: "center",
-				gap: SPACE.m,
-				minHeight: 44,
-			}}
-		>
-			<View style={{ flex: 1 }}>
-				<Text variant="bodyLarge" color={palette.onSurface}>
-					{label}
-				</Text>
-			</View>
-			<DateTimePicker
-				value={pickerValue(value)}
-				mode="date"
-				display="compact"
-				timeZoneName={UTC}
-				minimumDate={minimum ? pickerValue(minimum) : undefined}
-				maximumDate={maximum ? pickerValue(maximum) : undefined}
-				onValueChange={(_event, date) => onChange(pickedDay(date))}
-			/>
-		</View>
+		<GroupIfAlone>
+			<FormRow grouped={false}>
+				<View style={{ flex: 1 }}>
+					<Text variant="bodyLarge">{label}</Text>
+				</View>
+				<View
+					pointerEvents={disabled ? "none" : "auto"}
+					style={{ opacity: disabled ? 0.4 : 1 }}
+				>
+					<DateTimePicker
+						style={{ width: DATE_JUMP_WIDTH }}
+						value={pickerValue(value)}
+						mode="date"
+						display="compact"
+						timeZoneName={UTC}
+						minimumDate={minimum ? pickerValue(minimum) : undefined}
+						maximumDate={maximum ? pickerValue(maximum) : undefined}
+						onValueChange={(_event, date) => onChange(pickedDay(date))}
+					/>
+				</View>
+			</FormRow>
+		</GroupIfAlone>
 	);
 }
 

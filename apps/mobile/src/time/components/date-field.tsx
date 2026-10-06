@@ -16,6 +16,8 @@ export type DateFieldProps = {
 	onChange: (day: string) => void;
 	minimum?: string;
 	maximum?: string;
+	/** iOS: the row shows the day but does not change it. */
+	disabled?: boolean;
 };
 
 const longDay = (day: string) =>

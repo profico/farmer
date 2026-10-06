@@ -354,27 +354,35 @@ function EntryForm({
 					onTaken={() => router.back()}
 				/>
 			) : null}
-			<FormSection label={repeats ? "Starts on" : "Day"}>
+			<FormSection
+				label={repeats ? "Starts on" : "Day"}
+				loose
+				footer={
+					github.dayLocked
+						? "Its GitHub activity keeps this entry on this day."
+						: undefined
+				}
+			>
 				<DayStepper
+					label={repeats ? "Starts on" : "Day"}
 					day={date}
 					today={today}
 					onChange={setDate}
 					disabled={github.dayLocked}
 				/>
-				{github.dayLocked ? (
-					<Text variant="bodySmall" color={palette.onSurfaceVariant}>
-						Its GitHub activity keeps this entry on this day.
-					</Text>
-				) : null}
 			</FormSection>
-			<FormSection label="Time">
+			<FormSection label="Time" loose>
 				{isFill ? (
 					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 						This block fills the rest of the day: your working hours, less
 						everything else logged on the day. Its time follows the day.
 					</Text>
 				) : (
-					<DurationStepper seconds={seconds} onChange={setSeconds} />
+					<DurationStepper
+						label="Time"
+						seconds={seconds}
+						onChange={setSeconds}
+					/>
 				)}
 				{showFill ? (
 					<SwitchRow

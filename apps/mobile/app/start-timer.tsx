@@ -1,23 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
 
 import { useAccess } from "../src/api/capabilities";
 import { useStartTimer } from "../src/api/queries";
 import { useTimerSettings } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormSection, Sheet } from "../src/forms/sheet";
-import { formatHours } from "../src/lib/duration";
+import { HeadStartStepper } from "../src/forms/steppers";
 import { committed } from "../src/time/haptics";
-import {
-	headStartError,
-	headStartLimit,
-	stepHeadStart,
-} from "../src/time/head-start";
-import { ErrorBanner, Field, IconButton, Text } from "../src/ui/components";
+import { headStartError, headStartLimit } from "../src/time/head-start";
+import { ErrorBanner, Field, Text } from "../src/ui/components";
 import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
-import { SPACE } from "../src/ui/type";
 
 /** Start the stopwatch on a project and a task. A timer needs a task; the
  *  project can wait until it is filed. A head start counts time worked
@@ -79,47 +73,20 @@ export default function StartTimerSheet() {
 			/>
 			{/* The head start came with API version 2, as the timer limit did. */}
 			{fullApi ? (
-				<FormSection label="Timer starts from">
-					<View
-						style={{
-							flexDirection: "row",
-							alignItems: "center",
-							gap: SPACE.m,
-							backgroundColor: palette.surfaceContainer,
-							borderRadius: 16,
-							padding: SPACE.s,
-						}}
-					>
-						<IconButton
-							icon="minus"
-							label="5 minutes less of a head start"
-							tone="tonal"
-							onPress={() => setHeadStart(stepHeadStart(headStart, -1, limit))}
-							disabled={headStart === 0}
-						/>
-						<View
-							style={{ flex: 1, alignItems: "center" }}
-							accessible
-							accessibilityLabel={`Timer starts from ${formatHours(headStart)}`}
-							accessibilityLiveRegion="polite"
-						>
-							<Text variant="headlineSmall">{formatHours(headStart)}</Text>
-						</View>
-						<IconButton
-							icon="add"
-							label="5 minutes more of a head start"
-							tone="tonal"
-							onPress={() => setHeadStart(stepHeadStart(headStart, 1, limit))}
-							disabled={stepHeadStart(headStart, 1, limit) === headStart}
-						/>
-					</View>
-					<Text
-						variant="bodySmall"
-						color={tooLong ? palette.error : palette.onSurfaceVariant}
-					>
-						{tooLong ??
-							"Time you worked before you started the timer. It counts towards your timer limit."}
-					</Text>
+				<FormSection
+					label="Timer starts from"
+					loose
+					footer={
+						tooLong ??
+						"Time you worked before you started the timer. It counts towards your timer limit."
+					}
+					footerError={tooLong !== null}
+				>
+					<HeadStartStepper
+						seconds={headStart}
+						onChange={setHeadStart}
+						limit={limit}
+					/>
 				</FormSection>
 			) : null}
 			<Text variant="bodySmall" color={palette.onSurfaceVariant}>

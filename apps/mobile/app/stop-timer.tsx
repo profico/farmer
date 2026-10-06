@@ -154,11 +154,15 @@ function StopForm({
 						: "Entries are kept in 15-minute steps, so the time below is the measured time on the nearest quarter hour, and at least 0:15."}
 				</Text>
 			</Card>
-			<FormSection label="Time to log">
-				<DurationStepper seconds={seconds} onChange={setSeconds} />
+			<FormSection label="Time to log" loose>
+				<DurationStepper
+					label="Time to log"
+					seconds={seconds}
+					onChange={setSeconds}
+				/>
 			</FormSection>
-			<FormSection label="Day">
-				<DayStepper day={date} today={today} onChange={setDate} />
+			<FormSection label="Day" loose>
+				<DayStepper label="Day" day={date} today={today} onChange={setDate} />
 			</FormSection>
 			<ProjectPicker value={projectId} onChange={setProjectId} />
 			<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />

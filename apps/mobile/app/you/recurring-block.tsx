@@ -164,8 +164,12 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 					weekStartsOn={whoami.data?.weekStartsOn ?? 1}
 				/>
 			</FormSection>
-			<FormSection label="Duration">
-				<DurationStepper seconds={seconds} onChange={setSeconds} />
+			<FormSection label="Duration" loose>
+				<DurationStepper
+					label="Duration"
+					seconds={seconds}
+					onChange={setSeconds}
+				/>
 			</FormSection>
 			<Field
 				label={needsNote ? "Note" : "Note (optional)"}

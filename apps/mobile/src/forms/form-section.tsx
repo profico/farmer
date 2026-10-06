@@ -10,6 +10,10 @@ export type FormSectionProps = {
 	/** A line under the section, for a hint or an error. */
 	footer?: string;
 	footerError?: boolean;
+	/** iOS: the controls in the section each draw their own group, and
+	 *  the section draws no title. Use it for a section whose controls
+	 *  carry their own labels. Android ignores it. */
+	loose?: boolean;
 	children: ReactNode;
 };
 
@@ -18,6 +22,7 @@ export function FormSection({
 	label,
 	footer,
 	footerError,
+	loose: _loose,
 	children,
 }: FormSectionProps) {
 	const palette = usePalette();
