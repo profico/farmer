@@ -47,6 +47,7 @@ import { Textarea } from "#/components/ui/textarea.tsx";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatWeekRange } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { dateSearch, weekSearch, EXACT_LINK } from "#/lib/time-search.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -105,6 +106,7 @@ export function WeekView({
 	entries,
 	weekStart,
 	isCurrentWeek,
+	today,
 	holidays,
 }: {
 	orgSlug: string;
@@ -112,11 +114,14 @@ export function WeekView({
 	entries: EntryBlockRowEntry[];
 	weekStart: string;
 	isCurrentWeek: boolean;
+	/** The day the page treats as today: the route's deferred day. */
+	today: string;
 	holidays: Map<string, string>;
 }) {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const weekStartsOn = useWeekStartsOn();
+	const currentWeekStart = startOfWeekKey(today, weekStartsOn);
 
 	// Rows the user added but hasn't typed hours into yet. They have no entries
 	// behind them, so they'd vanish on the next refetch without this.
@@ -346,7 +351,8 @@ export function WeekView({
 					<Link
 						to="/$orgSlug/time/week"
 						params={{ orgSlug }}
-						search={{ weekStart: shiftWeek(weekStart, -7) }}
+						search={weekSearch(shiftWeek(weekStart, -7), currentWeekStart)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Previous week"
 					>
@@ -358,7 +364,8 @@ export function WeekView({
 					<Link
 						to="/$orgSlug/time/week"
 						params={{ orgSlug }}
-						search={{ weekStart: shiftWeek(weekStart, 7) }}
+						search={weekSearch(shiftWeek(weekStart, 7), currentWeekStart)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Next week"
 					>
@@ -373,7 +380,10 @@ export function WeekView({
 						navigate({
 							to: "/$orgSlug/time/week",
 							params: { orgSlug },
-							search: { weekStart: startOfWeekKey(picked, weekStartsOn) },
+							search: weekSearch(
+								startOfWeekKey(picked, weekStartsOn),
+								currentWeekStart,
+							),
 						}),
 				}}
 				returnLink={
@@ -382,6 +392,7 @@ export function WeekView({
 							to="/$orgSlug/time/week"
 							params={{ orgSlug }}
 							search={{}}
+							activeOptions={EXACT_LINK}
 							className={returnLinkClass}
 						>
 							Return to this week
@@ -417,7 +428,8 @@ export function WeekView({
 										<Link
 											to="/$orgSlug/time"
 											params={{ orgSlug }}
-											search={{ date }}
+											search={dateSearch(date, today)}
+											activeOptions={EXACT_LINK}
 											title={holidayName}
 											className="group block"
 										>

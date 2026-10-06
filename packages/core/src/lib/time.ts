@@ -309,6 +309,15 @@ export const dayBoundsInTz = (dateStr: string, tz: string): InstantRange => {
 	};
 };
 
+// How many milliseconds from `now` until the next midnight in the given
+// timezone. A day in a zone that changes its clock is 23 or 25 hours long, so
+// the answer comes from the real bounds of the next day, never from "24 hours".
+export const msUntilNextDay = (now: Date, ianaTz: string): number =>
+	dayBoundsInTz(
+		addDaysToKey(dayKeyInTz(now, ianaTz), 1),
+		ianaTz,
+	).start.getTime() - now.getTime();
+
 // Pure "yyyy-MM-dd" calendar-key arithmetic, deliberately not using date-fns'
 // format/parse (which read local machine time) — everything here is UTC-anchored
 // so results don't depend on the host process's timezone.

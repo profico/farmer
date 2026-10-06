@@ -1,3 +1,4 @@
+import { dayKeyInTz } from "@farmer/core/lib/time";
 import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
@@ -5,7 +6,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -27,6 +28,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { hourFundYearQuery } from "#/queries/hour-fund.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
 import {
@@ -47,7 +49,9 @@ export const Route = createFileRoute("/$orgSlug/settings/hour-fund")({
 	loaderDeps: ({ search }) => ({ year: search.year }),
 	loader: async ({ context, deps, params }) => {
 		const orgSlug = params.orgSlug;
-		const year = deps.year ?? new Date().getUTCFullYear();
+		const year =
+			deps.year ??
+			Number(dayKeyInTz(new Date(), context.organization.timezone).slice(0, 4));
 		await context.queryClient.ensureQueryData(hourFundYearQuery(orgSlug, year));
 	},
 	component: HourFundPage,
@@ -150,7 +154,12 @@ function HourFundPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const search = Route.useSearch();
-	const thisYear = new Date().getUTCFullYear();
+	const { organization } = Route.useRouteContext();
+	// The organization's year, live. Deferred, so a new year loads its funds in
+	// the background while the old year stays on screen, as on the timesheet.
+	const thisYear = Number(
+		useDeferredValue(useToday(organization.timezone)).slice(0, 4),
+	);
 	const year = search.year ?? thisYear;
 	const { data: funds } = useSuspenseQuery(hourFundYearQuery(orgSlug, year));
 	const byMonth = new Map(funds.map((f) => [f.month, f.fundSeconds]));

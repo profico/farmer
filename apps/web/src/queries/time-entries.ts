@@ -52,6 +52,13 @@ export const unfiledWindowQuery = (org: string, todayKey: string) => {
 	return unfiledEntriesQuery(org, from, to);
 };
 
+/**
+ * How long a warmed next range stays in the cache. A prefetch has no observer,
+ * so the default gcTime (5 minutes) removes it long before a tab that stays
+ * open reaches midnight. A day plus a margin keeps it for that tab.
+ */
+export const WARM_RANGE_GC_MS = 25 * 60 * 60 * 1000;
+
 // Somebody else's Vacation/Sick for a month, for a PM correcting it. Keyed by
 // person and month because that is the whole scope of the
 // permission behind it.

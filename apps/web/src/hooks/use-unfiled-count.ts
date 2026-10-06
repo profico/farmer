@@ -1,6 +1,6 @@
-import { dayKeyInTz } from "@farmer/core/lib/time";
 import { useQuery } from "@tanstack/react-query";
 
+import { useToday } from "#/hooks/use-today.ts";
 import { unfiledWindowQuery } from "#/queries/time-entries.ts";
 
 /**
@@ -17,8 +17,10 @@ import { unfiledWindowQuery } from "#/queries/time-entries.ts";
  * that arrives without its badge is right, while a nav that waits for one is not.
  */
 export function useUnfiledCount(orgSlug: string, timezone: string): number {
+	// Live, so the window moves to the new day in a tab left open past midnight.
+	const today = useToday(timezone);
 	const { data } = useQuery({
-		...unfiledWindowQuery(orgSlug, dayKeyInTz(new Date(), timezone)),
+		...unfiledWindowQuery(orgSlug, today),
 		staleTime: 60_000,
 	});
 	return data?.length ?? 0;
