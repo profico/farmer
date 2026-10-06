@@ -97,39 +97,6 @@ export const descriptionRequiredFor = (task: {
 	systemKey: string | null;
 }): boolean => !task.isAbsence && task.systemKey !== "break";
 
-/** Why the server skipped a day of a span of time off, for the person who
- *  booked it. An unknown reason is shown as the server gives it. */
-export const skipReasonLabel = (reason: string): string => {
-	if (reason === "public holiday") return "Public holiday";
-	if (reason === "not a working day for this person") {
-		return "Not a working day for you";
-	}
-	if (reason === "absence already logged") return "Already booked off";
-	if (reason === "could not be logged") return "Could not be logged";
-	return reason;
-};
-
-/** The server's ceiling for one span of time off. */
-export const MAX_ABSENCE_SPAN_DAYS = 62;
-
-export const daysBetween = (from: string, to: string): number =>
-	(Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
-	86_400_000;
-
-/** The reason a span of time off cannot be booked, or null. */
-export const spanError = (from: string, to: string): string | null => {
-	const span = daysBetween(from, to);
-	if (span < 0) return "The last day is before the first day.";
-	if (span > MAX_ABSENCE_SPAN_DAYS) {
-		return `That is more than ${MAX_ABSENCE_SPAN_DAYS} days. Book it in two parts.`;
-	}
-	return null;
-};
-
-/** "3 days" or "1 day". */
-export const countOf = (n: number, one: string, many = `${one}s`): string =>
-	`${new Intl.NumberFormat("en").format(n)} ${n === 1 ? one : many}`;
-
 /** The year and the month (1 to 12) of a day key, moved by whole months. */
 export const shiftMonth = (year: number, month: number, by: number) => {
 	const index = year * 12 + (month - 1) + by;

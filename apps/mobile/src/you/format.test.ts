@@ -11,8 +11,6 @@ import {
 	pickerDateOf,
 	pickerTimeOf,
 	shiftMonth,
-	skipReasonLabel,
-	spanError,
 	taskGroupLabel,
 } from "./format";
 
@@ -60,22 +58,7 @@ describe("native pickers", () => {
 	});
 });
 
-describe("time off", () => {
-	test("a span must run forward and stay short", () => {
-		expect(spanError("2026-10-06", "2026-10-06")).toBeNull();
-		expect(spanError("2026-10-06", "2026-10-05")).toBe(
-			"The last day is before the first day.",
-		);
-		expect(spanError("2026-01-01", "2026-03-15")).toContain("62");
-	});
-
-	test("a skipped day says why in the second person", () => {
-		expect(skipReasonLabel("not a working day for this person")).toBe(
-			"Not a working day for you",
-		);
-		expect(skipReasonLabel("a new reason")).toBe("a new reason");
-	});
-
+describe("months", () => {
 	test("months move across a year", () => {
 		expect(shiftMonth(2026, 12, 1)).toEqual({ year: 2027, month: 1 });
 		expect(shiftMonth(2026, 1, -1)).toEqual({ year: 2025, month: 12 });

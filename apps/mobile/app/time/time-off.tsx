@@ -87,7 +87,14 @@ function TimeOffForm({ start }: { start: string }) {
 			0,
 		);
 		return (
-			<Sheet title="Time off" actionLabel="Done" onAction={() => router.back()}>
+			<Sheet
+				title="Book time off"
+				actionLabel="Done"
+				onAction={() => router.back()}
+			>
+				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+					This is what went on your timesheet.
+				</Text>
 				<Text variant="titleMedium">
 					{result.booked.length === 0
 						? "Nothing was booked."
@@ -151,9 +158,9 @@ function TimeOffForm({ start }: { start: string }) {
 				<ErrorBanner message={messageOf(book.error) ?? ""} />
 			) : null}
 			<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-				Pick the first and the last day. Each working day between them is booked
-				at your own hours. Public holidays, days you do not work and days
-				already off stay as they are.
+				Choose the first and the last day. Each working day between them is
+				booked at your own hours. Public holidays, days you do not work and days
+				you already booked are left out.
 			</Text>
 			<FormSection label="Type">
 				{tasks.isPending ? (
@@ -165,8 +172,8 @@ function TimeOffForm({ start }: { start: string }) {
 					/>
 				) : absenceTasks.length === 0 ? (
 					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-						This workspace has no kinds of time off. An admin adds them in the
-						task settings.
+						This workspace has no absence tasks. An admin adds Vacation and Sick
+						Leave in the task settings of the workspace.
 					</Text>
 				) : (
 					<View
@@ -214,11 +221,10 @@ function TimeOffForm({ start }: { start: string }) {
 				) : null}
 			</View>
 			<Field
-				label="Note"
-				hint="Optional."
+				label="Note (optional)"
 				value={note}
 				onChangeText={setNote}
-				placeholder="Anything your team must know"
+				placeholder="Anything your team should know"
 				multiline
 			/>
 			<Text variant="bodySmall" color={palette.onSurfaceVariant}>
