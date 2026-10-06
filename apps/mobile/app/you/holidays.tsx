@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Linking, View } from "react-native";
 
@@ -32,6 +33,7 @@ export default function HolidaysScreen() {
 	const palette = usePalette();
 	const whoami = useWhoami();
 	const access = useAccess();
+	const router = useRouter();
 	const { origin, slug } = useWorkspace();
 	const today = whoami.data?.today ?? "";
 	const currentYear = today ? Number(today.slice(0, 4)) : 0;
@@ -151,6 +153,23 @@ export default function HolidaysScreen() {
 					/>
 				</SettingsSection>
 			) : null}
+			<SettingsSection
+				title="Related"
+				footer="A holiday is not a working day in your schedule. Time off you book yourself is under Absences."
+			>
+				<SettingsLink
+					icon="schedule"
+					tint="blue"
+					title="My schedule"
+					onPress={() => router.push("/you/schedule")}
+				/>
+				<SettingsLink
+					icon="absence"
+					tint="red"
+					title="Absences"
+					onPress={() => router.push("/you/absences")}
+				/>
+			</SettingsSection>
 		</YouScreen>
 	);
 }

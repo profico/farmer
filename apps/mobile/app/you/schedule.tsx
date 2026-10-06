@@ -138,6 +138,23 @@ export default function ScheduleScreen() {
 					onPress={() => router.push("/you/recurring-blocks")}
 				/>
 			</SettingsSection>
+			<SettingsSection
+				title="Related"
+				footer="Your hours do not count a holiday or a day of time off against you."
+			>
+				<SettingsLink
+					icon="holiday"
+					tint="orange"
+					title="Holidays"
+					onPress={() => router.push("/you/holidays")}
+				/>
+				<SettingsLink
+					icon="absence"
+					tint="red"
+					title="Absences"
+					onPress={() => router.push("/you/absences")}
+				/>
+			</SettingsSection>
 		</YouScreen>
 	);
 }

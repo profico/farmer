@@ -15,7 +15,11 @@ import {
 } from "../../src/ui/components";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";
-import { SettingsSection, SettingsValue } from "../../src/ui/settings-list";
+import {
+	SettingsLink,
+	SettingsSection,
+	SettingsValue,
+} from "../../src/ui/settings-list";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 import {
 	dayMonth,
@@ -148,6 +152,23 @@ export default function AbsencesScreen() {
 					))}
 				</SettingsSection>
 			)}
+			<SettingsSection
+				title="Related"
+				footer="Your schedule leaves days of time off out of your target."
+			>
+				<SettingsLink
+					icon="schedule"
+					tint="blue"
+					title="My schedule"
+					onPress={() => router.push("/you/schedule")}
+				/>
+				<SettingsLink
+					icon="holiday"
+					tint="orange"
+					title="Holidays"
+					onPress={() => router.push("/you/holidays")}
+				/>
+			</SettingsSection>
 		</YouScreen>
 	);
 }

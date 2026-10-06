@@ -1,6 +1,8 @@
 import type { Integrations, SyncResult } from "@farmer/api-client";
+import { useRouter } from "expo-router";
 import { Alert, Linking } from "react-native";
 
+import { useAccess } from "../../src/api/capabilities";
 import { useWorkspace } from "../../src/api/queries";
 import {
 	type Provider,
@@ -89,6 +91,8 @@ const googleStatus = (google: Integrations["googleCalendar"]) => {
  * again when the person comes back to the app.
  */
 export default function IntegrationsScreen() {
+	const router = useRouter();
+	const access = useAccess();
 	const { origin, slug } = useWorkspace();
 	const integrations = useIntegrations();
 	const update = useUpdateIntegrationSettings();
@@ -257,6 +261,19 @@ export default function IntegrationsScreen() {
 					/>
 				) : null}
 			</SettingsSection>
+			{access.isAdmin ? (
+				<SettingsSection
+					title="Related"
+					footer="GitHub accounts for repositories and Slack connect for the whole workspace."
+				>
+					<SettingsLink
+						icon="integration"
+						tint="teal"
+						title="Workspace integrations"
+						onPress={() => router.push("/workspace/integrations")}
+					/>
+				</SettingsSection>
+			) : null}
 		</YouScreen>
 	);
 }

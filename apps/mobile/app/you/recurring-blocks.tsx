@@ -121,6 +121,17 @@ export default function RecurringBlocksScreen() {
 					)}
 				</>
 			)}
+			<SettingsSection
+				title="Related"
+				footer="Your working hours set the days that a block fills."
+			>
+				<SettingsLink
+					icon="schedule"
+					tint="blue"
+					title="My schedule"
+					onPress={() => router.push("/you/schedule")}
+				/>
+			</SettingsSection>
 		</YouScreen>
 	);
 }

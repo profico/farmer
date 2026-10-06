@@ -1,4 +1,4 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 
 import { useWhoami } from "../../../src/api/queries";
 import {
@@ -7,7 +7,11 @@ import {
 } from "../../../src/api/workspace";
 import { ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
-import { SettingsSection, SettingsSwitch } from "../../../src/ui/settings-list";
+import {
+	SettingsLink,
+	SettingsSection,
+	SettingsSwitch,
+} from "../../../src/ui/settings-list";
 import { SettingsChoice } from "../../../src/ui/settings-list";
 import {
 	ChoiceSection,
@@ -46,6 +50,7 @@ const LOG_MODES = [
 /** The reminder settings: four reminders, each with its own switch and
  *  fields, and the rule for people who never signed in. */
 export default function RemindersScreen() {
+	const router = useRouter();
 	const settings = useReminderSettings();
 	const whoami = useWhoami();
 	const update = useUpdateReminderSettings();
@@ -261,6 +266,17 @@ export default function RemindersScreen() {
 								</>
 							)}
 						</ReminderBlock>
+						<SettingsSection
+							title="Related"
+							footer="Each person chooses for themselves whether to get the log reminders, and where."
+						>
+							<SettingsLink
+								icon="preferences"
+								tint="gray"
+								title="Your preferences"
+								onPress={() => router.push("/you/preferences")}
+							/>
+						</SettingsSection>
 					</>
 				)}
 			</Screen>
