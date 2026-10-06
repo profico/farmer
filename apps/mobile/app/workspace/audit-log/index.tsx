@@ -9,6 +9,7 @@ import {
 	useAuditRetention,
 	usePeople,
 } from "../../../src/api/workspace";
+import { HeaderActions } from "../../../src/navigation/header-actions";
 import { EmptyState, ErrorState } from "../../../src/ui/components";
 import { LoadingIndicator } from "../../../src/ui/loading";
 import { usePullToRefresh } from "../../../src/ui/screen";
@@ -18,7 +19,6 @@ import { usePalette } from "../../../src/ui/theme";
 import { SPACE } from "../../../src/ui/type";
 import { EventRow } from "../../../src/workspace/audit/event-row";
 import { FilterChoice } from "../../../src/workspace/audit/filter-choice";
-import { HeaderButton } from "../../../src/workspace/audit/header-button";
 import {
 	type AuditCategory,
 	KIND_OPTIONS,
@@ -161,23 +161,24 @@ export default function AuditLogScreen() {
 			<Stack.Screen
 				options={{
 					title: "Audit log",
-					headerRight: () => (
-						<HeaderButton
-							icon="share"
-							label="Export the log"
-							onPress={() =>
-								router.push({
-									pathname: "/workspace/audit-log/export",
-									params: {
-										category: category === "all" ? "" : category,
-										kind,
-										userId,
-									},
-								})
-							}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						icon: "share",
+						label: "Export the log",
+						onPress: () =>
+							router.push({
+								pathname: "/workspace/audit-log/export",
+								params: {
+									category: category === "all" ? "" : category,
+									kind,
+									userId,
+								},
+							}),
+					},
+				]}
 			/>
 			<FlatList
 				style={{ flex: 1, backgroundColor: palette.background }}

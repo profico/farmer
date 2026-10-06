@@ -5,6 +5,7 @@ import { useAccess } from "../api/capabilities";
 import { formatHours } from "../lib/duration";
 import { ProjectMark } from "../projects/components/project-mark";
 import { IconButton, Text } from "../ui/components";
+import { Icon } from "../ui/icon";
 import { useRowMenu } from "../ui/row-menu";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -41,14 +42,23 @@ function EntryMark({
 				backgroundColor: palette.surfaceContainerHigh,
 			}}
 		>
-			<View
-				style={{
-					width: 8,
-					height: 8,
-					borderRadius: 4,
-					backgroundColor: palette.onSurfaceVariant,
-				}}
-			/>
+			{Platform.OS === "ios" ? (
+				<Icon
+					name="unfiled"
+					size={20}
+					color={palette.onSurfaceVariant}
+					weight="medium"
+				/>
+			) : (
+				<View
+					style={{
+						width: 8,
+						height: 8,
+						borderRadius: 4,
+						backgroundColor: palette.onSurfaceVariant,
+					}}
+				/>
+			)}
 		</View>
 	);
 }

@@ -1,6 +1,7 @@
 import { Image, Platform, Text as RNText, View } from "react-native";
 
 import { useSignedIn } from "../../session/session";
+import { Icon } from "../../ui/icon";
 import { usePalette } from "../../ui/theme";
 import { isSvgUpload } from "../../uploads/limits";
 import { isUploadedIcon, markOf } from "../model";
@@ -52,6 +53,10 @@ export function ProjectMark({
 					style={{ width: side, height: side }}
 					resizeMode="contain"
 				/>
+			) : letter && Platform.OS === "ios" ? (
+				// A project with no icon of its own gets a folder, as a list of
+				// the system draws one, and not a letter on a grey square.
+				<Icon name="folderFilled" size={side * 0.5} color={palette.primary} />
 			) : (
 				<RNText
 					style={{

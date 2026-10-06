@@ -1,43 +1,17 @@
 import { Redirect, Stack, useRouter } from "expo-router";
 import type { ComponentProps } from "react";
-import { Platform, PlatformColor, Pressable, Text } from "react-native";
+import { Platform } from "react-native";
 
 import { useSignedIn } from "../session/session";
-import { Icon } from "../ui/icon";
 import { useMotionPreference } from "../ui/motion";
 import { usePalette } from "../ui/theme";
 
 type StackOptions = NonNullable<ComponentProps<typeof Stack>["screenOptions"]>;
 
-/**
- * The back button of the first screen of a group on iOS. The group sits in
- * its own stack, so UIKit finds no screen behind it and draws no button.
- * Android draws one from the parent screen by itself.
- */
-function GroupBackButton() {
-	const router = useRouter();
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityLabel="Back"
-			onPress={() => router.back()}
-			hitSlop={8}
-			style={({ pressed }) => ({
-				flexDirection: "row",
-				alignItems: "center",
-				gap: 4,
-				opacity: pressed ? 0.5 : 1,
-			})}
-		>
-			<Icon name="back" size={20} color={PlatformColor("link")} />
-			<Text style={{ fontSize: 17, color: PlatformColor("link") }}>Back</Text>
-		</Pressable>
-	);
-}
-
 /** The header of a pushed screen, in the theme of the app. */
 export const useStackOptions = (): StackOptions => {
 	const palette = usePalette();
+	const router = useRouter();
 	const { reduceMotion } = useMotionPreference();
 	return ({ navigation, route }) => {
 		const base = {
@@ -65,7 +39,22 @@ export const useStackOptions = (): StackOptions => {
 			...base,
 			headerTitleStyle: title,
 			headerLargeTitleStyle: title,
-			headerLeft: needsBack ? () => <GroupBackButton /> : undefined,
+			// The first screen of a group on iOS: UIKit draws no back button, so
+			// a bar button item of the system takes its place, a chevron in glass
+			// as the system back button is.
+			unstable_headerLeftItems: needsBack
+				? () => [
+						{
+							type: "button" as const,
+							label: "Back",
+							icon: {
+								type: "sfSymbol" as const,
+								name: "chevron.left" as const,
+							},
+							onPress: () => router.back(),
+						},
+					]
+				: undefined,
 		};
 	};
 };

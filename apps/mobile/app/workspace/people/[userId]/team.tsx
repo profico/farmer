@@ -6,11 +6,8 @@ import {
 	useSetTeamLeadPeople,
 	useTeamLeadPeople,
 } from "../../../../src/api/workspace";
-import {
-	ActionButton,
-	EmptyState,
-	ErrorState,
-} from "../../../../src/ui/components";
+import { HeaderActions } from "../../../../src/navigation/header-actions";
+import { EmptyState, ErrorState } from "../../../../src/ui/components";
 import { Screen } from "../../../../src/ui/screen";
 import {
 	SettingsChoice,
@@ -85,14 +82,17 @@ export default function TeamLeadPeopleScreen() {
 			<Stack.Screen
 				options={{
 					title: `${name}'s people`,
-					headerRight: () => (
-						<ActionButton
-							label="Save"
-							onPress={submit}
-							disabled={!changed || save.isPending}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						label: "Save",
+						onPress: submit,
+						disabled: !changed || save.isPending,
+						prominent: true,
+					},
+				]}
 			/>
 			<SearchField
 				value={query}

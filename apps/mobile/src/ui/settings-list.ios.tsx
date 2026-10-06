@@ -89,7 +89,7 @@ function Tile({ icon, tint }: { icon: IconName; tint: RowTint }) {
 				backgroundColor: TINTS[tint],
 			}}
 		>
-			<Icon name={icon} size={17} color="#ffffff" />
+			<Icon name={icon} size={17} color="#ffffff" weight="medium" />
 		</View>
 	);
 }
@@ -202,7 +202,8 @@ export function SettingsLink({
 					{destructive ? null : (
 						<Icon
 							name={external ? "external" : "forward"}
-							size={external ? 13 : 14}
+							size={external ? 12 : 13}
+							weight="semibold"
 							color={PlatformColor(
 								external ? "secondaryLabel" : "tertiaryLabel",
 							)}
@@ -276,7 +277,8 @@ export function SettingsValue({ value, onPress, ...row }: SettingsValueProps) {
 					{onPress ? (
 						<Icon
 							name="forward"
-							size={14}
+							size={13}
+							weight="semibold"
 							color={PlatformColor("tertiaryLabel")}
 						/>
 					) : null}

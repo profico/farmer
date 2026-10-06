@@ -3,7 +3,15 @@ import type { ColorValue } from "react-native";
 
 import { ICONS, type IconName } from "./icons";
 
-export type IconProps = { name: IconName; size?: number; color: ColorValue };
+export type IconWeight = "light" | "regular" | "medium" | "semibold" | "bold";
+
+export type IconProps = {
+	name: IconName;
+	size?: number;
+	color: ColorValue;
+	/** iOS only: the weight of the SF Symbol, to match the text beside it. */
+	weight?: IconWeight;
+};
 
 /**
  * A Material icon. iOS draws an SF Symbol instead (`icon.ios.tsx`). The

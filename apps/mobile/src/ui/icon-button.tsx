@@ -13,8 +13,12 @@ export type IconButtonProps = {
 	tone?: "plain" | "filled" | "tonal";
 };
 
-/** A round button with one icon, for a toolbar or a stepper. Android draws
- *  the Material 3 Expressive button instead (`icon-button.android.tsx`). */
+/**
+ * A button with one icon, for a toolbar or a stepper. Android draws the
+ * Material 3 Expressive button instead (`icon-button.android.tsx`). On iOS
+ * a plain button is a bar button item: the symbol in the accent colour, with
+ * no container. The tonal and the filled tones stay round, for a stepper.
+ */
 export function IconButton({
 	icon,
 	label,
@@ -29,12 +33,15 @@ export function IconButton({
 			: tone === "tonal"
 				? palette.secondaryContainer
 				: "transparent";
+	const bar = Platform.OS === "ios" && tone === "plain";
 	const color =
 		tone === "filled"
 			? palette.onPrimary
 			: tone === "tonal"
 				? palette.onSecondaryContainer
-				: palette.onSurfaceVariant;
+				: Platform.OS === "ios"
+					? palette.primary
+					: palette.onSurfaceVariant;
 	return (
 		<Pressable
 			accessibilityRole="button"
@@ -44,8 +51,8 @@ export function IconButton({
 			hitSlop={4}
 			android_ripple={{ color: palette.outlineVariant, borderless: true }}
 			style={({ pressed }) => ({
-				width: 40,
-				height: 40,
+				width: bar ? 44 : 40,
+				height: bar ? 44 : 40,
 				borderRadius: 20,
 				alignItems: "center",
 				justifyContent: "center",
@@ -53,7 +60,12 @@ export function IconButton({
 				opacity: disabled ? 0.38 : Platform.OS === "ios" && pressed ? 0.5 : 1,
 			})}
 		>
-			<Icon name={icon} size={22} color={color} />
+			<Icon
+				name={icon}
+				size={bar ? 20 : 22}
+				color={color}
+				weight={bar ? "medium" : "regular"}
+			/>
 		</Pressable>
 	);
 }

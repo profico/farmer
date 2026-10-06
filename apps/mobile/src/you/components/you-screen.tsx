@@ -1,7 +1,8 @@
 import { Stack } from "expo-router";
 import type { ReactNode } from "react";
 
-import { ErrorState, IconButton, Skeleton } from "../../ui/components";
+import { HeaderActions } from "../../navigation/header-actions";
+import { ErrorState, Skeleton } from "../../ui/components";
 import type { IconName } from "../../ui/icons";
 import { Inset, Screen } from "../../ui/screen";
 
@@ -26,20 +27,8 @@ export function YouScreen({
 }) {
 	return (
 		<>
-			<Stack.Screen
-				options={{
-					title,
-					headerRight: action
-						? () => (
-								<IconButton
-									icon={action.icon}
-									label={action.label}
-									onPress={action.onPress}
-								/>
-							)
-						: undefined,
-				}}
-			/>
+			<Stack.Screen options={{ title }} />
+			<HeaderActions actions={action ? [action] : []} />
 			<Screen topInset={false} refreshing={refreshing} onRefresh={onRefresh}>
 				{children}
 			</Screen>

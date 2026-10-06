@@ -5,7 +5,8 @@ import { View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import { useManagedTasks } from "../../../src/api/workspace";
-import { EmptyState, ErrorState, IconButton } from "../../../src/ui/components";
+import { HeaderActions } from "../../../src/navigation/header-actions";
+import { EmptyState, ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import { useTaskArchive } from "../../../src/workspace/catalog/archive";
@@ -141,14 +142,16 @@ function TaskList() {
 			<Stack.Screen
 				options={{
 					title: "Tasks",
-					headerRight: () => (
-						<IconButton
-							icon="add"
-							label="New task"
-							onPress={() => router.push("/workspace/tasks/edit")}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						icon: "add",
+						label: "New task",
+						onPress: () => router.push("/workspace/tasks/edit"),
+					},
+				]}
 			/>
 			<Screen
 				topInset={false}

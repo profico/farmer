@@ -1,7 +1,7 @@
 import type { Project, ProjectDetail } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import {
@@ -348,7 +348,7 @@ export default function ProjectsScreen() {
 					<IconButton
 						icon="add"
 						label="New project"
-						tone="tonal"
+						tone={Platform.OS === "ios" ? "plain" : "tonal"}
 						onPress={() => router.push("/projects/new")}
 					/>
 				) : undefined

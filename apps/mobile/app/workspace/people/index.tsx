@@ -9,12 +9,8 @@ import {
 	usePeople,
 	useResendInvitation,
 } from "../../../src/api/workspace";
-import {
-	EmptyState,
-	ErrorState,
-	IconButton,
-	Text,
-} from "../../../src/ui/components";
+import { HeaderActions } from "../../../src/navigation/header-actions";
+import { EmptyState, ErrorState, Text } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SegmentedControl } from "../../../src/ui/segmented";
 import { SettingsSection } from "../../../src/ui/settings-list";
@@ -73,14 +69,16 @@ export default function PeopleScreen() {
 			<Stack.Screen
 				options={{
 					title: "People",
-					headerRight: () => (
-						<IconButton
-							icon="add"
-							label="Invite a person"
-							onPress={() => router.push("/workspace/people/invite")}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						icon: "add",
+						label: "Invite a person",
+						onPress: () => router.push("/workspace/people/invite"),
+					},
+				]}
 			/>
 			<View style={{ paddingHorizontal: SPACE.l }}>
 				<SegmentedControl

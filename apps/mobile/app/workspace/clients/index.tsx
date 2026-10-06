@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { useAccess } from "../../../src/api/capabilities";
 import { useClients } from "../../../src/api/workspace";
-import { EmptyState, ErrorState, IconButton } from "../../../src/ui/components";
+import { HeaderActions } from "../../../src/navigation/header-actions";
+import { EmptyState, ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import { useClientArchive } from "../../../src/workspace/catalog/archive";
@@ -79,16 +80,20 @@ export default function ClientsScreen() {
 			<Stack.Screen
 				options={{
 					title: "Clients",
-					headerRight: access.canManageClients
-						? () => (
-								<IconButton
-									icon="add"
-									label="New client"
-									onPress={() => router.push("/workspace/clients/edit")}
-								/>
-							)
-						: undefined,
 				}}
+			/>
+			<HeaderActions
+				actions={
+					access.canManageClients
+						? [
+								{
+									icon: "add",
+									label: "New client",
+									onPress: () => router.push("/workspace/clients/edit"),
+								},
+							]
+						: []
+				}
 			/>
 			<Screen
 				topInset={false}

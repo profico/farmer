@@ -10,8 +10,8 @@ import {
 } from "react-native";
 
 import { useAssistantThread, useCreateThread } from "../api/assistant";
+import { HeaderActions } from "../navigation/header-actions";
 import { ErrorBanner, ErrorState, Skeleton, Text } from "../ui/components";
-import { IconButton } from "../ui/icon-button";
 import { LoadingIndicator } from "../ui/loading";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -136,14 +136,16 @@ export function Chat({ id }: { id: string | null }) {
 					// The history is one tap away, so Back leaves the assistant
 					// at once. `dismissTo` goes back to the list when it is under
 					// this chat, and replaces the chat with it when it is not.
-					headerRight: () => (
-						<IconButton
-							icon="chats"
-							label="Chat history"
-							onPress={() => router.dismissTo("/assistant")}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						icon: "chats",
+						label: "Chat history",
+						onPress: () => router.dismissTo("/assistant"),
+					},
+				]}
 			/>
 			<View
 				ref={frame}

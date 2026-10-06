@@ -23,7 +23,7 @@ export const ICONS = {
 	person: { md: "person-outline", sf: "person.crop.circle" },
 	workspace: { md: "workspaces-outline", sf: "square.grid.2x2" },
 	external: { md: "open-in-new", sf: "arrow.up.right" },
-	web: { md: "open-in-new", sf: "safari" },
+	web: { md: "open-in-new", sf: "globe" },
 	upload: { md: "file-upload", sf: "square.and.arrow.up" },
 	signOut: { md: "logout", sf: "rectangle.portrait.and.arrow.right" },
 	invitation: { md: "mail-outline", sf: "envelope" },
@@ -63,8 +63,10 @@ export const ICONS = {
 	coffee: { md: "free-breakfast", sf: "cup.and.saucer" },
 	expand: { md: "expand-more", sf: "chevron.down" },
 	collapse: { md: "expand-less", sf: "chevron.up" },
-	more: { md: "more-vert", sf: "ellipsis" },
+	more: { md: "more-vert", sf: "ellipsis.circle" },
 	archive: { md: "archive", sf: "archivebox" },
+	folderFilled: { md: "folder", sf: "folder.fill" },
+	unfiled: { md: "radio-button-unchecked", sf: "circle.dashed" },
 	restore: { md: "unarchive", sf: "arrow.uturn.backward" },
 } as const;
 

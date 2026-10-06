@@ -160,7 +160,11 @@ export function ListRow({
 		>
 			{leading ??
 				(icon ? (
-					<Icon name={icon} color={palette.onSurfaceVariant} size={24} />
+					<Icon
+						name={icon}
+						color={palette.onSurfaceVariant}
+						size={Platform.OS === "ios" ? 22 : 24}
+					/>
 				) : null)}
 			<View style={{ flex: 1 }}>
 				<Text variant="bodyLarge" numberOfLines={1}>
@@ -279,7 +283,12 @@ export function EmptyState({
 			{Platform.OS === "android" ? (
 				<IconBadge icon={icon} tone={tone} />
 			) : (
-				<Icon name={icon} size={40} color={palette.onSurfaceVariant} />
+				<Icon
+					name={icon}
+					size={44}
+					color={palette.onSurfaceVariant}
+					weight="light"
+				/>
 			)}
 			<Text variant="titleMedium" align="center">
 				{title}

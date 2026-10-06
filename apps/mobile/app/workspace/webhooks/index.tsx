@@ -1,7 +1,8 @@
 import { Stack, useRouter } from "expo-router";
 
 import { useWebhookEndpoints } from "../../../src/api/workspace";
-import { EmptyState, ErrorState, IconButton } from "../../../src/ui/components";
+import { HeaderActions } from "../../../src/navigation/header-actions";
+import { EmptyState, ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import {
@@ -28,14 +29,16 @@ export default function WebhooksScreen() {
 			<Stack.Screen
 				options={{
 					title: "Webhooks",
-					headerRight: () => (
-						<IconButton
-							icon="add"
-							label="Add a webhook endpoint"
-							onPress={() => router.push("/workspace/webhooks/new")}
-						/>
-					),
 				}}
+			/>
+			<HeaderActions
+				actions={[
+					{
+						icon: "add",
+						label: "Add a webhook endpoint",
+						onPress: () => router.push("/workspace/webhooks/new"),
+					},
+				]}
 			/>
 			{endpoints.isPending ? (
 				<ListSkeleton />
