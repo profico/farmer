@@ -1,12 +1,17 @@
 import type { AbsenceResult } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform } from "react-native";
 
 import { useTasks, useWhoami } from "../../src/api/queries";
 import { useLogAbsence } from "../../src/api/you";
 import { PickerRow, PickerRows } from "../../src/forms/picker-row";
-import { FormSection, Sheet } from "../../src/forms/sheet";
+import {
+	FormCluster,
+	FormPart,
+	FormSection,
+	Sheet,
+} from "../../src/forms/sheet";
 import { addDays } from "../../src/lib/days";
 import { formatHours } from "../../src/lib/duration";
 import { DateField } from "../../src/time/components/date-field";
@@ -27,7 +32,6 @@ import {
 import { messageOf } from "../../src/ui/errors";
 import { Icon } from "../../src/ui/icon";
 import { usePalette } from "../../src/ui/theme";
-import { SPACE } from "../../src/ui/type";
 
 const longDay = (day: string) =>
 	new Intl.DateTimeFormat(undefined, {
@@ -185,27 +189,29 @@ function TimeOffForm({ start }: { start: string }) {
 					</PickerRows>
 				)}
 			</FormSection>
-			<View style={{ gap: SPACE.m }}>
-				<DateField
-					label="First day"
-					value={range.from}
-					onChange={(from) =>
-						setRange((current) => withFirstDay(current, from))
-					}
-				/>
-				<DateField
-					label="Last day"
-					value={range.to}
-					minimum={range.from}
-					maximum={addDays(range.from, MAX_SPAN_DAYS)}
-					onChange={(to) => setRange((current) => ({ ...current, to }))}
-				/>
-				{invalid ? (
+			<FormCluster tight>
+				<FormPart footerError groupFooter={invalid ?? undefined}>
+					<DateField
+						label="First day"
+						value={range.from}
+						onChange={(from) =>
+							setRange((current) => withFirstDay(current, from))
+						}
+					/>
+					<DateField
+						label="Last day"
+						value={range.to}
+						minimum={range.from}
+						maximum={addDays(range.from, MAX_SPAN_DAYS)}
+						onChange={(to) => setRange((current) => ({ ...current, to }))}
+					/>
+				</FormPart>
+				{invalid && Platform.OS !== "ios" ? (
 					<Text variant="bodySmall" color={palette.error}>
 						{invalid}
 					</Text>
 				) : null}
-			</View>
+			</FormCluster>
 			<Field
 				label="Note (optional)"
 				value={note}

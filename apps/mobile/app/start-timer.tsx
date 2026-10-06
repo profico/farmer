@@ -5,7 +5,7 @@ import { useAccess } from "../src/api/capabilities";
 import { useStartTimer } from "../src/api/queries";
 import { useTimerSettings } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
-import { FormSection, Sheet } from "../src/forms/sheet";
+import { FormCluster, FormPart, FormSection, Sheet } from "../src/forms/sheet";
 import { HeadStartStepper } from "../src/forms/steppers";
 import { committed } from "../src/time/haptics";
 import { headStartError, headStartLimit } from "../src/time/head-start";
@@ -62,8 +62,12 @@ export default function StartTimerSheet() {
 			{start.error ? (
 				<ErrorBanner message={messageOf(start.error) ?? ""} />
 			) : null}
-			<ProjectPicker value={projectId} onChange={setProjectId} />
-			<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
+			<FormCluster>
+				<FormPart>
+					<ProjectPicker value={projectId} onChange={setProjectId} />
+					<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
+				</FormPart>
+			</FormCluster>
 			<Field
 				label="Note"
 				value={note}

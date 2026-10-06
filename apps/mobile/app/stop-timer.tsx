@@ -6,7 +6,7 @@ import { View } from "react-native";
 import { useTimer, useTimerAction, useWhoami } from "../src/api/queries";
 import { useConfirmTimerEntry } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
-import { FormSection, Sheet } from "../src/forms/sheet";
+import { FormCluster, FormPart, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
 import { dayKeyInTimeZone } from "../src/lib/days";
 import { formatStopwatch, toQuarter } from "../src/lib/duration";
@@ -118,6 +118,9 @@ function StopForm({
 	const missingNote = needsNote && !note.trim();
 	const failure = messageOf(confirm.error ?? resume.error);
 
+	const hint = needsNote ? `Required on ${timer.task.name}.` : "Optional.";
+	const noteFooter = missingNote ? `${timer.task.name} needs a note.` : hint;
+
 	const save = () => {
 		if (missingNote) return;
 		confirm.mutate({
@@ -154,27 +157,37 @@ function StopForm({
 						: "Entries are kept in 15-minute steps, so the time below is the measured time on the nearest quarter hour, and at least 0:15."}
 				</Text>
 			</Card>
-			<FormSection label="Time to log" loose>
-				<DurationStepper
-					label="Time to log"
-					seconds={seconds}
-					onChange={setSeconds}
-				/>
-			</FormSection>
-			<FormSection label="Day" loose>
-				<DayStepper label="Day" day={date} today={today} onChange={setDate} />
-			</FormSection>
-			<ProjectPicker value={projectId} onChange={setProjectId} />
-			<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
-			<Field
-				label="Note"
-				value={note}
-				onChangeText={setNote}
-				placeholder="What did you work on?"
-				multiline
-				error={missingNote ? `${timer.task.name} needs a note.` : null}
-				hint={needsNote ? `Required on ${timer.task.name}.` : "Optional."}
-			/>
+			<FormCluster>
+				<FormPart label="Time to log">
+					<DurationStepper
+						label="Time to log"
+						seconds={seconds}
+						onChange={setSeconds}
+					/>
+				</FormPart>
+				<FormPart label="Day">
+					<DayStepper label="Day" day={date} today={today} onChange={setDate} />
+				</FormPart>
+			</FormCluster>
+			<FormCluster>
+				<FormPart>
+					<ProjectPicker value={projectId} onChange={setProjectId} />
+					<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
+				</FormPart>
+			</FormCluster>
+			<FormCluster>
+				<FormPart footerError={missingNote} groupFooter={noteFooter}>
+					<Field
+						label="Note"
+						value={note}
+						onChangeText={setNote}
+						placeholder="What did you work on?"
+						multiline
+						error={missingNote ? `${timer.task.name} needs a note.` : null}
+						hint={hint}
+					/>
+				</FormPart>
+			</FormCluster>
 			<View style={{ flexDirection: "row" }}>
 				<ActionButton
 					label="Resume the timer instead"

@@ -92,5 +92,6 @@ export function Sheet({
 	);
 }
 
+export { FormCluster, FormPart } from "./form-cluster";
 export { FormGroup } from "./form-group";
 export { FormSection } from "./form-section";

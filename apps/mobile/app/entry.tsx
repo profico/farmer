@@ -1,7 +1,7 @@
 import type { CalendarEvent, TimeEntry } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../src/api/capabilities";
 import { useAttachActivity } from "../src/api/day";
@@ -9,7 +9,7 @@ import { useEntries, useTasks, useWhoami } from "../src/api/queries";
 import { useCreateTimeEntry, useUpdateTimeEntry } from "../src/api/time";
 import { useCreateRecurringBlock, useIntegrations } from "../src/api/you";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
-import { FormSection, Sheet } from "../src/forms/sheet";
+import { FormCluster, FormPart, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
 import { addDays, weekdayOf } from "../src/lib/days";
 import {
@@ -42,6 +42,11 @@ import { showDialog } from "../src/ui/dialog";
 import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
+
+const FILL_NOTE =
+	"This block fills the rest of the day: your working hours, less everything else logged on the day. Its time follows the day.";
+const NOTE_HINT =
+	"Most tasks need a note. The server says when one is missing.";
 
 type Params = {
 	id?: string;
@@ -338,6 +343,40 @@ function EntryForm({
 		if (entry) remove.confirm(entry, () => router.back());
 	};
 
+	const repeatDetails =
+		showRepeat && repeats ? (
+			<View style={{ gap: 12 }}>
+				<WeekdayChips
+					value={days}
+					weekStartsOn={weekStartsOn}
+					onChange={setRepeatDays}
+				/>
+				{repeatInvalid ? (
+					<Text variant="bodySmall" color={palette.error}>
+						Pick at least one day.
+					</Text>
+				) : null}
+				<SwitchRow
+					title="Stop on a day"
+					description={
+						until
+							? undefined
+							: "With no last day, it repeats until you stop it."
+					}
+					value={until !== null}
+					onValueChange={(on) => setUntil(on ? addDays(date, 28) : null)}
+				/>
+				{until !== null ? (
+					<DateField
+						label="Last day"
+						value={until}
+						minimum={date}
+						onChange={setUntil}
+					/>
+				) : null}
+			</View>
+		) : null;
+
 	return (
 		<Sheet
 			title={entry ? "Edit entry" : "Log time"}
@@ -354,69 +393,80 @@ function EntryForm({
 					onTaken={() => router.back()}
 				/>
 			) : null}
-			<FormSection
-				label={repeats ? "Starts on" : "Day"}
-				loose
-				footer={
-					github.dayLocked
-						? "Its GitHub activity keeps this entry on this day."
-						: undefined
-				}
-			>
-				<DayStepper
+			<FormCluster>
+				<FormPart
 					label={repeats ? "Starts on" : "Day"}
-					day={date}
-					today={today}
-					onChange={setDate}
-					disabled={github.dayLocked}
-				/>
-			</FormSection>
-			<FormSection label="Time" loose>
-				{isFill ? (
-					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-						This block fills the rest of the day: your working hours, less
-						everything else logged on the day. Its time follows the day.
-					</Text>
-				) : (
-					<DurationStepper
-						label="Time"
-						seconds={seconds}
-						onChange={setSeconds}
+					footer={
+						github.dayLocked
+							? "Its GitHub activity keeps this entry on this day."
+							: undefined
+					}
+				>
+					<DayStepper
+						label={repeats ? "Starts on" : "Day"}
+						day={date}
+						today={today}
+						onChange={setDate}
+						disabled={github.dayLocked}
 					/>
-				)}
-				{showFill ? (
-					<SwitchRow
-						title="Rest of the day"
-						description={
-							dayHasFill
-								? "This day already has a rest-of-day block. Change that one."
-								: "Fill what is left of your working hours on this day."
-						}
-						value={isFill}
-						onValueChange={setFillsDay}
-						disabled={dayHasFill}
+				</FormPart>
+				<FormPart label="Time" groupFooter={isFill ? FILL_NOTE : undefined}>
+					{isFill ? (
+						// iOS shows this note as the footer of the group.
+						Platform.OS === "ios" ? null : (
+							<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+								{FILL_NOTE}
+							</Text>
+						)
+					) : (
+						<DurationStepper
+							label="Time"
+							seconds={seconds}
+							onChange={setSeconds}
+						/>
+					)}
+					{showFill ? (
+						<SwitchRow
+							title="Rest of the day"
+							description={
+								dayHasFill
+									? "This day already has a rest-of-day block. Change that one."
+									: "Fill what is left of your working hours on this day."
+							}
+							value={isFill}
+							onValueChange={setFillsDay}
+							disabled={dayHasFill}
+						/>
+					) : null}
+				</FormPart>
+			</FormCluster>
+			<FormCluster>
+				<FormPart>
+					{absence ? null : (
+						<ProjectPicker value={projectId} onChange={setProjectId} />
+					)}
+					<TaskPicker
+						value={taskId}
+						includeAbsence={absence || (!entry && projectId === null)}
+						onChange={(task) => {
+							setTaskId(task.id);
+							setAbsence(task.isAbsence);
+						}}
 					/>
-				) : null}
-			</FormSection>
-			{absence ? null : (
-				<ProjectPicker value={projectId} onChange={setProjectId} />
-			)}
-			<TaskPicker
-				value={taskId}
-				includeAbsence={absence || (!entry && projectId === null)}
-				onChange={(task) => {
-					setTaskId(task.id);
-					setAbsence(task.isAbsence);
-				}}
-			/>
-			<Field
-				label="Note"
-				hint="Most tasks need a note. The server says when one is missing."
-				value={note}
-				onChangeText={setNote}
-				placeholder="What did you work on?"
-				multiline
-			/>
+				</FormPart>
+			</FormCluster>
+			<FormCluster>
+				<FormPart footer={undefined} groupFooter={NOTE_HINT}>
+					<Field
+						label="Note"
+						hint={NOTE_HINT}
+						value={note}
+						onChangeText={setNote}
+						placeholder="What did you work on?"
+						multiline
+					/>
+				</FormPart>
+			</FormCluster>
 			{showCalendarPicker ? (
 				<View style={{ gap: SPACE.s }}>
 					<View style={{ flexDirection: "row" }}>
@@ -447,54 +497,29 @@ function EntryForm({
 			) : null}
 			<EntryGithubSection github={github} />
 			{absence ? null : (
-				<FormSection label="More options" loose>
-					<SwitchRow
-						title="Overtime"
-						description="Mark this time as overtime."
-						value={overtime}
-						onValueChange={setOvertime}
-					/>
-					{showRepeat ? (
-						<SwitchRow
-							title="Repeat"
-							description="Log this every week on the days you pick. This makes a recurring block, not an entry."
-							value={repeating}
-							onValueChange={setRepeating}
-						/>
-					) : null}
-					{showRepeat && repeats ? (
-						<View style={{ gap: 12 }}>
-							<WeekdayChips
-								value={days}
-								weekStartsOn={weekStartsOn}
-								onChange={setRepeatDays}
-							/>
-							{repeatInvalid ? (
-								<Text variant="bodySmall" color={palette.error}>
-									Pick at least one day.
-								</Text>
-							) : null}
+				<>
+					<FormCluster>
+						<FormPart label="More options">
 							<SwitchRow
-								title="Stop on a day"
-								description={
-									until
-										? undefined
-										: "With no last day, it repeats until you stop it."
-								}
-								value={until !== null}
-								onValueChange={(on) => setUntil(on ? addDays(date, 28) : null)}
+								title="Overtime"
+								description="Mark this time as overtime."
+								value={overtime}
+								onValueChange={setOvertime}
 							/>
-							{until !== null ? (
-								<DateField
-									label="Last day"
-									value={until}
-									minimum={date}
-									onChange={setUntil}
+							{showRepeat ? (
+								<SwitchRow
+									title="Repeat"
+									description="Log this every week on the days you pick. This makes a recurring block, not an entry."
+									value={repeating}
+									onValueChange={setRepeating}
 								/>
 							) : null}
-						</View>
-					) : null}
-				</FormSection>
+							{/* Android keeps the details in the section. */}
+							{Platform.OS === "ios" ? null : repeatDetails}
+						</FormPart>
+					</FormCluster>
+					{Platform.OS === "ios" ? repeatDetails : null}
+				</>
 			)}
 			{entry ? (
 				<DestructiveButton

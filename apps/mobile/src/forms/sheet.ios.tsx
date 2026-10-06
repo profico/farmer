@@ -10,6 +10,7 @@ import { SPACE } from "../ui/type";
 import type { SheetProps } from "./sheet";
 import { type SheetPage, SheetPageContext } from "./sheet-page";
 
+export { FormCluster, FormPart } from "./form-cluster";
 export { FormGroup } from "./form-group";
 export { FormSection } from "./form-section";
 

@@ -11,7 +11,12 @@ import {
 	useUpdateRecurringBlock,
 } from "../../src/api/you";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
-import { FormSection, Sheet } from "../../src/forms/sheet";
+import {
+	FormCluster,
+	FormPart,
+	FormSection,
+	Sheet,
+} from "../../src/forms/sheet";
 import { DurationStepper } from "../../src/forms/steppers";
 import { formatHours } from "../../src/lib/duration";
 import { SwitchRow } from "../../src/time/components/switch-row";
@@ -69,6 +74,8 @@ export default function RecurringBlockSheet() {
 	}
 	return <BlockForm block={block} />;
 }
+
+const NOTE_HINT = "Each entry the block writes gets this note.";
 
 function BlockForm({ block }: { block: RecurringBlock | null }) {
 	const palette = usePalette();
@@ -152,12 +159,16 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
 			{tried && problem ? <ErrorBanner message={problem} /> : null}
-			<ProjectPicker value={projectId} onChange={setProjectId} />
-			<TaskPicker
-				value={taskId}
-				includeAbsence
-				onChange={(next) => setTaskId(next.id)}
-			/>
+			<FormCluster>
+				<FormPart>
+					<ProjectPicker value={projectId} onChange={setProjectId} />
+					<TaskPicker
+						value={taskId}
+						includeAbsence
+						onChange={(next) => setTaskId(next.id)}
+					/>
+				</FormPart>
+			</FormCluster>
 			<FormSection label="Days">
 				<WeekdayChips
 					value={days}
@@ -165,20 +176,24 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 					weekStartsOn={whoami.data?.weekStartsOn ?? 1}
 				/>
 			</FormSection>
-			<FormSection label="Duration" loose>
-				<DurationStepper
-					label="Duration"
-					seconds={seconds}
-					onChange={setSeconds}
-				/>
-			</FormSection>
-			<Field
-				label={needsNote ? "Note" : "Note (optional)"}
-				hint="Each entry the block writes gets this note."
-				value={note}
-				onChangeText={setNote}
-				placeholder="What is the time for?"
-			/>
+			<FormCluster>
+				<FormPart label="Duration">
+					<DurationStepper
+						label="Duration"
+						seconds={seconds}
+						onChange={setSeconds}
+					/>
+				</FormPart>
+				<FormPart groupFooter={NOTE_HINT}>
+					<Field
+						label={needsNote ? "Note" : "Note (optional)"}
+						hint={NOTE_HINT}
+						value={note}
+						onChangeText={setNote}
+						placeholder="What is the time for?"
+					/>
+				</FormPart>
+			</FormCluster>
 			{block && Platform.OS === "ios" ? (
 				<SwitchRow
 					title="On"
