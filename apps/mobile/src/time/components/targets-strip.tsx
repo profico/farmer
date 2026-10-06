@@ -7,21 +7,41 @@ import { Card, Skeleton, Text } from "../../ui/components";
 import { ProgressBar } from "../../ui/progress";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
-import { targetGap, targetProgress, targetStatus } from "../targets";
+import {
+	type TargetTone,
+	targetGap,
+	targetProgress,
+	targetStatus,
+} from "../targets";
 
-function Target({ title, period }: { title: string; period: Period }) {
+const toneColor = (
+	palette: ReturnType<typeof usePalette>,
+	tone: TargetTone | undefined,
+) =>
+	tone === "good"
+		? palette.primary
+		: tone === "warning"
+			? palette.tertiary
+			: tone === "bad"
+				? palette.error
+				: palette.onSurfaceVariant;
+
+function Target({
+	title,
+	period,
+	showDays = false,
+}: {
+	title: string;
+	period: Period;
+	/** Show "3 of 21 working days done" under the gap, as the web's month
+	 *  tile on the home page. */
+	showDays?: boolean;
+}) {
 	const palette = usePalette();
 	const status = targetStatus(period.status);
 	const gap = targetGap(period);
 	const progress = targetProgress(period);
-	const toneColor =
-		status?.tone === "good"
-			? palette.primary
-			: status?.tone === "warning"
-				? palette.tertiary
-				: status?.tone === "bad"
-					? palette.error
-					: palette.onSurfaceVariant;
+	const days = `${period.workingDaysElapsed} of ${period.workingDays} working days done`;
 	const figure =
 		period.targetSeconds == null
 			? formatHours(period.totalSeconds)
@@ -37,6 +57,7 @@ function Target({ title, period }: { title: string; period: Period }) {
 						: `${formatHours(period.totalSeconds)} of ${formatHours(period.targetSeconds)}`,
 					status?.label,
 					gap?.text,
+					gap && showDays ? days : null,
 				]
 					.filter((part) => part)
 					.join(", ")}
@@ -49,16 +70,25 @@ function Target({ title, period }: { title: string; period: Period }) {
 					{figure}
 				</Text>
 				{progress != null ? <ProgressBar value={progress} /> : null}
-				<Text variant="bodySmall" color={toneColor} numberOfLines={1}>
+				<Text
+					variant="bodySmall"
+					color={toneColor(palette, status?.tone)}
+					numberOfLines={1}
+				>
 					{status?.label ?? "No target"}
 				</Text>
 				{gap ? (
 					<Text
 						variant="bodySmall"
-						color={palette.onSurfaceVariant}
+						color={toneColor(palette, gap.tone)}
 						numberOfLines={2}
 					>
 						{gap.text}
+					</Text>
+				) : null}
+				{gap && showDays ? (
+					<Text variant="bodySmall" color={palette.onSurfaceVariant}>
+						{days}
 					</Text>
 				) : null}
 			</View>
@@ -89,7 +119,7 @@ export function TargetsStrip() {
 	return (
 		<View style={{ flexDirection: "row", gap: SPACE.s }}>
 			<Target title="This week" period={tracking.data.week} />
-			<Target title="This month" period={tracking.data.month} />
+			<Target title="This month" period={tracking.data.month} showDays />
 		</View>
 	);
 }

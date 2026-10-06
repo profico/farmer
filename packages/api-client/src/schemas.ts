@@ -189,6 +189,10 @@ export const periodSchema = z.object({
 	workingDaysElapsed: z.number(),
 	targetSeconds: z.number().nullable(),
 	targetSoFarSeconds: z.number().nullable(),
+	/** The working days and the goal through the end of today. An old server
+	 *  omits both, so the app falls back to `targetSoFarSeconds`. */
+	workingDaysThroughToday: z.number().optional(),
+	targetThroughTodaySeconds: z.number().nullable().optional(),
 	workSeconds: z.number(),
 	timeOffSeconds: z.number(),
 	totalSeconds: z.number(),

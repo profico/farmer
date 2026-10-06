@@ -25,13 +25,32 @@ export const targetStatus = (
 	}
 };
 
-/** "1:30 short of today's 24:00", from what is logged through today. */
+/**
+ * The color of the gap, as `targetGapTone` on the web: ahead is good, and a
+ * gap that is short takes the color of the status. A gap that is short only
+ * by the hours of today has no color, because the day is not over.
+ */
+const gapTone = (status: string | null, delta: number): TargetTone => {
+	if (delta >= 0) return "good";
+	if (status === "slightly_behind") return "warning";
+	if (status === "behind") return "bad";
+	return "neutral";
+};
+
+/**
+ * "1:30 short of the 24:00 due by the end of today". The goal includes the
+ * working day of today, so on a Monday it is one day, not 0. An old server
+ * sends no `targetThroughTodaySeconds`, and then the goal is the target
+ * before today.
+ */
 export const targetGap = (period: Period) => {
 	if (period.targetSoFarSeconds == null) return null;
-	const delta = period.totalSoFarSeconds - period.targetSoFarSeconds;
+	const goal = period.targetThroughTodaySeconds ?? period.targetSoFarSeconds;
+	const delta = period.totalSoFarSeconds - goal;
 	return {
 		ahead: delta >= 0,
-		text: `${formatHours(Math.abs(delta))} ${delta >= 0 ? "ahead of" : "short of"} today's ${formatHours(period.targetSoFarSeconds)}`,
+		tone: gapTone(period.status, delta),
+		text: `${formatHours(Math.abs(delta))} ${delta >= 0 ? "ahead of" : "short of"} the ${formatHours(goal)} due by the end of today`,
 	};
 };
 

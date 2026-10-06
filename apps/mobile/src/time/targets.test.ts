@@ -13,6 +13,8 @@ const period = (fields: Partial<Period>): Period => ({
 	workingDaysElapsed: 2,
 	targetSeconds: 40 * H,
 	targetSoFarSeconds: 16 * H,
+	workingDaysThroughToday: 3,
+	targetThroughTodaySeconds: 24 * H,
 	workSeconds: 14 * H,
 	timeOffSeconds: 0,
 	totalSeconds: 14 * H,
@@ -22,15 +24,46 @@ const period = (fields: Partial<Period>): Period => ({
 });
 
 describe("the targets", () => {
-	test("say how far the person is from today's target", () => {
+	test("say how far the person is from the goal through today", () => {
 		expect(targetGap(period({}))).toEqual({
 			ahead: false,
-			text: "2:00 short of today's 16:00",
+			tone: "warning",
+			text: "10:00 short of the 24:00 due by the end of today",
 		});
-		expect(targetGap(period({ totalSoFarSeconds: 17.5 * H }))?.text).toBe(
-			"1:30 ahead of today's 16:00",
-		);
+		expect(targetGap(period({ totalSoFarSeconds: 25.5 * H }))).toEqual({
+			ahead: true,
+			tone: "good",
+			text: "1:30 ahead of the 24:00 due by the end of today",
+		});
+		expect(targetGap(period({ status: "behind" }))?.tone).toBe("bad");
+		expect(targetGap(period({ status: "on_track" }))?.tone).toBe("neutral");
 		expect(targetGap(period({ targetSoFarSeconds: null }))).toBeNull();
+	});
+
+	test("fall back to the target before today on an old server", () => {
+		const old = period({
+			workingDaysThroughToday: undefined,
+			targetThroughTodaySeconds: undefined,
+		});
+		expect(targetGap(old)?.text).toBe(
+			"2:00 short of the 16:00 due by the end of today",
+		);
+	});
+
+	test("count today's own working day on a Monday", () => {
+		const monday = period({
+			workingDaysElapsed: 0,
+			workingDaysThroughToday: 1,
+			targetSoFarSeconds: 0,
+			targetThroughTodaySeconds: 8 * H,
+			workSeconds: 0,
+			totalSeconds: 0,
+			totalSoFarSeconds: 0,
+			status: null,
+		});
+		expect(targetGap(monday)?.text).toBe(
+			"8:00 short of the 8:00 due by the end of today",
+		);
 	});
 
 	test("read the status in the report's words", () => {
