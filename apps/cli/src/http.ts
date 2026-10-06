@@ -316,12 +316,12 @@ const metaBody = z.object({
 	minCliVersion: z.string(),
 });
 
-/** `GET /api/v1/meta`, parsed: the answer is also the proof that the address
- *  the person typed is a Farmer server at all. */
 /** The part of `/meta` the CLI reads. A server from before the mobile app
  *  sends nothing else, and the CLI must still talk to it. */
 type CliMeta = Pick<ApiMeta, "app" | "cliEnabled" | "minCliVersion">;
 
+/** `GET /api/v1/meta`, parsed: the answer is also the proof that the address
+ *  the person typed is a Farmer server at all. */
 export const fetchMeta = async (transport: Transport): Promise<CliMeta> => {
 	const notFarmer = new CliError(
 		`${transport.origin} does not look like a Farmer server. Check the address.`,
