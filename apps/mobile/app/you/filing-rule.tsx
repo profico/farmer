@@ -99,15 +99,13 @@ function RuleForm({ rule }: { rule: FilingRule }) {
 					Entries with this name arrive as {rule.task.name}.
 				</Text>
 			</View>
-			<FormSection label="Project">
-				<ProjectPicker
-					value={projectId}
-					allowNone={false}
-					onChange={(next) => {
-						if (next) setProjectId(next);
-					}}
-				/>
-			</FormSection>
+			<ProjectPicker
+				value={projectId}
+				allowNone={false}
+				onChange={(next) => {
+					if (next) setProjectId(next);
+				}}
+			/>
 			<FormSection label="Task">
 				<View
 					style={{

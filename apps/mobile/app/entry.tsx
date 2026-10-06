@@ -406,20 +406,16 @@ function EntryForm({
 				) : null}
 			</FormSection>
 			{absence ? null : (
-				<FormSection label="Project">
-					<ProjectPicker value={projectId} onChange={setProjectId} />
-				</FormSection>
+				<ProjectPicker value={projectId} onChange={setProjectId} />
 			)}
-			<FormSection label="Task">
-				<TaskPicker
-					value={taskId}
-					includeAbsence={absence || (!entry && projectId === null)}
-					onChange={(task) => {
-						setTaskId(task.id);
-						setAbsence(task.isAbsence);
-					}}
-				/>
-			</FormSection>
+			<TaskPicker
+				value={taskId}
+				includeAbsence={absence || (!entry && projectId === null)}
+				onChange={(task) => {
+					setTaskId(task.id);
+					setAbsence(task.isAbsence);
+				}}
+			/>
 			<Field
 				label="Note"
 				hint="Most tasks need a note. The server says when one is missing."

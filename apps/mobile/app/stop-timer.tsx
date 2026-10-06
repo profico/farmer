@@ -160,12 +160,8 @@ function StopForm({
 			<FormSection label="Day">
 				<DayStepper day={date} today={today} onChange={setDate} />
 			</FormSection>
-			<FormSection label="Project">
-				<ProjectPicker value={projectId} onChange={setProjectId} />
-			</FormSection>
-			<FormSection label="Task">
-				<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
-			</FormSection>
+			<ProjectPicker value={projectId} onChange={setProjectId} />
+			<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
 			<Field
 				label="Note"
 				value={note}

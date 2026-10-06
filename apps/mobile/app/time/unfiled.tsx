@@ -11,7 +11,7 @@ import {
 	useRestoreEntries,
 } from "../../src/api/time";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
-import { FormSection, Sheet } from "../../src/forms/sheet";
+import { Sheet } from "../../src/forms/sheet";
 import { formatHours } from "../../src/lib/duration";
 import { CheckRow } from "../../src/time/components/check-row";
 import { type Notice, Snackbar } from "../../src/time/components/snackbar";
@@ -246,13 +246,11 @@ export default function UnfiledSheet() {
 						{fullApi ? (
 							<>
 								<Text variant="labelLarge">{fileLabel}</Text>
-								<FormSection label="Project">
-									<ProjectPicker
-										value={projectId}
-										onChange={setProjectId}
-										allowNone={false}
-									/>
-								</FormSection>
+								<ProjectPicker
+									value={projectId}
+									onChange={setProjectId}
+									allowNone={false}
+								/>
 								<SwitchRow
 									title="Change the task"
 									description={

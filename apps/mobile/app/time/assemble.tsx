@@ -6,7 +6,7 @@ import { View } from "react-native";
 import { useAccess } from "../../src/api/capabilities";
 import { useApplyDayAssembly, useDayAssembly } from "../../src/api/day";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
-import { FormSection, Sheet } from "../../src/forms/sheet";
+import { Sheet } from "../../src/forms/sheet";
 import { formatHours } from "../../src/lib/duration";
 import {
 	applyBody,
@@ -346,18 +346,14 @@ function SuggestionRow({
 						paddingBottom: SPACE.l,
 					}}
 				>
-					<FormSection label="Project">
-						<ProjectPicker
-							value={pick.projectId}
-							onChange={(projectId) => onPick({ projectId })}
-						/>
-					</FormSection>
-					<FormSection label="Task">
-						<TaskPicker
-							value={pick.taskId}
-							onChange={(task) => onPick({ taskId: task.id })}
-						/>
-					</FormSection>
+					<ProjectPicker
+						value={pick.projectId}
+						onChange={(projectId) => onPick({ projectId })}
+					/>
+					<TaskPicker
+						value={pick.taskId}
+						onChange={(task) => onPick({ taskId: task.id })}
+					/>
 				</View>
 			) : null}
 		</View>

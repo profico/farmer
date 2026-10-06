@@ -68,12 +68,8 @@ export default function StartTimerSheet() {
 			{start.error ? (
 				<ErrorBanner message={messageOf(start.error) ?? ""} />
 			) : null}
-			<FormSection label="Project">
-				<ProjectPicker value={projectId} onChange={setProjectId} />
-			</FormSection>
-			<FormSection label="Task">
-				<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
-			</FormSection>
+			<ProjectPicker value={projectId} onChange={setProjectId} />
+			<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
 			<Field
 				label="Note"
 				value={note}

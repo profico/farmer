@@ -160,16 +160,12 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
 			{tried && problem ? <ErrorBanner message={problem} /> : null}
-			<FormSection label="Project">
-				<ProjectPicker value={projectId} onChange={setProjectId} />
-			</FormSection>
-			<FormSection label="Task">
-				<TaskPicker
-					value={taskId}
-					includeAbsence
-					onChange={(next) => setTaskId(next.id)}
-				/>
-			</FormSection>
+			<ProjectPicker value={projectId} onChange={setProjectId} />
+			<TaskPicker
+				value={taskId}
+				includeAbsence
+				onChange={(next) => setTaskId(next.id)}
+			/>
 			<FormSection label="Days">
 				<WeekdayChips
 					value={days}

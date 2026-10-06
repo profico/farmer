@@ -1,83 +1,30 @@
-import type { Project, Task } from "@farmer/api-client";
-import { useState, type ReactNode } from "react";
+import type { Task } from "@farmer/api-client";
+import { useState } from "react";
 import { View } from "react-native";
 
 import { useProjects, useTasks } from "../api/queries";
 import { useHiddenTasks } from "../api/you";
 import { ProjectMark } from "../projects/components/project-mark";
-import {
-	ErrorState,
-	Field,
-	ListRow,
-	SectionHeader,
-	Skeleton,
-} from "../ui/components";
+import { ErrorState, ListRow, Skeleton } from "../ui/components";
 import { Icon } from "../ui/icon";
 import { usePalette } from "../ui/theme";
-import { SPACE } from "../ui/type";
+import { PickerField } from "./picker-field";
+import {
+	offeredTasks,
+	projectSections,
+	taskSections,
+	type ProjectItem,
+} from "./picker-model";
+import { PickerScreen } from "./picker-screen";
 
-/** A chosen value, with the list of the others folded under it. */
-function Choice({
-	leading,
-	title,
-	subtitle,
-	open,
-	onToggle,
-	children,
-}: {
-	leading?: ReactNode;
-	title: string;
-	subtitle?: string;
-	open: boolean;
-	onToggle: () => void;
-	children: ReactNode;
-}) {
+/** The check at the end of the chosen row. */
+function Chosen() {
 	const palette = usePalette();
-	return (
-		<View
-			style={{
-				borderRadius: 16,
-				overflow: "hidden",
-				backgroundColor: palette.surfaceContainer,
-			}}
-		>
-			<ListRow
-				leading={leading}
-				title={title}
-				subtitle={subtitle}
-				onPress={onToggle}
-				trailing={
-					<Icon
-						name={open ? "close" : "edit"}
-						size={20}
-						color={palette.onSurfaceVariant}
-					/>
-				}
-			/>
-			{open ? (
-				<View
-					style={{
-						borderTopWidth: 1,
-						borderTopColor: palette.outlineVariant,
-						paddingBottom: SPACE.s,
-					}}
-				>
-					{children}
-				</View>
-			) : null}
-		</View>
-	);
+	return <Icon name="check" size={20} color={palette.primary} />;
 }
 
-const matches = (project: Project, search: string) => {
-	const needle = search.trim().toLowerCase();
-	if (!needle) return true;
-	return [project.name, project.code ?? "", project.client.name].some((text) =>
-		text.toLowerCase().includes(needle),
-	);
-};
-
-/** The projects the person may log to, or none. */
+/** The projects the person may log to, or none. A field in the form opens a
+ *  full-screen list with a search, as a big organization has many projects. */
 export function ProjectPicker({
 	value,
 	onChange,
@@ -87,7 +34,6 @@ export function ProjectPicker({
 	onChange: (projectId: string | null) => void;
 	allowNone?: boolean;
 }) {
-	const palette = usePalette();
 	const projects = useProjects();
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
@@ -102,72 +48,74 @@ export function ProjectPicker({
 		);
 	}
 	const chosen = projects.data.find((project) => project.id === value);
-	const pick = (projectId: string | null) => {
-		onChange(projectId);
+	const close = () => {
 		setOpen(false);
 		setSearch("");
 	};
-	const shown = projects.data.filter((project) => matches(project, search));
-
-	return (
-		<Choice
-			leading={
-				chosen ? (
-					<ProjectMark icon={chosen.icon ?? null} name={chosen.name} />
-				) : undefined
-			}
-			title={chosen?.name ?? "No project"}
-			subtitle={chosen?.client.name}
-			open={open}
-			onToggle={() => setOpen(!open)}
-		>
-			<View style={{ padding: SPACE.m }}>
-				<Field
-					label="Search"
-					value={search}
-					onChangeText={setSearch}
-					placeholder="Project, code or client"
-					autoCorrect={false}
-				/>
-			</View>
-			{allowNone ? (
+	const pick = (projectId: string | null) => {
+		onChange(projectId);
+		close();
+	};
+	const renderItem = (item: ProjectItem) => {
+		if (item.kind === "none") {
+			return (
 				<ListRow
 					title="No project"
 					subtitle="File it later"
 					selected={value === null}
 					onPress={() => pick(null)}
+					trailing={value === null ? <Chosen /> : undefined}
 				/>
-			) : null}
-			{shown.map((project) => (
-				<ListRow
-					key={project.id}
-					leading={
-						<ProjectMark icon={project.icon ?? null} name={project.name} />
-					}
-					title={
-						project.code ? `${project.name} (${project.code})` : project.name
-					}
-					subtitle={project.client.name}
-					selected={project.id === value}
-					onPress={() => pick(project.id)}
-					trailing={
-						project.id === value ? (
-							<Icon name="check" size={20} color={palette.primary} />
-						) : undefined
-					}
-				/>
-			))}
-		</Choice>
+			);
+		}
+		const { project } = item;
+		return (
+			<ListRow
+				leading={
+					<ProjectMark icon={project.icon ?? null} name={project.name} />
+				}
+				title={
+					project.code ? `${project.name} (${project.code})` : project.name
+				}
+				subtitle={project.client.name}
+				selected={project.id === value}
+				onPress={() => pick(project.id)}
+				trailing={project.id === value ? <Chosen /> : undefined}
+			/>
+		);
+	};
+
+	return (
+		<View>
+			<PickerField
+				label="Project"
+				leading={
+					chosen ? (
+						<ProjectMark icon={chosen.icon ?? null} name={chosen.name} />
+					) : undefined
+				}
+				title={chosen?.name ?? "No project"}
+				subtitle={chosen?.client.name}
+				empty={!chosen}
+				onPress={() => setOpen(true)}
+			/>
+			<PickerScreen
+				visible={open}
+				onClose={close}
+				label="Search projects"
+				placeholder="Search projects"
+				search={search}
+				onSearch={setSearch}
+				sections={projectSections(projects.data, search, allowNone)}
+				keyExtractor={(item) =>
+					item.kind === "none" ? "none" : item.project.id
+				}
+				renderItem={renderItem}
+				emptyTitle="No project matches"
+			/>
+		</View>
 	);
 }
-
-const byGroup = (tasks: Task[]) => {
-	const groups = new Map<string, Task[]>();
-	for (const task of tasks) {
-		groups.set(task.group, [...(groups.get(task.group) ?? []), task]);
-	}
-	return [...groups.entries()];
-};
 
 /** The work tasks, by group. With `includeAbsence`, time off too. The tasks
  *  that the person hid in "Your tasks" do not show, but the chosen task
@@ -181,12 +129,10 @@ export function TaskPicker({
 	onChange: (task: Task) => void;
 	includeAbsence?: boolean;
 }) {
-	const palette = usePalette();
 	const tasks = useTasks();
 	const hidden = useHiddenTasks();
-	// Folded until the person opens it, so the list does not push the rest
-	// of the form down before a project is chosen.
 	const [open, setOpen] = useState(false);
+	const [search, setSearch] = useState("");
 
 	if (tasks.isPending) return <Skeleton height={56} radius={16} />;
 	if (tasks.isError) {
@@ -194,45 +140,53 @@ export function TaskPicker({
 			<ErrorState error={tasks.error} onRetry={() => void tasks.refetch()} />
 		);
 	}
-	const all = includeAbsence
-		? [...tasks.data.tasks, ...tasks.data.absenceTasks]
-		: tasks.data.tasks;
-	const chosen = all.find((task) => task.id === value);
 	// Before the hidden list arrives, or on a server without it, every
 	// task shows.
 	const hiddenIds = new Set(hidden.data?.taskIds);
-	const offered = all.filter(
-		(task) => !hiddenIds.has(task.id) || task.id === value,
+	const offered = offeredTasks(
+		tasks.data.tasks,
+		tasks.data.absenceTasks,
+		hiddenIds,
+		value,
+		includeAbsence,
 	);
+	const chosen = offered.find((task) => task.id === value);
+	const close = () => {
+		setOpen(false);
+		setSearch("");
+	};
 
 	return (
-		<Choice
-			title={chosen?.name ?? "Choose a task"}
-			subtitle={chosen?.group}
-			open={open}
-			onToggle={() => setOpen(!open)}
-		>
-			{byGroup(offered).map(([group, members]) => (
-				<View key={group}>
-					<SectionHeader>{group}</SectionHeader>
-					{members.map((task) => (
-						<ListRow
-							key={task.id}
-							title={task.name}
-							selected={task.id === value}
-							onPress={() => {
-								onChange(task);
-								setOpen(false);
-							}}
-							trailing={
-								task.id === value ? (
-									<Icon name="check" size={20} color={palette.primary} />
-								) : undefined
-							}
-						/>
-					))}
-				</View>
-			))}
-		</Choice>
+		<View>
+			<PickerField
+				label="Task"
+				title={chosen?.name ?? "Choose a task"}
+				subtitle={chosen?.group}
+				empty={!chosen}
+				onPress={() => setOpen(true)}
+			/>
+			<PickerScreen
+				visible={open}
+				onClose={close}
+				label="Search tasks"
+				placeholder="Search tasks"
+				search={search}
+				onSearch={setSearch}
+				sections={taskSections(offered, search)}
+				keyExtractor={(task) => task.id}
+				renderItem={(task) => (
+					<ListRow
+						title={task.name}
+						selected={task.id === value}
+						onPress={() => {
+							onChange(task);
+							close();
+						}}
+						trailing={task.id === value ? <Chosen /> : undefined}
+					/>
+				)}
+				emptyTitle="No task matches"
+			/>
+		</View>
 	);
 }
