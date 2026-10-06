@@ -37,6 +37,8 @@ export type RowBase = {
 	tint?: RowTint;
 	title: string;
 	subtitle?: string;
+	/** How many lines the subtitle may take. Two by default. */
+	subtitleLines?: number;
 	/** The menu of a long press, and the same actions for a screen reader.
 	 *  The caller leaves out an action that the person may not do. */
 	actions?: readonly RowMenuEntry[];

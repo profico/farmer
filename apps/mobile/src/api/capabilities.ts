@@ -33,7 +33,16 @@ const FULL_API_VERSION = 2;
  */
 export const V3_API_VERSION = 3;
 
+/**
+ * The API version that added the signed-in devices (`/me/sessions`) and the
+ * API tokens (`/orgs/$slug/api-tokens`).
+ */
+export const V4_API_VERSION = 4;
+
 export type ServerFeatures = {
+	/** The Server has the routes of API version 4 (`V4_API_VERSION`): the
+	 *  signed-in devices and the API tokens. */
+	accountApi: boolean;
 	/** The Server has the routes of API version 3 (`V3_API_VERSION`). */
 	setupApi: boolean;
 	/** The Server stores images: a project icon or the organization's logo. */
@@ -52,6 +61,7 @@ export const useServerFeatures = (): ServerFeatures => {
 	const setupApi = (meta.data?.apiVersion ?? 1) >= V3_API_VERSION;
 	return {
 		setupApi,
+		accountApi: (meta.data?.apiVersion ?? 1) >= V4_API_VERSION,
 		uploads: setupApi && meta.data?.uploadsEnabled === true,
 		workspaceCreation: setupApi && meta.data?.organizationCreation === true,
 	};

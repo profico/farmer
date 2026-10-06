@@ -7,6 +7,7 @@ import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { z } from "zod";
 
+import { USER_AGENT } from "../config";
 import { callbackUrlFor, FlowKeeper } from "./auth-flow";
 
 /**
@@ -41,6 +42,9 @@ const makeClient = (origin: string) => {
 		storagePrefix,
 		auth: createAuthClient({
 			baseURL: `${origin}/api/auth`,
+			// The server records this as the name of the device that signs in,
+			// in Preferences → Signed-in devices. Else it reads "okhttp".
+			fetchOptions: { headers: { "user-agent": USER_AGENT } },
 			plugins: [
 				expoClient({
 					scheme: "farmer",

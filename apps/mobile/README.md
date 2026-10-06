@@ -38,7 +38,9 @@ Rules:
   version 2, and the capabilities come from `whoami`. `dayApi` and
   `setupApi` are false before API version 3 (`V3_API_VERSION`): the helpers
   of the day, the repositories, the uploads, the organization policy, the
-  holiday switch and the invitations. The hooks of the day are in
+  holiday switch and the invitations. `accountApi` is false before API
+  version 4 (`V4_API_VERSION`): the signed-in devices and the API tokens
+  (`src/api/account.ts`). The hooks of the day are in
   `src/api/day.ts`. Without a workspace, use `useServerFeatures()`, which
   reads only `/meta`.
 - Use the settings-list kit (`src/ui/settings-list.tsx`) for a list of
