@@ -37,6 +37,7 @@ import {
 	Skeleton,
 	Text,
 } from "../src/ui/components";
+import { DestructiveButton } from "../src/ui/destructive-button";
 import { showDialog } from "../src/ui/dialog";
 import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
@@ -489,9 +490,8 @@ function EntryForm({
 			)}
 			{entry ? (
 				<View style={{ flexDirection: "row" }}>
-					<ActionButton
+					<DestructiveButton
 						label="Delete entry"
-						variant="text"
 						onPress={confirmDelete}
 						disabled={busy}
 					/>
