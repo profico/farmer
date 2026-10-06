@@ -26,3 +26,15 @@ const originOrNull = (value: string): string | null => {
 		return null;
 	}
 };
+
+/**
+ * The origin in the sign-in screen's `server` parameter, when it is one that
+ * the Server screen could have sent: an address that `normalizeOrigin`
+ * accepts and returns unchanged. A deep link can set the parameter, so the
+ * sign-in screen does not trust it. Null sends the person to the Server
+ * screen, which checks the address.
+ */
+export const signInOrigin = (server: string | undefined): string | null => {
+	if (!server) return null;
+	return originOrNull(server) === server ? server : null;
+};

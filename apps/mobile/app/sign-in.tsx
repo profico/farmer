@@ -1,4 +1,5 @@
 import {
+	assertUsable,
 	type DeviceCode,
 	FarmerClient,
 	fetchMeta,
@@ -14,12 +15,14 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
+import { APP_VERSION } from "../src/config";
 import { API_TOKEN_PREFIX } from "../src/session/credential";
 import {
 	type SignInOutcome,
 	signInWithPassword,
 	signInWithProvider,
 } from "../src/session/provider-sign-in";
+import { signInOrigin } from "../src/session/server-address";
 import { useSession } from "../src/session/session";
 import { FarmerMark } from "../src/ui/brand";
 import {
@@ -56,10 +59,18 @@ export default function SignInScreen() {
 	const palette = usePalette();
 	const router = useRouter();
 	const { signIn } = useSession();
-	const { server } = useLocalSearchParams<{ server?: string }>();
+	const params = useLocalSearchParams<{ server?: string }>();
+	// A deep link can set the parameter too, so it gets the Server screen's
+	// checks: the address, and then `/meta` with `assertUsable`.
+	const server = signInOrigin(params.server);
 	const meta = useQuery({
-		queryKey: ["farmer", server ?? "", "meta"],
-		queryFn: () => fetchMeta(transportFor(server ?? "")),
+		queryKey: ["farmer", server ?? "", "meta", "usable"],
+		queryFn: async () => {
+			const origin = server ?? "";
+			const answer = await fetchMeta(transportFor(origin));
+			assertUsable(answer, origin, APP_VERSION);
+			return answer;
+		},
 		enabled: Boolean(server),
 		staleTime: 60_000,
 	});
@@ -81,7 +92,15 @@ export default function SignInScreen() {
 		[],
 	);
 
-	if (!server) return <Redirect href="/server" />;
+	if (!server) {
+		return params.server ? (
+			<Redirect
+				href={{ pathname: "/server", params: { server: params.server } }}
+			/>
+		) : (
+			<Redirect href="/server" />
+		);
+	}
 	const transport = transportFor(server);
 
 	const version = meta.data?.apiVersion ?? 1;
@@ -295,6 +314,16 @@ export default function SignInScreen() {
 					<View style={{ paddingVertical: SPACE.xl, alignItems: "center" }}>
 						<ActivityIndicator color={palette.primary} />
 					</View>
+				) : meta.isError ? (
+					<>
+						<ErrorBanner message={meta.error.message} />
+						<ActionButton
+							label="Change the server"
+							onPress={() =>
+								router.replace({ pathname: "/server", params: { server } })
+							}
+						/>
+					</>
 				) : waitingCard ? (
 					waitingCard
 				) : hasMethods ? (
