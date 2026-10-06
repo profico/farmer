@@ -81,14 +81,35 @@ class BackGestureModule : Module() {
   private fun ownCallbackFor(activity: ReactActivity): OnBackPressedCallback {
     val existing = ownCallback
     if (existing != null && ownCallbackActivity.get() === activity) return existing
+    // The callback holds the activity weakly, so a destroyed activity is
+    // not kept alive by the module until the next `apply()`.
+    val weakActivity = WeakReference(activity)
     val callback = object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
-        // `onBackPressed` asks JavaScript first. When JavaScript lets the
-        // event go, it ends in `super.onBackPressed`, which runs the enabled
-        // callbacks again, so this one is off while it runs.
+        val target = weakActivity.get() ?: return
+        if (!isDefaultBackRunning()) {
+          // A real Back. `onBackPressed` only sends the event to JavaScript
+          // and returns, so this callback must stay enabled for the next
+          // Back. When JavaScript does not take the event, it calls
+          // `invokeDefaultOnBackPressed`, which comes back here.
+          target.onBackPressed()
+          return
+        }
+        // The second visit: JavaScript let the event go. Run the default
+        // action (leave the app) with this callback off, as the React
+        // Native callback does in `ReactActivity.invokeDefaultOnBackPressed`.
+        // A flag that stays set until JavaScript answers would be wrong:
+        // JavaScript gives no signal when it takes the event, so the next
+        // real Back would count as a default one. The call stack tells the
+        // two apart without a timer. If a React Native upgrade renames the
+        // method, the check fails and the old loop returns, so check this
+        // again on each React Native upgrade.
         isEnabled = false
-        activity.onBackPressed()
-        isEnabled = true
+        try {
+          target.onBackPressedDispatcher.onBackPressed()
+        } finally {
+          isEnabled = true
+        }
       }
     }
     activity.onBackPressedDispatcher.addCallback(activity, callback)
@@ -96,6 +117,10 @@ class BackGestureModule : Module() {
     ownCallbackActivity = WeakReference(activity)
     return callback
   }
+
+  /** True when this Back comes from `invokeDefaultOnBackPressed`. */
+  private fun isDefaultBackRunning(): Boolean =
+    Throwable().stackTrace.any { it.methodName == "invokeDefaultOnBackPressed" }
 
   private companion object {
     const val TAG = "BackGesture"
