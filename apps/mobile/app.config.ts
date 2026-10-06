@@ -236,7 +236,9 @@ const config: ExpoConfig = {
 					// ADR 0005: Android 10 (API 29) or later.
 					minSdkVersion: 29,
 					// Lets a LAN or emulator test Server on plain http work, for
-					// example http://10.0.2.2:3000. Revisit before a store release.
+					// example http://10.0.2.2:3000. Android cannot allow a range of
+					// addresses here, so the app itself refuses plain http to a host
+					// that is not local (`normalizeOrigin` in @farmer/api-client).
 					usesCleartextTraffic: true,
 				},
 			},
