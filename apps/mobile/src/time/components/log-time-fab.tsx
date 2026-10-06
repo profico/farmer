@@ -8,8 +8,10 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import { Text } from "../../ui/components";
+import { CORNER, RADIUS } from "../../ui/corner";
 import { Icon } from "../../ui/icon";
 import { useMotionPreference } from "../../ui/motion";
+import { evenCorners, useCornerMorph } from "../../ui/press-morph";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 
@@ -22,6 +24,27 @@ export const FAB_MARGIN = SPACE.l;
  *  it. */
 export const FAB_CLEARANCE = FAB_SIZE + FAB_MARGIN;
 
+/** The width of the assistant part of the split button. */
+const ASSISTANT_WIDTH = 64;
+/** The space between the two parts of the split button. */
+const SPLIT_GAP = 2;
+/** The outer corner of a part: a full pill. */
+const OUTER = FAB_SIZE / 2;
+/** The corners of the leading part at rest: full outside, small inside. */
+const LEADING_REST = {
+	borderTopLeftRadius: OUTER,
+	borderBottomLeftRadius: OUTER,
+	borderTopRightRadius: CORNER.extraSmall,
+	borderBottomRightRadius: CORNER.extraSmall,
+} as const;
+/** The corners of the trailing part at rest: small inside, full outside. */
+const TRAILING_REST = {
+	borderTopLeftRadius: CORNER.extraSmall,
+	borderBottomLeftRadius: CORNER.extraSmall,
+	borderTopRightRadius: OUTER,
+	borderBottomRightRadius: OUTER,
+} as const;
+
 /** The gap between the icon and the label of an extended FAB. */
 const ICON_GAP = SPACE.m;
 const EASE = Easing.bezier(0.2, 0, 0, 1);
@@ -32,15 +55,27 @@ const DURATION_MS = 200;
  * at the bottom right. It collapses to the icon while the list scrolls
  * down and extends again on a scroll up. With less motion on, the label
  * goes and comes at once, with no change of width over time.
+ *
+ * When `onAssistant` is set, the FAB is a split button: the Log time part
+ * and, 2 dp to its right, an icon part that opens the assistant. The
+ * assistant part keeps its width when the Log time part collapses. The
+ * inner corners of a part grow toward full while a finger holds it.
  */
 export function LogTimeFab({
 	extended,
 	onPress,
+	onAssistant,
 }: {
 	extended: boolean;
 	onPress: () => void;
+	onAssistant?: () => void;
 }) {
 	const palette = usePalette();
+	const leading = useCornerMorph(
+		onAssistant ? LEADING_REST : evenCorners(RADIUS.fab),
+		onAssistant ? OUTER : RADIUS.fab,
+	);
+	const trailing = useCornerMorph(TRAILING_REST, OUTER);
 	const { reduceMotion } = useMotionPreference();
 	// The width of the label with its gap, measured once off screen.
 	const [labelWidth, setLabelWidth] = useState(0);
@@ -67,6 +102,9 @@ export function LogTimeFab({
 				position: "absolute",
 				right: FAB_MARGIN,
 				bottom: FAB_MARGIN,
+				flexDirection: "row",
+				alignItems: "center",
+				gap: SPLIT_GAP,
 			}}
 		>
 			{/* The label at its full width, hidden, to measure it. */}
@@ -81,40 +119,85 @@ export function LogTimeFab({
 					Log time
 				</Text>
 			</View>
-			<Pressable
-				accessibilityRole="button"
-				accessibilityLabel="Log time"
-				onPress={onPress}
-				android_ripple={{
-					color: palette.onPrimaryContainer,
-					borderless: false,
-				}}
-				style={{
-					flexDirection: "row",
-					alignItems: "center",
-					height: FAB_SIZE,
-					minWidth: FAB_SIZE,
-					paddingHorizontal: SPACE.l,
-					borderRadius: 16,
-					overflow: "hidden",
-					backgroundColor: palette.primaryContainer,
-					elevation: 3,
-				}}
+			<Reanimated.View
+				style={[
+					{
+						height: FAB_SIZE,
+						minWidth: FAB_SIZE,
+						overflow: "hidden",
+						backgroundColor: palette.primaryContainer,
+						elevation: 3,
+					},
+					leading.style,
+				]}
 			>
-				<Icon name="add" color={palette.onPrimaryContainer} />
-				<Reanimated.View
-					style={[{ flexDirection: "row", overflow: "hidden" }, labelStyle]}
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel="Log time"
+					onPress={onPress}
+					onPressIn={leading.onPressIn}
+					onPressOut={leading.onPressOut}
+					android_ripple={{
+						color: palette.onPrimaryContainer,
+						borderless: false,
+					}}
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						height: FAB_SIZE,
+						minWidth: FAB_SIZE,
+						paddingHorizontal: SPACE.l,
+					}}
 				>
-					<View style={{ width: ICON_GAP }} />
-					<Text
-						variant="labelLarge"
-						color={palette.onPrimaryContainer}
-						numberOfLines={1}
+					<Icon name="add" color={palette.onPrimaryContainer} />
+					<Reanimated.View
+						style={[{ flexDirection: "row", overflow: "hidden" }, labelStyle]}
 					>
-						Log time
-					</Text>
+						<View style={{ width: ICON_GAP }} />
+						<Text
+							variant="labelLarge"
+							color={palette.onPrimaryContainer}
+							numberOfLines={1}
+						>
+							Log time
+						</Text>
+					</Reanimated.View>
+				</Pressable>
+			</Reanimated.View>
+			{onAssistant ? (
+				<Reanimated.View
+					style={[
+						{
+							height: FAB_SIZE,
+							width: ASSISTANT_WIDTH,
+							overflow: "hidden",
+							backgroundColor: palette.primaryContainer,
+							elevation: 3,
+						},
+						trailing.style,
+					]}
+				>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel="Assistant"
+						onPress={onAssistant}
+						onPressIn={trailing.onPressIn}
+						onPressOut={trailing.onPressOut}
+						android_ripple={{
+							color: palette.onPrimaryContainer,
+							borderless: false,
+						}}
+						style={{
+							height: FAB_SIZE,
+							width: ASSISTANT_WIDTH,
+							alignItems: "center",
+							justifyContent: "center",
+						}}
+					>
+						<Icon name="assistant" color={palette.onPrimaryContainer} />
+					</Pressable>
 				</Reanimated.View>
-			</Pressable>
+			) : null}
 		</View>
 	);
 }

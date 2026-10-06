@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 
-import { useAccess } from "../../src/api/capabilities";
+import { useAccess, useAssistantAvailable } from "../../src/api/capabilities";
 import {
 	useEntries,
 	useTimer,
@@ -118,6 +118,7 @@ function Timesheet({
 	onRefreshToday: () => void;
 }) {
 	const router = useRouter();
+	const assistant = useAssistantAvailable();
 	const { fullApi, dayApi } = useAccess();
 	const [view, setView] = useState<View3>("day");
 	const [selected, setSelected] = useState(today);
@@ -378,7 +379,11 @@ function Timesheet({
 				)}
 			</Screen>
 			{fab ? (
-				<LogTimeFab extended={fabState.extended} onPress={logTime} />
+				<LogTimeFab
+					extended={fabState.extended}
+					onPress={logTime}
+					onAssistant={assistant ? () => router.push("/assistant") : undefined}
+				/>
 			) : null}
 			<Snackbar
 				notice={notice}
