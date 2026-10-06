@@ -263,8 +263,13 @@ function Conversation({ id }: { id: string }) {
 export default function ConversationScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	return (
-		<AssistantGate>
-			<Conversation id={id ?? ""} />
-		</AssistantGate>
+		<>
+			{/* A title until the conversation sets its own. Without it, a
+			    closed gate showed the name of the route file, "[id]". */}
+			<Stack.Screen options={{ title: "Conversation" }} />
+			<AssistantGate>
+				<Conversation id={id ?? ""} />
+			</AssistantGate>
+		</>
 	);
 }
