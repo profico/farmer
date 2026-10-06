@@ -58,8 +58,8 @@ export const isUploadedIcon = (icon: string | null) =>
 	UPLOAD_KEY.test(icon.slice(UPLOAD_PREFIX.length));
 
 /** The text of a project's mark: its emoji, or the first letter of its
- *  name. This app shows no uploaded image yet, so an upload is the letter
- *  too. */
+ *  name. For an upload it is the letter, which `ProjectMark` shows in
+ *  place of an image that it cannot draw. */
 export const markOf = (icon: string | null, name: string) =>
 	icon && !isUploadedIcon(icon)
 		? icon

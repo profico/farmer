@@ -1,15 +1,17 @@
 import type { OrgPolicy } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
+import { useUploadImage } from "../../../src/api/uploads";
 import {
 	useOrganization,
 	useOrgPolicy,
 	useUpdateOrganization,
 	useUpdateOrgPolicy,
 } from "../../../src/api/workspace";
+import { useSignedIn } from "../../../src/session/session";
 import {
 	ActionButton,
 	EmptyState,
@@ -27,6 +29,7 @@ import {
 } from "../../../src/ui/settings-list";
 import { usePalette } from "../../../src/ui/theme";
 import { SPACE } from "../../../src/ui/type";
+import { isSvgUpload } from "../../../src/uploads/limits";
 import {
 	ActionRow,
 	ChoiceSection,
@@ -111,7 +114,10 @@ function OrganizationForm({
 }) {
 	const router = useRouter();
 	const palette = usePalette();
+	const { origin } = useSignedIn();
+	const { uploads } = useAccess();
 	const update = useUpdateOrganization();
+	const upload = useUploadImage("org-logo");
 	const [name, setName] = useState(settings.name);
 	const [logo, setLogo] = useState(settings.logo ?? "");
 
@@ -136,6 +142,18 @@ function OrganizationForm({
 		update.mutate(body, {
 			onSuccess: () => notify(saved),
 			onError: (error) => notifyError(failed, error),
+		});
+
+	// Saved as soon as it is on the Server, as on the web: the choice of
+	// the image was the decision.
+	const uploadLogo = () =>
+		upload.mutate(undefined, {
+			onSuccess: (path) => {
+				if (!path) return;
+				setLogo(path);
+				save({ logo: path }, "Logo saved", "Could not save the logo");
+			},
+			onError: (error) => notifyError("Could not upload the logo", error),
 		});
 
 	const weekStart = settings.weekStartsOn === 0 ? 0 : 1;
@@ -213,12 +231,35 @@ function OrganizationForm({
 
 			<Inset>
 				<Text variant="titleSmall" color={palette.primary}>
-					Logo URL
+					{uploads ? "Logo" : "Logo URL"}
 				</Text>
-				{uploadedLogo ? (
-					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-						An uploaded image. Remove it to use an address instead.
-					</Text>
+				{uploadedLogo && settings.logo ? (
+					<View
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: SPACE.m,
+						}}
+					>
+						{isSvgUpload(settings.logo) ? null : (
+							<Image
+								accessibilityIgnoresInvertColors
+								source={{ uri: `${origin}${settings.logo}` }}
+								style={{
+									width: 44,
+									height: 44,
+									borderRadius: 8,
+									backgroundColor: palette.surfaceContainerHigh,
+								}}
+								resizeMode="contain"
+							/>
+						)}
+						<View style={{ flex: 1 }}>
+							<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+								An uploaded image. Remove it to use an address instead.
+							</Text>
+						</View>
+					</View>
 				) : (
 					<Field
 						label="Logo URL"
@@ -235,7 +276,11 @@ function OrganizationForm({
 								? null
 								: "Enter an address that starts with http:// or https://."
 						}
-						hint="A public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+						hint={
+							uploads
+								? "The logo of the organization. Upload an image, or enter a public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+								: "A public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+						}
 					/>
 				)}
 				<View
@@ -254,6 +299,14 @@ function OrganizationForm({
 								setLogo("");
 								save({ logo: "" }, "Logo removed", "Could not remove the logo");
 							}}
+						/>
+					) : null}
+					{uploads ? (
+						<ActionButton
+							label={upload.isPending ? "Uploading" : "Upload image"}
+							variant="outlined"
+							disabled={upload.isPending || update.isPending}
+							onPress={uploadLogo}
 						/>
 					) : null}
 					{uploadedLogo ? null : (

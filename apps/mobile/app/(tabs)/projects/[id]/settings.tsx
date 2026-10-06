@@ -12,6 +12,7 @@ import {
 } from "../../../../src/api/projects";
 import { projectPageAccess } from "../../../../src/projects/access";
 import { ProjectFields } from "../../../../src/projects/components/project-fields";
+import { useIconUpload } from "../../../../src/projects/icon-upload";
 import {
 	formOf,
 	isEmptyPatch,
@@ -50,6 +51,9 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 	const [form, setForm] = useState<ProjectForm>(saved);
 	const [tried, setTried] = useState(false);
 	const archived = project.status === "archived";
+	const upload = useIconUpload((icon) =>
+		setForm((current) => ({ ...current, icon })),
+	);
 
 	const errors = tried ? validateForm(form) : {};
 	const patch = patchOf(saved, form);
@@ -137,6 +141,7 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 					clients={clientList}
 					showMoney
 					iconIsUpload={isUploadedIcon(form.icon)}
+					upload={upload}
 				/>
 				{update.error ? (
 					<ErrorBanner message={messageOf(update.error) ?? ""} />
