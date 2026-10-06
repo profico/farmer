@@ -12,10 +12,19 @@ import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 
 /**
- * A form over a screen: a sheet on iOS, a full-screen dialog on Android.
- * Close on the left, the title, and the one action on the right, as
+ * A form over a screen: a full-screen dialog on Android. iOS draws a sheet
+ * with the bar of the system (`sheet.ios.tsx`). Close on the left, the title, and the one action on the right, as
  * Material draws a full-screen dialog.
  */
+export type SheetProps = {
+	title: string;
+	actionLabel: string;
+	onAction: () => void;
+	busy?: boolean;
+	actionDisabled?: boolean;
+	children: ReactNode;
+};
+
 export function Sheet({
 	title,
 	actionLabel,
@@ -23,14 +32,7 @@ export function Sheet({
 	busy,
 	actionDisabled,
 	children,
-}: {
-	title: string;
-	actionLabel: string;
-	onAction: () => void;
-	busy?: boolean;
-	actionDisabled?: boolean;
-	children: ReactNode;
-}) {
+}: SheetProps) {
 	const palette = usePalette();
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
@@ -90,28 +92,4 @@ export function Sheet({
 	);
 }
 
-/** A labelled group inside a sheet. */
-export function FormSection({
-	label,
-	children,
-}: {
-	label: string;
-	children: ReactNode;
-}) {
-	const palette = usePalette();
-	return (
-		<View style={{ gap: SPACE.s }}>
-			{/* Android names a section as the Expressive settings lists do. */}
-			{Platform.OS === "android" ? (
-				<Text variant="titleSmallEmphasized" color={palette.primary}>
-					{label}
-				</Text>
-			) : (
-				<Text variant="labelLarge" color={palette.onSurfaceVariant}>
-					{label}
-				</Text>
-			)}
-			{children}
-		</View>
-	);
-}
+export { FormSection } from "./form-section";

@@ -33,7 +33,7 @@ export default function WorkspaceLayout() {
 			Platform.OS === "ios" ? ("formSheet" as const) : ("modal" as const),
 		sheetGrabberVisible: true,
 		sheetAllowedDetents: [1],
-		headerShown: false,
+		headerShown: Platform.OS === "ios",
 		contentStyle: { backgroundColor: palette.surface },
 	};
 	return (

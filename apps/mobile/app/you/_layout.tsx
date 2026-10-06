@@ -19,7 +19,7 @@ export default function YouLayout() {
 	// The same sheet as the forms of the root stack: a sheet on iOS, a
 	// full-screen dialog on Android.
 	const form = {
-		headerShown: false,
+		headerShown: Platform.OS === "ios",
 		presentation:
 			Platform.OS === "ios" ? ("formSheet" as const) : ("modal" as const),
 		sheetGrabberVisible: true,
