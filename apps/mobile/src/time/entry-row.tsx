@@ -59,6 +59,8 @@ export function EntryRow({
 	onPress,
 	onContinue,
 	onDelete,
+	onPressIn,
+	onPressOut,
 }: {
 	entry: TimeEntry;
 	/** The icon of the entry's project, from the project list. An entry
@@ -69,6 +71,9 @@ export function EntryRow({
 	onContinue?: () => void;
 	/** Asks to delete the entry. Absent when the row may not delete. */
 	onDelete?: () => void;
+	/** The press, for a surface that morphs while a finger holds it. */
+	onPressIn?: () => void;
+	onPressOut?: () => void;
 }) {
 	const palette = usePalette();
 	const { dayApi } = useAccess();
@@ -118,6 +123,8 @@ export function EntryRow({
 				else menu.onAccessibilityAction?.(event);
 			}}
 			onPress={onPress}
+			onPressIn={onPressIn}
+			onPressOut={onPressOut}
 			android_ripple={{ color: palette.outlineVariant }}
 			style={({ pressed }) => ({
 				flexDirection: "row",

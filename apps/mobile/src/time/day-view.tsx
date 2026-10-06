@@ -1,7 +1,7 @@
 import type { TimeEntry } from "@farmer/api-client";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import Reanimated, {
 	Easing,
 	FadeIn,
@@ -38,6 +38,7 @@ import { SPACE } from "../ui/type";
 import { dayTargets, weekDayMarks } from "./day-marks";
 import { useConfirmDeleteEntry } from "./delete-entry";
 import { canContinue, EntryRow } from "./entry-row";
+import { EntrySurface } from "./entry-surface";
 import { committed } from "./haptics";
 import { TimerCard } from "./timer-card";
 import { WeekStrip } from "./week-strip";
@@ -85,6 +86,7 @@ export function DayView({
 	copying: boolean;
 }) {
 	const palette = usePalette();
+	const android = Platform.OS === "android";
 	const router = useRouter();
 	const { reduceMotion } = useMotionPreference();
 	const { fullApi } = useAccess();
@@ -208,29 +210,30 @@ export function DayView({
 				// height, and it must not glide behind the content above it.
 				<LayoutAnimationConfig key={selected} skipEntering skipExiting>
 					<View
-						style={{
-							marginHorizontal: SPACE.l,
-							borderRadius: 16,
-							overflow: "hidden",
-							backgroundColor: palette.surfaceContainer,
-						}}
+						style={
+							android
+								? // The Expressive segmented list: 2dp between the rows.
+									{ marginHorizontal: SPACE.l, gap: 2 }
+								: {
+										marginHorizontal: SPACE.l,
+										borderRadius: 16,
+										overflow: "hidden",
+										backgroundColor: palette.surfaceContainer,
+									}
+						}
 					>
-						{dayEntries.map((entry, index) => (
-							<Reanimated.View
-								key={entry.id}
-								entering={ROW_IN}
-								exiting={ROW_OUT}
-								layout={reduceMotion ? undefined : ROW_MOVE}
-								style={{
-									borderTopWidth: index === 0 ? 0 : 1,
-									borderTopColor: palette.outlineVariant,
-								}}
-							>
+						{dayEntries.map((entry, index) => {
+							const row = (press?: {
+								onPressIn: () => void;
+								onPressOut: () => void;
+							}) => (
 								<EntryRow
 									entry={entry}
 									projectIcon={
 										entry.project ? (icons.get(entry.project.id) ?? null) : null
 									}
+									onPressIn={press?.onPressIn}
+									onPressOut={press?.onPressOut}
 									onPress={() =>
 										router.push({
 											pathname: "/entry",
@@ -248,8 +251,32 @@ export function DayView({
 											: undefined
 									}
 								/>
-							</Reanimated.View>
-						))}
+							);
+							return (
+								<Reanimated.View
+									key={entry.id}
+									entering={ROW_IN}
+									exiting={ROW_OUT}
+									layout={reduceMotion ? undefined : ROW_MOVE}
+									style={
+										android
+											? undefined
+											: {
+													borderTopWidth: index === 0 ? 0 : 1,
+													borderTopColor: palette.outlineVariant,
+												}
+									}
+								>
+									{android ? (
+										<EntrySurface index={index} count={dayEntries.length}>
+											{row}
+										</EntrySurface>
+									) : (
+										row()
+									)}
+								</Reanimated.View>
+							);
+						})}
 					</View>
 				</LayoutAnimationConfig>
 			)}
