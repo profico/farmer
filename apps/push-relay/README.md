@@ -33,7 +33,6 @@ accounts exist.
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
 | `APNS_TOPIC` | `com.profico.farmer` | The bundle id of the app. Live Activity pushes use `<topic>.push-type.liveactivity`. |
 | `FCM_SERVICE_ACCOUNT_JSON` | (none) | The full JSON key file of a Google service account that can send FCM messages. |
-| `REQUIRE_BOUND_ACTIVITY_TOKEN` | `false` | `true` or `1`: a Live Activity push refuses a per-activity token that the device did not bind (see "Live Activity tokens"). Set it when every app version binds its tokens. |
 
 Set all three of `APNS_KEY_P8`, `APNS_KEY_ID` and `APNS_TEAM_ID`, or none of
 them. A half-set APNs configuration, a key that does not import, or
@@ -104,12 +103,9 @@ secret:
   push-to-start token of that device, or a per-activity token that the
   device owns.
 
-**Compatibility.** An app that does not bind yet sends its per-activity
-token only to its farmer server, which puts the token in `POST /v1/push`. The
-relay still sends such an unbound token (a token that no device holds).
-When `REQUIRE_BOUND_ACTIVITY_TOKEN` is `true`, the relay refuses it with
-`403 activity_token_unbound`. Set the flag after the app sends
-`liveActivityToken` with each new activity token.
+- A push that carries a token that no device holds gets
+  `403 activity_token_unbound`. The relay sends nothing. The app binds
+  each new activity token with `liveActivityToken` before the server uses it.
 
 ### `DELETE /v1/devices/:relayId`
 
@@ -162,7 +158,7 @@ own server knows the relay id (ADR 0006).
 | `400` | `invalid_body`, `invalid_json` | The body is wrong. | Fix the request. |
 | `404` | `unknown_relay_id` | The relay does not know the id. | Delete the `mobile_device` row. |
 | `409` | `activity_gone` | The per-activity token is dead: the Live Activity ended. | Forget the activity token. Keep the row. |
-| `403` | `activity_token_mismatch`, `activity_token_unbound` | The per-activity token belongs to another device, or is not bound and the relay needs a bound token. | Do not retry. Keep the row. |
+| `403` | `activity_token_mismatch`, `activity_token_unbound` | The per-activity token belongs to another device, or no device holds it. | Do not retry. Keep the row. |
 | `409` | `start_token_gone` | The push-to-start token is dead. The relay cleared it. | Keep the row. |
 | `409` | `no_start_token` | A push-to-start, but the device gave no push-to-start token. | Keep the row. |
 | `410` | `device_gone` | APNs or FCM says that the device token is dead. The relay deleted the device. | Delete the `mobile_device` row. |

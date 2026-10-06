@@ -24,11 +24,6 @@ export type RelayDependencies = {
 	limiters: RelayLimiters;
 	/** The header `TRUSTED_IP_HEADER` names, or null for the socket only. */
 	trustedIpHeader: string | null;
-	/** True: a push refuses a per-activity token that the device did not bind
-	 *  with its secret. False (the default) still sends an unbound token, for
-	 *  an app that does not bind yet. A token bound to another device is
-	 *  always refused. */
-	requireBoundActivityToken?: boolean;
 	log: Log;
 	now: () => number;
 };
@@ -230,14 +225,12 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		}
 		if (activityToken !== undefined) {
 			const owner = store.activityTokenOwner(activityToken);
-			if (owner !== null && owner !== device.relayId) {
+			if (owner === null) return error(403, "activity_token_unbound");
+			if (owner !== device.relayId) {
 				log(
 					`[push-relay] refused activity token of another device relay=${relayIdHint(device.relayId)}`,
 				);
 				return error(403, "activity_token_mismatch");
-			}
-			if (owner === null && deps.requireBoundActivityToken) {
-				return error(403, "activity_token_unbound");
 			}
 		}
 

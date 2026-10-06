@@ -38,7 +38,6 @@ const setup = (
 		android?: Sender;
 		limits?: Partial<RelayLimits>;
 		trustedIpHeader?: string | null;
-		requireBoundActivityToken?: boolean;
 	} = {},
 ) => {
 	const store = DeviceStore.open(":memory:");
@@ -56,7 +55,6 @@ const setup = (
 			options.trustedIpHeader === undefined
 				? "cf-connecting-ip"
 				: options.trustedIpHeader,
-		requireBoundActivityToken: options.requireBoundActivityToken,
 		log: (line) => logs.push(line),
 		now: () => clock,
 	});
@@ -349,6 +347,7 @@ describe("push routing", () => {
 			ios: async () => ({ outcome: "activity_gone" }),
 		});
 		const { relayId } = await register(call);
+		store.bindActivityToken(relayId, "e".repeat(64), 0);
 
 		const response = await call("POST", "/v1/push", {
 			relayId,
@@ -473,11 +472,12 @@ describe("dry-run mode", () => {
 	test("with no credentials a push is a 202 and a log line without the ciphertext or a token", async () => {
 		const logs: string[] = [];
 		const log = (line: string) => logs.push(line);
-		const { call, logs: relayLogs } = setup({
+		const { call, store, logs: relayLogs } = setup({
 			ios: dryRunSender(log),
 			android: dryRunSender(log),
 		});
 		const { relayId, deviceSecret } = await register(call);
+		store.bindActivityToken(relayId, "e".repeat(64), 0);
 
 		const response = await call("POST", "/v1/push", {
 			relayId,
@@ -522,10 +522,11 @@ describe("rate limits", () => {
 	});
 
 	test("Live Activity pushes have their own budget", async () => {
-		const { call } = setup({
+		const { call, store } = setup({
 			limits: { pushPerMinute: 1, liveActivityPerMinute: 3 },
 		});
 		const { relayId } = await register(call);
+		store.bindActivityToken(relayId, "e".repeat(64), 0);
 		const alert = { relayId, kind: "alert", ciphertext: CIPHERTEXT };
 		const update = {
 			relayId,
@@ -899,18 +900,8 @@ describe("Live Activity token binding", () => {
 		expect(sent).toHaveLength(0);
 	});
 
-	test("an unbound token still goes through, for an app that does not bind", async () => {
+	test("an unbound token is refused", async () => {
 		const { call, sent } = setup();
-		const device = await register(call);
-
-		const response = await pushActivity(call, device.relayId, ACTIVITY_A);
-
-		expect(response.status).toBe(200);
-		expect(sent).toHaveLength(1);
-	});
-
-	test("an unbound token is refused when the relay requires binding", async () => {
-		const { call, sent } = setup({ requireBoundActivityToken: true });
 		const device = await register(call);
 
 		const response = await pushActivity(call, device.relayId, ACTIVITY_A);

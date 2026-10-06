@@ -11,8 +11,6 @@ export type RelayConfig = {
 	apns: ApnsConfig | null;
 	/** Null: no FCM credentials, so Android pushes are a dry run. */
 	fcm: ServiceAccount | null;
-	/** True: a push refuses a per-activity token that the device did not bind. */
-	requireBoundActivityToken: boolean;
 };
 
 const optionalText = z
@@ -30,9 +28,6 @@ const environment = z.object({
 	APNS_TEAM_ID: optionalText,
 	APNS_TOPIC: optionalText,
 	FCM_SERVICE_ACCOUNT_JSON: optionalText,
-	REQUIRE_BOUND_ACTIVITY_TOKEN: z
-		.enum(["true", "false", "1", "0", ""])
-		.optional(),
 });
 
 export const DEFAULT_DB_PATH = "./data/relay.sqlite";
@@ -89,8 +84,5 @@ export const readConfig = (
 		trustedIpHeader: parsed.TRUSTED_IP_HEADER,
 		apns,
 		fcm,
-		requireBoundActivityToken:
-			parsed.REQUIRE_BOUND_ACTIVITY_TOKEN === "true" ||
-			parsed.REQUIRE_BOUND_ACTIVITY_TOKEN === "1",
 	};
 };

@@ -172,10 +172,9 @@ opens the sealed payload with the phone's private key. Use
   `liveActivityToken` at the same time. The app sends `null` when the native
   event `onActivityEnded` reports that no activity is active. A failed relay
   call is logged, and the next `syncPush` sends the token again. Android
-  never sends it. No one ran this on a device with APNs.
-  Remaining step: after this app version is out, set
-  `REQUIRE_BOUND_ACTIVITY_TOKEN=true` on the relay
-  (`apps/push-relay/README.md`, "Live Activity tokens").
+  never sends it. The relay refuses a push to a token that no device
+  bound (`apps/push-relay/README.md`, "Live Activity tokens"). No one ran
+  this on a device with APNs.
 
 - ADR 0005 makes `@better-auth/expo` the main sign-in, and the device flow the
   fallback. The phone routes take the session only as a bearer token. The app

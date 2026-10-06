@@ -45,7 +45,6 @@ const relay = createRelay({
 	senders: { ios, android },
 	limiters: createLimiters(DEFAULT_LIMITS),
 	trustedIpHeader: trustedIpHeader(config.trustedIpHeader),
-	requireBoundActivityToken: config.requireBoundActivityToken,
 	log,
 	now,
 });
