@@ -3,7 +3,7 @@ import { z } from "zod";
 
 /** One key, holding JSON: a secure-store key allows only a few characters,
  *  and one write keeps the server and its token together. */
-const KEY = "farmer.session";
+export const SESSION_KEY = "farmer.session";
 
 const storedSession = z.object({
 	origin: z.string().min(1),
@@ -13,7 +13,7 @@ const storedSession = z.object({
 export type StoredSession = z.output<typeof storedSession>;
 
 export const readSession = async (): Promise<StoredSession | null> => {
-	const raw = await SecureStore.getItemAsync(KEY);
+	const raw = await SecureStore.getItemAsync(SESSION_KEY);
 	if (!raw) return null;
 	try {
 		const parsed = storedSession.safeParse(JSON.parse(raw));
@@ -24,6 +24,6 @@ export const readSession = async (): Promise<StoredSession | null> => {
 };
 
 export const writeSession = (session: StoredSession) =>
-	SecureStore.setItemAsync(KEY, JSON.stringify(session));
+	SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
 
-export const wipeSession = () => SecureStore.deleteItemAsync(KEY);
+export const wipeSession = () => SecureStore.deleteItemAsync(SESSION_KEY);

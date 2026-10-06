@@ -55,6 +55,14 @@ export const writeItem = (key: Key, value: string): Promise<void> =>
 export const deleteItem = (key: Key): Promise<void> =>
 	SecureStore.deleteItemAsync(key, optionsFor(key));
 
+/** Delete every push item, in the app's Keychain and in the app group. For
+ *  the first launch after an install (`src/session/first-launch.ts`). */
+export const deleteAllPushItems = async (): Promise<void> => {
+	await Promise.all(
+		Object.values(KEYS).map((key) => deleteItem(key).catch(() => undefined)),
+	);
+};
+
 /** The relay registration of this installation. */
 const relayRegistration = z.object({
 	/** The relay this registration belongs to. A Server that names another

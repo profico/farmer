@@ -12,6 +12,7 @@ import {
 import { transportFor } from "../api/transport";
 import { unregisterDevice } from "../push/registration";
 import { revokesOnSignOut } from "./credential";
+import { wipeAfterReinstall } from "./first-launch";
 import {
 	readSession,
 	type StoredSession,
@@ -56,7 +57,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		let live = true;
-		readSession()
+		// iOS: the Keychain items of an earlier install go before the first
+		// read, so a new install does not sign in as that install's person.
+		wipeAfterReinstall()
+			.then(readSession)
 			.then((stored) => {
 				if (!live) return;
 				setState(

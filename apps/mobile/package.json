@@ -15,7 +15,7 @@
 		"format": "oxfmt --write",
 		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
-		"test": "bun test"
+		"test": "bun test --isolate"
 	},
 	"dependencies": {
 		"@better-auth/expo": "1.6.23",
