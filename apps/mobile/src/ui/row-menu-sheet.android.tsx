@@ -11,8 +11,9 @@ import { SPACE, TYPE } from "./type";
  * The Material 3 modal bottom sheet, with one row for each item. The sheet is
  * Compose. The rows are React Native, so they use the icon set of the app.
  * The file does not import `components.tsx`, which would make a cycle.
- * An item runs after the sheet is gone, so a confirmation opens on a clear
- * screen.
+ * An item runs in the same tick as `onClose`, while the sheet slides away.
+ * A confirmation opens in its own dialog window, above the sheet, so it
+ * does not wait for the sheet.
  */
 export function RowMenuSheet({ title, items, onClose }: RowMenuSheetProps) {
 	const palette = usePalette();

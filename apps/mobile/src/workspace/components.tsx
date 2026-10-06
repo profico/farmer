@@ -140,7 +140,8 @@ export function SearchField({
 					accessibilityRole="button"
 					accessibilityLabel="Clear the search"
 					onPress={() => onChangeText("")}
-					hitSlop={8}
+					// The icon is 20dp: 14dp on each side makes the 48dp target.
+					hitSlop={{ top: 14, bottom: 14, left: 14, right: 12 }}
 				>
 					<Icon name="close" size={20} color={palette.onSurfaceVariant} />
 				</Pressable>

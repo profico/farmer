@@ -128,12 +128,12 @@ export function ListRow({
 	return menu.wrap(
 		<Pressable
 			{...menu.props}
-			// A row that opens or picks something is one element with one label.
-			// A row without a press stays open, so a button at its end is
-			// reachable on its own.
-			accessible={Boolean(onPress)}
+			// A row that opens or picks something, or that has a long-press menu,
+			// is one element with one label. A row with neither stays open, so a
+			// button at its end is reachable on its own.
+			accessible={Boolean(onPress) || Boolean(menu.props.onLongPress)}
 			accessibilityLabel={
-				onPress
+				onPress || menu.props.onLongPress
 					? (accessibilityLabel ??
 						[title, subtitle].filter((part) => part).join(", "))
 					: undefined
@@ -141,7 +141,7 @@ export function ListRow({
 			accessibilityRole={onPress ? "button" : undefined}
 			accessibilityState={{ selected }}
 			onPress={onPress}
-			disabled={!onPress}
+			disabled={!onPress && !menu.props.onLongPress}
 			android_ripple={{ color: palette.outlineVariant }}
 			style={({ pressed }) => ({
 				flexDirection: "row",

@@ -13,9 +13,12 @@ import { CORNER } from "./corner";
 import { springOrFade, useMotionPreference } from "./motion";
 import type { SegmentedControlProps } from "./segmented";
 import { usePalette } from "./theme";
+import { verticalSlop } from "./touch-target";
 
 const HEIGHT = 40;
 const FULL = HEIGHT / 2;
+/** The touch target is 48dp high, as the drawn button is 40dp. */
+const SLOP = verticalSlop(HEIGHT);
 
 /**
  * The Material 3 Expressive connected button group. Each option is its own
@@ -34,6 +37,7 @@ export function SegmentedControl<T extends string>({
 	return (
 		<View
 			accessibilityRole="tablist"
+			hitSlop={SLOP}
 			style={{ flexDirection: "row", gap: 2, alignSelf: "stretch" }}
 		>
 			{options.map((option, index) => (
@@ -101,6 +105,7 @@ function Segment({
 	};
 	return (
 		<Animated.View
+			hitSlop={SLOP}
 			style={[
 				{
 					flex: 1,
@@ -116,6 +121,7 @@ function Segment({
 			<Pressable
 				accessibilityRole="tab"
 				accessibilityState={{ selected }}
+				hitSlop={SLOP}
 				onPress={onPress}
 				onPressIn={() => press(1)}
 				onPressOut={() => press(0)}

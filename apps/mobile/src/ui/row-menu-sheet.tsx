@@ -6,8 +6,9 @@ export type RowMenuSheetProps = {
 	onClose: () => void;
 };
 
-/** iOS opens the action sheet of the system from the provider, so there is
- *  no sheet to draw. Android draws a bottom sheet (`row-menu-sheet.android.tsx`). */
+/** iOS draws a context menu of the system on the row itself
+ *  (`row-menu-target.ios.tsx`), so there is no sheet to draw. Android draws a
+ *  bottom sheet (`row-menu-sheet.android.tsx`). */
 export function RowMenuSheet(_props: RowMenuSheetProps) {
 	return null;
 }

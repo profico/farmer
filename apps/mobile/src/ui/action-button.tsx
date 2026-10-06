@@ -9,8 +9,10 @@ export type ActionButtonProps = {
 	onPress: () => void;
 	/** `tonal` and `elevated` are for Android. iOS draws them as `filled`. */
 	variant?: "filled" | "tonal" | "elevated" | "outlined" | "text";
-	/** Android: `xs` 32dp, `s` 40dp and `m` 56dp high. iOS has one size. */
-	size?: "xs" | "s" | "m";
+	/** The text of the label. Android draws it in the error colour, for an
+	 *  action that deletes something. iOS has its own button for that
+	 *  (`destructive-button.ios.tsx`). */
+	tone?: "default" | "error";
 	disabled?: boolean;
 	/** iOS: the button fills the width, as the main button of a form does.
 	 *  Android ignores it. */

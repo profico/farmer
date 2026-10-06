@@ -9,8 +9,9 @@ export type DestructiveButtonProps = {
 };
 
 /**
- * A button for an action that deletes something. On iOS it is red
- * (`destructive-button.ios.tsx`). Android keeps the plain text button.
+ * A button for an action that deletes something. On iOS it is a red row
+ * (`destructive-button.ios.tsx`). Android draws a text button in the error
+ * colour.
  */
 export function DestructiveButton({
 	label,
@@ -22,6 +23,7 @@ export function DestructiveButton({
 			<ActionButton
 				label={label}
 				variant="text"
+				tone="error"
 				onPress={onPress}
 				disabled={disabled}
 			/>

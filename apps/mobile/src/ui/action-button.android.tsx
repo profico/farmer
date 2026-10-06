@@ -4,6 +4,7 @@ import Animated from "react-native-reanimated";
 import type { ActionButtonProps } from "./action-button";
 import { evenCorners, useCornerMorph } from "./press-morph";
 import { usePalette } from "./theme";
+import { verticalSlop } from "./touch-target";
 import { TYPE } from "./type";
 
 // The Material 3 Expressive button, drawn in React Native. The Compose
@@ -11,23 +12,22 @@ import { TYPE } from "./type";
 // cannot morph its corners while a finger holds it. iOS keeps the system
 // button (`action-button.tsx`).
 
-/** The height, the side padding, the label and the pressed corner of each
- *  size, from the Material 3 Expressive button specification. */
-const SIZES = {
-	xs: { height: 32, padding: 12, label: TYPE.labelLarge, pressed: 8 },
-	s: { height: 40, padding: 16, label: TYPE.labelLarge, pressed: 8 },
-	m: { height: 56, padding: 24, label: TYPE.titleMedium, pressed: 12 },
-} as const;
+/** The small button of the Material 3 Expressive specification: the height,
+ *  the side padding, the label and the pressed corner. */
+const SPEC = { height: 40, padding: 16, label: TYPE.labelLarge, pressed: 8 };
+
+/** The touch target is 48dp high, as the drawn button is 40dp. */
+const SLOP = verticalSlop(SPEC.height);
 
 export function ActionButton({
 	label,
 	onPress,
 	variant = "filled",
-	size = "s",
+	tone = "default",
 	disabled,
 }: ActionButtonProps) {
 	const palette = usePalette();
-	const spec = SIZES[size];
+	const spec = SPEC;
 	const morph = useCornerMorph(evenCorners(spec.height / 2), spec.pressed);
 	// Material 3 draws a disabled button in the on-surface colour: the
 	// container at 12% and the label at 38%. A fade of the whole button kept
@@ -51,12 +51,15 @@ export function ActionButton({
 			? palette.onPrimary
 			: variant === "tonal"
 				? palette.onSecondaryContainer
-				: palette.primary;
+				: tone === "error"
+					? palette.error
+					: palette.primary;
 	return (
 		// A row keeps the button as wide as its label in a column, as the
 		// system button is. A centered or row parent still places it.
-		<View style={{ flexDirection: "row" }}>
+		<View style={{ flexDirection: "row" }} hitSlop={SLOP}>
 			<Animated.View
+				hitSlop={SLOP}
 				style={[
 					{
 						height: spec.height,
@@ -74,6 +77,7 @@ export function ActionButton({
 					accessibilityLabel={label}
 					accessibilityState={{ disabled: Boolean(disabled) }}
 					disabled={disabled}
+					hitSlop={SLOP}
 					onPress={onPress}
 					onPressIn={morph.onPressIn}
 					onPressOut={morph.onPressOut}

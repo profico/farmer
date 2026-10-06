@@ -1,4 +1,5 @@
 import { Switch } from "@expo/ui";
+import { accessibilityLabel } from "@expo/ui/swift-ui/modifiers";
 import { use } from "react";
 import { View } from "react-native";
 
@@ -39,6 +40,9 @@ export function SwitchRow({
 						value={value}
 						onValueChange={onValueChange}
 						disabled={disabled}
+						// `label` would draw the text beside the switch. The modifier
+						// only names the control for VoiceOver.
+						modifiers={[accessibilityLabel(title)]}
 					/>
 				</ControlHost>
 			</FormRow>

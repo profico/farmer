@@ -11,7 +11,12 @@ import {
 } from "./dialog-queue";
 import { useHostTheme } from "./host";
 import { usePalette } from "./theme";
+import { verticalSlop } from "./touch-target";
 import { SPACE, TYPE } from "./type";
+
+/** A button is 40dp high; its touch target is 48dp. */
+const BUTTON_HEIGHT = 40;
+const SLOP = verticalSlop(BUTTON_HEIGHT);
 
 /**
  * The Material 3 dialog that `showDialog` queues, one at a time. The window
@@ -41,8 +46,8 @@ export function DialogHost() {
 				<RNHostView matchContents>
 					<View
 						style={{
-							// 24dp of margin each side, at most 560dp (Material 3).
-							width: Math.min(screenWidth - 2 * SPACE.xl, 560),
+							// 24dp of margin each side, from 280dp to 560dp (Material 3).
+							width: Math.max(280, Math.min(screenWidth - 2 * SPACE.xl, 560)),
 							padding: SPACE.xl,
 							borderRadius: RADIUS.dialog,
 							backgroundColor: palette.surfaceContainerHigh,
@@ -65,6 +70,7 @@ export function DialogHost() {
 							</Text>
 						) : null}
 						<View
+							hitSlop={SLOP}
 							style={{
 								flexDirection: "row",
 								flexWrap: "wrap",
@@ -84,10 +90,11 @@ export function DialogHost() {
 										// oxlint-disable-next-line react/no-array-index-key -- fixed list, text is not unique
 										key={index}
 										accessibilityRole="button"
+										hitSlop={SLOP}
 										onPress={() => pressDialogButton(dialog.id, index)}
 										android_ripple={{ color: palette.outlineVariant }}
 										style={{
-											minHeight: 40,
+											minHeight: BUTTON_HEIGHT,
 											justifyContent: "center",
 											paddingHorizontal: SPACE.m,
 											borderRadius: RADIUS.button,

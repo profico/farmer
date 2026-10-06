@@ -1,4 +1,5 @@
 import { Switch } from "@expo/ui";
+import { accessibilityLabel } from "@expo/ui/swift-ui/modifiers";
 import type { ReactNode } from "react";
 import { type ColorValue, PlatformColor, Pressable, View } from "react-native";
 
@@ -273,6 +274,9 @@ export function SettingsSwitch({
 						value={value}
 						onValueChange={onValueChange}
 						disabled={disabled}
+						// `label` would draw the text beside the switch. The modifier
+						// only names the control for VoiceOver.
+						modifiers={[accessibilityLabel(row.title)]}
 					/>
 				</ControlHost>
 			}
