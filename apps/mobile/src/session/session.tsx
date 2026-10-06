@@ -11,6 +11,7 @@ import {
 
 import { transportFor } from "../api/transport";
 import { unregisterDevice } from "../push/registration";
+import { revokesOnSignOut } from "./credential";
 import {
 	readSession,
 	type StoredSession,
@@ -34,7 +35,8 @@ type SessionState =
 export type SessionValue = {
 	state: SessionState;
 	signIn: (origin: string, token: string) => Promise<void>;
-	/** Revokes the token on the server, then forgets it here. */
+	/** Revokes a session token on the server, then forgets it here. A pasted
+	 *  API token is only forgotten: other clients can use it. */
 	signOut: () => Promise<void>;
 	/** Forgets the token here only: the server already refused it. */
 	forget: () => Promise<void>;
@@ -96,9 +98,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 		if (state.status === "signed_in") {
 			// The device row goes first, while the token is still valid.
 			await unregisterDevice(state.session);
-			// Signing out must work offline too: a failed revoke still forgets
-			// the token here, and the session ends on the server in time.
-			await state.client.signOut().catch(() => undefined);
+			// A pasted API token can serve a script or the CLI too, so the app
+			// does not revoke it. The person revokes it in Preferences.
+			if (revokesOnSignOut(state.session.token)) {
+				// Signing out must work offline too: a failed revoke still
+				// forgets the token here, and the session ends on the server in
+				// time.
+				await state.client.signOut().catch(() => undefined);
+			}
 		}
 		await forget();
 	}, [state, forget]);

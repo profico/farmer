@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
+import { API_TOKEN_PREFIX } from "../src/session/credential";
 import {
 	type SignInOutcome,
 	signInWithPassword,
@@ -33,8 +34,6 @@ import { Icon } from "../src/ui/icon";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
-
-const API_TOKEN_PREFIX = "fmr_";
 
 /** The API version whose `/meta` lists the sign-in methods. */
 const METHODS_API_VERSION = 2;
