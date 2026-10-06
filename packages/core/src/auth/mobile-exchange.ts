@@ -31,8 +31,7 @@ import { session, verification } from "../db/schema/auth";
  *     the `callbackURL` query intact, so `cc` is in the redirect (the proxy
  *     and the OAuth state hold the URL as the app gave it).
  *  3. The app sends the code and the verifier to `POST /mobile/exchange`. The
- *     answer is the session token, the same value that the app read from the
- *     cookie before.
+ *     answer is the session token.
  *
  * The code is 32 random bytes. The server keeps only its SHA-256, in the
  * `verification` table of better-auth, with the challenge and the id of the
@@ -41,9 +40,10 @@ import { session, verification } from "../db/schema/auth";
  * burns that one code and no other, so a hostile app that holds a code can
  * stop a sign-in but cannot make a session. The app starts the flow again.
  *
- * A callback with no `cc` is an app from before the exchange. It keeps the
- * old `cookie` link, so an old app works with a new server. The new app
- * asks for the exchange only when `/api/v1/meta` says `signInExchange`.
+ * The exchange is the only path. The link of a callback that ends at the app
+ * never carries the session: with no valid `cc` it carries
+ * `error=exchange_failed`. The app ships with the server, so no app asks for
+ * the old `cookie` link.
  */
 
 /** How long a code lives. The app redeems it as soon as the link opens. */
@@ -147,11 +147,13 @@ const exchangeBody = z.object({
 });
 
 /**
- * Rewrites the `farmer://` redirect of a provider callback: the session
- * cookie that `expo()` added becomes a code. Without `cc` the link stays as
- * `expo()` made it (an app from before the exchange). With `cc` the session
- * never reaches the link: a `cc` that is not a challenge, or a callback with
- * no new session, gives `error=exchange_failed` and no cookie.
+ * Rewrites the redirect of a callback that ends at the app (a link that is
+ * not http or https). The session cookie that `expo()` added never stays in
+ * the link. A valid `cc` and a new session give `code`. A callback that has
+ * an `error` already (a refused sign-in) keeps that error, with no code,
+ * because the callback still sets a cookie (the one that clears the state
+ * cookie). Any other callback gives `error=exchange_failed`: a `cc` that is
+ * not a challenge, no `cc`, or no new session.
  */
 export const rewriteExchangeRedirect = async (
 	location: string,
@@ -164,12 +166,12 @@ export const rewriteExchangeRedirect = async (
 		return null;
 	}
 	if (url.protocol === "http:" || url.protocol === "https:") return null;
-	if (!url.searchParams.has("cookie")) return null;
 	const challenge = url.searchParams.get("cc");
-	if (challenge === null) return null;
 	url.searchParams.delete("cookie");
 	url.searchParams.delete("cc");
-	if (newSessionId && CHALLENGE.test(challenge)) {
+	if (url.searchParams.has("error")) {
+		// The error is the reason for the app to show. No code is made.
+	} else if (newSessionId && challenge !== null && CHALLENGE.test(challenge)) {
 		url.searchParams.set(
 			"code",
 			await mintExchangeCode(newSessionId, challenge),
@@ -191,14 +193,21 @@ export const mobileExchange = () =>
 		hooks: {
 			after: [
 				{
+					// The same paths as the hook of `expo()`, so every redirect that
+					// `expo()` can add a cookie to passes here.
 					matcher: (context) =>
 						!!(
 							context.path?.startsWith("/callback") ||
-							context.path?.startsWith("/oauth2/callback")
+							context.path?.startsWith("/oauth2/callback") ||
+							context.path?.startsWith("/magic-link/verify") ||
+							context.path?.startsWith("/verify-email")
 						),
 					handler: createAuthMiddleware(async (ctx) => {
 						const location = ctx.context.responseHeaders?.get("location");
 						if (!location) return;
+						if (location.includes("/oauth-proxy-callback")) return;
+						// `expo()` adds the cookie only to a trusted origin.
+						if (!ctx.context.isTrustedOrigin(location)) return;
 						const rewritten = await rewriteExchangeRedirect(
 							location,
 							ctx.context.newSession?.session.id ?? null,

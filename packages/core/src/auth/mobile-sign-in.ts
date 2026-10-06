@@ -11,7 +11,8 @@ import { googleCredentials } from "./sign-in-methods";
  * and a `callbackURL` on the `farmer://` scheme. The plugin copies that header
  * into `origin`, so the origin check accepts the request. After the provider
  * callback, the plugin adds the session cookie to the `farmer://` redirect as
- * the `cookie` query parameter, and the app keeps it.
+ * the `cookie` query parameter. `mobile-exchange.ts` replaces it with a
+ * one-time code, so the link never carries the session.
  *
  * `farmer://` is the only origin that this file adds. A trusted origin that
  * is not http(s) matches by prefix (better-auth's `matchesOriginPattern`), so

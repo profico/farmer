@@ -1,7 +1,8 @@
 /**
- * Phase 0 of docs/plans/mobile-app.md: drive the mobile sign-in as the
- * `@better-auth/expo` client does, against a running dev server and a mock
- * OpenID Connect provider. No phone. The result is in ADR 0005.
+ * Drive the mobile sign-in as the `@better-auth/expo` client does, against a
+ * running dev server and a mock OpenID Connect provider. No phone. The
+ * result is in ADR 0005. It covers the exchange code: the `cc` challenge, the
+ * `code` in the link, the one use, and the wrong verifier.
  *
  * Start these first:
  *
@@ -25,6 +26,8 @@
  * what the proxy, the provider and the callback set. One jar would pass even
  * if the proxy never set the state cookie.
  */
+
+import { createHash, randomBytes } from "node:crypto";
 
 import { z } from "zod";
 
@@ -108,16 +111,6 @@ const browserLeg = async (authorizationURL: string) => {
 	return { proxy, final: callback };
 };
 
-/** The session token inside the deep link's `cookie` parameter. */
-const bearerFrom = (deepLink: string) => {
-	const setCookie = new URL(deepLink).searchParams.get("cookie") ?? "";
-	const match = /(?:__Secure-)?better-auth\.session_token=([^;]+)/.exec(
-		setCookie,
-	);
-	const signed = match?.[1] ? decodeURIComponent(match[1]) : "";
-	return signed.split(".")[0] ?? "";
-};
-
 const ensureSource = async (providerId: string, issuer: string) => {
 	const rows = await instanceSettingsService.listOAuthProviders();
 	if (rows.some((row) => row.providerId === providerId)) return;
@@ -141,7 +134,8 @@ console.log("trustedOrigins:", (await auth.$context).trustedOrigins);
 // The dev server reads the settings again within five seconds.
 await Bun.sleep(6_000);
 
-// 1. The OpenID Connect source, end to end.
+// 1. The OpenID Connect source, end to end, with no challenge: the exchange is
+// the only path, so the link must not carry a session.
 const oidc = await start("/sign-in/oauth2", {
 	providerId: "spike-oidc",
 	callbackURL: APP_CALLBACK,
@@ -160,21 +154,131 @@ if (oidc.parsed.success) {
 		`${proxy.status} ${redact(proxy.location)}`,
 	);
 	const location = final?.location ?? "";
+	const params = new URL(location || "farmer://x").searchParams;
 	check(
-		"OIDC callback: 302 to farmer://auth-callback with the cookie",
-		location.startsWith(`${APP_CALLBACK}?`) && location.includes("cookie="),
+		"No cc: 302 to farmer://auth-callback with error=exchange_failed, no cookie",
+		location.startsWith(`${APP_CALLBACK}?`) &&
+			params.get("error") === "exchange_failed" &&
+			!params.has("cookie") &&
+			!params.has("code") &&
+			!location.includes("session_token"),
 		`${final?.status} ${redact(location)}`,
 	);
-	const token = bearerFrom(location);
-	const me = await fetch(`${FARMER}/api/v1/me`, {
-		headers: { authorization: `Bearer ${token}` },
+}
+
+// 1b. The exchange code (ADR 0005). The app sends an S256 challenge as `cc`
+// in the `callbackURL`. The link must carry `code` and no `cookie`, and the
+// code must buy a session only once and only with the verifier.
+const FLOW_CALLBACK = `${APP_CALLBACK}?flow=spike-nonce`;
+const makeVerifier = () => randomBytes(32).toString("base64url");
+const challengeOf = (verifier: string) =>
+	createHash("sha256").update(verifier).digest("base64url");
+
+const exchangeLeg = async (verifier: string) => {
+	const callbackURL = `${FLOW_CALLBACK}&cc=${encodeURIComponent(challengeOf(verifier))}`;
+	const started = await start("/sign-in/oauth2", {
+		providerId: "spike-oidc",
+		callbackURL,
+		errorCallbackURL: callbackURL,
 	});
+	if (!started.parsed.success) return { started, location: "" };
+	const { proxy, final } = await browserLeg(started.parsed.data.url);
+	return { started, proxy, location: final?.location ?? "" };
+};
+
+const redeem = (code: string, verifier: string) =>
+	fetch(`${FARMER}/api/auth/mobile/exchange`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ code, verifier }),
+	});
+
+const tokenFrom = async (response: Response) => {
+	const parsed = z
+		.object({ token: z.string() })
+		.safeParse(await response.json().catch(() => null));
+	return parsed.success ? parsed.data.token : "";
+};
+
+const verifier = makeVerifier();
+const leg = await exchangeLeg(verifier);
+check(
+	"cc: the proxy accepts a callbackURL with the cc query",
+	leg.started.status === 200 && leg.proxy?.status === 302,
+	`${leg.started.status} ${leg.proxy?.status} ${leg.proxy?.location ? "to the provider" : ""}`,
+);
+const link = leg.location ? new URL(leg.location) : null;
+const code = link?.searchParams.get("code") ?? "";
+check(
+	"cc: the farmer:// link has code and flow, and no cookie or cc",
+	link !== null &&
+		leg.location.startsWith(`${APP_CALLBACK}?`) &&
+		code.length > 0 &&
+		link.searchParams.get("flow") === "spike-nonce" &&
+		!link.searchParams.has("cookie") &&
+		!link.searchParams.has("cc") &&
+		!leg.location.includes("session_token"),
+	redact(leg.location) ?? "",
+);
+const wrong = await redeem(code, makeVerifier());
+check(
+	"cc: a wrong verifier is refused",
+	wrong.status === 400,
+	`${wrong.status} ${await wrong.text()}`,
+);
+const afterWrong = await redeem(code, verifier);
+check(
+	"cc: the wrong attempt burned the code",
+	afterWrong.status === 400,
+	`${afterWrong.status}`,
+);
+
+const leg2 = await exchangeLeg(verifier);
+const code2 = new URL(leg2.location || "farmer://x").searchParams.get("code");
+const good = await redeem(code2 ?? "", verifier);
+const token = await tokenFrom(good);
+check(
+	"cc: the right verifier returns a token",
+	good.status === 200 && token.length > 0,
+	`${good.status}`,
+);
+const meExchange = await fetch(`${FARMER}/api/v1/me`, {
+	headers: { authorization: `Bearer ${token}` },
+});
+check(
+	"cc: the token works as a bearer on GET /api/v1/me",
+	meExchange.status === 200,
+	`${meExchange.status} ${(await meExchange.text()).slice(0, 120)}`,
+);
+const again = await redeem(code2 ?? "", verifier);
+check(
+	"cc: a second exchange is refused",
+	again.status === 400,
+	`${again.status}`,
+);
+
+const leg3 = await exchangeLeg(verifier);
+const badChallenge = await start("/sign-in/oauth2", {
+	providerId: "spike-oidc",
+	callbackURL: `${FLOW_CALLBACK}&cc=short`,
+	errorCallbackURL: `${FLOW_CALLBACK}&cc=short`,
+});
+if (badChallenge.parsed.success) {
+	const { final } = await browserLeg(badChallenge.parsed.data.url);
+	const params = new URL(final?.location ?? "farmer://x").searchParams;
 	check(
-		"GET /api/v1/me with the session token as a bearer",
-		me.status === 200,
-		`${me.status} ${(await me.text()).slice(0, 120)}`,
+		"cc: a cc that is not a challenge gives error=exchange_failed, no session",
+		params.get("error") === "exchange_failed" &&
+			!params.has("cookie") &&
+			!params.has("code"),
+		`${final?.status} ${redact(final?.location ?? null)}`,
 	);
 }
+check(
+	"cc: a third flow also returns a code",
+	new URL(leg3.location || "farmer://x").searchParams.has("code"),
+	redact(leg3.location) ?? "",
+);
 
 // 2. A refused sign-in comes back to the app as an error, with no cookie.
 const stranger = await start("/sign-in/oauth2", {
@@ -187,8 +291,8 @@ if (stranger.parsed.success) {
 	const location = final?.location ?? "";
 	// The `error` is the gate's message with "_" for each space, not its
 	// code: genericOAuth's callback gets the refusal back from
-	// `handleOAuthUserInfo` as a string. The `cookie` parameter carries only
-	// the expired state cookie, never a session.
+	// `handleOAuthUserInfo` as a string. The link has no `cookie` and no
+	// `code`.
 	const params = new URL(location).searchParams;
 	check(
 		"Refused sign-in: farmer://auth-callback?error=..., no session",
@@ -199,6 +303,27 @@ if (stranger.parsed.success) {
 	);
 } else {
 	check("Refused sign-in: start", false, `${stranger.status} ${stranger.text}`);
+}
+
+// 2b. The same refusal with a cc: the provider's error must reach the app
+// as it did before, and no session or code may be in the link.
+const strangerCc = await start("/sign-in/oauth2", {
+	providerId: "stranger-oidc",
+	callbackURL: `${FLOW_CALLBACK}&cc=${challengeOf(makeVerifier())}`,
+	errorCallbackURL: `${FLOW_CALLBACK}&cc=${challengeOf(makeVerifier())}`,
+});
+if (strangerCc.parsed.success) {
+	const { final } = await browserLeg(strangerCc.parsed.data.url);
+	const params = new URL(final?.location ?? "farmer://x").searchParams;
+	check(
+		"cc, refused sign-in: the provider's error reaches the app, no code",
+		(params.get("error") ?? "").startsWith("This_instance_does_not") &&
+			!params.has("cookie") &&
+			!params.has("code"),
+		`${final?.status} ${redact(final?.location ?? null)}`,
+	);
+} else {
+	check("cc, refused sign-in: start", false, `${strangerCc.status}`);
 }
 
 // 3. Google: the start and the proxy. The callback needs Google itself, and

@@ -209,28 +209,47 @@ describe("the redirect", () => {
 			linkWith({ cc: challengeFor(VERIFIER), cookie: SET_COOKIE }),
 			null,
 		);
-		expect(present(out, "the rewritten link")).not.toContain(TOKEN);
+		const url = new URL(present(out, "the rewritten link"));
+		expect(url.toString()).not.toContain(TOKEN);
+		expect(url.searchParams.get("error")).toBe("exchange_failed");
+		expect(url.searchParams.has("code")).toBe(false);
 	});
 
-	test("leaves the link of an app from before the exchange", async () => {
-		expect(
-			await rewriteExchangeRedirect(
-				linkWith({ cookie: SET_COOKIE }),
-				sessionId,
-			),
-		).toBeNull();
+	test("never leaves the cookie when the link has no challenge", async () => {
+		const out = await rewriteExchangeRedirect(
+			linkWith({ cookie: SET_COOKIE }),
+			sessionId,
+		);
+		const url = new URL(present(out, "the rewritten link"));
+		expect(url.toString()).not.toContain(TOKEN);
+		expect(url.searchParams.has("cookie")).toBe(false);
+		expect(url.searchParams.get("error")).toBe("exchange_failed");
+		expect(url.searchParams.has("code")).toBe(false);
 	});
 
-	test("leaves a web redirect and a refusal alone", async () => {
+	test("keeps the error of a refused sign-in, with no cookie or code", async () => {
+		// The callback of a refusal still sets a cookie (the state cookie).
+		const out = await rewriteExchangeRedirect(
+			linkWith({
+				cc: challengeFor(VERIFIER),
+				cookie: SET_COOKIE,
+				error: "This_instance_does_not_accept_new_accounts.",
+			}),
+			null,
+		);
+		const url = new URL(present(out, "the rewritten link"));
+		expect(url.searchParams.get("error")).toBe(
+			"This_instance_does_not_accept_new_accounts.",
+		);
+		expect(url.searchParams.has("cookie")).toBe(false);
+		expect(url.searchParams.has("cc")).toBe(false);
+		expect(url.searchParams.has("code")).toBe(false);
+	});
+
+	test("leaves a web redirect alone", async () => {
 		expect(
 			await rewriteExchangeRedirect(
 				"https://x.example/?cc=a&cookie=b",
-				sessionId,
-			),
-		).toBeNull();
-		expect(
-			await rewriteExchangeRedirect(
-				linkWith({ cc: challengeFor(VERIFIER), error: "access_denied" }),
 				sessionId,
 			),
 		).toBeNull();

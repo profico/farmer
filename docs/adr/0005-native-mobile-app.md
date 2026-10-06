@@ -43,9 +43,7 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   `minMobileVersion` and the server's sign-in methods. The app refuses a
   server that is too old, and the server can tell an old app to update. A
   mismatch then shows as one clear message, not as a 404 in the middle of a
-  screen. A `/meta` with no `apiVersion` is a server from before this record:
-  the app treats it as version 1, the member's time loop, and hides what that
-  version cannot serve.
+  screen.
 - **Sign-in uses `@better-auth/expo`.** The server adds the `expo()` plugin
   and puts `farmer://` in `trustedOrigins` in code, so an operator has nothing
   to configure. The app shows one native button for each method in `/meta`.
@@ -81,10 +79,13 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   is built on it.
 - Spike, 6 October 2026: pass. `packages/core/scripts/mobile-sign-in-spike.ts`
   drove `signIn.oauth2` against a mock OIDC provider, as `expoClient` does. The
-  callback sent the browser to `farmer://auth-callback?cookie=<Set-Cookie>`,
-  and the session token from that cookie gave a 200 on `GET /api/v1/me` as a
-  bearer. The Google start and proxy pass too; the Google callback runs
-  through the same hook. The device flow stays the fallback.
+  callback sent the browser to `farmer://auth-callback?cookie=<Set-Cookie>`
+  (the plugin's own link, before the exchange below), and the session token
+  from that cookie gave a 200 on `GET /api/v1/me` as a bearer. The Google
+  start and proxy pass too; the Google callback runs through the same hook.
+  The device flow stays the fallback. The script now covers the exchange:
+  the code in the link, the one use, the wrong verifier, and a refused
+  sign-in with a challenge.
 - The plugin's `/expo-authorization-proxy` was an open redirect to any https
   URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
   OIDC source, so a source whose authorization endpoint is on a different
@@ -102,18 +103,18 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   the code and the verifier to `POST /api/auth/mobile/exchange` and gets the
   session token. A hostile app that reads the link has the code and the
   challenge, not the verifier, so it cannot redeem the code. The app also
-  keeps its nonce (a forced sign-in) and refuses a `cookie` in the link of an
-  exchange flow. `GET /api/v1/meta` answers `signInExchange: true`. The
-  design needed no fork of `@better-auth/expo`: the plugin keeps the query of
-  the `callbackURL`, and plugin hooks run in list order.
+  keeps its nonce (a forced sign-in) and reads a code and nothing else from
+  the link. The design needed no fork of `@better-auth/expo`: the plugin
+  keeps the query of the `callbackURL`, and plugin hooks run in list order.
   - **Limit:** a hostile app that holds the code can still burn it with a
     wrong verifier, so the person must start the sign-in again. It cannot
     make a session.
-  - **Compatibility:** a server with no `signInExchange` in `/meta` is older
-    than this change. The new app then sends no challenge and reads the
-    session from the link, as before. An old app on a new server sends no
-    `cc`, and the server leaves the old `cookie` link as it was. Remove that
-    path when `minMobileVersion` passes the first app with the exchange.
+  - **The exchange is the only path.** The app is not published yet, and it
+    ships with the server, so no app uses the old `cookie` link. A callback
+    that ends at the app never carries a `cookie`: with no valid `cc` it
+    carries `error=exchange_failed`. The hook covers every path where
+    `expo()` adds a cookie (the callbacks, `/magic-link/verify` and
+    `/verify-email`).
 - The timer surfaces on the phone (the Live Activity and the ongoing Android
   notification) show the elapsed time only. Stop opens the confirm form with
   the snapped figure, as ADR 0003 requires. Nothing confirms an entry from the
