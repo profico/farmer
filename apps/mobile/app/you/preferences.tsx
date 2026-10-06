@@ -2,6 +2,7 @@ import { remindersChannelOf } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 
+import { useAccess } from "../../src/api/capabilities";
 import { useTasks, useWorkspace } from "../../src/api/queries";
 import {
 	useFilingRules,
@@ -20,16 +21,33 @@ import {
 	SettingsSection,
 	SettingsSwitch,
 } from "../../src/ui/settings-list";
+import { DisplaySections } from "../../src/you/components/display-sections";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 import { selectableTasks } from "../../src/you/tasks";
 
 /**
- * The person's own preferences in this workspace: the tasks they use, the
- * reminders and the filing rules. The sign-in methods change in the
- * browser, so their row opens the web page.
+ * The person's own preferences: how the app looks on this phone, then, with
+ * API version 2, the tasks they use, the reminders and the filing rules.
+ * Display comes first, as on the web. It needs no server, so a server
+ * without version 2 shows only Display.
  */
 export default function PreferencesScreen() {
+	const access = useAccess();
+	if (!access.fullApi) {
+		return (
+			<YouScreen title="Preferences">
+				<DisplaySections />
+			</YouScreen>
+		);
+	}
+	return <ServerPreferences />;
+}
+
+/** The preferences that the server keeps. The sign-in methods change in the
+ *  browser, so their row opens the web page. */
+function ServerPreferences() {
 	const router = useRouter();
+	const access = useAccess();
 	const { origin, slug } = useWorkspace();
 	const tasks = useTasks();
 	const hidden = useHiddenTasks();
@@ -63,6 +81,7 @@ export default function PreferencesScreen() {
 			refreshing={notifications.isRefetching}
 			onRefresh={refresh}
 		>
+			<DisplaySections />
 			<SettingsSection footer="Tasks you switch off leave the task list, search included, wherever you log time.">
 				<SettingsLink
 					icon="tasks"
@@ -165,6 +184,20 @@ export default function PreferencesScreen() {
 					}
 				/>
 			</SettingsSection>
+
+			{access.isAdmin ? (
+				<SettingsSection
+					title="Related"
+					footer="You set when the reminders go out for the whole workspace."
+				>
+					<SettingsLink
+						icon="reminder"
+						tint="red"
+						title="Workspace reminders"
+						onPress={() => router.push("/workspace/reminders")}
+					/>
+				</SettingsSection>
+			) : null}
 		</YouScreen>
 	);
 }

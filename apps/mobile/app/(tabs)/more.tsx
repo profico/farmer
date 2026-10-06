@@ -58,20 +58,14 @@ const PAGES: (Entry & { allowed: (access: Access) => boolean })[] = [
 
 /** The person's own settings, in the groups and the order of the web's
  *  settings hub (`settings-nav.tsx`). They need API version 2, except a
- *  `local` one, which stays on the phone. The web shows Display as a part
- *  of Preferences, so it comes next to Preferences here. */
+ *  `local` one. Preferences is `local` because its Display part stays on
+ *  the phone, as on the web. Without version 2 it shows only that part. */
 const ACCOUNT: (Entry & { local?: true })[] = [
 	{
 		title: "Preferences",
 		icon: "preferences",
 		tint: "gray",
 		href: "/you/preferences",
-	},
-	{
-		title: "Display",
-		icon: "display",
-		tint: "indigo",
-		href: "/you/display",
 		local: true,
 	},
 	{
@@ -94,11 +88,14 @@ const ACCOUNT: (Entry & { local?: true })[] = [
 	},
 ];
 
+/** A row that opens a page of Farmer on the web, under the workspace. */
+type WebEntry = Omit<Entry, "href"> & { webPath: string };
+
 /** The workspace's settings, in the order of the web's settings hub, each
- *  behind the capability its routes check. `assistant` is true when the
- *  chat can be used in the workspace. */
-const WORKSPACE: (Entry & {
-	allowed: (access: Access, assistant: boolean) => boolean;
+ *  behind the capability its routes check. A row with a `webPath` opens
+ *  the web, because the screen does not fit a phone. */
+const WORKSPACE: ((Entry | WebEntry) & {
+	allowed: (access: Access) => boolean;
 })[] = [
 	{
 		title: "Organization",
@@ -150,20 +147,19 @@ const WORKSPACE: (Entry & {
 		allowed: (access) => access.isAdmin,
 	},
 	{
-		title: "Assistant settings",
-		icon: "assistant",
-		tint: "purple",
-		href: "/workspace/assistant",
-		// The web keeps these in the workspace integrations. An admin edits
-		// them. A member reads them, but only when the assistant is
-		// available: otherwise the row has nothing to show.
-		allowed: (access, assistant) => access.isAdmin || assistant,
-	},
-	{
 		title: "Webhooks",
 		icon: "webhook",
 		tint: "pink",
 		href: "/workspace/webhooks",
+		allowed: (access) => access.isAdmin,
+	},
+	{
+		// The import reads Harvest CSV exports in a worker of the browser.
+		// It does not fit a phone.
+		title: "Import",
+		icon: "upload",
+		tint: "green",
+		webPath: "import",
 		allowed: (access) => access.isAdmin,
 	},
 	{
@@ -196,9 +192,7 @@ export default function MoreScreen() {
 		? PAGES.filter((entry) => entry.allowed(access))
 		: [];
 	const accountRows = ACCOUNT.filter((entry) => access.fullApi || entry.local);
-	const workspaceRows = WORKSPACE.filter((entry) =>
-		entry.allowed(access, assistant),
-	);
+	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
 
 	const confirmSignOut = () =>
 		Alert.alert(
@@ -262,15 +256,30 @@ export default function MoreScreen() {
 			) : null}
 			{workspaceRows.length > 0 ? (
 				<SettingsSection title="Workspace">
-					{workspaceRows.map((entry) => (
-						<SettingsLink
-							key={entry.title}
-							icon={entry.icon}
-							tint={entry.tint}
-							title={entry.title}
-							onPress={() => router.push(entry.href)}
-						/>
-					))}
+					{workspaceRows.map((entry) =>
+						"webPath" in entry ? (
+							<SettingsLink
+								key={entry.title}
+								icon={entry.icon}
+								tint={entry.tint}
+								title={entry.title}
+								external
+								onPress={() =>
+									void Linking.openURL(
+										`${origin}/${slug}/settings/${entry.webPath}`,
+									)
+								}
+							/>
+						) : (
+							<SettingsLink
+								key={entry.title}
+								icon={entry.icon}
+								tint={entry.tint}
+								title={entry.title}
+								onPress={() => router.push(entry.href)}
+							/>
+						),
+					)}
 				</SettingsSection>
 			) : null}
 			{me.isPending ? (
