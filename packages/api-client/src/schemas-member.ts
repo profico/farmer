@@ -96,10 +96,20 @@ export const notificationSettingsSchema = z.object({
 	/** Reminders to log time, by push and by Slack. */
 	logReminders: z.boolean(),
 	/** `app`: the Slack kinds go to the phone when it allows notifications,
-	 *  else to Slack. `slack`: always to Slack. */
-	remindersChannel: z.enum(["app", "slack"]),
+	 *  else to Slack. `slack`: always to Slack. An open set (see the top of
+	 *  `schemas.ts`): read it with `remindersChannelOf`. */
+	remindersChannel: z.string(),
 });
 export type NotificationSettings = z.output<typeof notificationSettingsSchema>;
+
+/** The reminder channels that this client knows. */
+export type RemindersChannel = "app" | "slack";
+
+/** The channel, or null for a value of a newer server that this client does
+ *  not know. A client does not offer to change such a value: a choice of
+ *  "app" or "slack" would replace a setting that it cannot show. */
+export const remindersChannelOf = (value: string): RemindersChannel | null =>
+	value === "app" || value === "slack" ? value : null;
 
 export const hiddenTasksSchema = z.object({
 	/** The tasks the person switched off. They only narrow the task picker. */

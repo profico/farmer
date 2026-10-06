@@ -1,3 +1,4 @@
+import { remindersChannelOf } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 
@@ -101,14 +102,18 @@ export default function PreferencesScreen() {
 								update.mutate({ logReminders });
 								if (
 									logReminders &&
-									notifications.data.remindersChannel === "app"
+									remindersChannelOf(notifications.data.remindersChannel) ===
+										"app"
 								) {
 									askForApp();
 								}
 							}}
 						/>
 					</SettingsSection>
-					{pushRelay ? (
+					{/* A channel that this app does not know (a newer server)
+					    is not offered: a choice here would replace it. */}
+					{pushRelay &&
+					remindersChannelOf(notifications.data.remindersChannel) ? (
 						<SettingsSection
 							title="Send reminders to"
 							footer="The month-end reminders and the nudges go to the app only when this phone allows notifications from Farmer. If it does not, they go to Slack."
