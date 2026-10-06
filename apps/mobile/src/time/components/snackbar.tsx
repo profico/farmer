@@ -64,7 +64,10 @@ export function Snackbar({
 
 	if (!shown) return null;
 	const warning = shown.tone === "warning";
-	const ink = warning ? palette.onErrorContainer : palette.onSurface;
+	// Material draws a snackbar in the inverse colours, so that it stands
+	// out from the cards under it. The palette has no inverse roles, and
+	// the surface and its ink, swapped, are the same pair.
+	const ink = warning ? palette.onErrorContainer : palette.surface;
 	const motion = {
 		opacity: progress,
 		transform: [
@@ -89,9 +92,8 @@ export function Snackbar({
 					paddingRight: SPACE.s,
 					paddingVertical: SPACE.s,
 					minHeight: 48,
-					backgroundColor: warning
-						? palette.errorContainer
-						: palette.surfaceContainerHigh,
+					backgroundColor: warning ? palette.errorContainer : palette.onSurface,
+					elevation: 3,
 				},
 				floating ? { margin: SPACE.l } : null,
 				motion,
@@ -113,7 +115,10 @@ export function Snackbar({
 					hitSlop={8}
 					style={{ paddingHorizontal: SPACE.m, paddingVertical: SPACE.s }}
 				>
-					<Text variant="labelLarge" color={palette.primary}>
+					<Text
+						variant="labelLarge"
+						color={warning ? palette.primary : palette.primaryContainer}
+					>
 						{shown.action.label}
 					</Text>
 				</Pressable>
