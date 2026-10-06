@@ -1,6 +1,6 @@
 import type { ProjectDetail } from "@farmer/api-client";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../../../src/api/capabilities";
 import {
@@ -274,7 +274,13 @@ export default function ProjectScreen() {
 
 	return (
 		<>
-			<Stack.Screen options={{ title: project.name }} />
+			{/* On iOS the header shows the full title and the page does not
+			    repeat it. */}
+			<Stack.Screen
+				options={{
+					title: Platform.OS === "ios" ? projectTitle(project) : project.name,
+				}}
+			/>
 			<Screen
 				topInset={false}
 				refreshing={list.isRefetching}
@@ -286,7 +292,9 @@ export default function ProjectScreen() {
 					>
 						<ProjectMark icon={project.icon} name={project.name} size="large" />
 						<View style={{ flex: 1 }}>
-							<Text variant="headlineSmall">{projectTitle(project)}</Text>
+							{Platform.OS === "ios" ? null : (
+								<Text variant="headlineSmall">{projectTitle(project)}</Text>
+							)}
 							<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 								{facts.join(", ")}
 							</Text>
