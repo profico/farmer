@@ -30,7 +30,9 @@ Rules:
   `Stack.Protected` list of signed-in screens in `app/_layout.tsx`.
 - Show an entry only when the person can use it. Use `useAccess()`
   (`src/api/capabilities.ts`): `fullApi` is false for a Server before API
-  version 2, and the capabilities come from `whoami`.
+  version 2, `dayApi` is false for a Server before API version 3, and the
+  capabilities come from `whoami`. The hooks of version 3 are in
+  `src/api/day.ts`.
 - Use the settings-list kit (`src/ui/settings-list.tsx`) for a list of
   settings: `SettingsSection`, `SettingsLink`, `SettingsChoice`,
   `SettingsSwitch` and `SettingsValue`. iOS draws the grouped lists of the

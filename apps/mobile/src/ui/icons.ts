@@ -53,6 +53,12 @@ export const ICONS = {
 	wallpaper: { md: "wallpaper", sf: "photo" },
 	contrast: { md: "contrast", sf: "circle.righthalf.filled" },
 	motion: { md: "animation", sf: "figure.walk.motion" },
+	meeting: { md: "videocam", sf: "video" },
+	commit: { md: "commit", sf: "smallcircle.filled.circle" },
+	pullRequest: { md: "call-merge", sf: "arrow.triangle.merge" },
+	coffee: { md: "free-breakfast", sf: "cup.and.saucer" },
+	expand: { md: "expand-more", sf: "chevron.down" },
+	collapse: { md: "expand-less", sf: "chevron.up" },
 } as const;
 
 export type IconName = keyof typeof ICONS;

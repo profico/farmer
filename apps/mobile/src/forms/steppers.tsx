@@ -81,10 +81,12 @@ export function DayStepper({
 	day,
 	today,
 	onChange,
+	disabled,
 }: {
 	day: string;
 	today: string;
 	onChange: (day: string) => void;
+	disabled?: boolean;
 }) {
 	return (
 		<Stepper
@@ -93,6 +95,7 @@ export function DayStepper({
 			moreLabel="The day after"
 			onLess={() => onChange(addDays(day, -1))}
 			onMore={() => onChange(addDays(day, 1))}
+			disabled={disabled}
 		/>
 	);
 }
