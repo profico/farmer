@@ -1,12 +1,6 @@
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-	ActivityIndicator,
-	FlatList,
-	Platform,
-	RefreshControl,
-	View,
-} from "react-native";
+import { FlatList, Platform, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useWhoami } from "../../../src/api/queries";
@@ -16,6 +10,7 @@ import {
 	usePeople,
 } from "../../../src/api/workspace";
 import { EmptyState, ErrorState } from "../../../src/ui/components";
+import { LoadingIndicator } from "../../../src/ui/loading";
 import { usePullToRefresh } from "../../../src/ui/screen";
 import { SegmentedControl } from "../../../src/ui/segmented";
 import { SettingsLink, SettingsSection } from "../../../src/ui/settings-list";
@@ -222,7 +217,7 @@ export default function AuditLogScreen() {
 				ListFooterComponent={
 					events.isFetchingNextPage ? (
 						<View style={{ paddingVertical: SPACE.l }}>
-							<ActivityIndicator color={palette.primary} />
+							<LoadingIndicator size={32} color={palette.primary} />
 						</View>
 					) : null
 				}

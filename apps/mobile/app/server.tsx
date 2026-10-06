@@ -1,7 +1,7 @@
 import { assertUsable, fetchMeta, normalizeOrigin } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
@@ -9,6 +9,7 @@ import { QrScanner } from "../src/session/qr-scanner";
 import { useSession } from "../src/session/session";
 import { FarmerLogo } from "../src/ui/brand";
 import { ActionButton, ErrorBanner, Field, Text } from "../src/ui/components";
+import { LoadingIndicator } from "../src/ui/loading";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
@@ -80,7 +81,9 @@ export default function ServerScreen() {
 						onPress={() => void connect(address)}
 						disabled={checking || !address.trim()}
 					/>
-					{checking ? <ActivityIndicator color={palette.primary} /> : null}
+					{checking ? (
+						<LoadingIndicator size={24} color={palette.primary} />
+					) : null}
 				</View>
 				<View
 					style={{

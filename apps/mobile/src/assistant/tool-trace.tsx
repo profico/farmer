@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { Text } from "../ui/components";
 import { Icon } from "../ui/icon";
+import { LoadingIndicator } from "../ui/loading";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { toolDetail, toolLabel } from "./tool-labels";
@@ -79,8 +80,8 @@ export function ToolTraceList({
 								}}
 							>
 								{trace.ok === null ? (
-									<ActivityIndicator
-										size="small"
+									<LoadingIndicator
+										size={24}
 										color={palette.onSurfaceVariant}
 									/>
 								) : (

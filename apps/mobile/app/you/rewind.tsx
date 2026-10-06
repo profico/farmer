@@ -1,9 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator } from "react-native";
 
 import { useWhoami } from "../../src/api/queries";
 import { useRewind } from "../../src/api/you";
+import { LoadingIndicator } from "../../src/ui/loading";
 import { defaultRewindYear, isRewindOpen } from "../../src/you/rewind/story";
 import {
 	Pill,
@@ -50,7 +50,11 @@ export default function RewindScreen() {
 	}
 	const waiting = (
 		<RewindMessage title="Rewinding your year.">
-			<ActivityIndicator color={theme.fg} accessibilityLabel="Loading" />
+			<LoadingIndicator
+				size={32}
+				color={theme.fg}
+				accessibilityLabel="Loading"
+			/>
 		</RewindMessage>
 	);
 	if (!today) return waiting;

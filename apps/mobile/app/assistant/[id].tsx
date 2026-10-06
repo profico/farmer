@@ -1,7 +1,6 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-	ActivityIndicator,
 	Keyboard,
 	KeyboardAvoidingView,
 	Platform,
@@ -24,6 +23,7 @@ import {
 	Skeleton,
 	Text,
 } from "../../src/ui/components";
+import { LoadingIndicator } from "../../src/ui/loading";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
 
@@ -217,7 +217,7 @@ function Conversation({ id }: { id: string }) {
 									alignItems: "center",
 								}}
 							>
-								<ActivityIndicator color={palette.onSurfaceVariant} />
+								<LoadingIndicator size={24} color={palette.onSurfaceVariant} />
 								<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 									Thinking
 								</Text>

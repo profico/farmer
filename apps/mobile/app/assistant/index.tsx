@@ -3,7 +3,6 @@ import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import {
 	ActionSheetIOS,
-	ActivityIndicator,
 	Alert,
 	FlatList,
 	Platform,
@@ -29,6 +28,7 @@ import {
 	ListRow,
 	Skeleton,
 } from "../../src/ui/components";
+import { LoadingIndicator } from "../../src/ui/loading";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
@@ -72,7 +72,9 @@ function ThreadRow({
 			onPress={onOpen}
 			trailing={
 				<View style={{ flexDirection: "row", alignItems: "center" }}>
-					{running ? <ActivityIndicator color={palette.primary} /> : null}
+					{running ? (
+						<LoadingIndicator size={24} color={palette.primary} />
+					) : null}
 					<IconButton
 						icon="edit"
 						label={`Rename or delete ${thread.title}`}

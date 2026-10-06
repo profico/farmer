@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
@@ -34,6 +34,7 @@ import {
 	Text,
 } from "../src/ui/components";
 import { Icon } from "../src/ui/icon";
+import { LoadingIndicator } from "../src/ui/loading";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
@@ -273,7 +274,7 @@ export default function SignInScreen() {
 			<View
 				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.m }}
 			>
-				<ActivityIndicator color={palette.onPrimaryContainer} />
+				<LoadingIndicator size={24} color={palette.onPrimaryContainer} />
 				<View style={{ flex: 1 }}>
 					<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
 						Waiting for approval. Come back to the app when you are done.
@@ -312,7 +313,7 @@ export default function SignInScreen() {
 
 				{meta.isPending ? (
 					<View style={{ paddingVertical: SPACE.xl, alignItems: "center" }}>
-						<ActivityIndicator color={palette.primary} />
+						<LoadingIndicator size={32} color={palette.primary} />
 					</View>
 				) : meta.isError ? (
 					<>
@@ -378,7 +379,7 @@ export default function SignInScreen() {
 						) : null}
 						{busy ? (
 							<View style={{ alignItems: "center" }}>
-								<ActivityIndicator color={palette.primary} />
+								<LoadingIndicator size={24} color={palette.primary} />
 							</View>
 						) : null}
 						<View style={{ flexDirection: "row", paddingTop: SPACE.s }}>

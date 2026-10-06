@@ -1,7 +1,6 @@
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import { type ReactNode, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	type ColorValue,
 	Platform,
@@ -14,6 +13,7 @@ import {
 import { Skeleton, Text } from "../ui/components";
 import { ControlHost } from "../ui/host";
 import { Icon } from "../ui/icon";
+import { LoadingIndicator } from "../ui/loading";
 import { SettingsChoice, SettingsSection } from "../ui/settings-list";
 import { useRowPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
@@ -241,7 +241,7 @@ export function ActionRow({
 					</Text>
 				) : null}
 			</View>
-			{busy ? <ActivityIndicator color={palette.primary} /> : null}
+			{busy ? <LoadingIndicator size={24} color={palette.primary} /> : null}
 		</RowFrame>
 	);
 }

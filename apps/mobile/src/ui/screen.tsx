@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { RefreshControl, ScrollView, View } from "react-native";
+import { Platform, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "./components";
@@ -123,7 +123,14 @@ export function Screen({
 									{overline}
 								</Text>
 							) : null}
-							<Text variant="headlineMedium" numberOfLines={1}>
+							<Text
+								variant={
+									Platform.OS === "android"
+										? "headlineMediumEmphasized"
+										: "headlineMedium"
+								}
+								numberOfLines={1}
+							>
 								{title}
 							</Text>
 						</View>
