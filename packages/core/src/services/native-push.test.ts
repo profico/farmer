@@ -387,7 +387,12 @@ describe("the Slack kinds", () => {
 
 		const outcome = await notify({ organizationId: ORG, userId: ME }, nudge);
 
-		expect(outcome).toEqual({ push: false, native: false, slack: false });
+		expect(outcome).toEqual({
+			push: false,
+			native: false,
+			slack: false,
+			retryable: true,
+		});
 		expect(wasUnreachable(outcome)).toBe(false);
 	});
 });

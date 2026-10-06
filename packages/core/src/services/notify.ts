@@ -73,7 +73,17 @@ export type ChannelResult = boolean | "unreachable";
 
 /** Which channels actually delivered. Callers count sends; nobody has to guess
  *  from a void return whether anything happened. */
-export type NotifyOutcome = Record<NotifyChannel, ChannelResult>;
+export type NotifyOutcome = Record<NotifyChannel, ChannelResult> & {
+	/** Set when the native push failed, Slack could not take the message, and
+	 *  a later try can still reach the phone. A job keeps its retry open. */
+	retryable?: true;
+};
+
+const CHANNELS = [
+	"push",
+	"native",
+	"slack",
+] as const satisfies readonly NotifyChannel[];
 
 export type NotifyKind =
 	| "log-reminder"
@@ -426,12 +436,15 @@ export const notify = async (
 		// The native push failed, and the failure may be only a relay error or a
 		// timeout. "No Slack match" then does not close the matter: a retry can
 		// still reach the phone. A timeout is ambiguous (the push may have
-		// arrived), so that retry may send a duplicate.
-		return {
+		// arrived), so that retry may send a duplicate. `retryable` tells the
+		// job to keep the retry open.
+		const outcome: NotifyOutcome = {
 			...NOTHING_SENT,
 			native,
 			slack: slack === "unreachable" ? false : slack,
 		};
+		if (slack !== true) outcome.retryable = true;
+		return outcome;
 	}
 
 	const results = await Promise.all(
@@ -445,11 +458,12 @@ export const notify = async (
 
 /** Whether anything at all reached the person — what the jobs count. */
 export const wasDelivered = (outcome: NotifyOutcome): boolean =>
-	Object.values(outcome).some((result) => result === true);
+	CHANNELS.some((channel) => outcome[channel] === true);
 
 /** Whether nothing reached the person and a channel said no retry today can
  *  change that — what tells the Slack job to keep its claim rather than try
  *  again next tick. */
 export const wasUnreachable = (outcome: NotifyOutcome): boolean =>
 	!wasDelivered(outcome) &&
-	Object.values(outcome).some((result) => result === "unreachable");
+	outcome.retryable !== true &&
+	CHANNELS.some((channel) => outcome[channel] === "unreachable");
