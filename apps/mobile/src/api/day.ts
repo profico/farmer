@@ -12,8 +12,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useAccess } from "./capabilities";
-import { scope, useWorkspace, type Workspace } from "./queries";
-import { refreshTime } from "./time";
+import { refreshTime, scope, useWorkspace, type Workspace } from "./queries";
 
 /**
  * The helpers of the day, from API version 3: "Assemble my day", the

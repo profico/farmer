@@ -7,16 +7,11 @@ import type {
 	TimeEntry,
 	TimeEntryPatch,
 } from "@farmer/api-client";
-import {
-	type QueryClient,
-	useMutation,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { planCellWrite } from "../time/week-grid";
 import { useAccess } from "./capabilities";
-import { scope, useWorkspace, type Workspace } from "./queries";
+import { refreshTime, scope, useWorkspace, type Workspace } from "./queries";
 
 /**
  * The queries and the writes of the Time tab. The reads of `queries.ts`
@@ -31,19 +26,6 @@ import { scope, useWorkspace, type Workspace } from "./queries";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-
-/** The keys that a change of time makes stale. */
-export const refreshTime = (queryClient: QueryClient, w: Workspace) =>
-	Promise.all(
-		// "timer" too: a timer that continues an entry reads its project, task
-		// and note live from the entry (#133).
-		["entries", "unfiled", "tracking", "home", "timer"].map((key) =>
-			queryClient.invalidateQueries({
-				queryKey: [...scope(w), key],
-				exact: key === "timer",
-			}),
-		),
-	);
 
 /** The recurring blocks. The "You" screens own the hooks of this key. */
 export const recurringBlocksKey = (w: Workspace) =>
@@ -120,8 +102,11 @@ export const useDeleteTimeEntry = () => {
 	});
 };
 
-/** Stops the timer and logs the entry. `onSaved` runs before the cached
- *  timer is cleared, as in `useConfirmTimer` of `queries.ts`. */
+/**
+ * Stops the timer and logs the entry. `onSaved` runs before the cached
+ * timer is cleared: a screen that shows the timer would otherwise lose it
+ * and unmount before a callback of `mutate` could run.
+ */
 export const useConfirmTimerEntry = ({
 	onSaved,
 }: { onSaved?: () => void } = {}) => {

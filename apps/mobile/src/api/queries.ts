@@ -1,10 +1,4 @@
-import type {
-	ConfirmTimer,
-	FarmerClient,
-	NewTimeEntry,
-	StartTimer,
-	TimeEntryPatch,
-} from "@farmer/api-client";
+import type { FarmerClient, StartTimer } from "@farmer/api-client";
 import {
 	type QueryClient,
 	useMutation,
@@ -14,11 +8,6 @@ import {
 
 import { useSignedIn } from "../session/session";
 
-/**
- * Every query key starts with the Server address and, below `/me`, the
- * workspace slug: tenancy is part of the key, so two workspaces never share
- * a cache entry.
- */
 const MINUTE = 60_000;
 
 export type Workspace = { origin: string; client: FarmerClient; slug: string };
@@ -31,8 +20,35 @@ export const useWorkspace = (): Workspace => {
 	return { origin, client, slug: workspace };
 };
 
-/** The key every query of the workspace starts with. */
+/**
+ * The key every query of the workspace starts with: the Server address and
+ * the workspace slug. Tenancy is part of the key, so two workspaces never
+ * share a cache entry.
+ */
 export const scope = (w: Workspace) => ["farmer", w.origin, w.slug] as const;
+
+/**
+ * The keys that a change of time makes stale: the days, the reports, the
+ * hours on the project list, and the timer. A timer that continues an entry
+ * reads its project, task and note live from the entry (#133).
+ */
+export const refreshTime = (queryClient: QueryClient, w: Workspace) =>
+	Promise.all(
+		[
+			"entries",
+			"unfiled",
+			"tracking",
+			"home",
+			"reports",
+			"projects",
+			"timer",
+		].map((key) =>
+			queryClient.invalidateQueries({
+				queryKey: [...scope(w), key],
+				exact: key === "timer",
+			}),
+		),
+	);
 
 export const useMe = () => {
 	const { origin, client } = useSignedIn();
@@ -104,11 +120,13 @@ export const useUnfiled = (from: string, to: string) => {
 	});
 };
 
-/** The person's timer, which may run in another workspace. Read again when
- *  the app comes to the front, because the web or the CLI may have stopped
- *  it, and once a minute while one runs. */
-/** `fresh` reads the timer again on mount, whatever its age: the Stop screen
- *  needs the entry's live note, which another client may have edited. */
+/**
+ * The person's timer, which may run in another workspace. Read again when
+ * the app comes to the front, because the web or the CLI may have stopped
+ * it, and once a minute while one runs. `fresh` reads the timer again on
+ * mount, whatever its age: the Stop screen needs the entry's live note,
+ * which another client may have edited.
+ */
 export const useTimer = ({ fresh = false }: { fresh?: boolean } = {}) => {
 	const w = useWorkspace();
 	return useQuery({
@@ -117,46 +135,6 @@ export const useTimer = ({ fresh = false }: { fresh?: boolean } = {}) => {
 		queryFn: () => w.client.timer(w.slug),
 		staleTime: 15_000,
 		refetchInterval: (query) => (query.state.data?.timer ? MINUTE : false),
-	});
-};
-
-const invalidateDay = (queryClient: QueryClient, w: Workspace) =>
-	Promise.all([
-		queryClient.invalidateQueries({ queryKey: [...scope(w), "entries"] }),
-		queryClient.invalidateQueries({ queryKey: [...scope(w), "unfiled"] }),
-		queryClient.invalidateQueries({ queryKey: [...scope(w), "tracking"] }),
-		// A timer that continues an entry reads its fields live (#133).
-		queryClient.invalidateQueries({
-			queryKey: [...scope(w), "timer"],
-			exact: true,
-		}),
-	]);
-
-export const useCreateEntry = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (body: NewTimeEntry) => w.client.createTimeEntry(w.slug, body),
-		onSuccess: () => invalidateDay(queryClient, w),
-	});
-};
-
-export const useUpdateEntry = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: ({ id, patch }: { id: string; patch: TimeEntryPatch }) =>
-			w.client.updateTimeEntry(w.slug, id, patch),
-		onSuccess: () => invalidateDay(queryClient, w),
-	});
-};
-
-export const useDeleteEntry = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (id: string) => w.client.deleteTimeEntry(w.slug, id),
-		onSuccess: () => invalidateDay(queryClient, w),
 	});
 };
 
@@ -196,24 +174,6 @@ export const useStartTimer = () => {
 		mutationFn: (body: StartTimer) => w.client.startTimer(w.slug, body),
 		onSuccess: (state) => {
 			queryClient.setQueryData([...scope(w), "timer"], state);
-		},
-	});
-};
-
-/**
- * Stops the timer and logs the entry. `onSaved` runs before the cached
- * timer is cleared: a screen that shows the timer would otherwise lose it
- * and unmount before a callback of `mutate` could run.
- */
-export const useConfirmTimer = ({ onSaved }: { onSaved?: () => void } = {}) => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (body: ConfirmTimer) => w.client.confirmTimer(w.slug, body),
-		onSuccess: async () => {
-			onSaved?.();
-			queryClient.setQueryData([...scope(w), "timer"], { timer: null });
-			await invalidateDay(queryClient, w);
 		},
 	});
 };

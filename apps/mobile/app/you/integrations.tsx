@@ -4,11 +4,11 @@ import { Linking } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
 import { useWorkspace } from "../../src/api/queries";
+import { useSyncNow } from "../../src/api/time";
 import {
 	type Provider,
 	useDisconnect,
 	useIntegrations,
-	useSyncNow,
 	useUpdateIntegrationSettings,
 } from "../../src/api/you";
 import { ErrorBanner, ErrorState } from "../../src/ui/components";

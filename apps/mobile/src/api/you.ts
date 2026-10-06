@@ -21,7 +21,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useAccess, useMeta } from "./capabilities";
-import { scope, type Workspace, useWorkspace } from "./queries";
+import { refreshTime, scope, type Workspace, useWorkspace } from "./queries";
 import { recurringBlocksKey, timerSettingsKey } from "./time";
 
 // The queries and the writes of the "You" screens: the person's own
@@ -51,15 +51,6 @@ const keys = (w: Workspace) => ({
 	],
 	rewind: (year: number) => [...scope(w), "you", "rewind", year],
 });
-
-/** The reads of the Time tab and the reports. A write that adds or removes
- *  time makes them old. */
-const invalidateTime = (queryClient: QueryClient, w: Workspace) =>
-	Promise.all(
-		["entries", "unfiled", "tracking", "home", "reports"].map((part) =>
-			queryClient.invalidateQueries({ queryKey: [...scope(w), part] }),
-		),
-	);
 
 /**
  * A write that shows its result at once. The cached value changes before
@@ -288,7 +279,7 @@ const useBlockSettled = () => {
 	return () =>
 		Promise.all([
 			queryClient.invalidateQueries({ queryKey: keys(w).recurringBlocks }),
-			invalidateTime(queryClient, w),
+			refreshTime(queryClient, w),
 		]);
 };
 
@@ -380,7 +371,7 @@ export const useUpdateIntegrationSettings = () => {
 		onSettled: () =>
 			Promise.all([
 				queryClient.invalidateQueries({ queryKey }),
-				invalidateTime(queryClient, w),
+				refreshTime(queryClient, w),
 			]),
 	});
 };
@@ -397,16 +388,6 @@ export const useDisconnect = () => {
 				: w.client.disconnectGoogleCalendar(w.slug),
 		onSuccess: (integrations) =>
 			queryClient.setQueryData(keys(w).integrations, integrations),
-	});
-};
-
-/** Runs every automation that is on, as the background worker does. */
-export const useSyncNow = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: () => w.client.sync(w.slug),
-		onSuccess: () => invalidateTime(queryClient, w),
 	});
 };
 
@@ -488,7 +469,7 @@ const useAbsenceSettled = () => {
 	return () =>
 		Promise.all([
 			queryClient.invalidateQueries({ queryKey: keys(w).absences }),
-			invalidateTime(queryClient, w),
+			refreshTime(queryClient, w),
 		]);
 };
 
