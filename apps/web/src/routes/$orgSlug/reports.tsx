@@ -1,7 +1,6 @@
 import { parseMonthKey } from "@farmer/core/lib/report-period";
-import { dayKeyInTz } from "@farmer/core/lib/time";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useDeferredValue } from "react";
 
 import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
 import { ComplianceTab } from "#/components/reports/compliance-tab.tsx";
@@ -19,6 +18,7 @@ import {
 	SegmentedControl,
 	SegmentedControlItem,
 } from "#/components/ui/segmented-control.tsx";
+import { useToday } from "#/hooks/use-today.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
@@ -50,7 +50,10 @@ function ReportsPage() {
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 
-	const today = dayKeyInTz(new Date(), organization.timezone);
+	// Live, so "this month" follows a tab left open past midnight. Deferred, so a
+	// new month loads its reports in the background while the old ones stay on
+	// screen, as on the timesheet routes.
+	const today = useDeferredValue(useToday(organization.timezone));
 	const thisMonth = today.slice(0, 7);
 	const month = search.month ?? thisMonth;
 	const period = parseMonthKey(month);

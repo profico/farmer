@@ -82,11 +82,19 @@ export class AssistantDisabledError extends AssistantError {
  * else — a database error, a bug, a failed import — can carry SQL, a hostname
  * or a file path, and belongs in the server log rather than in somebody's
  * chat. The stream route streamed every message through before this existed.
+ *
+ * `OpenRouterStreamCutError` extends `OpenRouterError`, but its message is for
+ * the log and telemetry, and it can carry the provider's text. A cut that
+ * escapes the loop gets the loop's own line instead, so the advice stays right.
  */
 export const userFacingAssistantError = (error: Error): string | null =>
-	error instanceof UserFacingError || error instanceof OpenRouterError
-		? error.message
-		: null;
+	error instanceof OpenRouterStreamCutError
+		? error.timedOut
+			? TIMED_OUT
+			: STREAM_CUT
+		: error instanceof UserFacingError || error instanceof OpenRouterError
+			? error.message
+			: null;
 
 // ── the substitutable model port ─────────────────────────────────────────────
 //

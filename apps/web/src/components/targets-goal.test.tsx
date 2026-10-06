@@ -82,6 +82,21 @@ describe("the target gap on a Monday", () => {
 		expect(text).toBe("0,00 ahead of the 0,00 due by the end of today");
 	});
 
+	test("on a Thursday the goal is four days and never reads today's", () => {
+		const text = textOf(
+			period({
+				workingDaysElapsed: 3,
+				workingDaysThroughToday: 4,
+				targetSoFarSeconds: 24 * H,
+				targetThroughTodaySeconds: 32 * H,
+				totalSoFarSeconds: 27 * H,
+				status: "behind",
+			}),
+		);
+		expect(text).toBe("5,00 short of the 32,00 due by the end of today");
+		expect(text).not.toContain("today's");
+	});
+
 	test("hours above the goal are ahead", () => {
 		expect(textOf(period({ totalSoFarSeconds: 9 * H }))).toBe(
 			"1,00 ahead of the 8,00 due by the end of today",

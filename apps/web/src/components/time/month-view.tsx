@@ -1,6 +1,5 @@
 import {
 	datesBetween,
-	dayKeyInTz,
 	endOfMonthKey,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
@@ -23,6 +22,7 @@ import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { groupByDay } from "#/lib/group-by-day.ts";
+import { dateSearch, monthSearch, EXACT_LINK } from "#/lib/time-search.ts";
 import { cn } from "#/lib/utils.ts";
 import { orderedWeekdays } from "#/lib/weekdays.ts";
 
@@ -40,12 +40,15 @@ export function MonthView({
 	orgSlug,
 	month,
 	timezone,
+	today,
 	entries,
 	holidays,
 }: {
 	orgSlug: string;
 	month: string;
 	timezone: string;
+	/** The day the page treats as today: the route's deferred day. */
+	today: string;
 	entries: EntryBlockRowEntry[];
 	holidays: Map<string, string>;
 }) {
@@ -59,7 +62,6 @@ export function MonthView({
 	const leadingBlanks =
 		(weekdayInTz(monthStart, timezone) - weekStartsOn + 7) % 7;
 	const byDay = new Map(groupByDay(entries));
-	const today = dayKeyInTz(new Date(), timezone);
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
 
 	return (
@@ -69,7 +71,8 @@ export function MonthView({
 					<Link
 						to="/$orgSlug/time/month"
 						params={{ orgSlug }}
-						search={{ month: shiftMonthKey(month, -1) }}
+						search={monthSearch(shiftMonthKey(month, -1), today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Previous month"
 					>
@@ -81,7 +84,8 @@ export function MonthView({
 					<Link
 						to="/$orgSlug/time/month"
 						params={{ orgSlug }}
-						search={{ month: shiftMonthKey(month, 1) }}
+						search={monthSearch(shiftMonthKey(month, 1), today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Next month"
 					>
@@ -94,7 +98,7 @@ export function MonthView({
 						navigate({
 							to: "/$orgSlug/time/month",
 							params: { orgSlug },
-							search: { month: picked.slice(0, 7) },
+							search: monthSearch(picked.slice(0, 7), today),
 						}),
 				}}
 				returnLink={
@@ -103,6 +107,7 @@ export function MonthView({
 							to="/$orgSlug/time/month"
 							params={{ orgSlug }}
 							search={{}}
+							activeOptions={EXACT_LINK}
 							className={returnLinkClass}
 						>
 							Return to this month
@@ -176,7 +181,8 @@ export function MonthView({
 								key={date}
 								to="/$orgSlug/time"
 								params={{ orgSlug }}
-								search={{ date }}
+								search={dateSearch(date, today)}
+								activeOptions={EXACT_LINK}
 								title={holidayName}
 								className={cn(
 									"overflow-hidden border-r border-b border-line2 p-2 text-left transition-colors duration-(--dur-fast) hover:bg-[var(--sel)]",
