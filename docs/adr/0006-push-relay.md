@@ -72,3 +72,21 @@ default).
   An IPv6 caller gets its /64 prefix as its bucket.
 - A new kind of notification must name its channels in the `KINDS` table, as
   before. Native push is one more channel, not a second mechanism.
+
+## Accepted risk: the binding proof
+
+The binding proof is an HMAC. Its key is `sha256(deviceSecret)`. This is
+the same value as the `secretHash` that the relay stores for the device.
+A person who can read the relay's device table can therefore forge a
+binding proof for any relay id.
+
+A proof is not bound to a user, and it does not expire. A person who
+captures a proof can replay it from another account. Only a leak of a
+server log or a compromised server exposes a proof.
+
+We accept both risks. The design is symmetric on purpose: the relay
+checks the proof with a value that it already holds, and the Farmer
+server never holds the device secret. A design that keeps the secret off
+the Farmer server needs this shared key. A read of the relay's database
+is already a more serious loss, because the same read exposes every push
+token.
