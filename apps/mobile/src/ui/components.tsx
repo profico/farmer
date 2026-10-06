@@ -25,6 +25,8 @@ export type TextProps = {
 	color?: ColorValue;
 	numberOfLines?: number;
 	align?: "left" | "center" | "right";
+	/** Figures of one width, so a number that changes does not move. */
+	numeric?: boolean;
 	children: ReactNode;
 };
 
@@ -34,6 +36,7 @@ export function Text({
 	color,
 	numberOfLines,
 	align,
+	numeric,
 	children,
 }: TextProps) {
 	const palette = usePalette();
@@ -43,6 +46,7 @@ export function Text({
 			style={[
 				TYPE[variant],
 				{ color: color ?? palette.onSurface, textAlign: align },
+				numeric ? { fontVariant: ["tabular-nums"] } : null,
 			]}
 		>
 			{children}
@@ -208,8 +212,12 @@ export function ListRow({
 				minHeight: 56,
 				paddingHorizontal: SPACE.l,
 				paddingVertical: SPACE.s,
-				backgroundColor: selected ? palette.secondaryContainer : undefined,
-				opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+				backgroundColor:
+					Platform.OS === "ios" && pressed
+						? palette.surfaceContainerHigh
+						: selected
+							? palette.secondaryContainer
+							: undefined,
 			})}
 		>
 			{icon ? (

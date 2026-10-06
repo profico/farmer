@@ -4,6 +4,7 @@ import { Linking, Modal, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActionButton, IconButton, Text } from "../ui/components";
+import { useMotionPreference } from "../ui/motion";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { serverFromScan } from "./server-address";
@@ -23,6 +24,7 @@ export function QrScanner({
 	onServer: (origin: string) => void;
 }) {
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 	const insets = useSafeAreaInsets();
 	const [permission, requestPermission] = useCameraPermissions();
 	const [notServer, setNotServer] = useState(false);
@@ -46,7 +48,7 @@ export function QrScanner({
 	return (
 		<Modal
 			visible={visible}
-			animationType="slide"
+			animationType={reduceMotion ? "fade" : "slide"}
 			presentationStyle={Platform.OS === "ios" ? "fullScreen" : undefined}
 			onRequestClose={onClose}
 			onShow={() => {

@@ -175,7 +175,10 @@ function Conversation({ id }: { id: string }) {
 												borderColor: palette.outlineVariant,
 												paddingHorizontal: SPACE.m,
 												paddingVertical: SPACE.s,
-												opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+												backgroundColor:
+													Platform.OS === "ios" && pressed
+														? palette.surfaceContainerHigh
+														: undefined,
 											})}
 										>
 											<Text variant="bodyMedium">{suggestion}</Text>

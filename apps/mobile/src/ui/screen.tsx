@@ -1,10 +1,48 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "./components";
 import { usePalette } from "./theme";
 import { SPACE } from "./type";
+
+/** How long the spinner of a pull waits for a fetch to start. */
+const PULL_GRACE_MS = 1000;
+
+/**
+ * The spinner of a pull to refresh. It shows from the pull until the fetch
+ * that the pull started ends. A refetch that the person did not start (a
+ * save, the app coming back) shows no spinner.
+ */
+export function usePullToRefresh(
+	refreshing: boolean,
+	onRefresh: (() => void) | undefined,
+) {
+	const [pulled, setPulled] = useState(false);
+	const seen = useRef(false);
+	useEffect(() => {
+		if (!pulled) return;
+		if (refreshing) {
+			seen.current = true;
+			return;
+		}
+		if (seen.current) {
+			seen.current = false;
+			setPulled(false);
+			return;
+		}
+		const timer = setTimeout(() => setPulled(false), PULL_GRACE_MS);
+		return () => clearTimeout(timer);
+	}, [pulled, refreshing]);
+	return {
+		refreshing: pulled,
+		onRefresh: () => {
+			seen.current = false;
+			setPulled(true);
+			onRefresh?.();
+		},
+	};
+}
 
 export type ScreenProps = {
 	title?: string;
@@ -32,6 +70,7 @@ export function Screen({
 }: ScreenProps) {
 	const palette = usePalette();
 	const insets = useSafeAreaInsets();
+	const pull = usePullToRefresh(refreshing ?? false, onRefresh);
 	return (
 		<ScrollView
 			style={{ flex: 1, backgroundColor: palette.background }}
@@ -45,10 +84,11 @@ export function Screen({
 			refreshControl={
 				onRefresh ? (
 					<RefreshControl
-						refreshing={refreshing ?? false}
-						onRefresh={onRefresh}
+						refreshing={pull.refreshing}
+						onRefresh={pull.onRefresh}
 						colors={[String(palette.primary)]}
 						progressBackgroundColor={String(palette.surfaceContainerHigh)}
+						tintColor={palette.primary}
 					/>
 				) : undefined
 			}

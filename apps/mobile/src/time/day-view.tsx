@@ -2,6 +2,14 @@ import type { TimeEntry } from "@farmer/api-client";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { View } from "react-native";
+import Reanimated, {
+	Easing,
+	FadeIn,
+	FadeOut,
+	LayoutAnimationConfig,
+	LinearTransition,
+	ReduceMotion,
+} from "react-native-reanimated";
 
 import { useAccess } from "../api/capabilities";
 import { useStartTimer, useTimer, useTracking } from "../api/queries";
@@ -16,6 +24,8 @@ import {
 	Text,
 } from "../ui/components";
 import { messageOf } from "../ui/errors";
+import { Figure } from "../ui/figure";
+import { useMotionPreference } from "../ui/motion";
 import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -24,6 +34,20 @@ import { canContinue, EntryRow } from "./entry-row";
 import { committed } from "./haptics";
 import { TimerCard } from "./timer-card";
 import { WeekStrip } from "./week-strip";
+
+// A row that a save adds or a delete removes. Module scope: a builder made
+// in a render costs each render. A fade is a change of opacity, which the
+// app allows with less motion on, so the fades ignore the system setting
+// and `useMotionPreference` alone decides about the movement.
+const ROW_IN = FadeIn.duration(200)
+	.easing(Easing.bezier(0.23, 1, 0.32, 1))
+	.reduceMotion(ReduceMotion.Never);
+const ROW_OUT = FadeOut.duration(150)
+	.easing(Easing.bezier(0.23, 1, 0.32, 1))
+	.reduceMotion(ReduceMotion.Never);
+const ROW_MOVE = LinearTransition.duration(200).easing(
+	Easing.bezier(0.77, 0, 0.175, 1),
+);
 
 /**
  * One day of the person's own time: the week strip, the timer, and the
@@ -55,6 +79,7 @@ export function DayView({
 }) {
 	const palette = usePalette();
 	const router = useRouter();
+	const { reduceMotion } = useMotionPreference();
 	const { fullApi } = useAccess();
 	const tracking = useTracking();
 	const timer = useTimer();
@@ -119,9 +144,10 @@ export function DayView({
 						justifyContent: "space-between",
 					}}
 				>
-					<Text variant="titleMedium">
-						{formatHours(totals.get(selected) ?? 0)} logged
-					</Text>
+					<Figure
+						text={`${formatHours(totals.get(selected) ?? 0)} logged`}
+						value={totals.get(selected) ?? 0}
+					/>
 					<View style={{ flexDirection: "row", alignItems: "center" }}>
 						{onAssemble ? (
 							<IconButton
@@ -162,43 +188,53 @@ export function DayView({
 					}
 				/>
 			) : (
-				<View
-					style={{
-						marginHorizontal: SPACE.l,
-						borderRadius: 16,
-						overflow: "hidden",
-						backgroundColor: palette.surfaceContainer,
-					}}
-				>
-					{dayEntries.map((entry, index) => (
-						<View
-							key={entry.id}
-							style={{
-								borderTopWidth: index === 0 ? 0 : 1,
-								borderTopColor: palette.outlineVariant,
-							}}
-						>
-							<EntryRow
-								entry={entry}
-								onPress={() =>
-									router.push({
-										pathname: "/entry",
-										params: { id: entry.id, date: entry.date, from, to },
-									})
-								}
-								onContinue={
-									timerFree && canContinue(entry)
-										? () =>
-												start.mutate(
-													{ timeEntryId: entry.id },
-													{ onSuccess: committed },
-												)
-										: undefined
-								}
-							/>
-						</View>
-					))}
-				</View>
+				// A new day shows its rows at once: the key mounts a new list,
+				// and the config skips the fades. Only a save or a delete inside
+				// the same day animates. The card itself has no layout
+				// transition: it moves when the timer card above it changes
+				// height, and it must not glide behind the content above it.
+				<LayoutAnimationConfig key={selected} skipEntering skipExiting>
+					<View
+						style={{
+							marginHorizontal: SPACE.l,
+							borderRadius: 16,
+							overflow: "hidden",
+							backgroundColor: palette.surfaceContainer,
+						}}
+					>
+						{dayEntries.map((entry, index) => (
+							<Reanimated.View
+								key={entry.id}
+								entering={ROW_IN}
+								exiting={ROW_OUT}
+								layout={reduceMotion ? undefined : ROW_MOVE}
+								style={{
+									borderTopWidth: index === 0 ? 0 : 1,
+									borderTopColor: palette.outlineVariant,
+								}}
+							>
+								<EntryRow
+									entry={entry}
+									onPress={() =>
+										router.push({
+											pathname: "/entry",
+											params: { id: entry.id, date: entry.date, from, to },
+										})
+									}
+									onContinue={
+										timerFree && canContinue(entry)
+											? () =>
+													start.mutate(
+														{ timeEntryId: entry.id },
+														{ onSuccess: committed },
+													)
+											: undefined
+									}
+								/>
+							</Reanimated.View>
+						))}
+					</View>
+				</LayoutAnimationConfig>
 			)}
 		</>
 	);

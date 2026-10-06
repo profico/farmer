@@ -54,7 +54,10 @@ export function SummaryRow({
 				minHeight: 56,
 				paddingHorizontal: SPACE.l,
 				paddingVertical: SPACE.s,
-				opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+				backgroundColor:
+					Platform.OS === "ios" && pressed
+						? palette.surfaceContainerHigh
+						: undefined,
 			})}
 		>
 			{onToggle ? (

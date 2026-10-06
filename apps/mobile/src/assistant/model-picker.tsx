@@ -11,6 +11,7 @@ import {
 	Skeleton,
 	Text,
 } from "../ui/components";
+import { useMotionPreference } from "../ui/motion";
 import { SettingsChoice } from "../ui/settings-list";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -46,6 +47,7 @@ export function ModelPicker({
 	onPick: (id: string) => void;
 }) {
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 	const insets = useSafeAreaInsets();
 	const [search, setSearch] = useState("");
 	const usable = useMemo(() => {
@@ -62,7 +64,7 @@ export function ModelPicker({
 	return (
 		<Modal
 			visible={visible}
-			animationType="slide"
+			animationType={reduceMotion ? "fade" : "slide"}
 			presentationStyle={Platform.OS === "ios" ? "pageSheet" : undefined}
 			onRequestClose={onClose}
 		>

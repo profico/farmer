@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, Easing } from "react-native";
 
 import { useDisplayPrefs } from "./display-prefs";
 
@@ -52,3 +52,8 @@ export function useMotionPreference(): MotionPreference {
 		systemReduceMotion: system,
 	};
 }
+
+/** The strong ease-out for an element that enters or exits. */
+export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+/** Durations in milliseconds. */
+export const MOTION_MS = { small: 150, enter: 300, exit: 250 } as const;

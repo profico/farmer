@@ -1,8 +1,9 @@
-import { useEffect } from "react";
-import { AccessibilityInfo, Pressable, View } from "react-native";
+import { useEffect, useState } from "react";
+import { AccessibilityInfo, Animated, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "../../ui/components";
+import { EASE_OUT, MOTION_MS, useMotionPreference } from "../../ui/motion";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 
@@ -15,6 +16,8 @@ export type Notice = {
 };
 
 const SHOW_MS = 6000;
+/** How far the bar moves as it enters and exits, in dp. */
+const RISE = 16;
 
 /**
  * A short message about a write that just happened, with one action such
@@ -32,6 +35,11 @@ export function Snackbar({
 	floating?: boolean;
 }) {
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
+	const [progress] = useState(() => new Animated.Value(0));
+	// The notice on screen. It stays while the bar exits, after `notice`
+	// is already null.
+	const [shown, setShown] = useState<Notice | null>(notice);
 
 	useEffect(() => {
 		if (!notice) return;
@@ -40,11 +48,36 @@ export function Snackbar({
 		return () => clearTimeout(timer);
 	}, [notice, onHide]);
 
-	if (!notice) return null;
-	const warning = notice.tone === "warning";
+	useEffect(() => {
+		if (notice) setShown(notice);
+		const animation = Animated.timing(progress, {
+			toValue: notice ? 1 : 0,
+			duration: notice ? MOTION_MS.enter : MOTION_MS.exit,
+			easing: EASE_OUT,
+			useNativeDriver: true,
+		});
+		animation.start(({ finished }) => {
+			if (finished && !notice) setShown(null);
+		});
+		return () => animation.stop();
+	}, [notice, progress]);
+
+	if (!shown) return null;
+	const warning = shown.tone === "warning";
 	const ink = warning ? palette.onErrorContainer : palette.onSurface;
+	const motion = {
+		opacity: progress,
+		transform: [
+			{
+				translateY: progress.interpolate({
+					inputRange: [0, 1],
+					outputRange: [reduceMotion ? 0 : RISE, 0],
+				}),
+			},
+		],
+	};
 	const bar = (
-		<View
+		<Animated.View
 			accessibilityLiveRegion="polite"
 			style={[
 				{
@@ -61,30 +94,31 @@ export function Snackbar({
 						: palette.surfaceContainerHigh,
 				},
 				floating ? { margin: SPACE.l } : null,
+				motion,
 			]}
 		>
 			<View style={{ flex: 1 }}>
 				<Text variant="bodyMedium" color={ink}>
-					{notice.message}
+					{shown.message}
 				</Text>
 			</View>
-			{notice.action ? (
+			{shown.action ? (
 				<Pressable
 					accessibilityRole="button"
-					accessibilityLabel={notice.action.label}
+					accessibilityLabel={shown.action.label}
 					onPress={() => {
-						notice.action?.onPress();
+						shown.action?.onPress();
 						onHide();
 					}}
 					hitSlop={8}
 					style={{ paddingHorizontal: SPACE.m, paddingVertical: SPACE.s }}
 				>
 					<Text variant="labelLarge" color={palette.primary}>
-						{notice.action.label}
+						{shown.action.label}
 					</Text>
 				</Pressable>
 			) : null}
-		</View>
+		</Animated.View>
 	);
 	if (!floating) return bar;
 	// A native safe area view: inside a modal the insets of the hook can be

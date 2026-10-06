@@ -1,6 +1,7 @@
 import { ApiClientError, type Timer } from "@farmer/api-client";
 import { useRouter } from "expo-router";
-import { Alert, View } from "react-native";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Alert, Animated, View } from "react-native";
 
 import { useTimer, useTimerAction } from "../api/queries";
 import { formatHours, formatStopwatch } from "../lib/duration";
@@ -15,8 +16,10 @@ import {
 } from "../ui/components";
 import { messageOf } from "../ui/errors";
 import { Icon } from "../ui/icon";
+import { EASE_OUT, MOTION_MS } from "../ui/motion";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
+import { removed, toggled } from "./haptics";
 import { useElapsed } from "./use-elapsed";
 
 const whatItMeasures = (timer: Timer) =>
@@ -27,7 +30,7 @@ const whatItMeasures = (timer: Timer) =>
  * timer that runs in another workspace is named, not hidden. Stop holds the
  * clock and opens the confirm sheet; nothing is logged before Save there.
  */
-export function TimerCard() {
+function TimerCardBody() {
 	const palette = usePalette();
 	const router = useRouter();
 	const { setWorkspace } = useSession();
@@ -137,7 +140,7 @@ export function TimerCard() {
 				{
 					text: "Discard",
 					style: "destructive",
-					onPress: () => action.mutate("discard"),
+					onPress: () => action.mutate("discard", { onSuccess: removed }),
 				},
 			],
 		);
@@ -195,14 +198,14 @@ export function TimerCard() {
 					<ActionButton
 						label="Resume"
 						variant="outlined"
-						onPress={() => action.mutate("resume")}
+						onPress={() => action.mutate("resume", { onSuccess: toggled })}
 						disabled={action.isPending}
 					/>
 				) : (
 					<ActionButton
 						label="Pause"
 						variant="outlined"
-						onPress={() => action.mutate("pause")}
+						onPress={() => action.mutate("pause", { onSuccess: toggled })}
 						disabled={action.isPending}
 					/>
 				)}
@@ -213,5 +216,63 @@ export function TimerCard() {
 				/>
 			</View>
 		</Card>
+	);
+}
+
+/** The one word for what the card shows. A change of it fades in the new
+ *  content; the tick of the stopwatch does not. */
+const lookOf = (
+	pending: boolean,
+	failed: boolean,
+	timer: Timer | null,
+): "loading" | "error" | "none" | "dropped" | "away" | "paused" | "running" => {
+	if (pending) return "loading";
+	if (failed) return "error";
+	if (!timer) return "none";
+	if (timer.droppedAt) return "dropped";
+	if (!timer.organization.here) return "away";
+	return timer.paused ? "paused" : "running";
+};
+
+export function TimerCard() {
+	const query = useTimer();
+	const look = lookOf(
+		query.isPending,
+		query.isError,
+		query.data?.timer ?? null,
+	);
+	const [opacity] = useState(() => new Animated.Value(1));
+	const first = useRef(true);
+
+	// Before the paint, so the new content never shows at full strength for
+	// one frame before it fades.
+	useLayoutEffect(() => {
+		if (first.current) {
+			first.current = false;
+			return;
+		}
+		opacity.setValue(0.4);
+		const animation = Animated.timing(opacity, {
+			toValue: 1,
+			duration: MOTION_MS.small,
+			easing: EASE_OUT,
+			useNativeDriver: true,
+		});
+		animation.start();
+		return () => animation.stop();
+	}, [look, opacity]);
+
+	// A server without the stopwatch shows no card, and no empty view takes
+	// a gap in the column.
+	if (
+		query.error instanceof ApiClientError &&
+		query.error.kind === "unsupported"
+	) {
+		return null;
+	}
+	return (
+		<Animated.View style={{ opacity }}>
+			<TimerCardBody />
+		</Animated.View>
 	);
 }

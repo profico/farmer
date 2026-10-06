@@ -7,3 +7,17 @@ export const committed = () => {
 		Haptics.NotificationFeedbackType.Success,
 	).catch(() => undefined);
 };
+
+/** A light tap when the person holds or resumes the timer. */
+export const toggled = () => {
+	void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+		() => undefined,
+	);
+};
+
+/** A firm tap when the person throws away a timer or an entry. */
+export const removed = () => {
+	void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(
+		() => undefined,
+	);
+};

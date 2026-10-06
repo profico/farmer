@@ -114,6 +114,7 @@ export function WeekStrip({
 						<Text
 							variant="bodySmall"
 							color={isSelected ? palette.onPrimary : palette.onSurfaceVariant}
+							numeric
 						>
 							{seconds > 0 ? formatHours(seconds) : " "}
 						</Text>

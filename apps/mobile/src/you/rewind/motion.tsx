@@ -1,11 +1,5 @@
 import { createContext, type ReactNode, use, useEffect, useState } from "react";
-import {
-	AccessibilityInfo,
-	Animated,
-	Easing,
-	type StyleProp,
-	type ViewStyle,
-} from "react-native";
+import { Animated, Easing, type StyleProp, type ViewStyle } from "react-native";
 
 // The motion of a Rewind slide. Each part of a slide rises in after the one
 // before it when the slide comes on screen, and a number counts up to its
@@ -15,26 +9,6 @@ import {
 const EASE_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 const STEP_MS = 160;
 const FIRST_MS = 120;
-
-/** Whether the person asked the system for less motion. */
-export const useReducedMotion = () => {
-	const [reduce, setReduce] = useState(false);
-	useEffect(() => {
-		let live = true;
-		void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-			if (live) setReduce(value);
-		});
-		const subscription = AccessibilityInfo.addEventListener(
-			"reduceMotionChanged",
-			setReduce,
-		);
-		return () => {
-			live = false;
-			subscription.remove();
-		};
-	}, []);
-	return reduce;
-};
 
 type SlideMotion = {
 	/** True while the slide is the one on screen. */
