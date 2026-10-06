@@ -51,6 +51,7 @@ function Navigator() {
 				<Stack.Screen name="you" />
 				<Stack.Screen name="workspace" />
 				<Stack.Screen name="assistant" />
+				<Stack.Screen name="onboarding" />
 				<Stack.Screen name="entry" options={form} />
 				<Stack.Screen name="start-timer" options={form} />
 				<Stack.Screen name="stop-timer" options={form} />

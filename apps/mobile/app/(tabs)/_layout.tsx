@@ -3,13 +3,9 @@ import { useEffect, type ReactNode } from "react";
 import { Platform, View } from "react-native";
 
 import { useMe } from "../../src/api/queries";
+import { NoWorkspace } from "../../src/onboarding/no-workspace";
 import { useSession } from "../../src/session/session";
-import {
-	ActionButton,
-	EmptyState,
-	ErrorState,
-	Skeleton,
-} from "../../src/ui/components";
+import { ActionButton, ErrorState, Skeleton } from "../../src/ui/components";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
 
@@ -55,7 +51,7 @@ function Centered({ children }: { children: ReactNode }) {
  */
 function SignedInTabs() {
 	const palette = usePalette();
-	const { state, setWorkspace, signOut, forget } = useSession();
+	const { state, setWorkspace, forget } = useSession();
 	const me = useMe();
 	const stored = state.status === "signed_in" ? state.session.workspace : null;
 	const organizations = me.data?.organizations ?? [];
@@ -82,22 +78,7 @@ function SignedInTabs() {
 		);
 	}
 	if (organizations.length === 0) {
-		return (
-			<Centered>
-				<EmptyState
-					icon="workspace"
-					title="No workspace"
-					message="Your account is not a member of any workspace on this server. Ask an admin to invite you."
-					action={
-						<ActionButton
-							label="Sign out"
-							variant="text"
-							onPress={() => void signOut()}
-						/>
-					}
-				/>
-			</Centered>
-		);
+		return <NoWorkspace email={me.data.user.email} />;
 	}
 	if (!valid) return <Loading />;
 

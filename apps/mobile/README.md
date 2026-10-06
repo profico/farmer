@@ -17,6 +17,7 @@ do not need to change the navigation to build a screen.
 | `app/you/` | The person's own settings and records | More, "You" |
 | `app/workspace/` | The workspace settings | More, "Workspace" |
 | `app/assistant/` | The conversations and one conversation (`[id]`) | More |
+| `app/onboarding/` | The invitations and Harvest claims that wait, and a new workspace | More, "Workspaces", and the screen of a person without a workspace |
 | `src/reports/` | One component for each part of the Reports tab | The segmented control |
 | `app/*.tsx` | The forms (`entry`, `start-timer`, `stop-timer`) and the sign-in | Sheets and the start |
 
@@ -28,9 +29,14 @@ Rules:
 - To add a screen to a folder, add a file. For a new folder at the root,
   add a `_layout.tsx` with `<SectionStack />`, and add the folder to the
   `Stack.Protected` list of signed-in screens in `app/_layout.tsx`.
+  `app/onboarding/` is the one exception: a person without a workspace
+  opens it, so its layout does not send that person to the tabs.
 - Show an entry only when the person can use it. Use `useAccess()`
   (`src/api/capabilities.ts`): `fullApi` is false for a Server before API
-  version 2, and the capabilities come from `whoami`.
+  version 2, and the capabilities come from `whoami`. `setupApi` is false
+  before API version 3 (the repositories, the uploads, the organization
+  policy, the holiday switch and the invitations). Without a workspace,
+  use `useServerFeatures()`, which reads only `/meta`.
 - Use the settings-list kit (`src/ui/settings-list.tsx`) for a list of
   settings: `SettingsSection`, `SettingsLink`, `SettingsChoice`,
   `SettingsSwitch` and `SettingsValue`. iOS draws the grouped lists of the

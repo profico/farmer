@@ -6,6 +6,7 @@ import {
 	useAccess,
 	useAssistantAvailable,
 } from "../../src/api/capabilities";
+import { usePendingCount } from "../../src/api/onboarding";
 import { useMe, useWorkspace } from "../../src/api/queries";
 import { APP_VERSION } from "../../src/config";
 import { useSession } from "../../src/session/session";
@@ -141,8 +142,9 @@ const WORKSPACE: (Entry & {
 ];
 
 /**
- * The menu of every screen that is not a tab, the workspace switcher, the
- * account, the server and sign-out. A section shows only what the person
+ * The menu of every screen that is not a tab, the workspace switcher with
+ * the invitations that wait and a new workspace, the account, the server
+ * and sign-out. A section shows only what the person
  * may use: "You" needs a Server with API version 2, and each row of
  * "Workspace" needs its capability from `whoami`.
  */
@@ -151,6 +153,7 @@ export default function MoreScreen() {
 	const me = useMe();
 	const access = useAccess();
 	const assistant = useAssistantAvailable();
+	const pendingCount = usePendingCount();
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
 	const youRows = YOU.filter((entry) => access.fullApi || entry.local);
@@ -232,6 +235,24 @@ export default function MoreScreen() {
 								onPress={() => void setWorkspace(org.slug)}
 							/>
 						))}
+						{pendingCount > 0 ? (
+							<SettingsLink
+								icon="invitation"
+								tint="orange"
+								title="Invitations"
+								subtitle="Workspaces that wait for your answer"
+								value={String(pendingCount)}
+								onPress={() => router.push("/onboarding")}
+							/>
+						) : null}
+						{access.workspaceCreation ? (
+							<SettingsLink
+								icon="add"
+								tint="green"
+								title="New workspace"
+								onPress={() => router.push("/onboarding/new-workspace")}
+							/>
+						) : null}
 					</SettingsSection>
 					<SettingsSection title="Account">
 						<SettingsValue
