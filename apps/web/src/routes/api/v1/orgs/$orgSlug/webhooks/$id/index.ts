@@ -15,6 +15,7 @@ import {
 	apiRoute,
 	type OrgRowParams,
 } from "#/server/api-route.ts";
+import { withUrlRefusalReason } from "#/server/webhook-url-refusal.ts";
 
 const byId = z.object({ endpointId: webhookEndpointIdInput });
 
@@ -57,7 +58,11 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/$id/")({
 				},
 				run: async (ctx, input): Promise<ApiWebhookEndpoint> => {
 					const { webhooksService } = await import("@farmer/core/services");
-					return toApiWebhookEndpoint(await webhooksService.update(ctx, input));
+					return toApiWebhookEndpoint(
+						await withUrlRefusalReason(() =>
+							webhooksService.update(ctx, input),
+						),
+					);
 				},
 			}),
 			// `remove` is silent about an id it did not find, so the endpoint is

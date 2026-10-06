@@ -7,6 +7,7 @@ import { createWebhookEndpointInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { apiRoute, NO_INPUT } from "#/server/api-route.ts";
+import { withUrlRefusalReason } from "#/server/webhook-url-refusal.ts";
 
 /**
  * `GET` and `POST /api/v1/orgs/$orgSlug/webhooks` — the outbound webhook
@@ -31,7 +32,9 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/")({
 				input: createWebhookEndpointInput,
 				run: async (ctx, input): Promise<ApiWebhookEndpointCreated> => {
 					const { webhooksService } = await import("@farmer/core/services");
-					const created = await webhooksService.create(ctx, input);
+					const created = await withUrlRefusalReason(() =>
+						webhooksService.create(ctx, input),
+					);
 					return {
 						endpoint: toApiWebhookEndpoint(created.endpoint),
 						secret: created.secret,
