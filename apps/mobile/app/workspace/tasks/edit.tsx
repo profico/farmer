@@ -142,11 +142,19 @@ function TaskForm({
 	const [color, setColor] = useState(initialColor);
 	const [description, setDescription] = useState(initialDescription);
 	const trimmed = name.trim();
+	// As in the other forms, Save is on only after a change. A new task
+	// has nothing to compare with, so Create needs only a name.
+	const changed =
+		id === null ||
+		trimmed !== initialName.trim() ||
+		group !== initialGroup ||
+		color !== initialColor ||
+		description.trim() !== initialDescription.trim();
 	const busy = create.isPending || update.isPending || archive.isPending;
 	const failure = messageOf(create.error ?? update.error);
 
 	const save = () => {
-		if (trimmed === "") return;
+		if (trimmed === "" || !changed) return;
 		const body = {
 			name: trimmed,
 			group,
@@ -175,7 +183,7 @@ function TaskForm({
 			actionLabel={id ? "Save" : "Create"}
 			onAction={save}
 			busy={busy}
-			actionDisabled={trimmed === ""}
+			actionDisabled={trimmed === "" || !changed}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
 			<Field
