@@ -72,51 +72,68 @@ export function Screen({
 	const insets = useSafeAreaInsets();
 	const pull = usePullToRefresh(refreshing ?? false, onRefresh);
 	return (
-		<ScrollView
-			style={{ flex: 1, backgroundColor: palette.background }}
-			contentContainerStyle={{
-				paddingTop: (topInset ? insets.top : 0) + SPACE.s,
-				paddingBottom: insets.bottom + SPACE.xxl,
-				gap: SPACE.l,
-			}}
-			contentInsetAdjustmentBehavior="never"
-			keyboardShouldPersistTaps="handled"
-			refreshControl={
-				onRefresh ? (
-					<RefreshControl
-						refreshing={pull.refreshing}
-						onRefresh={pull.onRefresh}
-						colors={[String(palette.primary)]}
-						progressBackgroundColor={String(palette.surfaceContainerHigh)}
-						tintColor={palette.primary}
-					/>
-				) : undefined
-			}
-		>
-			{title ? (
-				<View
-					style={{
-						flexDirection: "row",
-						alignItems: "flex-end",
-						paddingHorizontal: SPACE.l,
-						gap: SPACE.s,
-					}}
-				>
-					<View style={{ flex: 1 }}>
-						{overline ? (
-							<Text variant="labelLarge" color={palette.onSurfaceVariant}>
-								{overline}
+		<View style={{ flex: 1, backgroundColor: palette.background }}>
+			<ScrollView
+				style={{ flex: 1, backgroundColor: palette.background }}
+				contentContainerStyle={{
+					paddingTop: (topInset ? insets.top : 0) + SPACE.s,
+					paddingBottom: insets.bottom + SPACE.xxl,
+					gap: SPACE.l,
+				}}
+				contentInsetAdjustmentBehavior="never"
+				keyboardShouldPersistTaps="handled"
+				refreshControl={
+					onRefresh ? (
+						<RefreshControl
+							refreshing={pull.refreshing}
+							onRefresh={pull.onRefresh}
+							colors={[String(palette.primary)]}
+							progressBackgroundColor={String(palette.surfaceContainerHigh)}
+							tintColor={palette.primary}
+						/>
+					) : undefined
+				}
+			>
+				{title ? (
+					<View
+						style={{
+							flexDirection: "row",
+							alignItems: "flex-end",
+							paddingHorizontal: SPACE.l,
+							gap: SPACE.s,
+						}}
+					>
+						<View style={{ flex: 1 }}>
+							{overline ? (
+								<Text variant="labelLarge" color={palette.onSurfaceVariant}>
+									{overline}
+								</Text>
+							) : null}
+							<Text variant="headlineMedium" numberOfLines={1}>
+								{title}
 							</Text>
-						) : null}
-						<Text variant="headlineMedium" numberOfLines={1}>
-							{title}
-						</Text>
+						</View>
+						{actions}
 					</View>
-					{actions}
-				</View>
+				) : null}
+				{children}
+			</ScrollView>
+			{topInset ? (
+				// The status bar is transparent (edge to edge). Without this
+				// band, the content scrolls under the clock and the icons.
+				<View
+					pointerEvents="none"
+					style={{
+						position: "absolute",
+						top: 0,
+						left: 0,
+						right: 0,
+						height: insets.top,
+						backgroundColor: palette.background,
+					}}
+				/>
 			) : null}
-			{children}
-		</ScrollView>
+		</View>
 	);
 }
 
