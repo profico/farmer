@@ -2814,8 +2814,6 @@ export interface components {
             uploadsEnabled: boolean;
             /** @description True when a person may make a new workspace. False in single-org mode. */
             organizationCreation: boolean;
-            /** @description True when a provider sign-in in the mobile app ends in a one-time code that `POST /api/auth/mobile/exchange` turns into the session token. A server from before the exchange sends no field: read it as off. */
-            signInExchange: boolean;
         };
         Me: {
             user: {

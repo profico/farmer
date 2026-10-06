@@ -74,7 +74,6 @@ export const Route = createFileRoute("/api/v1/meta")({
 					pushRelay: { enabled: relayUrl !== null, url: relayUrl },
 					uploadsEnabled: isStorageEnabled(),
 					organizationCreation: !isSingleOrgMode(),
-					signInExchange: true,
 				};
 				return Response.json(meta, {
 					headers: { "Cache-Control": "no-store" },
