@@ -237,7 +237,7 @@ export default function AssembleSheet() {
 					</View>
 				) : null}
 				{chosen.length > 0 ? (
-					<Text variant="labelLarge">
+					<Text variant="labelLarge" numeric>
 						{formatHours(chosenSeconds)} selected
 					</Text>
 				) : null}

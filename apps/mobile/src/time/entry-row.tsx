@@ -95,7 +95,9 @@ export function EntryRow({
 					</Text>
 				) : null}
 			</View>
-			<Text variant="titleMedium">{formatHours(entry.durationSeconds)}</Text>
+			<Text variant="titleMedium" numeric>
+				{formatHours(entry.durationSeconds)}
+			</Text>
 			{onContinue ? (
 				<IconButton
 					icon="play"

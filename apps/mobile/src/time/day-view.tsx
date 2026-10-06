@@ -16,6 +16,7 @@ import {
 	Text,
 } from "../ui/components";
 import { messageOf } from "../ui/errors";
+import { Figure } from "../ui/figure";
 import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -119,9 +120,10 @@ export function DayView({
 						justifyContent: "space-between",
 					}}
 				>
-					<Text variant="titleMedium">
-						{formatHours(totals.get(selected) ?? 0)} logged
-					</Text>
+					<Figure
+						text={`${formatHours(totals.get(selected) ?? 0)} logged`}
+						value={totals.get(selected) ?? 0}
+					/>
 					<View style={{ flexDirection: "row", alignItems: "center" }}>
 						{onAssemble ? (
 							<IconButton
