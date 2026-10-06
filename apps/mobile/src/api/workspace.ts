@@ -173,8 +173,16 @@ const useClientChange = <Vars, Result>(
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (vars: Vars) => mutationFn(w, vars),
+		// `["clients"]` is the list of the project form and of the projects
+		// screen (`api/projects.ts`), apart from the admin list.
 		onSuccess: () =>
-			invalidate(queryClient, w, ["admin", "clients"], ["projects"]),
+			invalidate(
+				queryClient,
+				w,
+				["admin", "clients"],
+				["clients"],
+				["projects"],
+			),
 	});
 };
 
