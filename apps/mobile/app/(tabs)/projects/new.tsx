@@ -1,9 +1,10 @@
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import { useClients, useCreateProject } from "../../../src/api/projects";
+import { HeaderActions } from "../../../src/navigation/header-actions";
 import { ProjectFields } from "../../../src/projects/components/project-fields";
 import { useIconUpload } from "../../../src/projects/icon-upload";
 import {
@@ -51,6 +52,11 @@ export default function NewProjectScreen() {
 				}),
 		});
 	};
+
+	const canCreate =
+		access.canManageProjects && !clients.isPending && !clients.isError
+			? (clients.data?.length ?? 0) > 0
+			: false;
 
 	const content = () => {
 		if (!access.canManageProjects) {
@@ -108,13 +114,15 @@ export default function NewProjectScreen() {
 				{create.error ? (
 					<ErrorBanner message={messageOf(create.error) ?? ""} />
 				) : null}
-				<View style={{ alignItems: "flex-start" }}>
-					<ActionButton
-						label={create.isPending ? "Creating" : "Create"}
-						disabled={create.isPending}
-						onPress={submit}
-					/>
-				</View>
+				{Platform.OS === "ios" ? null : (
+					<View style={{ alignItems: "flex-start" }}>
+						<ActionButton
+							label={create.isPending ? "Creating" : "Create"}
+							disabled={create.isPending}
+							onPress={submit}
+						/>
+					</View>
+				)}
 			</Inset>
 		);
 	};
@@ -122,6 +130,19 @@ export default function NewProjectScreen() {
 	return (
 		<>
 			<Stack.Screen options={{ title: "New project" }} />
+			{/* iOS: "Create" is the bold bar button, as in the sheets. */}
+			{Platform.OS === "ios" && canCreate ? (
+				<HeaderActions
+					actions={[
+						{
+							label: "Create",
+							prominent: true,
+							disabled: create.isPending,
+							onPress: submit,
+						},
+					]}
+				/>
+			) : null}
 			<Screen topInset={false}>{content()}</Screen>
 		</>
 	);
