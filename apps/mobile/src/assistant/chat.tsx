@@ -75,16 +75,20 @@ const useKeyboardOpen = () => {
  * The chat: the transcript, the answer as it streams, the tools it used,
  * an approval card when a write waits, and the composer. With no `id` it is
  * a draft, as on the web: the hero and the composer, and no server call
- * until the first message. That message creates the thread, and the screen
- * is replaced by the thread's own.
+ * until the first message. That message creates the thread, and the same
+ * screen goes on with it.
  */
-export function Chat({ id }: { id: string | null }) {
+export function Chat({ id: routeId }: { id: string | null }) {
 	const palette = usePalette();
 	const router = useRouter();
-	const thread = useAssistantThread(id);
 	// A draft that has made its thread, but whose first message has not
 	// arrived yet, shows the run of that thread.
 	const [draftId, setDraftId] = useState<string | null>(null);
+	// A draft whose first message arrived. The same screen goes on with that
+	// thread, so no screen slides in and Back goes where it went before.
+	const [startedId, setStartedId] = useState<string | null>(null);
+	const id = routeId ?? startedId;
+	const thread = useAssistantThread(id);
 	const runId = id ?? draftId ?? "";
 	const run = useRun(runId);
 	const actions = useRunActions();
@@ -123,10 +127,9 @@ export function Chat({ id }: { id: string | null }) {
 				void actions.send(threadId, text, () => resolve(true)).then(resolve);
 			});
 			if (!delivered) return false;
-			// The run lives outside the screen, so the thread's own screen
-			// shows it from the first frame. Back then goes to the screen that
-			// opened the new chat.
-			router.replace({ pathname: "/assistant/[id]", params: { id: threadId } });
+			// The run lives outside the screen, so this screen goes on with
+			// the thread and shows the run without a change of screen.
+			setStartedId(threadId);
 			return true;
 		} catch (failure) {
 			setDraftError(
@@ -197,7 +200,7 @@ export function Chat({ id }: { id: string | null }) {
 								scroll.current?.scrollToEnd({ animated: false });
 						}}
 					>
-						{id !== null && thread.isPending ? (
+						{id !== null && thread.isPending && !run.sentMessage ? (
 							<View style={{ gap: SPACE.m }}>
 								<Skeleton height={48} width="60%" />
 								<Skeleton height={120} />
