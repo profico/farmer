@@ -51,7 +51,9 @@ export function StatTiles({ tiles }: { tiles: Tile[] }) {
 		<View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.s }}>
 			{tiles.map((tile) => (
 				<View key={tile.label} style={{ flexBasis: "48%", flexGrow: 1 }}>
-					<Card style={{ height: "100%" }}>
+					{/* The row stretches the two tiles of a line to one height.
+					    A height of 100% grew each tile to the whole screen. */}
+					<Card style={{ flexGrow: 1 }}>
 						<TotalFigure
 							label={tile.label}
 							value={tile.value}
