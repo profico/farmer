@@ -1,5 +1,4 @@
-import type { AssistantModel } from "@farmer/api-client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FlatList, Modal, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,14 +14,11 @@ import { useMotionPreference } from "../ui/motion";
 import { SettingsChoice } from "../ui/settings-list";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
-
-/** USD per million prompt tokens, as a short label. */
-const priceOf = (model: AssistantModel) =>
-	model.promptPrice === null
-		? undefined
-		: model.promptPrice === 0
-			? "Free"
-			: `$${model.promptPrice.toFixed(2)} for 1M tokens in`;
+import {
+	type ModelPickerProps,
+	priceOf,
+	useUsableModels,
+} from "./model-picker-shared";
 
 /**
  * The list of the provider's models, to choose the workspace default. The
@@ -35,31 +31,12 @@ export function ModelPicker({
 	selected,
 	onClose,
 	onPick,
-}: {
-	visible: boolean;
-	models: {
-		data?: AssistantModel[];
-		error: Error | null;
-		refetch: () => void;
-	};
-	selected: string | null;
-	onClose: () => void;
-	onPick: (id: string) => void;
-}) {
+}: ModelPickerProps) {
 	const palette = usePalette();
 	const { reduceMotion } = useMotionPreference();
 	const insets = useSafeAreaInsets();
 	const [search, setSearch] = useState("");
-	const usable = useMemo(() => {
-		const needle = search.trim().toLowerCase();
-		return (models.data ?? []).filter(
-			(model) =>
-				model.supportsTools &&
-				(!needle ||
-					model.id.toLowerCase().includes(needle) ||
-					model.name.toLowerCase().includes(needle)),
-		);
-	}, [models.data, search]);
+	const usable = useUsableModels(models.data, search);
 
 	return (
 		<Modal

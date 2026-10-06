@@ -106,6 +106,7 @@ function Row({
 	accessibilityLabel,
 	grouped = true,
 	selected,
+	hasValue,
 }: RowBase & {
 	trailing?: ReactNode;
 	onPress?: () => void;
@@ -115,6 +116,9 @@ function Row({
 	grouped?: boolean;
 	/** Set for an option of a choice. */
 	selected?: boolean;
+	/** A value shows at the end. A long value gives way to the title, not
+	 *  the other way round. */
+	hasValue?: boolean;
 }) {
 	const palette = usePalette();
 	const menu = useRowMenu(title, actions ?? []);
@@ -151,7 +155,9 @@ function Row({
 					borderBottomColor: palette.outline,
 				}}
 			>
-				<View style={{ flex: 1 }}>
+				<View
+					style={hasValue ? { flexShrink: 0, maxWidth: "60%" } : { flex: 1 }}
+				>
 					<Text
 						variant="bodyLarge"
 						color={destructive ? palette.error : palette.onSurface}
@@ -175,6 +181,22 @@ function Row({
 	);
 }
 
+/** The value at the end of a row: one line. */
+function Value({ children }: { children: string }) {
+	const palette = usePalette();
+	return (
+		<View style={{ flex: 1, alignItems: "flex-end" }}>
+			<Text
+				variant="bodyLarge"
+				color={palette.onSurfaceVariant}
+				numberOfLines={1}
+			>
+				{children}
+			</Text>
+		</View>
+	);
+}
+
 const labelOf = (...parts: (string | undefined)[]) =>
 	parts.filter((part) => part).join(", ");
 
@@ -185,20 +207,16 @@ export function SettingsLink({
 	onPress,
 	...row
 }: SettingsLinkProps) {
-	const palette = usePalette();
 	return (
 		<Row
 			{...row}
 			onPress={onPress}
 			destructive={destructive}
+			hasValue={Boolean(value)}
 			accessibilityLabel={labelOf(row.title, row.subtitle, value)}
 			trailing={
 				<>
-					{value ? (
-						<Text variant="bodyLarge" color={palette.onSurfaceVariant}>
-							{value}
-						</Text>
-					) : null}
+					{value ? <Value>{value}</Value> : null}
 					{destructive ? null : (
 						<Icon
 							name={external ? "external" : "forward"}
@@ -263,17 +281,15 @@ export function SettingsSwitch({
 }
 
 export function SettingsValue({ value, onPress, ...row }: SettingsValueProps) {
-	const palette = usePalette();
 	return (
 		<Row
 			{...row}
 			onPress={onPress}
+			hasValue={value !== ""}
 			accessibilityLabel={labelOf(row.title, row.subtitle, value)}
 			trailing={
 				<>
-					<Text variant="bodyLarge" color={palette.onSurfaceVariant}>
-						{value}
-					</Text>
+					{value === "" ? null : <Value>{value}</Value>}
 					{onPress ? (
 						<Icon
 							name="forward"

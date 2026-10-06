@@ -9,6 +9,7 @@ import {
 	useUpdateAssistantSettings,
 } from "../api/assistant";
 import { ModelPicker } from "../assistant/model-picker";
+import { SettingTitle } from "../forms/setting-title";
 import {
 	ActionButton,
 	EmptyState,
@@ -119,9 +120,7 @@ function HouseRules({ settings }: { settings: AssistantSettings }) {
 	return (
 		<>
 			<Inset>
-				<Text variant="titleSmall" color={palette.primary}>
-					House rules
-				</Text>
+				<SettingTitle>House rules</SettingTitle>
 				<Text variant="bodySmall" color={palette.onSurfaceVariant}>
 					Added to the assistant's instructions in every conversation of this
 					workspace. The built-in rules come first.

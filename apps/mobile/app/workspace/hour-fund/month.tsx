@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import {
@@ -176,7 +176,14 @@ function MonthForm({
 						{suggestion.error.message}
 					</Text>
 				) : (
-					<View style={{ gap: SPACE.s }}>
+					<View
+						// iOS draws this text as a row of the group, so it needs the
+						// padding of a row.
+						style={{
+							gap: SPACE.s,
+							padding: Platform.OS === "ios" ? SPACE.l : 0,
+						}}
+					>
 						<Text variant="bodyLarge">
 							{`${suggestion.data.workingDays} working days, ${hoursOf(suggestion.data.fundSeconds)} hours`}
 						</Text>

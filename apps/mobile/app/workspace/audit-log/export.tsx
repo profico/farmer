@@ -1,10 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useWhoami } from "../../../src/api/queries";
 import { useExportAudit, usePeople } from "../../../src/api/workspace";
-import { FormSection, Sheet } from "../../../src/forms/sheet";
+import { FormGroup, FormSection, Sheet } from "../../../src/forms/sheet";
+import { DateField } from "../../../src/time/components/date-field";
 import { ErrorBanner, Skeleton, Text } from "../../../src/ui/components";
 import { messageOf } from "../../../src/ui/errors";
 import { SettingsSection } from "../../../src/ui/settings-list";
@@ -43,6 +44,9 @@ export default function ExportAuditSheet() {
 	return <ExportForm today={whoami.data.today} />;
 }
 
+const RANGE_FOOTER =
+	"At most a year. The file holds at most 10,000 rows. The export is recorded in the log.";
+
 function ExportForm({ today }: { today: string }) {
 	const palette = usePalette();
 	const params = useLocalSearchParams();
@@ -70,6 +74,9 @@ function ExportForm({ today }: { today: string }) {
 		person ?? "",
 	].filter(Boolean);
 
+	const lastDay =
+		addDays(from, MAX_SPAN_DAYS) < today ? addDays(from, MAX_SPAN_DAYS) : today;
+
 	const run = () => {
 		setResult(null);
 		setShareError(null);
@@ -94,34 +101,49 @@ function ExportForm({ today }: { today: string }) {
 			busy={exporter.isPending}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Range">
-				<View style={{ marginHorizontal: -SPACE.l }}>
-					<SettingsSection footer="At most a year. The file holds at most 10,000 rows. The export is recorded in the log.">
-						<PickerRow
-							title="From"
-							mode="date"
-							value={from}
-							display={formatDay(from)}
-							onChange={setFrom}
-							minimum={addDays(to, -MAX_SPAN_DAYS)}
-							maximum={to}
-						/>
-						<PickerRow
-							title="To"
-							mode="date"
-							value={to}
-							display={formatDay(to)}
-							onChange={setTo}
-							minimum={from}
-							maximum={
-								addDays(from, MAX_SPAN_DAYS) < today
-									? addDays(from, MAX_SPAN_DAYS)
-									: today
-							}
-						/>
-					</SettingsSection>
-				</View>
-			</FormSection>
+			{Platform.OS === "ios" ? (
+				<FormGroup title="Range" footer={RANGE_FOOTER}>
+					<DateField
+						label="From"
+						value={from}
+						onChange={setFrom}
+						minimum={addDays(to, -MAX_SPAN_DAYS)}
+						maximum={to}
+					/>
+					<DateField
+						label="To"
+						value={to}
+						onChange={setTo}
+						minimum={from}
+						maximum={lastDay}
+					/>
+				</FormGroup>
+			) : (
+				<FormSection label="Range">
+					<View style={{ marginHorizontal: -SPACE.l }}>
+						<SettingsSection footer={RANGE_FOOTER}>
+							<PickerRow
+								title="From"
+								mode="date"
+								value={from}
+								display={formatDay(from)}
+								onChange={setFrom}
+								minimum={addDays(to, -MAX_SPAN_DAYS)}
+								maximum={to}
+							/>
+							<PickerRow
+								title="To"
+								mode="date"
+								value={to}
+								display={formatDay(to)}
+								onChange={setTo}
+								minimum={from}
+								maximum={lastDay}
+							/>
+						</SettingsSection>
+					</View>
+				</FormSection>
+			)}
 			{filters.length > 0 ? (
 				<FormSection label="Filters of the list">
 					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
