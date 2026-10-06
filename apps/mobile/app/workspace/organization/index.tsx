@@ -1,7 +1,7 @@
 import type { OrgPolicy } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
-import { Image, View } from "react-native";
+import { type ReactNode, useState } from "react";
+import { Image, Platform, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import { useUploadImage } from "../../../src/api/uploads";
@@ -11,6 +11,7 @@ import {
 	useUpdateOrganization,
 	useUpdateOrgPolicy,
 } from "../../../src/api/workspace";
+import { SettingTitle } from "../../../src/forms/setting-title";
 import { useSignedIn } from "../../../src/session/session";
 import {
 	ActionButton,
@@ -38,6 +39,7 @@ import {
 	notifyError,
 	PickerRow,
 } from "../../../src/workspace/components";
+import { SaveBar, useSaveBar } from "../../../src/workspace/save-bar";
 
 const NAME_MAX_LENGTH = 120;
 const LOGO_MAX_LENGTH = 2048;
@@ -91,14 +93,21 @@ function OrganizationSettings() {
 						onRetry={() => void settings.refetch()}
 					/>
 				) : (
-					<>
+					<IosSaveBar>
 						<OrganizationForm settings={settings.data} />
 						{access.setupApi ? <PolicySections /> : null}
-					</>
+					</IosSaveBar>
 				)}
 			</Screen>
 		</>
 	);
+}
+
+/** iOS saves the settings with one button in the navigation bar. Android
+ *  has a button under each setting. */
+function IosSaveBar({ children }: { children: ReactNode }) {
+	if (Platform.OS !== "ios") return <>{children}</>;
+	return <SaveBar>{children}</SaveBar>;
 }
 
 function OrganizationForm({
@@ -156,6 +165,17 @@ function OrganizationForm({
 			onError: (error) => notifyError("Could not upload the logo", error),
 		});
 
+	const saveName = () =>
+		save(
+			{ name: trimmedName },
+			"Organization name saved",
+			"Could not save the name",
+		);
+	const saveLogo = () =>
+		save({ logo: trimmedLogo }, "Logo saved", "Could not save the logo");
+	useSaveBar("name", nameChanged, saveName);
+	useSaveBar("logo", !uploadedLogo && logoChanged && logoValid, saveLogo);
+
 	const weekStart = settings.weekStartsOn === 0 ? 0 : 1;
 	const failure = messageOf(update.error);
 
@@ -176,19 +196,15 @@ function OrganizationForm({
 					returnKeyType="done"
 					hint="The display name of the organization, shown in the switcher."
 				/>
-				<View style={{ alignItems: "flex-end" }}>
-					<ActionButton
-						label="Save name"
-						disabled={!nameChanged || update.isPending}
-						onPress={() =>
-							save(
-								{ name: trimmedName },
-								"Organization name saved",
-								"Could not save the name",
-							)
-						}
-					/>
-				</View>
+				{Platform.OS === "ios" ? null : (
+					<View style={{ alignItems: "flex-end" }}>
+						<ActionButton
+							label="Save name"
+							disabled={!nameChanged || update.isPending}
+							onPress={saveName}
+						/>
+					</View>
+				)}
 			</Inset>
 
 			<SettingsSection
@@ -232,9 +248,7 @@ function OrganizationForm({
 			<Inset>
 				{/* The heading names the setting and the field names what goes in
 				    it, so the two never show the same words. */}
-				<Text variant="titleSmall" color={palette.primary}>
-					Logo
-				</Text>
+				<SettingTitle>Logo</SettingTitle>
 				{uploadedLogo && settings.logo ? (
 					<View
 						style={{
@@ -311,17 +325,11 @@ function OrganizationForm({
 							onPress={uploadLogo}
 						/>
 					) : null}
-					{uploadedLogo ? null : (
+					{uploadedLogo || Platform.OS === "ios" ? null : (
 						<ActionButton
 							label="Save logo"
 							disabled={!logoChanged || !logoValid || update.isPending}
-							onPress={() =>
-								save(
-									{ logo: trimmedLogo },
-									"Logo saved",
-									"Could not save the logo",
-								)
-							}
+							onPress={saveLogo}
 						/>
 					)}
 				</View>
@@ -354,7 +362,6 @@ function PolicySections() {
  * more hours. It does not stop people: they can still edit their entries.
  */
 function PolicyForm({ policy }: { policy: OrgPolicy }) {
-	const palette = usePalette();
 	const update = useUpdateOrgPolicy();
 	const [pct, setPct] = useState(String(policy.trackingTolerancePct));
 	const [lock, setLock] = useState<string | null>(
@@ -402,12 +409,13 @@ function PolicyForm({ policy }: { policy: OrgPolicy }) {
 			},
 		);
 
+	useSaveBar("tolerance", pctChanged, saveTolerance);
+	useSaveBar("lock", lockChanged, saveLock);
+
 	return (
 		<>
 			<Inset>
-				<Text variant="titleSmall" color={palette.primary}>
-					Tracking tolerance
-				</Text>
+				<SettingTitle>Tracking tolerance</SettingTitle>
 				<Field
 					label="Tolerance, percent"
 					value={pct}
@@ -422,13 +430,15 @@ function PolicyForm({ policy }: { policy: OrgPolicy }) {
 					}
 					hint="How far below the target so far a person can be and still count as only slightly behind. Past it, the person is behind, on the Tracking report and in every reminder. The target is the hour fund of the month, spread over its working days (8 h each, without public holidays). The total of a person is work plus time off."
 				/>
-				<View style={{ alignItems: "flex-end" }}>
-					<ActionButton
-						label="Save tolerance"
-						disabled={!pctChanged || update.isPending}
-						onPress={saveTolerance}
-					/>
-				</View>
+				{Platform.OS === "ios" ? null : (
+					<View style={{ alignItems: "flex-end" }}>
+						<ActionButton
+							label="Save tolerance"
+							disabled={!pctChanged || update.isPending}
+							onPress={saveTolerance}
+						/>
+					</View>
+				)}
 			</Inset>
 
 			<SettingsSection
@@ -453,15 +463,17 @@ function PolicyForm({ policy }: { policy: OrgPolicy }) {
 					/>
 				) : null}
 			</SettingsSection>
-			<Inset>
-				<View style={{ alignItems: "flex-end" }}>
-					<ActionButton
-						label="Save lock"
-						disabled={!lockChanged || update.isPending}
-						onPress={saveLock}
-					/>
-				</View>
-			</Inset>
+			{Platform.OS === "ios" ? null : (
+				<Inset>
+					<View style={{ alignItems: "flex-end" }}>
+						<ActionButton
+							label="Save lock"
+							disabled={!lockChanged || update.isPending}
+							onPress={saveLock}
+						/>
+					</View>
+				</Inset>
+			)}
 		</>
 	);
 }
