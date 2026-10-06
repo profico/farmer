@@ -3,15 +3,11 @@
 
 /** The Material 3 Expressive corner scale (its shape scale). */
 export const CORNER = {
-	none: 0,
 	extraSmall: 4,
 	small: 8,
 	medium: 12,
 	large: 16,
-	largeIncreased: 20,
 	extraLarge: 28,
-	extraLargeIncreased: 32,
-	extraExtraLarge: 48,
 	full: 9999,
 } as const;
 
@@ -21,14 +17,11 @@ export const RADIUS = {
 	field: CORNER.extraSmall,
 	chip: CORNER.small,
 	dialog: CORNER.extraLarge,
-	sheet: CORNER.extraLarge,
 	fab: CORNER.large,
 	/** The outer corners of a grouped list (the Expressive segmented list). */
 	listGroup: CORNER.large,
 	/** The corners that two rows of a grouped list share. */
 	listInner: CORNER.extraSmall,
-	menu: CORNER.large,
-	menuItem: CORNER.medium,
 	snackbar: CORNER.extraSmall,
 	button: CORNER.full,
 } as const;

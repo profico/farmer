@@ -6,31 +6,30 @@ import { Icon } from "./icon";
 import type { IconBadgeProps } from "./icon-badge";
 import { usePalette } from "./theme";
 
+/** The width and the height, in dp. */
+const SIZE = 96;
+
 /**
  * An icon in a large tonal container with an expressive Material shape. The
  * shape and the fill are Compose (`clip`), and the icon is drawn over it.
  * The error tone has a sunny shape, and the rest has nine rounded sides.
  */
-export function IconBadge({
-	icon,
-	tone = "secondary",
-	size = 96,
-}: IconBadgeProps) {
+export function IconBadge({ icon, tone = "secondary" }: IconBadgeProps) {
 	const palette = usePalette();
 	const error = tone === "error";
 	return (
 		<View
 			style={{
-				width: size,
-				height: size,
+				width: SIZE,
+				height: SIZE,
 				alignItems: "center",
 				justifyContent: "center",
 			}}
 		>
-			<Host style={{ position: "absolute", width: size, height: size }}>
+			<Host style={{ position: "absolute", width: SIZE, height: SIZE }}>
 				<Box
 					modifiers={[
-						modifiers.size(size, size),
+						modifiers.size(SIZE, SIZE),
 						modifiers.clip(
 							error
 								? modifiers.Shapes.Material.Sunny
@@ -44,7 +43,7 @@ export function IconBadge({
 			</Host>
 			<Icon
 				name={icon}
-				size={size / 2.4}
+				size={SIZE / 2.4}
 				color={error ? palette.onErrorContainer : palette.onSecondaryContainer}
 			/>
 		</View>

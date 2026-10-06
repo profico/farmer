@@ -79,11 +79,6 @@ const spring = (ratio: number, stiffness: number): SpringConfig => ({
 
 export const SPRING = {
 	fastSpatial: spring(0.6, 800),
-	defaultSpatial: spring(0.8, 380),
-	slowSpatial: spring(0.8, 200),
-	fastEffects: spring(1, 3800),
-	defaultEffects: spring(1, 1600),
-	slowEffects: spring(1, 800),
 } as const satisfies { [name: string]: SpringConfig };
 
 export type SpringName = keyof typeof SPRING;
