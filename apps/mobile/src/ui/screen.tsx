@@ -87,6 +87,8 @@ export function Screen({
 						<RefreshControl
 							refreshing={pull.refreshing}
 							onRefresh={pull.onRefresh}
+							// Android: start the spinner below the status bar band.
+							progressViewOffset={topInset ? insets.top : 0}
 							colors={[String(palette.primary)]}
 							progressBackgroundColor={String(palette.surfaceContainerHigh)}
 							tintColor={palette.primary}
