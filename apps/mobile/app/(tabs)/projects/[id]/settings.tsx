@@ -5,7 +5,7 @@ import { View } from "react-native";
 
 import { useAccess } from "../../../../src/api/capabilities";
 import {
-	useClients,
+	useActiveClients,
 	useProject,
 	useUpdateProject,
 } from "../../../../src/api/projects";
@@ -44,7 +44,7 @@ import { SPACE } from "../../../../src/ui/type";
  *  until Save, except "Open to everyone" and Archive, which act at once. */
 function SettingsForm({ project }: { project: ProjectDetail }) {
 	const palette = usePalette();
-	const clients = useClients();
+	const clients = useActiveClients();
 	const update = useUpdateProject(project.id);
 	const openToOrg = useUpdateProject(project.id);
 	const status = useConfirmProjectStatus();

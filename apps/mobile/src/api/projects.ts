@@ -91,7 +91,7 @@ export const useAssignable = (id: string, enabled: boolean) => {
 };
 
 /** The active clients, for the client of a project. */
-export const useClients = (enabled = true) => {
+export const useActiveClients = (enabled = true) => {
 	const w = useWorkspace();
 	const { fullApi } = useAccess();
 	return useQuery({

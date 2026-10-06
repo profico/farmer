@@ -16,7 +16,7 @@ import {
 import {
 	useCopyDay,
 	useCopyWeek,
-	useHolidays,
+	useHolidayNames,
 	useHome,
 	useSyncNow,
 } from "../../../src/api/time";
@@ -164,7 +164,7 @@ function Timesheet({
 
 	// One read of the range on screen. The day and the week share the key.
 	const entries = useEntries(from, to);
-	const holidays = useHolidays(from, to);
+	const holidays = useHolidayNames(from, to);
 	const unfiled = useUnfiled(from, to);
 	const tracking = useTracking();
 	const timer = useTimer();

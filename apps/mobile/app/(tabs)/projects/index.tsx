@@ -6,7 +6,7 @@ import { Platform, View } from "react-native";
 import { useAccess } from "../../../src/api/capabilities";
 import {
 	useArchiveProject,
-	useClients,
+	useActiveClients,
 	useProjectList,
 } from "../../../src/api/projects";
 import { useProjects } from "../../../src/api/queries";
@@ -137,7 +137,7 @@ export default function ProjectsScreen() {
 	const router = useRouter();
 	const access = useAccess();
 	const list = useProjectList();
-	const clients = useClients(access.canManageProjects);
+	const clients = useActiveClients(access.canManageProjects);
 	const archive = useArchiveProject();
 	const status = useConfirmProjectStatus();
 	const [search, setSearch] = useState("");

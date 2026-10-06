@@ -35,8 +35,8 @@ export const recurringBlocksKey = (w: Workspace) =>
 export const timerSettingsKey = (w: Workspace) =>
 	[...scope(w), "timer-settings"] as const;
 
-/** The public holidays between two days, by day. */
-export const useHolidays = (from: string, to: string) => {
+/** The names of the public holidays between two days, by day key. */
+export const useHolidayNames = (from: string, to: string) => {
 	const w = useWorkspace();
 	const { fullApi } = useAccess();
 	return useQuery({

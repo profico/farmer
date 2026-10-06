@@ -454,7 +454,7 @@ function EntryForm({
 				</FormPart>
 			</FormCluster>
 			<FormCluster>
-				<FormPart footer={undefined} groupFooter={NOTE_HINT}>
+				<FormPart groupFooter={NOTE_HINT}>
 					<Field
 						label="Note"
 						hint={NOTE_HINT}

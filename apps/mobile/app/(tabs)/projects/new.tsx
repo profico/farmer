@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Platform, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
-import { useClients, useCreateProject } from "../../../src/api/projects";
+import { useActiveClients, useCreateProject } from "../../../src/api/projects";
 import { HeaderActions } from "../../../src/navigation/header-actions";
 import { ProjectFields } from "../../../src/projects/components/project-fields";
 import { useIconUpload } from "../../../src/projects/icon-upload";
@@ -32,7 +32,7 @@ import { Inset, Screen } from "../../../src/ui/screen";
 export default function NewProjectScreen() {
 	const router = useRouter();
 	const access = useAccess();
-	const clients = useClients();
+	const clients = useActiveClients();
 	const create = useCreateProject();
 	const [form, setForm] = useState<ProjectForm>(EMPTY_FORM);
 	const [tried, setTried] = useState(false);
