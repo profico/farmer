@@ -89,13 +89,31 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
   OIDC source, so a source whose authorization endpoint is on a different
   host fails closed.
-- **Open for the owner:** the session travels in the `farmer://` deep link.
-  Another Android app that claims the same scheme can receive it, and a
-  self-hosted server cannot use verified https App Links. The app refuses a
-  callback for a flow it did not start (a nonce it keeps until the callback),
-  which stops a forced sign-in but not a hostile app on the device. A real
-  fix is an exchange: the link carries a one-time code, and only the app that
-  holds the matching secret can turn it into a session.
+- **Resolved, 6 October 2026: the link carries a one-time code, not the
+  session.** The session in the `farmer://` link could reach another Android
+  app that claims the same scheme, and a self-hosted server cannot use
+  verified https App Links. The fix is PKCE (RFC 7636, method S256). Before
+  the browser opens, the app makes a random verifier and puts only its
+  challenge in the `callbackURL` (`cc`). After the provider callback, a
+  better-auth plugin (`auth/mobile-exchange.ts`) runs after `expo()`. It
+  removes the cookie and `cc` from the redirect and adds a random code that
+  lives 60 seconds. The server keeps only the hash of the code, with the
+  challenge and the session id, in the `verification` table. The app sends
+  the code and the verifier to `POST /api/auth/mobile/exchange` and gets the
+  session token. A hostile app that reads the link has the code and the
+  challenge, not the verifier, so it cannot redeem the code. The app also
+  keeps its nonce (a forced sign-in) and refuses a `cookie` in the link of an
+  exchange flow. `GET /api/v1/meta` answers `signInExchange: true`. The
+  design needed no fork of `@better-auth/expo`: the plugin keeps the query of
+  the `callbackURL`, and plugin hooks run in list order.
+  - **Limit:** a hostile app that holds the code can still burn it with a
+    wrong verifier, so the person must start the sign-in again. It cannot
+    make a session.
+  - **Compatibility:** a server with no `signInExchange` in `/meta` is older
+    than this change. The new app then sends no challenge and reads the
+    session from the link, as before. An old app on a new server sends no
+    `cc`, and the server leaves the old `cookie` link as it was. Remove that
+    path when `minMobileVersion` passes the first app with the exchange.
 - The timer surfaces on the phone (the Live Activity and the ongoing Android
   notification) show the elapsed time only. Stop opens the confirm form with
   the snapped figure, as ADR 0003 requires. Nothing confirms an entry from the

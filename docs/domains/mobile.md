@@ -184,3 +184,39 @@ opens the sealed payload with the phone's private key. Use
   Slack kinds do not reach the app in such a workspace.
 - `remindersChannel` has no control in the web app yet. The API and the server
   function of Preferences accept it.
+
+## The sign-in exchange
+
+The provider sign-in of the app ends in a `farmer://auth-callback` link. The
+link carries a one-time code, not the session (ADR 0005). The code is in
+`packages/core/src/auth/mobile-exchange.ts`, and the app side is in
+`apps/mobile/src/session/auth-flow.ts` and `provider-sign-in.ts`.
+
+1. The app makes a verifier (32 random bytes, base64url) and sends its S256
+   challenge as `cc` in the `callbackURL`. The verifier stays in memory.
+2. `expo()` adds `cookie=<Set-Cookie>` to the redirect. The `mobile-exchange`
+   plugin comes after `expo()` in the plugin list, so its after hook sees
+   that link. It removes `cookie` and `cc`, and adds `code`. A `cc` that is
+   not a 43-character challenge, or a callback with no new session, gives
+   `error=exchange_failed` and no cookie.
+3. The app calls `POST /api/auth/mobile/exchange` with `{ code, verifier }`
+   and gets `{ token }`, the same token that it read from the cookie before.
+
+- **The code lives 60 seconds and works once.** The row is in `verification`,
+  with the identifier `mobile-exchange:<sha256 of the code>`. The delete
+  that redeems it is one statement with `returning`, so two requests cannot
+  both win. A wrong verifier burns that one code and no other. Every failure
+  gets the same 400 `INVALID_EXCHANGE`, and the endpoint has a rate limit of
+  20 a minute for each client.
+- **The session is bound by its id.** The row holds the session id, and the
+  redeem reads the token from the live session. A session that ended in the
+  60 seconds gives no token.
+- **No audit line of its own.** The exchange makes no session. The sign-in is
+  recorded as `auth.signed_in` when the session is created, as for the web.
+- **Compatibility.** `GET /api/v1/meta` answers `signInExchange: true`. The
+  app asks for the exchange only when it is true. For a server without the
+  field, the app sends no challenge and reads `cookie` from the link, as
+  before. An old app on a new server sends no `cc`, so the link keeps the
+  `cookie`. An exchange flow refuses a link with a `cookie`.
+- The password sign-in, the device flow and API tokens do not use the link
+  and did not change.

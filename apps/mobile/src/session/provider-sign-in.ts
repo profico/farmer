@@ -1,13 +1,18 @@
 import { expoClient } from "@better-auth/expo/client";
 import type { SignInMethod } from "@farmer/api-client";
 import { createAuthClient } from "better-auth/client";
-import { randomUUID } from "expo-crypto";
+import {
+	CryptoDigestAlgorithm,
+	digest,
+	getRandomBytes,
+	randomUUID,
+} from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { z } from "zod";
 
-import { callbackUrlFor, FlowKeeper } from "./auth-flow";
+import { base64UrlFromBytes, callbackUrlFor, FlowKeeper } from "./auth-flow";
 
 /**
  * The sign-in through `@better-auth/expo` (ADR 0005): one button for each
@@ -17,7 +22,9 @@ import { callbackUrlFor, FlowKeeper } from "./auth-flow";
  *
  * The expo client starts each request: it adds `expo-origin: farmer://`,
  * omits the cookies of the system and keeps the answer's cookies in the
- * secure store. The app opens the browser leg itself (`disableRedirect`),
+ * secure store. With a server that has the exchange, the link carries a
+ * one-time code and the app redeems it with its verifier (`auth-flow.ts`).
+ * The app opens the browser leg itself (`disableRedirect`),
  * because the client's own leg stores the cookie of any callback and gives
  * the app no way to check the nonce of the flow first.
  */
@@ -93,17 +100,55 @@ export type SignInOutcome =
 const START_FAILED =
 	"The server did not start the sign-in. Try again, or use another way to sign in.";
 
+/** A new verifier (32 random bytes, 43 characters) and its S256 challenge. */
+const makeVerifier = async () => {
+	const verifier = base64UrlFromBytes(getRandomBytes(32));
+	const hash = await digest(
+		CryptoDigestAlgorithm.SHA256,
+		new TextEncoder().encode(verifier),
+	);
+	return { verifier, challenge: base64UrlFromBytes(new Uint8Array(hash)) };
+};
+
+/** Turns the code of a callback into the session token. The server answers
+ *  every refusal the same way, so the app has one message for them. */
+const redeemCode = async (
+	origin: string,
+	code: string,
+	verifier: string,
+): Promise<SignInOutcome> => {
+	const { auth } = clientFor(origin);
+	const response = await auth.$fetch("/mobile/exchange", {
+		method: "POST",
+		body: { code, verifier },
+	});
+	const answer = emailAnswer.safeParse(response.data);
+	if (answer.success) return { kind: "token", token: answer.data.token };
+	return { kind: "error", message: START_FAILED };
+};
+
 /**
  * Signs in with a provider: the server's start, the provider's page in the
  * system auth session, and the callback, checked against the flow's nonce.
+ *
+ * `exchange` is `meta.signInExchange`. With a server that lacks it (the
+ * field is absent), the flow sends no challenge and reads the session from
+ * the link, as before the exchange.
  */
 export const signInWithProvider = async (
 	origin: string,
 	method: SignInMethod,
+	exchange: boolean,
 ): Promise<SignInOutcome> => {
 	const { auth } = clientFor(origin);
-	const flow = flows.start(origin, randomUUID(), Date.now());
-	const callbackURL = callbackUrlFor(flow);
+	const secret = exchange ? await makeVerifier() : null;
+	const flow = flows.start(
+		origin,
+		randomUUID(),
+		Date.now(),
+		secret?.verifier ?? null,
+	);
+	const callbackURL = callbackUrlFor(flow, secret?.challenge ?? null);
 	try {
 		const body = {
 			callbackURL,
@@ -139,6 +184,9 @@ export const signInWithProvider = async (
 
 		const read = flows.finish(result.url, Date.now());
 		if (read.kind === "session") return { kind: "token", token: read.token };
+		if (read.kind === "code" && flow.verifier !== null) {
+			return await redeemCode(origin, read.code, flow.verifier);
+		}
 		if (read.kind === "error") return read;
 		return { kind: "error", message: START_FAILED };
 	} catch {
