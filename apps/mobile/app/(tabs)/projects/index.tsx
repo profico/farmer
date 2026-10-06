@@ -191,7 +191,9 @@ export default function ProjectsScreen() {
 							? noClients
 								? "Every project belongs to a client. Create a client first, then come back to add a project."
 								: "Create your first project to start tracking time against it."
-							: "No projects have been created yet."
+							: // A member sees only the projects they are on and the
+								// projects open to the whole organization.
+								"You are not on a project yet. Ask an admin or a project manager to add you to one."
 					}
 					action={
 						access.canManageProjects ? (
