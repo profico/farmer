@@ -245,6 +245,33 @@ The files of a release:
 - `farmer-<version>-simulator.zip` holds `Farmer.app` for the iOS Simulator.
 - `SHA256SUMS`.
 
+### The default server
+
+`FARMER_DEFAULT_SERVER` is a build-time address. `app.config.ts` puts it in
+`extra.defaultServer`, and `src/config.ts` reads it with `expo-constants`
+(`defaultServerFrom` in `src/session/server-address.ts` checks it with
+`normalizeOrigin`). When the app has no saved server, the Server screen
+starts with this address in its field. The person taps Continue, and the
+version check and the sign-in run as for a typed address. The person can
+still change the address. Without the variable, or with a bad value, the
+screen starts empty. The workflow sets it to `https://farmer.profi.co` for
+both platforms. Remove the line in the workflow for a build with no default.
+
+### Release notes for colleagues
+
+The notes of each release start with the install steps for Android:
+
+1. Download the APK from the release on the phone.
+2. Open the file, and allow installs from this source.
+3. Open the app. It starts with farmer.profi.co. Tap Continue and sign in
+   as on the web.
+
+To update, download the newer APK from the same release (`mobile-latest`).
+It installs over the old app, because the version code goes up and the
+release key is the same. Push notifications are not on yet, so the
+reminders still come through Slack. The iOS notes (the unsigned IPA and the
+simulator zip) stay in the "Files" list.
+
 ### The version code
 
 `FARMER_VERSION_CODE` sets the Android `versionCode` and the iOS
