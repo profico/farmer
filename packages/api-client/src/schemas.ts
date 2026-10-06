@@ -32,6 +32,11 @@ export const metaSchema = z.object({
 		.default([]),
 	/** True when the server offers an email and password form. */
 	passwordSignIn: z.boolean().default(false),
+	/** The server sends native push through this relay. A server from
+	 *  before the mobile push sends no `pushRelay`: read it as off. */
+	pushRelay: z
+		.object({ enabled: z.boolean(), url: z.string().nullable() })
+		.optional(),
 	/** The server stores images (`uploadImage`). Absent on a server from
 	 *  before API version 3: read it as false. */
 	uploadsEnabled: z.boolean().optional(),

@@ -18,11 +18,8 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import { z } from "zod";
 
-import { USER_AGENT } from "../config";
-import { useSignedIn } from "../session/session";
-import { useAccess } from "./capabilities";
+import { useAccess, useMeta } from "./capabilities";
 import { scope, type Workspace, useWorkspace } from "./queries";
 import { recurringBlocksKey, timerSettingsKey } from "./time";
 
@@ -90,31 +87,13 @@ const rollback = (
 
 // ── /meta: the push relay ───────────────────────────────────────────────
 
-const pushRelaySchema = z.object({
-	pushRelay: z.object({ enabled: z.boolean() }).optional(),
-});
-
 /**
- * Whether the Server sends native push to the app. The client's `Meta`
- * drops this field, so this hook reads `/meta` again with its own schema.
- * A Server from before the mobile push sends no `pushRelay`: that is off.
+ * Whether the Server sends native push to the app. It comes from the shared
+ * `/meta` query. A Server from before the mobile push sends no `pushRelay`:
+ * that is off.
  */
-export const usePushRelayEnabled = (): boolean => {
-	const { origin } = useSignedIn();
-	const query = useQuery({
-		queryKey: ["farmer", origin, "meta", "push-relay"],
-		queryFn: async () => {
-			const response = await fetch(`${origin}/api/v1/meta`, {
-				headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-			});
-			if (!response.ok) return false;
-			const parsed = pushRelaySchema.safeParse(await response.json());
-			return parsed.success && (parsed.data.pushRelay?.enabled ?? false);
-		},
-		staleTime: 60 * MINUTE,
-	});
-	return query.data ?? false;
-};
+export const usePushRelayEnabled = (): boolean =>
+	useMeta().data?.pushRelay?.enabled ?? false;
 
 // ── Preferences ─────────────────────────────────────────────────────────
 
