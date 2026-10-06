@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
-import { APP_VERSION } from "../src/config";
+import { APP_VERSION, DEFAULT_SERVER } from "../src/config";
 import { QrScanner } from "../src/session/qr-scanner";
 import { useSession } from "../src/session/session";
 import { FarmerLogo } from "../src/ui/brand";
@@ -28,7 +28,9 @@ export default function ServerScreen() {
 	const { state } = useSession();
 	const params = useLocalSearchParams<{ server?: string }>();
 	const lastOrigin = state.status === "signed_out" ? state.lastOrigin : null;
-	const [address, setAddress] = useState(params.server ?? lastOrigin ?? "");
+	const [address, setAddress] = useState(
+		params.server ?? lastOrigin ?? DEFAULT_SERVER ?? "",
+	);
 	const [checking, setChecking] = useState(false);
 	const [scanning, setScanning] = useState(false);
 	const [error, setError] = useState<string | null>(null);

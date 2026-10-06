@@ -1,4 +1,5 @@
 import { normalizeOrigin } from "@farmer/api-client";
+import { z } from "zod";
 
 const CONNECT = "farmer://connect";
 
@@ -37,4 +38,19 @@ const originOrNull = (value: string): string | null => {
 export const signInOrigin = (server: string | undefined): string | null => {
 	if (!server) return null;
 	return originOrNull(server) === server ? server : null;
+};
+
+const extraSchema = z.object({ defaultServer: z.string().trim().min(1) });
+
+/**
+ * The build's default server, from the `extra` of the app config
+ * (`FARMER_DEFAULT_SERVER` in `app.config.ts`). The value is a build setting,
+ * but a bad one must not break the first screen, so it gets the same check
+ * as a typed address. Null means the Server screen starts empty.
+ */
+export const defaultServerFrom = (
+	extra: Record<string, string | null | undefined> | null | undefined,
+): string | null => {
+	const parsed = extraSchema.safeParse(extra);
+	return parsed.success ? originOrNull(parsed.data.defaultServer) : null;
 };

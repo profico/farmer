@@ -167,6 +167,15 @@ function readVersionCode(value: string | undefined): number | undefined {
 
 const versionCode = readVersionCode(process.env.FARMER_VERSION_CODE);
 
+/**
+ * The address that the Server screen starts with when the app has no saved
+ * server, from `FARMER_DEFAULT_SERVER` at build time. An internal build sets
+ * it, so a colleague continues with one tap. Without it, or with an empty
+ * value, the screen starts empty. The app checks the address with
+ * `normalizeOrigin` when it reads it (`src/session/server-address.ts`).
+ */
+const defaultServer = process.env.FARMER_DEFAULT_SERVER?.trim() || undefined;
+
 // The app is one client for every Server (ADR 0005), so nothing here names a
 // server. The person gives the Server address on the first screen.
 const config: ExpoConfig = {
@@ -177,6 +186,7 @@ const config: ExpoConfig = {
 	orientation: "portrait",
 	userInterfaceStyle: "automatic",
 	backgroundColor: BACKGROUND_LIGHT,
+	extra: { defaultServer },
 	// `scripts/make-icons.ts` draws every image in `assets/` from the mark.
 	icon: "./assets/icon.png",
 	ios: {

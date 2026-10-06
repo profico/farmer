@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { serverFromScan, signInOrigin } from "./server-address";
+import {
+	defaultServerFrom,
+	serverFromScan,
+	signInOrigin,
+} from "./server-address";
 
 describe("serverFromScan", () => {
 	test("reads the web app's connect link", () => {
@@ -52,5 +56,28 @@ describe("signInOrigin", () => {
 		expect(signInOrigin("https://farmer.example.com/acme")).toBeNull();
 		expect(signInOrigin("javascript:alert(1)")).toBeNull();
 		expect(signInOrigin("farmer.example.com")).toBeNull();
+	});
+});
+
+describe("defaultServerFrom", () => {
+	test("returns the origin of a build setting", () => {
+		expect(
+			defaultServerFrom({ defaultServer: "https://farmer.profi.co" }),
+		).toBe("https://farmer.profi.co");
+		expect(defaultServerFrom({ defaultServer: " farmer.profi.co/ " })).toBe(
+			"https://farmer.profi.co",
+		);
+	});
+
+	test("returns null when the build sets none", () => {
+		expect(defaultServerFrom(undefined)).toBeNull();
+		expect(defaultServerFrom(null)).toBeNull();
+		expect(defaultServerFrom({})).toBeNull();
+		expect(defaultServerFrom({ defaultServer: null })).toBeNull();
+		expect(defaultServerFrom({ defaultServer: "  " })).toBeNull();
+	});
+
+	test("ignores a value that is not an address", () => {
+		expect(defaultServerFrom({ defaultServer: "not a server" })).toBeNull();
 	});
 });
