@@ -22,6 +22,7 @@ export const ICONS = {
 	server: { md: "dns", sf: "server.rack" },
 	person: { md: "person-outline", sf: "person.crop.circle" },
 	workspace: { md: "workspaces-outline", sf: "square.grid.2x2" },
+	external: { md: "open-in-new", sf: "arrow.up.right" },
 	web: { md: "open-in-new", sf: "safari" },
 	upload: { md: "file-upload", sf: "square.and.arrow.up" },
 	signOut: { md: "logout", sf: "rectangle.portrait.and.arrow.right" },

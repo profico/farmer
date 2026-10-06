@@ -201,9 +201,11 @@ export function SettingsLink({
 					) : null}
 					{destructive ? null : (
 						<Icon
-							name={external ? "web" : "forward"}
-							size={14}
-							color={PlatformColor("tertiaryLabel")}
+							name={external ? "external" : "forward"}
+							size={external ? 13 : 14}
+							color={PlatformColor(
+								external ? "secondaryLabel" : "tertiaryLabel",
+							)}
 						/>
 					)}
 				</>
