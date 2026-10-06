@@ -35,6 +35,7 @@ export function Field({
 	hint,
 	error,
 	containerColor,
+	trailing: _trailing,
 	onFocus,
 	onBlur,
 	onChangeText,

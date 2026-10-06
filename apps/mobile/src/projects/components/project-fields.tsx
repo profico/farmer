@@ -132,18 +132,19 @@ export function ProjectFields({
 					)}
 				</FormPart>
 			</FormCluster>
+			{/* iOS: the preview sits at the end of the row. Android: beside it. */}
 			<View
 				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "flex-start" }}
 			>
-				<View
-					style={{ paddingTop: Platform.OS === "ios" ? 0 : SPACE.l + SPACE.xs }}
-				>
-					<ProjectMark
-						icon={form.icon.trim() || null}
-						name={form.name}
-						size="large"
-					/>
-				</View>
+				{Platform.OS === "ios" ? null : (
+					<View style={{ paddingTop: SPACE.l + SPACE.xs }}>
+						<ProjectMark
+							icon={form.icon.trim() || null}
+							name={form.name}
+							size="large"
+						/>
+					</View>
+				)}
 				<View style={{ flex: 1 }}>
 					<Field
 						label="Icon"
@@ -152,6 +153,15 @@ export function ProjectFields({
 						placeholder="An emoji"
 						maxLength={16}
 						autoCorrect={false}
+						trailing={
+							Platform.OS === "ios" ? (
+								<ProjectMark
+									icon={form.icon.trim() || null}
+									name={form.name}
+									size="small"
+								/>
+							) : undefined
+						}
 						hint={
 							iconIsUpload
 								? "An uploaded image. Type an emoji to use it in place of the image."

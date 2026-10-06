@@ -17,6 +17,7 @@ export function Field({
 	hint,
 	error,
 	containerColor: _containerColor,
+	trailing,
 	...input
 }: FieldProps) {
 	const palette = usePalette();
@@ -52,6 +53,7 @@ export function Field({
 						},
 					]}
 				/>
+				{trailing}
 			</FormRow>
 		</GroupIfAlone>
 	);

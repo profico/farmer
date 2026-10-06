@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
 	Platform,
 	Text as RNText,
@@ -16,6 +17,8 @@ export type FieldProps = TextInputProps & {
 	/** Android: the colour behind the field, which the floating label cuts
 	 *  out of the outline. The default is the screen colour. */
 	containerColor?: string;
+	/** iOS: a view at the end of the row, such as a preview of the value. */
+	trailing?: ReactNode;
 };
 
 /** A labelled text field, outlined. Android draws the floating label of
@@ -25,6 +28,7 @@ export function Field({
 	hint,
 	error,
 	containerColor: _containerColor,
+	trailing: _trailing,
 	...input
 }: FieldProps) {
 	const palette = usePalette();
