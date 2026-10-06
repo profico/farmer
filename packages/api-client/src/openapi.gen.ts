@@ -4634,6 +4634,7 @@ export interface components {
             platform: "ios" | "android";
             relayId: string;
             publicKey: string;
+            relayProof: string;
             appVersion: string;
             notificationsAllowed: boolean;
             liveActivityToken?: string | null;

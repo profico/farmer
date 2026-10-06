@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const log: string[] = [];
+const registered: string[] = [];
 const items = new Map<string, string>();
 
 /** A promise that the test resolves by hand, to hold a step of the sync. */
@@ -46,8 +47,13 @@ mock.module("./server", () => ({
 		await relayUrlGate.promise;
 		return "https://relay.example";
 	},
-	registerDevice: async () => {
+	registerDevice: async (
+		_origin: string,
+		_token: string,
+		device: { relayProof: string },
+	) => {
 		log.push("server:register");
+		registered.push(device.relayProof);
 		return "ok";
 	},
 	updateDevice: async () => "ok",
@@ -83,12 +89,14 @@ mock.module("./storage", () => ({
 	},
 }));
 
+const { bindingProof } = await import("@farmer/push-crypto/binding");
 const { syncPush, teardownPush } = await import("./registration");
 
 const SESSION = { origin: "https://farmer.example", token: "t" };
 
 beforeEach(() => {
 	log.length = 0;
+	registered.length = 0;
 	items.clear();
 	relayUrlGate = gate();
 });
@@ -125,5 +133,16 @@ describe("teardownPush", () => {
 		await syncPush(SESSION);
 
 		expect(log).toContain("server:register");
+	});
+});
+
+describe("syncPush", () => {
+	test("gives the Server a proof that the relay secret made", async () => {
+		relayUrlGate.open();
+		await syncPush(SESSION);
+
+		expect(registered).toEqual([
+			bindingProof("secret", "relay-1", "public-key"),
+		]);
 	});
 });

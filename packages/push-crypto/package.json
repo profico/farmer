@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./binding": "./src/binding.ts",
 		"./device": "./src/device.ts",
 		"./freshness": "./src/freshness.ts"
 	},

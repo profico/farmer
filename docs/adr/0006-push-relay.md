@@ -31,6 +31,11 @@ default).
 - **A device has a relay id and a key pair.** The app registers with the
   relay and gets an opaque `relayId`. It keeps the private key in the
   Keychain or the Keystore and gives `{relayId, publicKey}` to its server.
+- **The phone proves that it holds the relay id.** The app sends its server
+  a `relayProof`: an HMAC of the relay id and the public key, made from the
+  `deviceSecret`. The server asks the relay (`POST /v1/devices/:relayId/verify`)
+  to check it before it binds a relay id or a key to a person. Without the
+  proof, a person who learns a relay id could take it with their own key.
 - **The server encrypts each payload for the device.** It posts
   `{relayId, ciphertext}`, and the relay forwards the push to APNs or FCM. The
   relay never reads the content, and a server never learns the real push

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createRelay } from "./app";
 import { dryRunSender } from "./delivery/dry-run";
 import type { DeliveryResult, Sender } from "./delivery/types";
+import { bindingProof, hashSecret } from "./ids";
 import { createLimiters, DEFAULT_LIMITS, type RelayLimits } from "./rate-limit";
 import type { PushBody } from "./schemas";
 import { type Device, DeviceStore } from "./store";
@@ -964,5 +965,76 @@ describe("Live Activity token binding", () => {
 		});
 
 		expect(sent[0]?.device.liveActivityStartToken).toBe(START_TOKEN);
+	});
+});
+
+describe("registration proof", () => {
+	const KEY = "A".repeat(87);
+
+	test("the proof contract matches the app's pinned vector", () => {
+		// The app pins the same vector in `packages/push-crypto/src/binding.ts`
+		// tests. The app hashes the secret, and the relay stores that hash.
+		const hash = hashSecret("secret-0001");
+		expect(bindingProof(hash, "relay-0001-aaaaaaaa", "key-0001")).toBe(
+			"1-SHr1j37PoLDUaBxb7sqZhjtX-y-UODlfxt1Wmq_Us",
+		);
+	});
+
+	const proofOf = (deviceSecret: string, relayId: string, key = KEY) =>
+		bindingProof(hashSecret(deviceSecret), relayId, key);
+
+	test("a proof that the device secret made is accepted with 204", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const response = await call("POST", `/v1/devices/${relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(deviceSecret, relayId),
+		});
+		expect(response.status).toBe(204);
+	});
+
+	test("a proof for another key, a wrong secret and an unknown id all get 401", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const other = await register(call);
+		const attempts = [
+			{
+				id: relayId,
+				publicKey: "B".repeat(87),
+				proof: proofOf(deviceSecret, relayId),
+			},
+			{
+				id: relayId,
+				publicKey: KEY,
+				proof: proofOf(other.deviceSecret, relayId),
+			},
+			{
+				id: relayId,
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, other.relayId),
+			},
+			{
+				id: "x".repeat(22),
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, "x".repeat(22)),
+			},
+		];
+		for (const { id, publicKey, proof } of attempts) {
+			const response = await call("POST", `/v1/devices/${id}/verify`, {
+				publicKey,
+				proof,
+			});
+			expect(response.status).toBe(401);
+			expect(await errorOf(response)).toBe("unauthorized");
+		}
+	});
+
+	test("a malformed body is a 400, and another method is a 405", async () => {
+		const { call } = setup();
+		const { relayId } = await register(call);
+		const bad = await call("POST", `/v1/devices/${relayId}/verify`, {});
+		expect(bad.status).toBe(400);
+		const get = await call("GET", `/v1/devices/${relayId}/verify`);
+		expect(get.status).toBe(405);
 	});
 });

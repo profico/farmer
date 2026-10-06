@@ -2,6 +2,7 @@ import { readJsonBody } from "./body";
 import { clientAddress } from "./client-address";
 import type { DeliveryResult, Log, Senders } from "./delivery/types";
 import {
+	bindingProofMatches,
 	hashSecret,
 	newDeviceSecret,
 	newRelayId,
@@ -15,6 +16,7 @@ import {
 	registerDeviceBody,
 	relayIdSchema,
 	updateDeviceBody,
+	verifyDeviceBody,
 } from "./schemas";
 import type { Device, DeviceStore } from "./store";
 
@@ -209,6 +211,31 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return new Response(null, { status: 204 });
 	};
 
+	/**
+	 * A server asks whether a phone holds a relay registration. The phone made
+	 * a proof for its public key from the device secret. A good proof gives
+	 * 204. A wrong proof and an unknown relay id both give 401, so the answer
+	 * does not tell which relay ids exist.
+	 */
+	const verify = async (
+		request: Request,
+		relayId: string,
+	): Promise<Response> => {
+		const body = await readJsonBody(request, verifyDeviceBody);
+		if (!body.ok) return bodyError(body.error);
+		const parsedId = relayIdSchema.safeParse(relayId);
+		const device = parsedId.success ? store.find(parsedId.data) : null;
+		const matches = bindingProofMatches(
+			body.value.proof,
+			device?.secretHash ?? NO_DEVICE_HASH,
+			relayId,
+			body.value.publicKey,
+		);
+		return device && matches
+			? new Response(null, { status: 204 })
+			: error(401, "unauthorized");
+	};
+
 	const push = async (request: Request): Promise<Response> => {
 		const body = await readJsonBody(request, pushBody);
 		if (!body.ok) return bodyError(body.error);
@@ -280,6 +307,7 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	};
 
 	const DEVICE_PATH = /^\/v1\/devices\/([^/]+)$/;
+	const VERIFY_PATH = /^\/v1\/devices\/([^/]+)\/verify$/;
 
 	return async (request, socketAddress) => {
 		const { pathname } = new URL(request.url);
@@ -295,7 +323,11 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		}
 
 		const deviceMatch = DEVICE_PATH.exec(pathname);
-		const isDevices = pathname === "/v1/devices" || deviceMatch !== null;
+		const verifyMatch = VERIFY_PATH.exec(pathname);
+		const isDevices =
+			pathname === "/v1/devices" ||
+			deviceMatch !== null ||
+			verifyMatch !== null;
 		if (!isDevices && pathname !== "/v1/push") {
 			return error(404, "not_found");
 		}
@@ -315,6 +347,11 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		if (pathname === "/v1/devices") {
 			return method === "POST"
 				? register(request)
+				: error(405, "method_not_allowed");
+		}
+		if (verifyMatch) {
+			return method === "POST"
+				? verify(request, verifyMatch[1] ?? "")
 				: error(405, "method_not_allowed");
 		}
 		const relayId = deviceMatch?.[1] ?? "";

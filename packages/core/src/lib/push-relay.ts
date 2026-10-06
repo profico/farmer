@@ -138,3 +138,43 @@ export const sendToRelay = async (
 		return { kind: "failed", status: null, code: null };
 	}
 };
+
+/** What the relay says about a registration proof. */
+export type RelayVerdict =
+	/** 204: the phone holds the device secret of this relay id. */
+	| "valid"
+	/** 401: the proof is wrong, or the relay does not know the id. */
+	| "invalid"
+	/** Any other answer, a timeout or a network error. */
+	| "failed";
+
+/**
+ * Ask the relay whether a phone holds the relay registration `relayId`. The
+ * app made `proof` from its device secret and its public key
+ * (`@farmer/push-crypto/binding`). The server never sees the secret. Never
+ * throws.
+ */
+export const verifyWithRelay = async (
+	baseUrl: string,
+	relayId: string,
+	check: { publicKey: string; proof: string },
+): Promise<RelayVerdict> => {
+	try {
+		const response = await externalFetch(
+			`${baseUrl}/v1/devices/${encodeURIComponent(relayId)}/verify`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(check),
+			},
+			PUSH_RELAY_TIMEOUT_MS,
+		);
+		if (response.status === 204) return "valid";
+		return response.status === 401 ? "invalid" : "failed";
+	} catch (error) {
+		console.error("[push-relay] verify failed", {
+			error: error instanceof Error ? error.message : "unknown",
+		});
+		return "failed";
+	}
+};

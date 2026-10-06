@@ -23,6 +23,12 @@ const relayIdSchema = z
 	.max(64)
 	.regex(BASE64URL, "A relay id is base64url.");
 
+/** An HMAC-SHA256 as base64url: 43 characters. */
+const relayProofSchema = z
+	.string()
+	.regex(BASE64URL, "The relay proof is base64url.")
+	.max(128);
+
 /** The phone's P-256 public key, base64url: the 65-byte uncompressed point
  *  (87 characters) or the 64-byte `x || y` form (86 characters). The service
  *  seals a test value with it before it keeps it, so a key that is not on the
@@ -49,6 +55,11 @@ export const registerMobileDeviceInput = z.strictObject({
 	platform: z.enum(["ios", "android"]),
 	relayId: relayIdSchema,
 	publicKey: publicKeySchema,
+	/** The proof that the phone holds the relay registration: an HMAC of the
+	 *  relay id and the public key, made from the device secret
+	 *  (`@farmer/push-crypto/binding`). The service asks the relay to check it
+	 *  when the phone takes a new relay id or a new key. */
+	relayProof: relayProofSchema,
 	appVersion: appVersionSchema,
 	notificationsAllowed: z.boolean(),
 	liveActivityToken: liveActivityTokenSchema.nullable().optional(),

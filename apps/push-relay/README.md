@@ -112,6 +112,22 @@ secret:
 The app forgets the device, with the same `Authorization` header. The answer
 is `204`, or `401`.
 
+### `POST /v1/devices/:relayId/verify`
+
+A farmer server asks whether a phone holds a registration. The server sends
+`{ "publicKey", "proof" }`. The app made the proof from its device secret:
+
+    proof = base64url(HMAC-SHA256(SHA-256(deviceSecret),
+            "farmer-device-binding v1\n" + relayId + "\n" + publicKey))
+
+The relay keeps the SHA-256 of the secret, so it can compute the same HMAC.
+The answer is `204` for a good proof. A wrong proof and an unknown relay id
+both give `401 unauthorized`. The server never sees the device secret. The
+proof names the public key, so a proof for one key cannot bind another key.
+The server calls this route only when a phone takes a relay id or a key that
+the server did not hold for that installation. This route counts in the
+limit of registrations, updates and removals for one address.
+
 ### `POST /v1/push`
 
 A farmer server sends a push. There is no authentication: only the device's

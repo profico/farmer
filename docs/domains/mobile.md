@@ -62,6 +62,14 @@ an organization for each message and checks the membership first.
 - **One phone has one relay id.** A registration deletes each row of another
   person or installation with the same relay id, so a phone that changed
   hands does not get the last person's pushes.
+- **The phone proves that it holds the relay id.** The body has a
+  `relayProof`: an HMAC of the relay id and the public key, made from the
+  relay's `deviceSecret` (`@farmer/push-crypto/binding`). The service sends it
+  to `POST /v1/devices/:relayId/verify` on the relay when the installation has
+  no row, or when the relay id or the key differs from its row. A wrong proof
+  is refused, and no row changes. A relay that does not answer refuses a new
+  binding. An unchanged registration, as on each foreground, makes no relay
+  call. A new binding is also refused while `PUSH_RELAY_ENABLED` is off.
 - **The public key is checked at registration.** The service seals a test
   value with it, so a key that is not a P-256 point is refused then, and not at
   the first push. A 64-byte `x || y` key is stored as the 65-byte point.

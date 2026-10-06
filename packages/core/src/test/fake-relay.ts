@@ -5,6 +5,8 @@
 // code under test makes a real HTTP call to it, so the relay's contract is
 // tested at the network boundary and not through a stubbed `fetch`.
 
+import { bindingProof } from "@farmer/push-crypto/binding";
+
 import { setInstanceSettingsForTests } from "../lib/instance-settings";
 
 export type RelayRequest = {
@@ -28,6 +30,14 @@ export type FakeRelay = {
 	requests: RelayRequest[];
 	/** The answer for one relay id, until `reset`. Else 200. */
 	answer: (relayId: string, answer: Answer) => void;
+	/** Make the relay hold a registration, as `POST /v1/devices` does. A
+	 *  `POST /v1/devices/:relayId/verify` answers 204 for a proof that the
+	 *  secret made, and 401 for any other. */
+	registerDevice: (relayId: string, deviceSecret: string) => void;
+	/** The verify requests, as the relay saw them. */
+	verifications: { relayId: string; publicKey: string }[];
+	/** Make every verify answer this status, until `reset`. */
+	failVerifyWith: (status: number) => void;
 	reset: () => void;
 	/** Turn `PUSH_RELAY_ENABLED` on or off, with the URL kept. */
 	setEnabled: (on: boolean) => void;
@@ -58,9 +68,33 @@ const invalid = (body: RelayRequest): boolean => {
 export const startFakeRelay = (): FakeRelay => {
 	const requests: RelayRequest[] = [];
 	const answers = new Map<string, Answer>();
+	const secrets = new Map<string, string>();
+	const verifications: { relayId: string; publicKey: string }[] = [];
+	let verifyStatus: number | null = null;
 	const server = Bun.serve({
 		port: 0,
 		fetch: async (request) => {
+			const verify = /^\/v1\/devices\/([^/]+)\/verify$/.exec(
+				new URL(request.url).pathname,
+			);
+			if (verify) {
+				const relayId = decodeURIComponent(verify[1] ?? "");
+				// SAFETY: the server under test sends `{ publicKey, proof }`.
+				const check = (await request.json()) as {
+					publicKey: string;
+					proof: string;
+				};
+				verifications.push({ relayId, publicKey: check.publicKey });
+				if (verifyStatus !== null)
+					return new Response(null, { status: verifyStatus });
+				const secret = secrets.get(relayId);
+				const good =
+					secret !== undefined &&
+					bindingProof(secret, relayId, check.publicKey) === check.proof;
+				return good
+					? new Response(null, { status: 204 })
+					: Response.json({ error: "unauthorized" }, { status: 401 });
+			}
 			// SAFETY: the server under test sends a `RelayPush` as JSON, and the
 			// tests read only the fields that type names.
 			const body = (await request.json()) as RelayRequest;
@@ -93,9 +127,19 @@ export const startFakeRelay = (): FakeRelay => {
 		answer: (relayId, answer) => {
 			answers.set(relayId, answer);
 		},
+		registerDevice: (relayId, deviceSecret) => {
+			secrets.set(relayId, deviceSecret);
+		},
+		verifications,
+		failVerifyWith: (status) => {
+			verifyStatus = status;
+		},
 		reset: () => {
 			requests.length = 0;
 			answers.clear();
+			secrets.clear();
+			verifications.length = 0;
+			verifyStatus = null;
 			setEnabled(true);
 		},
 		setEnabled,

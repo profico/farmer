@@ -1,3 +1,4 @@
+import { bindingProof } from "@farmer/push-crypto/binding";
 import Constants from "expo-constants";
 import { randomUUID } from "expo-crypto";
 import * as Notifications from "expo-notifications";
@@ -40,9 +41,12 @@ import { forgetCredential } from "./timer-surface";
  *    the app does nothing more.
  * 2. The app gets the native push token (APNs or FCM) and registers with the
  *    relay. The relay answers a `relayId` and a `deviceSecret`.
- * 3. The app gives the Server `{ relayId, publicKey }` with
+ * 3. The app gives the Server `{ relayId, publicKey, relayProof }` with
  *    `POST /api/v1/me/devices`, an upsert, each time it comes to the
- *    foreground.
+ *    foreground. The proof is an HMAC that only the holder of the device
+ *    secret can make. The Server asks the relay to check it, when the relay
+ *    id or the key is new, so nobody can take a relay id with a key of their
+ *    own (`@farmer/push-crypto/binding`).
  *
  * The re-registration contract: the relay forgets a device that it has not
  * seen for 180 days, or whose token died. The app sends a `PUT` with its
@@ -273,6 +277,7 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 			platform: Platform.OS === "ios" ? "ios" : "android",
 			relayId: relay.relayId,
 			publicKey,
+			relayProof: bindingProof(relay.deviceSecret, relay.relayId, publicKey),
 			appVersion: APP_VERSION,
 			notificationsAllowed: allowed,
 		});
