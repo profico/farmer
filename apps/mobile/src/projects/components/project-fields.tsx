@@ -1,5 +1,5 @@
 import type { Client } from "@farmer/api-client";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { MenuPicker } from "../../reports/components/menu-picker";
 import { ActionButton, Field, Text } from "../../ui/components";
@@ -75,6 +75,7 @@ export function ProjectFields({
 			<View style={{ gap: SPACE.xs }}>
 				<MenuPicker
 					label="Client"
+					row
 					fill
 					options={clientOptions}
 					value={form.clientId}
@@ -89,6 +90,7 @@ export function ProjectFields({
 			<View style={{ gap: SPACE.xs }}>
 				<MenuPicker<ProjectType>
 					label="Type"
+					row
 					fill
 					options={PROJECT_TYPES}
 					value={form.type}
@@ -101,7 +103,9 @@ export function ProjectFields({
 			<View
 				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "flex-start" }}
 			>
-				<View style={{ paddingTop: SPACE.l + SPACE.xs }}>
+				<View
+					style={{ paddingTop: Platform.OS === "ios" ? 0 : SPACE.l + SPACE.xs }}
+				>
 					<ProjectMark
 						icon={form.icon.trim() || null}
 						name={form.name}

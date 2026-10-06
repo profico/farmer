@@ -1,5 +1,7 @@
 import { Platform, View } from "react-native";
 
+import { GroupIfAlone } from "../../forms/form-group";
+import { FormRow } from "../../forms/form-row";
 import { Text } from "../../ui/components";
 import { MenuControl } from "../../ui/menu-control";
 import { usePalette } from "../../ui/theme";
@@ -22,6 +24,7 @@ export function MenuPicker<T extends string>({
 	enabled = true,
 	fill = false,
 	inline = false,
+	row = false,
 }: {
 	label: string;
 	options: MenuOption<T>[];
@@ -32,8 +35,30 @@ export function MenuPicker<T extends string>({
 	/** iOS: the label stands beside the menu, which shows its value, as the
 	 *  row of a settings list does. Android ignores it. */
 	inline?: boolean;
+	/** iOS: a row of an inset grouped form, label at the start and the
+	 *  menu at the end. Android ignores it. */
+	row?: boolean;
 }) {
 	const palette = usePalette();
+	if (row && Platform.OS === "ios") {
+		return (
+			<GroupIfAlone>
+				<FormRow>
+					<Text variant="bodyLarge">{label}</Text>
+					<View style={{ flex: 1, alignItems: "flex-end" }}>
+						<MenuControl
+							options={options}
+							value={value}
+							onChange={onChange}
+							enabled={enabled}
+							fill={false}
+							label={label}
+						/>
+					</View>
+				</FormRow>
+			</GroupIfAlone>
+		);
+	}
 	if (inline && Platform.OS === "ios") {
 		return (
 			<View
