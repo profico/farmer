@@ -67,8 +67,8 @@ export const confirmTimer = createServerFn({ method: "POST" })
 				properties: {
 					organization_id: context.ctx.organizationId,
 					time_entry_id: entry.id,
-					has_project: Boolean(data.projectId),
-					duration_seconds: data.durationSeconds,
+					has_project: entry.projectId != null,
+					duration_seconds: entry.durationSeconds,
 				},
 			});
 			await posthog.flush();

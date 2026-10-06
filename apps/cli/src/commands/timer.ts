@@ -5,7 +5,6 @@ import type {
 	ApiTimer,
 	ApiTimerState,
 } from "@farmer/core/api";
-import { dayKeyInTz } from "@farmer/core/lib/time";
 import type { ConfirmTimerInput, StartTimerInput } from "@farmer/core/schema";
 
 import { parseDay } from "../dates";
@@ -387,21 +386,51 @@ export const continueEntry: Command = {
 };
 
 /**
- * The figure `farmer stop` sends, which `confirm` writes as the entry's TOTAL.
+ * The measured part `farmer stop` sends as `measuredSeconds`. The server adds
+ * the hours the entry holds when it saves, so an edit made to the entry while
+ * the command waited at its prompt is kept.
  *
- * A typed `--duration` is the time this timer stands for, never that total: on
- * a timer that continues an entry it is added to what the entry held, the way
- * `farmer edit --add` adds. Sent as it was typed, `farmer stop --duration 0:30`
- * on an entry of 3:00 would leave the entry at 0:30 and the 3:00 gone.
+ * A typed `--duration` is the time this timer stands for, never the entry's
+ * total: on a timer that continues an entry it is added to what the entry held,
+ * the way `farmer edit --add` adds. That meaning is unchanged, so a typed
+ * figure is sent as the measured part. A sum past a day is refused here, from
+ * the hours as read, and again by the server from the live hours.
  */
-export const stoppedDuration = (
+export const stoppedMeasured = (
 	timer: Pick<ApiTimer, "snappedSeconds" | "entry">,
 	typed: string | undefined,
 ): number => {
-	if (typed === undefined) return timer.snappedSeconds;
-	return timer.entry
-		? addToDuration(timer.entry.durationSeconds, typed)
-		: parseQuarterHours(typed);
+	if (typed === undefined) {
+		return Math.max(
+			0,
+			timer.snappedSeconds - (timer.entry?.durationSeconds ?? 0),
+		);
+	}
+	if (timer.entry) addToDuration(timer.entry.durationSeconds, typed);
+	return parseQuarterHours(typed);
+};
+
+/**
+ * The note `farmer stop` sends, or undefined to leave the live one alone.
+ *
+ * The timer's note was read before the prompt, and the person may have edited
+ * the entry's note on the web while the command waited. So the read note is
+ * never sent back as it was. `-m` is sent. A prompt answer is sent only when it
+ * differs from the default the prompt offered. An emptied answer differs, so ""
+ * still clears the note. A script without `-m` sends nothing.
+ */
+export const stoppedNote = ({
+	message,
+	answer,
+	read,
+}: {
+	message: string | undefined;
+	answer: string | undefined;
+	read: string;
+}): string | undefined => {
+	if (message !== undefined) return message;
+	if (answer === undefined) return undefined;
+	return answer.trim() === read.trim() ? undefined : answer.trim();
 };
 
 const STOP_USAGE =
@@ -465,18 +494,15 @@ export const stop: Command = {
 		}
 
 		const body: ConfirmTimerInput = {
-			// A continued entry stays on its own day unless -d moves it.
-			date:
-				values.date === undefined
-					? (timer.entry?.date ??
-						dayKeyInTz(new Date(timer.startedAt), scope.clock.timeZone))
-					: parseDay(values.date, scope.clock),
-			taskId: timer.task.id,
-			durationSeconds: stoppedDuration(timer, values.duration),
+			measuredSeconds: stoppedMeasured(timer, values.duration),
 			overtime: values.overtime === true,
 		};
-		if (timer.project) body.projectId = timer.project.id;
-		if (timer.description) body.description = timer.description;
+		if (values.date !== undefined) {
+			body.date = parseDay(values.date, scope.clock);
+		}
+		// The timer's own day, project and task are left out, so the server
+		// keeps the live ones: a continued entry stays on its own day unless -d
+		// moves it. The note is left out too, unless -m or the prompt gives one.
 
 		if (values.project !== undefined) {
 			const projects = await session.api.get<ApiProject[]>(
@@ -493,8 +519,6 @@ export const stop: Command = {
 				await chooseTask(out, taskList.tasks, values.task, "-t")
 			).id;
 		}
-		if (values.message !== undefined) body.description = values.message;
-
 		// The note. `-m` answers it, and the timer's own note is the default; with
 		// neither, ask, because the task this timer is on usually requires one and
 		// a refusal after the fact costs the person the command. Nothing is asked
@@ -504,9 +528,10 @@ export const stop: Command = {
 		// `needsDescription` is the timer's own task. A `-t` override logs against
 		// another one, whose rule this binary cannot read, so the answer is
 		// optional there and the server stays the authority.
+		let answer: string | undefined;
 		if (values.message === undefined && out.interactive) {
 			const needed = timer.task.needsDescription && values.task === undefined;
-			const answer = await askText(
+			answer = await askText(
 				"What did you work on?",
 				timer.description,
 				needed ? `Required on ${timer.task.name}` : "Optional",
@@ -515,10 +540,13 @@ export const stop: Command = {
 						? `${timer.task.name} needs a note. Type one, or stop with -m.`
 						: undefined,
 			);
-			// "" rather than absent: an emptied answer clears the note, where an
-			// absent one would keep a continued entry's.
-			body.description = answer.trim();
 		}
+		const note = stoppedNote({
+			message: values.message,
+			answer,
+			read: timer.description,
+		});
+		if (note !== undefined) body.description = note;
 
 		const entry = await session.api.post<ApiTimeEntry, ConfirmTimerInput>(
 			scope.path("/timer/confirm"),

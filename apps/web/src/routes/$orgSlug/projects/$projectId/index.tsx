@@ -1,11 +1,10 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
-import { dayKeyInTz } from "@farmer/core/lib/time";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useDeferredValue } from "react";
 import { z } from "zod";
 
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
@@ -24,6 +23,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
 import { StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
+import { useToday } from "#/hooks/use-today.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
 import { myAccessQuery } from "#/queries/access.ts";
@@ -86,7 +86,10 @@ function ProjectPage() {
 	const { data: project } = useSuspenseQuery(projectQuery(orgSlug, projectId));
 	const access = projectPageAccess(isAdmin, project.myRole, project.openToOrg);
 
-	const today = dayKeyInTz(new Date(), organization.timezone);
+	// Live, so the default period follows a tab left open past midnight.
+	// Deferred, so a new period loads its report in the background while the
+	// old one stays on screen, as on the timesheet routes.
+	const today = useDeferredValue(useToday(organization.timezone));
 	const thisMonth = today.slice(0, 7);
 	const { from, to } = resolveReportPeriod(
 		search,

@@ -31,6 +31,7 @@ import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
+import { invalidateTimer } from "#/queries/timer.ts";
 import { deleteTimeEntry, fileTimeEntries } from "#/server/time-entries.ts";
 
 // Everything the engines write lands with no project: the calendar sync files
@@ -292,6 +293,7 @@ function FileEntriesDialog({
 				queryClient.invalidateQueries({
 					queryKey: [...queryKeys(orgSlug).filingRules],
 				}),
+				invalidateTimer(queryClient, orgSlug),
 			]);
 			setSelectedIds(new Set());
 			if (failed > 0) {
@@ -364,9 +366,12 @@ function FileEntriesDialog({
 			return { removed, restorable, firstError };
 		},
 		onSuccess: async ({ removed, restorable, firstError }, ids) => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				invalidateTimer(queryClient, orgSlug),
+			]);
 			setSelectedIds((current) => {
 				const next = new Set(current);
 				for (const id of removed) next.delete(id);

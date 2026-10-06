@@ -643,6 +643,151 @@ describe("continuing an entry (issue #107)", () => {
 		expect(view.elapsedSeconds).toBe(2 * HOUR + 15 * 60);
 	});
 
+	// Issue #121: the timer kept the note it copied at start, so the stale
+	// copy was shown, sent back by Stop and written over the edited entry.
+	test("shows the note, project and task the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({
+				description: "Edited while running",
+				projectId: null,
+				taskId: breakTaskId,
+			})
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(15 * 60) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("Edited while running");
+		expect(view.projectId).toBeNull();
+		expect(view.projectName).toBeNull();
+		expect(view.taskId).toBe(breakTaskId);
+		expect(view.taskName).toBe("Break");
+	});
+
+	test("keeps a note edited while the clock runs when the timer stops", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while running" })
+			.where(eq(timeEntry.id, entry.id));
+
+		// Both clients send back what the timer read, as the Stop form shows it.
+		const view = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the running timer",
+		);
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			projectId: view.projectId,
+			taskId: view.taskId,
+			description: view.description,
+			durationSeconds: view.snappedSeconds,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		expect(present(row, "the continued entry").description).toBe(
+			"Edited while running",
+		);
+	});
+
+	test("keeps the live note when the confirm sends no note", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while running" })
+			.where(eq(timeEntry.id, entry.id));
+
+		// The Stop form held the old note and the person did not edit it.
+		const view = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the running timer",
+		);
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			taskId: view.taskId,
+			durationSeconds: view.snappedSeconds,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		expect(present(row, "the continued entry").description).toBe(
+			"Edited while running",
+		);
+	});
+
+	test("an edit made while the clock was held is kept as well", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await timersService.pause(ctx(), { now: later(10 * 60) });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while held" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(HOUR) }),
+			"the held timer",
+		);
+		expect(view.paused).toBe(true);
+		expect(view.description).toBe("Edited while held");
+	});
+
+	test("an emptied note on the entry reads as empty, not as the copy", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(60) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("");
+	});
+
+	test("refuses to change the fields of a timer that continues an entry", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		await expect(
+			timersService.update(
+				ctx(),
+				{ description: "Typed on the timer" },
+				{ now: later(60) },
+			),
+		).rejects.toThrow(/continues an entry/);
+	});
+
+	test("a timer started without an entry still reads its own note", async () => {
+		await startDev();
+		await timersService.update(
+			ctx(),
+			{ description: "Changed" },
+			{ now: later(60) },
+		);
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(120) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("Changed");
+	});
+
 	test("an entry deleted while the clock ran becomes a new one", async () => {
 		const entry = await insertEntry();
 		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
@@ -738,6 +883,105 @@ describe("continuing an entry (issue #107)", () => {
 		expect(saved.id).not.toBe(entry.id);
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
 		expect(await timersService.get(ctx(), { now: later(HOUR) })).toBeNull();
+	});
+
+	// The Stop form leaves out a field the person did not edit, and the entry
+	// the timer continued was deleted before Save. The timer's own copy stands.
+	test("a confirm with no project or note keeps the timer's copy once the entry is gone", async () => {
+		const entry = await insertEntry({ taskId: breakTaskId });
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db.delete(timeEntry).where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.projectId).toBe(projectId);
+		expect(saved.taskId).toBe(breakTaskId);
+		expect(saved.description).toBe("Yesterday's work");
+		// The entry's day went with it, so the day the clock started stands.
+		expect(saved.date).toBe("2026-08-11");
+		expect(saved.durationSeconds).toBe(30 * 60);
+	});
+
+	test("a confirm with no duration adds the clock to the hours the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ durationSeconds: 2 * HOUR })
+			.where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.id).toBe(entry.id);
+		expect(saved.durationSeconds).toBe(2 * HOUR + 30 * 60);
+	});
+
+	test("a confirm with no task, project or day keeps what the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ taskId: breakTaskId, projectId: null, date: "2026-08-09" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.taskId).toBe(breakTaskId);
+		expect(saved.projectId).toBeNull();
+		expect(saved.date).toBe("2026-08-09");
+	});
+
+	test("a confirm with no project is refused when the project was archived", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, projectId));
+
+		try {
+			await expect(
+				timersService.confirm(ctx(), { overtime: false }, { now: later(HOUR) }),
+			).rejects.toThrow(/archived/);
+			expect(
+				await timersService.get(ctx(), { now: later(HOUR) }),
+			).not.toBeNull();
+		} finally {
+			await db
+				.update(project)
+				.set({ status: "active" })
+				.where(eq(project.id, projectId));
+		}
+	});
+
+	test("a confirm with measuredSeconds adds them to the live entry hours", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ durationSeconds: 2 * HOUR })
+			.where(eq(timeEntry.id, entry.id));
+
+		// The clock still runs for 90 minutes, but the person saw 30.
+		const saved = await timersService.confirm(
+			ctx(),
+			{ measuredSeconds: 30 * 60, overtime: false },
+			{ now: later(90 * 60) },
+		);
+
+		expect(saved.durationSeconds).toBe(2 * HOUR + 30 * 60);
 	});
 
 	test("refuses a work-time block", async () => {

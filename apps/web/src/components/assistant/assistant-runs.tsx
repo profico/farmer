@@ -10,6 +10,7 @@ import {
 
 import { conversationQuery } from "#/queries/assistant.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { invalidateTimer } from "#/queries/timer.ts";
 
 /**
  * The event union the SSE route emits.
@@ -276,6 +277,8 @@ export function AssistantRunsProvider({
 				// now stale. Named through the same root the writes use, so this
 				// cannot drift from what `createTimeEntry` invalidates.
 				queryClient.invalidateQueries({ queryKey: keys.timeEntries }),
+				// The timer reads a continued entry's task and note live.
+				invalidateTimer(queryClient, orgSlugRef.current),
 			]);
 			// Bounded, because waiting forever for a row that may never come is a
 			// thread frozen mid-answer. Every ending other than the one it is for

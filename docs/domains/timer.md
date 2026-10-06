@@ -163,12 +163,42 @@ through `timersService.start`, and both still end in `confirm`.
   is recomputed from the day, and would overwrite the clock. Time off cannot
   either, and `farmer continue` refuses both before it posts anything.
 
-  `update` is a full-form edit, so `confirm` fills what the caller left out
-  from the entry: an ABSENT `projectId` or `description` keeps the entry's,
-  `null` clears the project and `""` clears the note. Both clients send what
-  their form holds. `durationSeconds` is the entry's new total, so
-  `farmer stop --duration` on a continued entry adds the typed figure to what
-  the entry held, as `farmer edit --add` does.
+  The entry's project, task and note are joined the same way (issue #121):
+  the copy in `running_timer` is used only once the entry is gone. The Stop
+  form and `farmer stop` send back what the read showed, so a stale copy
+  would be written over a note edited while the clock ran. For the same
+  reason `update` refuses a timer that continues an entry. The sweep names
+  the task in its notice by the same rule (`taskIdOf` in
+  `timers.service.ts`).
+
+  The web app keeps the one query fresh. A write that can change a timed
+  entry (a note, hours, task or project edit, a delete, the assistant)
+  refetches the timer row with `invalidateTimer`, which uses the exact key.
+  The bare `queryKeys(org).timer` root is a prefix of the settings query
+  too, so do not use it for the row alone. The Stop dialog starts no
+  refetch of its own, because the pause that opens it invalidates the same
+  query and cancels a refetch that is in flight. The dialog follows its
+  `timer` prop instead: a field that the person has not edited takes the new
+  server value, and an edited field stays.
+
+  Every field of the confirm input except `overtime` is optional, and an
+  ABSENT one takes the live value: the entry's own for a timer that continues
+  one, and the timer's copy once the entry is gone. That covers `date`,
+  `projectId`, `taskId`, `description` and `durationSeconds`. The duration
+  absent is the live entry hours (read under the lock) plus the measured
+  part, snapped to a quarter hour. A client that read the timer sends the
+  part it showed as `measuredSeconds` (`snappedSeconds` minus
+  `entry.durationSeconds`), so the measured part that the person saw is
+  saved. An inline edit of the entry's hours is kept and added to. Without
+  `measuredSeconds` the server uses its own measured time. `durationSeconds`
+  wins when sent. Without an entry the date is the day the clock started, in
+  the organization's timezone. `null` clears the project and `""` clears the
+  note. The Stop dialog and `farmer stop` leave out each field that the person
+  did not give (`stopPayloadFields`, `stoppedMeasured`), because a copy can be
+  older than an edit that is still in flight. REST callers may keep sending
+  all fields. `farmer stop --duration` is still the time this timer stands
+  for: on a continued entry it is added to what the entry held, and the CLI
+  now sends it as `measuredSeconds`.
 
   `confirm` reads the timer inside its transaction and locks the continued
   entry (`FOR UPDATE`) before it writes. An entry deleted in another tab is

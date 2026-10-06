@@ -2,12 +2,15 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
-import { task } from "../db/schema/domain";
+import { task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { formatDurationShort, timeKeyInTz } from "../lib/time";
 import { publishTimerChange } from "../services/native-push";
 import { notify } from "../services/notify";
-import { DEFAULT_TIMER_MAX_SECONDS } from "../services/timers.service";
+import {
+	DEFAULT_TIMER_MAX_SECONDS,
+	taskIdOf,
+} from "../services/timers.service";
 
 export type TimerSweepSummary = {
 	running: number;
@@ -52,7 +55,10 @@ export const runTimerSweepOnce = async (
 		})
 		.from(runningTimer)
 		.innerJoin(organization, eq(organization.id, runningTimer.organizationId))
-		.innerJoin(task, eq(task.id, runningTimer.taskId))
+		// The task the notice names is the one the card shows: the continued
+		// entry's own while it exists (issue #121), through the shared rule.
+		.leftJoin(timeEntry, eq(timeEntry.id, runningTimer.timeEntryId))
+		.innerJoin(task, eq(task.id, taskIdOf))
 		.leftJoin(
 			timerSettings,
 			and(

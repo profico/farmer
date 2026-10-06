@@ -952,7 +952,7 @@ export interface paths {
         put?: never;
         /**
          * Stop the timer and log the time
-         * @description Logs the entry and clears the timer. Send `snappedSeconds` from the timer as `durationSeconds`, or a figure the person corrected.
+         * @description Logs the entry and clears the timer. Every field is optional, and an absent one takes the live value: the entry's own for a timer that continues one, else the timer's. Leave `durationSeconds` out to log the entry's live hours plus the measured time, snapped to a quarter hour. Send `measuredSeconds` to log the measured part you showed instead. Compute it as `snappedSeconds` minus `entry.durationSeconds` (0 without an entry). The server adds the live entry hours and snaps the sum. Send `durationSeconds` for a figure the person corrected: it wins.
          */
         post: operations["confirmTimer"];
         delete?: never;
@@ -4186,12 +4186,14 @@ export interface components {
             headStartSeconds?: number;
         };
         ConfirmTimer: {
-            date: string;
+            date?: string;
             projectId?: string | null;
             /** Format: uuid */
-            taskId: string;
+            taskId?: string;
             description?: string;
-            durationSeconds: number;
+            durationSeconds?: number;
+            /** @description The measured part of the figure shown, without the entry's hours: snappedSeconds minus entry.durationSeconds. The server adds the live entry hours. */
+            measuredSeconds?: number;
             /** @default false */
             overtime: boolean;
         };

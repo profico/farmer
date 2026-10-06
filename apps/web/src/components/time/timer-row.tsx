@@ -20,6 +20,7 @@ import { cn } from "#/lib/utils.ts";
 import {
 	DiscardTimerDialog,
 	DroppedTimerDialog,
+	type RunningTimer,
 	StartTimerDialog,
 	StopTimerDialog,
 	useTimerControls,
@@ -65,12 +66,38 @@ export function TimerCard({
 	timezone: string;
 }) {
 	const { timer, elapsedSeconds } = useTimer(orgSlug);
+
+	if (!timer) return null;
+
+	// Keyed on the timer's id: the open flags of the dialogs live in the body, so
+	// a timer that ends while a dialog is open takes the flag with it. A new
+	// timer then starts closed, and the clock is held only by `openStop`.
+	return (
+		<TimerCardBody
+			key={timer.id}
+			orgSlug={orgSlug}
+			timezone={timezone}
+			timer={timer}
+			elapsedSeconds={elapsedSeconds}
+		/>
+	);
+}
+
+function TimerCardBody({
+	orgSlug,
+	timezone,
+	timer,
+	elapsedSeconds,
+}: {
+	orgSlug: string;
+	timezone: string;
+	timer: RunningTimer;
+	elapsedSeconds: number;
+}) {
 	const { pause, resume } = useTimerControls(orgSlug);
 	const [stopOpen, setStopOpen] = useState(false);
 	const [discardOpen, setDiscardOpen] = useState(false);
 	const [droppedOpen, setDroppedOpen] = useState(false);
-
-	if (!timer) return null;
 
 	const dropped = timer.droppedAt != null;
 	const elsewhere = !timer.here;
@@ -302,36 +329,18 @@ export function StartTimerButton({
 	defaultProjectId?: string;
 }) {
 	const { timer, elapsedSeconds } = useTimer(orgSlug);
-	const { pause } = useTimerControls(orgSlug);
-	const [open, setOpen] = useState(false);
 
 	if (timer && timer.droppedAt == null && timer.here) {
+		// Keyed on the timer's id, as `TimerCard` is: the open flag must not
+		// outlive the timer, or the next one opens its Stop dialog unheld.
 		return (
-			<>
-				<Button
-					type="button"
-					variant="outline"
-					onClick={() => {
-						if (!timer.paused) pause.mutate();
-						setOpen(true);
-					}}
-				>
-					<StopIcon
-						weight="fill"
-						className={cn("size-4", !timer.paused && "text-ok")}
-					/>
-					<span className="tabular-nums">
-						{formatStopwatch(elapsedSeconds)}
-					</span>
-				</Button>
-				<StopTimerDialog
-					orgSlug={orgSlug}
-					timezone={timezone}
-					timer={timer}
-					open={open}
-					onOpenChange={setOpen}
-				/>
-			</>
+			<StopTimerButton
+				key={timer.id}
+				orgSlug={orgSlug}
+				timezone={timezone}
+				timer={timer}
+				elapsedSeconds={elapsedSeconds}
+			/>
 		);
 	}
 
@@ -346,5 +355,46 @@ export function StartTimerButton({
 				</Button>
 			}
 		/>
+	);
+}
+
+function StopTimerButton({
+	orgSlug,
+	timezone,
+	timer,
+	elapsedSeconds,
+}: {
+	orgSlug: string;
+	timezone: string;
+	timer: RunningTimer;
+	elapsedSeconds: number;
+}) {
+	const { pause } = useTimerControls(orgSlug);
+	const [open, setOpen] = useState(false);
+
+	return (
+		<>
+			<Button
+				type="button"
+				variant="outline"
+				onClick={() => {
+					if (!timer.paused) pause.mutate();
+					setOpen(true);
+				}}
+			>
+				<StopIcon
+					weight="fill"
+					className={cn("size-4", !timer.paused && "text-ok")}
+				/>
+				<span className="tabular-nums">{formatStopwatch(elapsedSeconds)}</span>
+			</Button>
+			<StopTimerDialog
+				orgSlug={orgSlug}
+				timezone={timezone}
+				timer={timer}
+				open={open}
+				onOpenChange={setOpen}
+			/>
+		</>
 	);
 }

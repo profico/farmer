@@ -1,4 +1,4 @@
-import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
+import { addDaysToKey } from "@farmer/core/lib/time";
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
@@ -6,7 +6,12 @@ import {
 	SparkleIcon,
 	UmbrellaSimpleIcon,
 } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 // `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
 // stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -31,6 +36,7 @@ import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { dateSearch, EXACT_LINK } from "#/lib/time-search.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { copyTimeEntriesDay } from "#/server/time-entries.ts";
@@ -39,6 +45,7 @@ export function DayView({
 	orgSlug,
 	date,
 	timezone,
+	today,
 	entries,
 	weekDates,
 	weekEntries,
@@ -47,6 +54,12 @@ export function DayView({
 	orgSlug: string;
 	date: string;
 	timezone: string;
+	/**
+	 * The day the page treats as today. The route passes its deferred day, so
+	 * the date, the today mark and the targets all come from one day while a
+	 * new range loads.
+	 */
+	today: string;
 	/** This day's entries. */
 	entries: EntryBlockRowEntry[];
 	/** The seven day keys of the week `date` falls in, for the strip above. */
@@ -60,14 +73,16 @@ export function DayView({
 	const timedEntryId = useTimedEntryId(orgSlug);
 	// Read without suspending: the strip's "short" marks are a courtesy, and the
 	// day must never wait on them.
-	const { data: targets } = useQuery(myTargetsQuery(orgSlug));
+	const { data: targets } = useQuery({
+		...myTargetsQuery(orgSlug, today),
+		placeholderData: keepPreviousData,
+	});
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
 	const sortedEntries = [...entries].sort(
 		(a, b) => Number(a.fillsDay) - Number(b.fillsDay),
 	);
-	const today = dayKeyInTz(new Date(), timezone);
 	const isToday = date === today;
 	const holidayName = holidays.get(date);
 
@@ -137,7 +152,8 @@ export function DayView({
 					<Link
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date: previousDay }}
+						search={dateSearch(previousDay, today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Previous day"
 					>
@@ -158,7 +174,8 @@ export function DayView({
 					<Link
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date: addDaysToKey(date, 1) }}
+						search={dateSearch(addDaysToKey(date, 1), today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Next day"
 					>
@@ -171,7 +188,7 @@ export function DayView({
 						navigate({
 							to: "/$orgSlug/time",
 							params: { orgSlug },
-							search: { date: picked },
+							search: dateSearch(picked, today),
 						}),
 				}}
 				returnLink={
@@ -180,6 +197,7 @@ export function DayView({
 							to="/$orgSlug/time"
 							params={{ orgSlug }}
 							search={{}}
+							activeOptions={EXACT_LINK}
 							className={returnLinkClass}
 						>
 							Return to today
@@ -215,7 +233,7 @@ export function DayView({
 					dates={weekDates}
 					activeDate={date}
 					secondsByDay={secondsByDay}
-					today={dayKeyInTz(new Date(), timezone)}
+					today={today}
 					dayTargetSeconds={
 						targets?.week.targetSeconds == null ? null : targets.daySeconds
 					}

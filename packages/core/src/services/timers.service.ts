@@ -1,17 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { organization } from "../db/schema/auth";
 import { project, task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { descriptionRequiredFor } from "../lib/task-rules";
-import { headStartTooLong, snapToQuarterHour } from "../lib/time";
+import { dayKeyInTz, headStartTooLong, snapToQuarterHour } from "../lib/time";
 import type {
 	ConfirmTimerInput,
 	StartTimerInput,
 	TimerSettingsInput,
 	UpdateTimerInput,
 } from "../schema/timer";
-import { ctxAccess, ctxDb, withCtxTx } from "./context";
+import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import {
 	publishTimerChange,
@@ -29,8 +29,8 @@ import type { Ctx } from "./types";
  * so every rule an entry has — the day's 24 hours, the mandatory note, the task
  * taxonomy — applies to a measured hour exactly as it does to a typed one.
  * That is the whole answer to "a stopwatch produces figures like 2:12": the
- * figure is snapped before anybody sees it, and what is saved is what they
- * confirmed.
+ * figure is snapped before anybody sees it, and the measured part they saw is saved, and
+ * an edit of the entry hours is kept.
  *
  * One timer per PERSON, not per workspace — see `db/schema/timer.ts`. Every
  * function still takes a Ctx, and a function that writes still names the
@@ -41,8 +41,10 @@ import type { Ctx } from "./types";
  * A timer may continue an entry (issue #107): it then measures on top of the
  * entry's own duration, and confirming it rewrites that entry through
  * `timeEntriesService.update` instead of writing a new one. The entry's
- * duration is joined on every read rather than copied at start, so the clock
- * and the timesheet never disagree about what the entry already holds.
+ * duration, project, task and note are joined on every read (issue #121)
+ * rather than copied at start, so the clock and the timesheet never disagree
+ * about what the entry holds. The copy in `running_timer` is used only when
+ * the entry is gone.
  */
 
 /** The default cap on a timer nobody stopped. A missing `timer_settings` row
@@ -114,6 +116,19 @@ const elapsedOf = (
 	return Math.max(0, row.accumulatedSeconds + Math.round(current));
 };
 
+// A timer that continues an entry reads the entry's project, task and note on
+// every read, as it reads the entry's hours. The copy in `running_timer` was
+// taken at start, and an edit to the entry while the clock runs would be lost
+// when the stale copy was confirmed over it (issue #121). The entry is the
+// one source while it exists. The copy is used when no entry is joined.
+const projectIdOf = sql<
+	string | null
+>`case when ${timeEntry.id} is null then ${runningTimer.projectId} else ${timeEntry.projectId} end`;
+// Exported for `jobs/timer-sweep.ts`, which names the task in its notice by the
+// same rule, so the notice and the card cannot disagree.
+export const taskIdOf = sql<string>`coalesce(${timeEntry.taskId}, ${runningTimer.taskId})`;
+const descriptionOf = sql<string>`coalesce(${timeEntry.description}, ${runningTimer.description})`;
+
 const rowOf = async (ctx: Ctx, userId: string) =>
 	ctxDb(ctx)
 		.select({
@@ -121,13 +136,13 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 			organizationId: runningTimer.organizationId,
 			organizationSlug: organization.slug,
 			organizationName: organization.name,
-			projectId: runningTimer.projectId,
+			projectId: projectIdOf.as("project_id"),
 			projectName: project.name,
-			taskId: runningTimer.taskId,
+			taskId: taskIdOf.as("task_id"),
 			taskName: task.name,
 			taskIsAbsence: task.isAbsence,
 			taskSystemKey: task.systemKey,
-			description: runningTimer.description,
+			description: descriptionOf.as("description"),
 			timeEntryId: timeEntry.id,
 			entryDate: timeEntry.date,
 			entryDurationSeconds: timeEntry.durationSeconds,
@@ -138,9 +153,9 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 		})
 		.from(runningTimer)
 		.innerJoin(organization, eq(organization.id, runningTimer.organizationId))
-		.innerJoin(task, eq(task.id, runningTimer.taskId))
-		.leftJoin(project, eq(project.id, runningTimer.projectId))
 		.leftJoin(timeEntry, eq(timeEntry.id, runningTimer.timeEntryId))
+		.innerJoin(task, eq(task.id, taskIdOf))
+		.leftJoin(project, eq(project.id, projectIdOf))
 		.where(eq(runningTimer.userId, userId))
 		.limit(1);
 
@@ -251,8 +266,10 @@ export const timersService = {
 	 * time worked before somebody remembered the timer: it is banked as if the
 	 * clock had measured it, `startedAt` moves back by it, and it must leave room
 	 * under the person's cap, or the sweep would drop the timer on its next
-	 * pass. Continuing an entry takes the entry's project, task and note, and
-	 * measures on top of what it holds; the entry's own hours do not count
+	 * pass. Continuing an entry copies the entry's project, task and note into
+	 * the row as a fallback, and measures on top of what it holds. Every read
+	 * joins the entry again and shows its current values, and the copy is shown
+	 * only when the entry is gone. The entry's own hours do not count
 	 * towards the cap, which is a limit on a clock nobody stopped.
 	 */
 	start: async (
@@ -344,6 +361,13 @@ export const timersService = {
 		if (!running.here) {
 			throw new Error(
 				`This timer belongs to ${running.organizationName}. Change it there.`,
+			);
+		}
+		// The entry owns these fields while the timer continues it, so a change
+		// here would be invisible on the next read.
+		if (running.timeEntryId) {
+			throw new Error(
+				"This timer continues an entry. Edit the entry to change its project, task or note.",
 			);
 		}
 
@@ -457,6 +481,14 @@ export const timersService = {
 	 * taken from the entry: an absent project or note keeps the entry's, and the
 	 * overtime mark is kept, since no surface that confirms a timer shows it.
 	 *
+	 * Every input field but `overtime` is optional, and an absent date, project,
+	 * task or note takes the live value, read under the lock: the entry's own,
+	 * or the timer's copy once the entry is gone. The duration is the entry's
+	 * live hours plus the measured part, snapped. A caller that read the timer
+	 * sends that part as `measuredSeconds`, so the measured part that the person saw
+	 * is saved, and an inline edit of the entry's hours is kept and added to. Without it the server uses its own measured time. `durationSeconds`
+	 * wins when sent.
+	 *
 	 * Everything is read INSIDE the transaction, and the continued entry is
 	 * locked there before it is written. An entry deleted in another tab has
 	 * then either gone already — the lock finds nothing, and the figure becomes
@@ -468,7 +500,15 @@ export const timersService = {
 	 * already holds a transaction would send before its commit; no caller
 	 * does that today.
 	 */
-	confirm: async (ctx: Ctx, input: ConfirmTimerInput) => {
+	confirm: async (
+		ctx: Ctx,
+		input: ConfirmTimerInput,
+		opts: { now?: Date } = {},
+	) => {
+		const now = opts.now ?? new Date();
+		// Resolved before the transaction opens: a cold lookup from inside it
+		// would queue behind the transaction on a single connection.
+		const timezone = input.date ? null : await ctxTimezone(ctx);
 		const entry = await withCtxTx(ctx, async (txCtx) => {
 			const [row] = await rowOf(txCtx, ctx.userId);
 			if (!row) throw new Error("No timer is running");
@@ -481,30 +521,17 @@ export const timersService = {
 				);
 			}
 
-			if (input.projectId) {
-				const live = await ctxDb(txCtx).query.project.findFirst({
-					where: and(
-						eq(project.id, input.projectId),
-						eq(project.organizationId, ctx.organizationId),
-						eq(project.status, "active"),
-					),
-					columns: { id: true },
-				});
-				if (!live) {
-					throw new Error(
-						"That project is archived. Pick another one for this time.",
-					);
-				}
-			}
-
 			// FOR UPDATE, and a query of its own: Postgres cannot lock the
 			// nullable side of the outer join `rowOf` reads the entry through.
 			const [continued] = row.timeEntryId
 				? await ctxDb(txCtx)
 						.select({
 							id: timeEntry.id,
+							date: timeEntry.date,
 							projectId: timeEntry.projectId,
+							taskId: timeEntry.taskId,
 							description: timeEntry.description,
+							durationSeconds: timeEntry.durationSeconds,
 							overtime: timeEntry.overtime,
 						})
 						.from(timeEntry)
@@ -518,26 +545,66 @@ export const timersService = {
 						.for("update")
 				: [];
 
+			// An absent field takes the live value. The locked read gives the
+			// entry's own, so an edit that committed after `rowOf` read is seen.
+			// When the timer has no entry, or the entry was deleted before the
+			// lock, `continued` is empty and the field falls back to `rowOf`. That
+			// is the timer's copy, or the entry's values as `rowOf` read them if
+			// the entry was deleted between the two reads.
+			const projectId =
+				input.projectId === undefined
+					? continued
+						? continued.projectId
+						: row.projectId
+					: input.projectId;
+			const taskId = input.taskId ?? continued?.taskId ?? row.taskId;
+			const description = input.description ?? row.description;
+			// The measured part the person saw, else the server's own. The
+			// entry's hours are the live ones, from the locked read.
+			const durationSeconds =
+				input.durationSeconds ??
+				snapToQuarterHour(
+					(continued?.durationSeconds ?? 0) +
+						(input.measuredSeconds ?? elapsedOf(row, now)),
+				);
+
+			if (projectId) {
+				const live = await ctxDb(txCtx).query.project.findFirst({
+					where: and(
+						eq(project.id, projectId),
+						eq(project.organizationId, ctx.organizationId),
+						eq(project.status, "active"),
+					),
+					columns: { id: true },
+				});
+				if (!live) {
+					throw new Error(
+						"That project is archived. Pick another one for this time.",
+					);
+				}
+			}
+
+			const date =
+				input.date ??
+				continued?.date ??
+				dayKeyInTz(row.startedAt, timezone ?? "UTC");
 			const entry = continued
 				? await timeEntriesService.update(txCtx, {
 						timeEntryId: continued.id,
-						date: input.date,
-						projectId:
-							(input.projectId === undefined
-								? continued.projectId
-								: input.projectId) ?? undefined,
-						taskId: input.taskId,
+						date,
+						projectId: projectId ?? undefined,
+						taskId,
 						description: input.description ?? continued.description,
-						durationSeconds: input.durationSeconds,
+						durationSeconds,
 						overtime: input.overtime || continued.overtime,
 						fillsDay: false,
 					})
 				: await timeEntriesService.create(txCtx, {
-						date: input.date,
-						projectId: input.projectId ?? undefined,
-						taskId: input.taskId,
-						description: input.description,
-						durationSeconds: input.durationSeconds,
+						date,
+						projectId: projectId ?? undefined,
+						taskId,
+						description,
+						durationSeconds,
 						overtime: input.overtime,
 						fillsDay: false,
 					});

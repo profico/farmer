@@ -625,6 +625,8 @@ function PreviewDialog({ kind, title }: { kind: ReminderKind; title: string }) {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const [open, setOpen] = useState(false);
+	// A one-off default for a date field. A stale day does no harm, because the
+	// person can change the date.
 	const [date, setDate] = useState(() =>
 		dayKeyInTz(new Date(), organization.timezone),
 	);

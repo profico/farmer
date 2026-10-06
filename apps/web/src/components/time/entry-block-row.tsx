@@ -35,6 +35,7 @@ import {
 } from "#/lib/restore-time-entries.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { invalidateTimer } from "#/queries/timer.ts";
 import {
 	acknowledgeCalendarChange,
 	deleteTimeEntry,
@@ -192,9 +193,12 @@ export function EntryBlockRow({
 				data: { timeEntryId: entry.id, description },
 			}),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				invalidateTimer(queryClient, orgSlug),
+			]);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not save note");
@@ -235,9 +239,12 @@ export function EntryBlockRow({
 				data: { timeEntryId: entry.id, durationSeconds },
 			}),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				invalidateTimer(queryClient, orgSlug),
+			]);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not save duration");
@@ -291,9 +298,12 @@ export function EntryBlockRow({
 	const calendarMutation = useMutation({
 		mutationFn: () => useCalendarValues({ data: { timeEntryId: entry.id } }),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				invalidateTimer(queryClient, orgSlug),
+			]);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not take the calendar's values");
@@ -307,9 +317,7 @@ export function EntryBlockRow({
 	const continueMutation = useMutation({
 		mutationFn: () => startTimer({ data: { timeEntryId: entry.id } }),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timer],
-			});
+			await invalidateTimer(queryClient, orgSlug);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not start the timer");
@@ -363,9 +371,12 @@ export function EntryBlockRow({
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteTimeEntry({ data: entry.id }),
 		onSuccess: async (deleted) => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				invalidateTimer(queryClient, orgSlug),
+			]);
 			// `isRestorable` says which rows undo can put back, and why — a fill
 			// block and a rule-generated entry cannot, a calendar meeting can.
 			if (deleted && isRestorable(deleted)) {

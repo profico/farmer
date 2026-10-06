@@ -7,7 +7,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -25,6 +25,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -79,8 +80,10 @@ function HolidaysSettingsPage() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
 	const queryClient = useQueryClient();
-	const todayKey = dayKeyInTz(new Date(), organization.timezone);
-	const currentYear = Number(todayKey.slice(0, 4));
+	// Live, so the past rows dim at midnight. The year reads the deferred value,
+	// so a new year loads its list in the background while the old one stays.
+	const todayKey = useToday(organization.timezone);
+	const currentYear = Number(useDeferredValue(todayKey).slice(0, 4));
 	const year = search.year ?? currentYear;
 	const { data: holidays } = useSuspenseQuery(
 		holidaysForYearWithStatusQuery(orgSlug, year),
@@ -112,8 +115,9 @@ function HolidaysSettingsPage() {
 			}
 			toast.error(error.message ?? "Could not update holiday");
 		},
-		// Every other reader of the calendar — the timesheet's week strip, the
-		// targets, the fund's prefill — needs the server's answer.
+		// Every other reader of the calendar — the timesheet's week strip and the
+		// fund's prefill — needs the server's answer. The targets are in the
+		// time-entries family and refresh on the next open.
 		onSettled: () =>
 			queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).holidays],

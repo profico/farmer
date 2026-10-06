@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 
 import { formatClock } from "#/lib/format-hours.ts";
 import { springLayout } from "#/lib/motion.ts";
+import { dateSearch, EXACT_LINK } from "#/lib/time-search.ts";
 import { cn } from "#/lib/utils.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -26,11 +27,12 @@ export function WeekStrip({
 	activeDate: string;
 	secondsByDay: Map<string, number>;
 	holidays: Map<string, string>;
-	/** With a day's worth, a past or present working day says how far it is
-	 *  from it — unless the rest of its week has made up for it
-	 *  (`@farmer/core/lib/day-marks`). Omitted for people the rule does not
-	 *  apply to. */
-	today?: string;
+	/** The day the page treats as today. With `dayTargetSeconds`,
+	 *  it says how far a past or present working day is from a
+	 *  day's worth, unless the rest of its week has made up for it
+	 *  (`@farmer/core/lib/day-marks`). */
+	today: string;
+	/** Omitted for people the day's worth does not apply to. */
 	dayTargetSeconds?: number | null;
 }) {
 	const weekTotal = dates.reduce(
@@ -38,7 +40,7 @@ export function WeekStrip({
 		0,
 	);
 	const marks =
-		today == null || dayTargetSeconds == null
+		dayTargetSeconds == null
 			? null
 			: weekDayMarks({
 					dates,
@@ -67,7 +69,8 @@ export function WeekStrip({
 						key={date}
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date }}
+						search={dateSearch(date, today)}
+						activeOptions={EXACT_LINK}
 						title={holidayName}
 						// The active day is marked by a 2px accent underscore sitting on
 						// the strip's own hairline, not by a filled tab — the strip is
