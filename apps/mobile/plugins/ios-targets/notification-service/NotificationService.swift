@@ -33,7 +33,7 @@ class NotificationService: UNNotificationServiceExtension {
   private static let seenAtKey = "farmer.push.seen-at"
   private static let seenFloorKey = "farmer.push.seen-floor"
   private static let seenLimit = 500
-  private static let maxSkewMs: Double = 5 * 60 * 1000
+  private static let maxSkewMs: Double = 30 * 60 * 1000
   private static let maxAgeMs: Double = 24 * 60 * 60 * 1000
 
   private struct Alert: Decodable {

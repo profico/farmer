@@ -30,7 +30,7 @@ export const PUSH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** A payload that the server sent later than this after the device's clock
  *  is refused. It allows for a device clock that is a little slow. */
-export const PUSH_MAX_SKEW_MS = 5 * 60 * 1000;
+export const PUSH_MAX_SKEW_MS = 30 * 60 * 1000;
 
 /** The device keeps at most this many accepted ids. */
 export const PUSH_SEEN_LIMIT = 500;

@@ -107,7 +107,7 @@ Each sealed payload, alert or timer, also has the freshness fields of
 `sentAt` (Unix milliseconds) and `id` (12 random base64url characters). The
 app and the iOS Notification Service Extension refuse a payload whose
 `pushKind` is not the kind of the push that brought it, that is older than 24
-hours, that is more than 5 minutes in the future, or whose `id` they
+hours, that is more than 30 minutes in the future, or whose `id` they
 accepted while its payload could still pass the age check. They keep at
 most 500 ids. If the list is full, they forget the oldest and refuse each
 payload that is not newer than it. Thus the relay
