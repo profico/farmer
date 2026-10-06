@@ -37,7 +37,17 @@ const connectedOn = (iso: string | null) =>
 			})
 		: "-";
 
-/** An admin's form to connect the OpenRouter key and choose a model. */
+/** The model of a first connection, as the web's connect form sends it
+ *  (`settings/workspace-integrations.tsx`). The admin changes it after the
+ *  connection, because the server lists the models only with a key. */
+const FIRST_MODEL = "openai/gpt-4o-mini";
+
+/**
+ * An admin's form to connect the OpenRouter key. The model can be chosen
+ * here only when a working key is replaced: before the first key, the
+ * server cannot list the models, so the form connects with the stored model
+ * or `FIRST_MODEL`, as the web does.
+ */
 function ConnectForm({
 	settings,
 	onPickModel,
@@ -49,20 +59,23 @@ function ConnectForm({
 }) {
 	const connect = useConnectAssistant();
 	const [apiKey, setApiKey] = useState("");
-	const ready = apiKey.trim() !== "" && model !== null;
+	const ready = apiKey.trim() !== "";
+	const canPickModel = settings.configured && !settings.keyUnreadable;
 	return (
 		<>
 			<SettingsSection
 				title={settings.configured ? "Replace the key" : "Connect OpenRouter"}
 				footer="The key goes to the server and never comes back to the app. Each answer costs credits on this account."
 			>
-				<SettingsValue
-					icon="settings"
-					tint="gray"
-					title="Model"
-					value={model ?? "Choose"}
-					onPress={onPickModel}
-				/>
+				{canPickModel ? (
+					<SettingsValue
+						icon="settings"
+						tint="gray"
+						title="Model"
+						value={model ?? "Choose"}
+						onPress={onPickModel}
+					/>
+				) : null}
 			</SettingsSection>
 			<Inset>
 				<Field
@@ -82,9 +95,11 @@ function ConnectForm({
 						label={settings.configured ? "Save the key" : "Connect"}
 						disabled={!ready || connect.isPending}
 						onPress={() => {
-							if (!model) return;
 							connect.mutate(
-								{ apiKey: apiKey.trim(), defaultModel: model },
+								{
+									apiKey: apiKey.trim(),
+									defaultModel: model ?? settings.defaultModel ?? FIRST_MODEL,
+								},
 								{ onSuccess: () => setApiKey("") },
 							);
 						}}
