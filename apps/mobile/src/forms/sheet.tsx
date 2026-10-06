@@ -1,18 +1,13 @@
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import {
-	ActivityIndicator,
-	KeyboardAvoidingView,
-	Platform,
-	ScrollView,
-	View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 import { ActionButton, IconButton, Text } from "../ui/components";
+import { LoadingIndicator } from "../ui/loading";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 
@@ -58,7 +53,8 @@ export function Sheet({
 						alignItems: "center",
 						gap: SPACE.s,
 						paddingTop: top,
-						paddingHorizontal: SPACE.s,
+						paddingLeft: SPACE.s,
+						paddingRight: Platform.OS === "android" ? SPACE.l : SPACE.s,
 						paddingBottom: SPACE.s,
 					}}
 				>
@@ -72,7 +68,7 @@ export function Sheet({
 							{title}
 						</Text>
 					</View>
-					{busy ? <ActivityIndicator color={palette.primary} /> : null}
+					{busy ? <LoadingIndicator size={24} color={palette.primary} /> : null}
 					<ActionButton
 						label={actionLabel}
 						onPress={onAction}
