@@ -254,3 +254,18 @@ export const patchOf = (
 
 export const isEmptyPatch = (patch: ProjectPatch) =>
 	Object.keys(patch).length === 0;
+
+/** Above this many repositories to link, the list waits for a search, as
+ *  on the web: nobody scrolls hundreds of names for the one they know. */
+export const SEARCH_FIRST_THRESHOLD = 10;
+
+/** How old the repository list is: "just now", "12 min ago", "3 h ago",
+ *  "2 d ago", as the web writes it. */
+export const formatAge = (fetchedAt: string, now: number) => {
+	const minutes = Math.floor((now - Date.parse(fetchedAt)) / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes} min ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} h ago`;
+	return `${Math.floor(hours / 24)} d ago`;
+};

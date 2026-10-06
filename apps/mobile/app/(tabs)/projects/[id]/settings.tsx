@@ -1,5 +1,5 @@
 import type { ProjectDetail } from "@farmer/api-client";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, View } from "react-native";
 
@@ -51,6 +51,8 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 	const [form, setForm] = useState<ProjectForm>(saved);
 	const [tried, setTried] = useState(false);
 	const archived = project.status === "archived";
+	const router = useRouter();
+	const access = useAccess();
 	const upload = useIconUpload((icon) =>
 		setForm((current) => ({ ...current, icon })),
 	);
@@ -197,6 +199,24 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 					}
 				/>
 			</SettingsSection>
+			{access.isAdmin && access.setupApi ? (
+				<SettingsSection
+					title="GitHub"
+					footer="The commits and pull requests of a linked repository can go on the time entries of this project."
+				>
+					<SettingsLink
+						icon="link"
+						tint="gray"
+						title="Repositories"
+						onPress={() =>
+							router.push({
+								pathname: "/projects/[id]/repositories",
+								params: { id: project.id },
+							})
+						}
+					/>
+				</SettingsSection>
+			) : null}
 			<SettingsSection
 				title={archived ? "Restore" : "Archive"}
 				footer={
