@@ -61,5 +61,9 @@ default).
   must say this.
 - The relay holds the APNs key and the FCM credentials. These are Profico's
   secrets and live only in the relay's Coolify environment.
+- The relay's rate limits trust the one header that `TRUSTED_IP_HEADER`
+  names. The relay's origin must accept traffic only through the proxy that
+  sets this header. Else a caller sets the header and picks its own bucket.
+  An IPv6 caller gets its /64 prefix as its bucket.
 - A new kind of notification must name its channels in the `KINDS` table, as
   before. Native push is one more channel, not a second mechanism.

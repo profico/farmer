@@ -27,7 +27,7 @@ accounts exist.
 |---|---|---|
 | `PORT` | `3000` | The HTTP port. |
 | `RELAY_DB_PATH` | `./data/relay.sqlite` | The SQLite file. The relay makes the directory on start. The image sets `/data/relay.sqlite` on the `/data` volume. |
-| `TRUSTED_IP_HEADER` | `cf-connecting-ip` | The one header that the proxy in front of the relay sets with the client address. For `x-forwarded-for` the relay reads the last entry. `none` means the socket address only. The rules are the same as in the web app. |
+| `TRUSTED_IP_HEADER` | `cf-connecting-ip` | The one header that the proxy in front of the relay sets with the client address. For `x-forwarded-for` the relay reads the last entry. `none` means the socket address only. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. |
 | `APNS_KEY_P8` | (none) | The `.p8` key from Apple, as PEM. Literal `\n` sequences count as line breaks. |
 | `APNS_KEY_ID` | (none) | The key id of the `.p8` key. |
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
