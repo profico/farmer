@@ -54,10 +54,10 @@ export function StepperRow({
 	const shown = suffix ? `${value}${suffix}` : String(value);
 	return (
 		<CustomRow>
+			{/* The title wraps to as many lines as it needs. The labels of the
+			    reminders are long, and two lines cut them off. */}
 			<View style={{ flex: 1 }}>
-				<Text variant="bodyLarge" numberOfLines={2}>
-					{title}
-				</Text>
+				<Text variant="bodyLarge">{title}</Text>
 			</View>
 			<IconButton
 				icon="minus"
