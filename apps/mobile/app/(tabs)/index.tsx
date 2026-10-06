@@ -198,6 +198,9 @@ function Timesheet({
 			onError: (error) => notify(messageOf(error) ?? "", "warning"),
 		});
 
+	const assembleDay = () =>
+		router.push({ pathname: "/time/assemble", params: { date: selected } });
+
 	const step = (direction: 1 | -1) => {
 		if (view === "day") setSelected(addDays(selected, direction));
 		else if (view === "week") setSelected(addDays(selected, 7 * direction));
@@ -234,6 +237,9 @@ function Timesheet({
 									disabled: copyWeek.isPending,
 								}
 							: null,
+					view === "day" && dayApi
+						? { id: "assemble", title: "Assemble my day" }
+						: null,
 					{ id: "time-off", title: "Book time off" },
 					{ id: "sync", title: "Sync now", disabled: sync.isPending },
 				].flatMap((action) => (action ? [action] : []))
@@ -252,6 +258,9 @@ function Timesheet({
 				return;
 			case "copy-week":
 				copyPreviousWeek();
+				return;
+			case "assemble":
+				assembleDay();
 				return;
 			case "time-off":
 				router.push({ pathname: "/time/time-off", params: { date: selected } });
@@ -315,6 +324,7 @@ function Timesheet({
 					holidays={holidays.data}
 					onSelect={setSelected}
 					onCopyPreviousDay={fullApi ? copyPreviousDay : undefined}
+					onAssemble={dayApi ? assembleDay : undefined}
 					copying={copyDay.isPending}
 				/>
 			) : view === "week" ? (

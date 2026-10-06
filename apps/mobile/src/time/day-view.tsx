@@ -11,6 +11,7 @@ import {
 	EmptyState,
 	ErrorBanner,
 	ErrorState,
+	IconButton,
 	Skeleton,
 	Text,
 } from "../ui/components";
@@ -37,6 +38,7 @@ export function DayView({
 	holidays,
 	onSelect,
 	onCopyPreviousDay,
+	onAssemble,
 	copying,
 }: {
 	selected: string;
@@ -47,6 +49,8 @@ export function DayView({
 	onSelect: (day: string) => void;
 	/** Absent when the server cannot copy a day. */
 	onCopyPreviousDay?: () => void;
+	/** Opens "Assemble my day". Absent when the server cannot do it. */
+	onAssemble?: () => void;
 	copying: boolean;
 }) {
 	const palette = usePalette();
@@ -118,7 +122,16 @@ export function DayView({
 					<Text variant="titleMedium">
 						{formatHours(totals.get(selected) ?? 0)} logged
 					</Text>
-					<ActionButton label="Log time" variant="text" onPress={logTime} />
+					<View style={{ flexDirection: "row", alignItems: "center" }}>
+						{onAssemble ? (
+							<IconButton
+								icon="assistant"
+								label="Assemble my day"
+								onPress={onAssemble}
+							/>
+						) : null}
+						<ActionButton label="Log time" variant="text" onPress={logTime} />
+					</View>
 				</View>
 			</Inset>
 
