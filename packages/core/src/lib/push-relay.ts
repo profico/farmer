@@ -47,7 +47,9 @@ export type RelayPush = {
 export type RelayOutcome =
 	/** 200 or 202 (a dry run on a relay with no credentials). */
 	| { kind: "delivered" }
-	/** 404 `unknown_relay_id` or 410 `device_gone`: delete the row. */
+	/** 404 `unknown_relay_id` or 410 `device_gone`: delete the row. Only
+	 *  these two pairs count. A 404 from a proxy in front of the relay, or
+	 *  from a wrong `PUSH_RELAY_URL`, has no such code and is `failed`. */
 	| { kind: "device_gone" }
 	/** 409 `activity_gone`: forget the Live Activity token. */
 	| { kind: "activity_gone" }
@@ -82,7 +84,12 @@ const outcomeOf = async (response: Response): Promise<RelayOutcome> => {
 	const { status } = response;
 	if (status === 200 || status === 202) return { kind: "delivered" };
 	const code = await errorCode(response);
-	if (status === 404 || status === 410) return { kind: "device_gone" };
+	if (
+		(status === 404 && code === "unknown_relay_id") ||
+		(status === 410 && code === "device_gone")
+	) {
+		return { kind: "device_gone" };
+	}
 	if (status === 409 && code === "activity_gone") {
 		return { kind: "activity_gone" };
 	}

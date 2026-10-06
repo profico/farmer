@@ -239,6 +239,24 @@ describe("alerts", () => {
 		expect(await deviceRow("relay-broken-aaaaaaa")).toBeDefined();
 	});
 
+	test("a 404 or 410 without the relay's code keeps the row", async () => {
+		// A proxy in front of the relay (a redeploy) or a wrong relay path
+		// gives a 404 that is not from the relay. It must not delete a row.
+		await addDevice(IOS, iosPublic);
+		await addDevice(ANDROID, androidPublic, { platform: "android" });
+		relay.answer(IOS, { status: 404, error: "not_found" });
+		relay.answer(ANDROID, { status: 410 });
+
+		const outcome = await notify(
+			{ organizationId: ORG, userId: ME },
+			{ kind: "log-reminder", title: "Log", body: "now" },
+		);
+
+		expect(outcome.native).toBe(false);
+		expect(await deviceRow(IOS)).toBeDefined();
+		expect(await deviceRow(ANDROID)).toBeDefined();
+	});
+
 	test("a phone of an expired session gets nothing", async () => {
 		await db.insert(session).values({
 			id: "s-expired",

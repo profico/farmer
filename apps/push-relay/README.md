@@ -142,8 +142,10 @@ The relay forgets a device in three cases: APNs or FCM says that its token is
 dead (`410`), the app deletes it, or the relay has not seen it for 180 days.
 A lost database volume has the same effect for all devices. Thus:
 
-- On a `404` or a `410` from `POST /v1/push`, the server deletes its
-  `mobile_device` row.
+- On a `404` with the code `unknown_relay_id`, or a `410` with the code
+  `device_gone`, from `POST /v1/push`, the server deletes its
+  `mobile_device` row. A `404` or a `410` without that code (for example,
+  from a proxy during a redeploy) is a failure, and the row stays.
 - When the app comes to the foreground, it checks its registration with its
   server. If the server has no row for it, or the relay answers `401` to a
   `PUT`, the app registers again (`POST /v1/devices`) and gives the new relay
