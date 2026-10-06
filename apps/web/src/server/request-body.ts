@@ -17,7 +17,7 @@ export type BodyRead =
  *  `Content-Length` over the limit is refused at once. Else the stream is
  *  read in parts and cancelled as soon as the count goes over the limit,
  *  because a client can send no length, or a wrong one. */
-export const readLimitedText = async (
+const readLimitedText = async (
 	request: Request,
 	limit: number,
 ): Promise<string | null> => {

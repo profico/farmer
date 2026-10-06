@@ -26,9 +26,9 @@ import type { Ctx } from "./types";
  */
 
 /** The part of a Ctx that a per-person function reads. */
-export type PersonCtx = Pick<Ctx, "userId" | "actor">;
+type PersonCtx = Pick<Ctx, "userId" | "actor">;
 
-export type MobileDeviceView = {
+type MobileDeviceView = {
 	installationId: string;
 	platform: "ios" | "android";
 	appVersion: string;

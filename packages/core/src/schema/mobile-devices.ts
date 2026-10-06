@@ -7,7 +7,7 @@ import { z } from "zod";
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
 /** An id the app makes one time for each installation. */
-export const installationIdSchema = z
+const installationIdSchema = z
 	.string()
 	.min(8)
 	.max(128)

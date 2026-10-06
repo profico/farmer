@@ -44,14 +44,14 @@ import {
  *  base64url characters: the sealed value is base64url of 65 bytes of `enc`, the plaintext and a 16-byte
  *  tag, so 3,072 characters hold 2,304 bytes, and 2,223 of them are
  *  plaintext. A margin keeps a later change of the envelope safe. */
-export const MAX_PLAINTEXT_BYTES = 2_100;
+const MAX_PLAINTEXT_BYTES = 2_100;
 
 /** The Swift type of the timer's `ActivityAttributes`, for a push-to-start. */
-export const TIMER_ATTRIBUTES_TYPE = "TimerAttributes";
+const TIMER_ATTRIBUTES_TYPE = "TimerAttributes";
 
 /** The version of the attributes. A change of the content state's shape is a
  *  new number, so the widget can refuse a shape it does not know. */
-export const TIMER_ACTIVITY_VERSION = 1;
+const TIMER_ACTIVITY_VERSION = 1;
 
 const encoder = new TextEncoder();
 
@@ -108,7 +108,7 @@ const jsonCost = (value: string): number =>
 
 /** Cut a string so that it adds at most `maxBytes` to a JSON payload, at a
  *  character boundary, with an ellipsis when it was cut. */
-export const truncateJson = (value: string, maxBytes: number): string => {
+const truncateJson = (value: string, maxBytes: number): string => {
 	if (jsonCost(value) <= maxBytes) return value;
 	const room = Math.max(0, maxBytes - jsonCost("…"));
 	let used = 0;
@@ -186,7 +186,7 @@ export type NativeAlert = {
 /** The alert, cut to fit the relay's limit. The body is cut first, because
  *  the title is short and the body is where a long text is (an admin digest
  *  of a large workspace). */
-export const fitAlert = (alert: NativeAlert): NativeAlert => {
+const fitAlert = (alert: NativeAlert): NativeAlert => {
 	const title = truncateJson(alert.title, 200);
 	const fixed = encoder.encode(
 		JSON.stringify({ ...alert, title, body: "", ...LARGEST_ENVELOPE }),

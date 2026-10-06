@@ -15,13 +15,13 @@ import { externalFetch } from "./http";
 import { setting, settingEnabled } from "./instance-settings";
 
 /** A push takes at most this long. The relay itself gives APNs 10 seconds. */
-export const PUSH_RELAY_TIMEOUT_MS = 12_000;
+const PUSH_RELAY_TIMEOUT_MS = 12_000;
 
 export type LiveActivityEvent = "start" | "update" | "end";
 
 /** A value in a Live Activity's content state or attributes. The relay
  *  forwards only primitives, because iOS reads them directly. */
-export type LiveActivityPrimitive = string | number | boolean | null;
+type LiveActivityPrimitive = string | number | boolean | null;
 
 export type RelayLiveActivity = {
 	/** The per-activity token. Absent means push-to-start. */

@@ -319,7 +319,7 @@ export type ApiAuditEvent = {
 
 /** `describe` is `describeAuditEvent` (`lib/audit.ts`). It is passed in, so
  *  this module keeps to type imports. */
-export const toApiAuditEvent = (
+const toApiAuditEvent = (
 	view: AuditEventView,
 	describe: (kind: string, targetLabel: string | null, self: boolean) => string,
 ): ApiAuditEvent => ({
