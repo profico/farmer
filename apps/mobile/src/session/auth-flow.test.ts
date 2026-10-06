@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import {
 	type ActiveFlow,
+	base64UrlFromBytes,
+	challengeFor,
 	callbackUrlFor,
 	errorTextFor,
 	FLOW_LIFETIME_MS,
@@ -15,6 +18,7 @@ const flow: ActiveFlow = {
 	nonce: "n-123",
 	origin: "https://farmer.example.com",
 	startedAt: NOW,
+	verifier: null,
 };
 
 /** The `Set-Cookie` header that the server's expo plugin puts in the link. */
@@ -56,7 +60,7 @@ describe("sessionTokenFrom", () => {
 });
 
 describe("readCallback", () => {
-	const callback = callbackUrlFor(flow);
+	const callback = callbackUrlFor(flow, null);
 
 	test("gives the token of a callback for the active flow", () => {
 		const link = linkFor(callback, { cookie: SET_COOKIE });
@@ -146,7 +150,7 @@ describe("FlowKeeper", () => {
 	test("ends the flow on its callback, so the link works once", () => {
 		const keeper = new FlowKeeper();
 		const started = keeper.start("https://a.example", "nonce-1", NOW);
-		const link = linkFor(callbackUrlFor(started), { cookie: SET_COOKIE });
+		const link = linkFor(callbackUrlFor(started, null), { cookie: SET_COOKIE });
 		expect(keeper.finish(link, NOW).kind).toBe("session");
 		expect(keeper.active).toBeNull();
 		expect(keeper.finish(link, NOW)).toEqual({
@@ -169,7 +173,7 @@ describe("FlowKeeper", () => {
 		const keeper = new FlowKeeper();
 		const first = keeper.start("https://a.example", "nonce-1", NOW);
 		keeper.start("https://a.example", "nonce-2", NOW);
-		const late = linkFor(callbackUrlFor(first), { cookie: SET_COOKIE });
+		const late = linkFor(callbackUrlFor(first, null), { cookie: SET_COOKIE });
 		expect(keeper.finish(late, NOW)).toEqual({
 			kind: "refused",
 			reason: "wrong_flow",
@@ -184,5 +188,56 @@ describe("FlowKeeper", () => {
 		expect(keeper.active).toBe(second);
 		keeper.cancel(second);
 		expect(keeper.active).toBeNull();
+	});
+});
+
+describe("the exchange flow", () => {
+	const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+	const exchangeFlow: ActiveFlow = { ...flow, verifier };
+	const callback = callbackUrlFor(exchangeFlow, "the-challenge");
+
+	test("makes the S256 challenge of RFC 7636 appendix B", () => {
+		const sha256 = (text: string) =>
+			new Uint8Array(createHash("sha256").update(text).digest());
+		expect(challengeFor(verifier, sha256)).toBe(
+			"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+		);
+	});
+
+	test("encodes bytes as base64url with no padding", () => {
+		expect(base64UrlFromBytes(new Uint8Array([0xfb, 0xff, 0xfe]))).toBe("-__-");
+		expect(base64UrlFromBytes(new Uint8Array([1]))).toBe("AQ");
+		expect(base64UrlFromBytes(new Uint8Array([1, 2]))).toBe("AQI");
+	});
+
+	test("puts the challenge in the callback URL, never the verifier", () => {
+		expect(callback).toBe("farmer://auth-callback?flow=n-123&cc=the-challenge");
+		expect(callback).not.toContain(verifier);
+	});
+
+	test("gives the code of a callback for the active flow", () => {
+		const link = linkFor(callback, { code: "one-time" });
+		expect(readCallback(link, exchangeFlow, NOW)).toEqual({
+			kind: "code",
+			code: "one-time",
+		});
+	});
+
+	test("does not take a session from the link of an exchange flow", () => {
+		const link = linkFor(callback, { cookie: SET_COOKIE });
+		expect(readCallback(link, exchangeFlow, NOW).kind).toBe("error");
+	});
+
+	test("does not take a code from the link of an old flow", () => {
+		const link = linkFor(callbackUrlFor(flow, null), { code: "one-time" });
+		expect(readCallback(link, flow, NOW).kind).toBe("error");
+	});
+
+	test("a refusal in the link is an error, even with a code", () => {
+		const link = linkFor(callback, { error: "access_denied", code: "x" });
+		expect(readCallback(link, exchangeFlow, NOW)).toEqual({
+			kind: "error",
+			message: errorTextFor("access_denied"),
+		});
 	});
 });

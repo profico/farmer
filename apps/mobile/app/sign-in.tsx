@@ -149,7 +149,13 @@ export default function SignInScreen() {
 		setError(null);
 		setBusy(true);
 		attempt.current += 1;
-		await settle(await signInWithProvider(server, method));
+		await settle(
+			await signInWithProvider(
+				server,
+				method,
+				meta.data?.signInExchange === true,
+			),
+		);
 	};
 
 	const withPassword = async () => {

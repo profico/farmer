@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 /**
  * `farmer://auth-callback`, as the router sees it. The link carries a
- * session, so this screen never reads it. During a sign-in, the system auth
+ * session or a code, so this screen never reads it. During a sign-in, the system auth
  * session gives the link to `signInWithProvider`, which checks it against
  * the nonce of the flow (`src/session/auth-flow.ts`). On Android the router
  * also gets the link and opens this route, so it closes itself. A link that
