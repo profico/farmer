@@ -12,6 +12,7 @@ import { Alert, Pressable, View } from "react-native";
 
 import { useProjects, useTasks, useTracking } from "../api/queries";
 import { useHome, useRemoveRow, useWriteCell } from "../api/time";
+import { useWorkingHours } from "../api/you";
 import { ProjectPicker, TaskPicker } from "../forms/pickers";
 import { dayOfMonth, weekdayShort } from "../lib/days";
 import { formatHours } from "../lib/duration";
@@ -29,7 +30,7 @@ import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { type ChartDay, WeekChart } from "./components/week-chart";
-import { weekDayMarks } from "./day-marks";
+import { dayTargets, weekDayMarks } from "./day-marks";
 import {
 	buildRows,
 	cellSeconds,
@@ -412,6 +413,7 @@ export function WeekView({
 	const isCurrentWeek = days.includes(today);
 	const home = useHome(isCurrentWeek);
 	const tracking = useTracking();
+	const workingHours = useWorkingHours();
 	const removeRow = useRemoveRow(from, to);
 
 	// Rows added with no hours yet. They belong to one week, so a new week
@@ -427,40 +429,39 @@ export function WeekView({
 	const rows = buildRows(list, drafts);
 	const weekTotal = list.reduce((sum, entry) => sum + entry.durationSeconds, 0);
 
-	// The chart: this week from the server's own marks, another week from
-	// the same rule here.
+	// The chart. Each day is held to the person's working hours, as
+	// "Assemble my day" and the day view read them. The server's home gives
+	// the holidays of this week when the app has no other list of them.
 	const totals = new Map(days.map((date) => [date, daySeconds(list, date)]));
-	const daySecondsTarget =
-		tracking.data && tracking.data.week.targetSeconds != null
-			? tracking.data.daySeconds
-			: null;
-	const localMarks =
-		daySecondsTarget != null
-			? weekDayMarks({
-					dates: days,
-					secondsByDay: totals,
-					holidays: holidays ?? new Map(),
-					today,
-					daySeconds: daySecondsTarget,
-				})
-			: new Map();
-	const chartDays: ChartDay[] =
+	const homeDays =
 		isCurrentWeek && home.data && home.data.from === from
-			? home.data.days.map((day) => ({
-					date: day.date,
-					// The entries are the newer read after a write.
-					seconds: totals.get(day.date) ?? day.seconds,
-					holiday: day.holiday,
-					mark: day.mark,
-				}))
-			: days.map((date) => ({
-					date,
-					seconds: totals.get(date) ?? 0,
-					holiday: holidays?.get(date) ?? null,
-					mark: localMarks.get(date) ?? null,
-				}));
-	const chartTarget =
-		isCurrentWeek && home.data ? home.data.daySeconds : daySecondsTarget;
+			? new Map(home.data.days.map((day) => [day.date, day]))
+			: undefined;
+	const holidayOf = (date: string) =>
+		holidays?.get(date) ?? homeDays?.get(date)?.holiday ?? null;
+	const targets =
+		tracking.data && tracking.data.week.targetSeconds != null
+			? dayTargets({
+					dates: days,
+					workingHours: workingHours.data,
+					holidays: { has: (date) => holidayOf(date) != null },
+					fallbackSeconds: tracking.data.daySeconds,
+				})
+			: undefined;
+	const marks = targets
+		? weekDayMarks({ dates: days, secondsByDay: totals, targets, today })
+		: undefined;
+	const chartDays: ChartDay[] = days.map((date) => ({
+		date,
+		seconds: totals.get(date) ?? 0,
+		holiday: holidayOf(date),
+		mark: marks?.get(date) ?? null,
+	}));
+	// The line of the chart: the selected day's target, or the longest day
+	// of the week when the selected day has none.
+	const chartTarget = targets
+		? targets.get(selected) || Math.max(0, ...targets.values()) || null
+		: null;
 
 	const confirmRemove = (row: GridRow) => {
 		const ids = rowDeletions(row);

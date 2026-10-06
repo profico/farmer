@@ -13,6 +13,7 @@ import Reanimated, {
 
 import { useAccess } from "../api/capabilities";
 import { useStartTimer, useTimer, useTracking } from "../api/queries";
+import { useWorkingHours } from "../api/you";
 import { formatHours } from "../lib/duration";
 import {
 	ActionButton,
@@ -29,7 +30,7 @@ import { useMotionPreference } from "../ui/motion";
 import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
-import { weekDayMarks } from "./day-marks";
+import { dayTargets, weekDayMarks } from "./day-marks";
 import { canContinue, EntryRow } from "./entry-row";
 import { committed } from "./haptics";
 import { TimerCard } from "./timer-card";
@@ -82,6 +83,7 @@ export function DayView({
 	const { reduceMotion } = useMotionPreference();
 	const { fullApi } = useAccess();
 	const tracking = useTracking();
+	const workingHours = useWorkingHours();
 	const timer = useTimer();
 	const start = useStartTimer();
 	const from = days[0] ?? selected;
@@ -98,18 +100,20 @@ export function DayView({
 	const dayEntries = (entries.data ?? [])
 		.filter((entry) => entry.date === selected)
 		.sort((a, b) => Number(a.fillsDay) - Number(b.fillsDay));
-	const daySeconds = tracking.data?.daySeconds;
-	// The marks apply only to a person with a target.
-	const marks =
-		tracking.data && tracking.data.week.targetSeconds != null && daySeconds
-			? weekDayMarks({
+	// The marks apply only to a person with a target. Each day is held to
+	// the person's working hours, as "Assemble my day" reads them.
+	const targets =
+		tracking.data && tracking.data.week.targetSeconds != null
+			? dayTargets({
 					dates: days,
-					secondsByDay: totals,
+					workingHours: workingHours.data,
 					holidays: holidays ?? new Map(),
-					today,
-					daySeconds,
+					fallbackSeconds: tracking.data.daySeconds,
 				})
 			: undefined;
+	const marks = targets
+		? weekDayMarks({ dates: days, secondsByDay: totals, targets, today })
+		: undefined;
 	const holiday = holidays?.get(selected);
 	const timerFree = timer.isSuccess && timer.data.timer === null;
 	const logTime = () =>
@@ -125,7 +129,7 @@ export function DayView({
 					totals={totals}
 					holidays={fullApi ? holidays : undefined}
 					marks={marks}
-					daySeconds={daySeconds}
+					targets={targets}
 					onSelect={onSelect}
 				/>
 				{holiday ? (

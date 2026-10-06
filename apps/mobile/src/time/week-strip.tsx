@@ -17,8 +17,8 @@ export type WeekStripProps = {
 	holidays?: ReadonlyMap<string, string>;
 	/** The mark of each judged day (`day-marks.ts`). */
 	marks?: ReadonlyMap<string, DayMark>;
-	/** What one working day is worth, for the words of a short day. */
-	daySeconds?: number;
+	/** The target of each day (`dayTargets`), for the words of a short day. */
+	targets?: ReadonlyMap<string, number>;
 	onSelect: (day: string) => void;
 };
 
@@ -35,7 +35,7 @@ export function WeekStrip({
 	totals,
 	holidays,
 	marks,
-	daySeconds,
+	targets,
 	onSelect,
 }: WeekStripProps) {
 	const palette = usePalette();
@@ -58,8 +58,8 @@ export function WeekStrip({
 					`${formatHours(seconds)} logged`,
 					holiday ?? null,
 					mark === "done" ? "done" : null,
-					mark === "short" && daySeconds
-						? `${formatHours(Math.max(0, daySeconds - seconds))} short`
+					mark === "short" && targets
+						? `${formatHours(Math.max(0, (targets.get(day) ?? 0) - seconds))} short`
 						: null,
 				]
 					.filter((part) => part)
