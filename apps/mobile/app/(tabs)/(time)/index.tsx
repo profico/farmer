@@ -1,5 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import {
+	Fragment,
+	useCallback,
+	useDeferredValue,
+	useEffect,
+	useState,
+} from "react";
 import { Platform, View } from "react-native";
 
 import {
@@ -124,7 +130,10 @@ function Timesheet({
 	const router = useRouter();
 	const assistant = useAssistantAvailable();
 	const { fullApi, dayApi } = useAccess();
-	const [view, setView] = useState<View3>("day");
+	// The segment changes at once. The view follows in a render that can wait,
+	// so a heavy view does not hold the segment animation.
+	const [choice, setView] = useState<View3>("day");
+	const view = useDeferredValue(choice);
 	const [selected, setSelected] = useState(today);
 	// A link to a day (the assistant cites days with one) opens that day.
 	// The state moves while rendering, so the screen never draws the old day
@@ -313,7 +322,7 @@ function Timesheet({
 				}
 			>
 				<Inset>
-					<SegmentedControl options={VIEWS} value={view} onChange={setView} />
+					<SegmentedControl options={VIEWS} value={choice} onChange={setView} />
 					<View
 						style={{
 							flexDirection: "row",

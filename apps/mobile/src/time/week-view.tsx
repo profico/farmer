@@ -2,9 +2,11 @@ import type { TimeEntry } from "@farmer/api-client";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
+	memo,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -45,6 +47,9 @@ import {
 	rowSeconds,
 	stepCell,
 } from "./week-grid";
+
+/** One list for every render before the entries arrive, so memos hold. */
+const NO_ENTRIES: readonly TimeEntry[] = [];
 
 /** How long the stepper waits after the last tap before it writes. */
 const SETTLE_MS = 700;
@@ -180,21 +185,7 @@ function CellStepper({
 	);
 }
 
-/** One row of the week: its seven days, the stepper of the selected day,
- *  its notes and its removal. */
-function RowCard({
-	row,
-	index,
-	count,
-	days,
-	selected,
-	entries,
-	onSelect,
-	onNotes,
-	onRemove,
-	removing,
-	onFailure,
-}: {
+type RowCardProps = {
 	row: GridRow;
 	/** The place of the row in the list, for the segmented corners. */
 	index: number;
@@ -207,7 +198,42 @@ function RowCard({
 	onRemove: () => void;
 	removing: boolean;
 	onFailure: (message: string) => void;
-}) {
+};
+
+/**
+ * A row draws again only when its data changes. The callbacks are new on each
+ * render of the week, but they act on the same row, so the compare skips them.
+ * Without it, each arrival of data drew every row again: about 250 ms on a
+ * debug build with five rows.
+ */
+function sameRowCard(before: RowCardProps, after: RowCardProps) {
+	return (
+		before.row === after.row &&
+		before.index === after.index &&
+		before.count === after.count &&
+		// `days` is a new array on each render, with the same dates.
+		before.days.join() === after.days.join() &&
+		before.selected === after.selected &&
+		before.entries === after.entries &&
+		before.removing === after.removing
+	);
+}
+
+/** One row of the week: its seven days, the stepper of the selected day,
+ *  its notes and its removal. */
+const RowCard = memo(function RowCard({
+	row,
+	index,
+	count,
+	days,
+	selected,
+	entries,
+	onSelect,
+	onNotes,
+	onRemove,
+	removing,
+	onFailure,
+}: RowCardProps) {
 	const palette = usePalette();
 	const total = rowSeconds(row, days);
 	// A long press on the heading opens the same actions as the buttons.
@@ -325,7 +351,7 @@ function RowCard({
 			) : null}
 		</Card>
 	);
-}
+}, sameRowCard);
 
 /** Adds an empty row: the work, and nothing else. The hours come next, and
  *  the notes after them, as on the web. */
@@ -458,8 +484,8 @@ export function WeekView({
 		setDrafts([]);
 	}
 
-	const list = entries.data ?? [];
-	const rows = buildRows(list, drafts);
+	const list = entries.data ?? NO_ENTRIES;
+	const rows = useMemo(() => buildRows(list, drafts), [list, drafts]);
 	const weekTotal = sumSeconds(list);
 
 	// The chart. Each day is held to the person's working hours, as
