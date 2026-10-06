@@ -4,10 +4,11 @@ import { useState } from "react";
 import { View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
-import { useArchiveTask, useManagedTasks } from "../../../src/api/workspace";
+import { useManagedTasks } from "../../../src/api/workspace";
 import { EmptyState, ErrorState, IconButton } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SettingsSection } from "../../../src/ui/settings-list";
+import { useTaskArchive } from "../../../src/workspace/catalog/archive";
 import { matchesSearch } from "../../../src/workspace/catalog/search";
 import {
 	FALLBACK_TASK_COLOR,
@@ -15,11 +16,9 @@ import {
 	TASK_GROUPS,
 } from "../../../src/workspace/catalog/task-groups";
 import {
-	confirmAction,
 	DetailRow,
 	ListSkeleton,
 	NoteRow,
-	notifyError,
 	SearchField,
 } from "../../../src/workspace/components";
 import { formatDay } from "../../../src/workspace/format";
@@ -54,7 +53,7 @@ export default function TasksScreen() {
 function TaskList() {
 	const router = useRouter();
 	const tasks = useManagedTasks();
-	const archive = useArchiveTask();
+	const archive = useTaskArchive();
 	const [query, setQuery] = useState("");
 
 	const matching = (tasks.data ?? []).filter((task) =>
@@ -63,22 +62,6 @@ function TaskList() {
 	const active = matching.filter((task) => !task.archivedAt);
 	const archived = matching.filter((task) => task.archivedAt);
 	const searching = query.trim() !== "";
-
-	const restore = (task: ManagedTask) =>
-		confirmAction({
-			title: `Restore ${task.name}?`,
-			message:
-				"The task keeps its id, so its entries come back attached to it.",
-			action: "Restore",
-			onConfirm: () =>
-				archive.mutate(
-					{ id: task.id, archived: false },
-					{
-						onError: (error) =>
-							notifyError("Could not restore the task", error),
-					},
-				),
-		});
 
 	const row = (task: ManagedTask) => {
 		const builtIn = task.scope === "site";
@@ -101,17 +84,38 @@ function TaskList() {
 		]
 			.filter(Boolean)
 			.join(", ");
+		const edit = () =>
+			router.push({
+				pathname: "/workspace/tasks/edit",
+				params: { id: task.id },
+			});
 		// A built-in is the site's, not the organization's. The server refuses
 		// every change to it, so the row has no action.
 		const onPress = builtIn
 			? undefined
 			: task.archivedAt
-				? () => restore(task)
-				: () =>
-						router.push({
-							pathname: "/workspace/tasks/edit",
-							params: { id: task.id },
-						});
+				? () => archive.confirmRestore(task)
+				: edit;
+		// A built-in has no action. An archived task can only be restored.
+		const actions = builtIn
+			? []
+			: task.archivedAt
+				? [
+						{
+							label: "Restore",
+							icon: "restore",
+							onPress: () => archive.confirmRestore(task),
+						} as const,
+					]
+				: [
+						{ label: "Edit", icon: "edit", onPress: edit } as const,
+						{
+							label: "Archive",
+							icon: "archive",
+							destructive: true,
+							onPress: () => archive.confirmArchive(task),
+						} as const,
+					];
 		return (
 			<DetailRow
 				key={task.id}
@@ -120,6 +124,7 @@ function TaskList() {
 				muted={Boolean(task.archivedAt)}
 				trailing={dot}
 				onPress={onPress}
+				actions={actions}
 				accessibilityLabel={`${task.name}, ${subtitle}${
 					builtIn
 						? ". Built-in, cannot be changed"

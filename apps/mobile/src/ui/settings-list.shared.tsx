@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type { IconName } from "./icons";
+import type { RowMenuEntry } from "./row-menu-items";
 
 // The props of the settings-list kit, and the part both platforms share.
 // `settings-list.tsx` (Android) and `settings-list.ios.tsx` draw the rows.
@@ -36,6 +37,9 @@ export type RowBase = {
 	tint?: RowTint;
 	title: string;
 	subtitle?: string;
+	/** The menu of a long press, and the same actions for a screen reader.
+	 *  The caller leaves out an action that the person may not do. */
+	actions?: readonly RowMenuEntry[];
 };
 
 export type SettingsLinkProps = RowBase & {

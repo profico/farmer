@@ -1,13 +1,9 @@
 import type { FilingRule } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
-import {
-	useDeleteFilingRule,
-	useFilingRules,
-	useUpdateFilingRule,
-} from "../../src/api/you";
+import { useFilingRules, useUpdateFilingRule } from "../../src/api/you";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
 import { FormSection, Sheet } from "../../src/forms/sheet";
 import {
@@ -21,6 +17,7 @@ import {
 import { messageOf } from "../../src/ui/errors";
 import { Icon } from "../../src/ui/icon";
 import { usePalette } from "../../src/ui/theme";
+import { useConfirmRemoveRule } from "../../src/you/confirm-delete";
 
 /** One filing rule: where its entries go, or remove it. */
 export default function FilingRuleSheet() {
@@ -63,10 +60,10 @@ function RuleForm({ rule }: { rule: FilingRule }) {
 	const palette = usePalette();
 	const router = useRouter();
 	const update = useUpdateFilingRule();
-	const remove = useDeleteFilingRule();
+	const remove = useConfirmRemoveRule();
 	const [projectId, setProjectId] = useState(rule.project.id);
 	const [targetTaskId, setTargetTaskId] = useState(rule.targetTask?.id ?? null);
-	const busy = update.isPending || remove.isPending;
+	const busy = update.isPending || remove.pending;
 	const failure = messageOf(update.error ?? remove.error);
 
 	const save = () =>
@@ -75,20 +72,7 @@ function RuleForm({ rule }: { rule: FilingRule }) {
 			{ onSuccess: () => router.back() },
 		);
 
-	const confirmRemove = () =>
-		Alert.alert(
-			"Remove this rule?",
-			"Entries it filed stay where they are. New ones with this name wait for you in File your time again.",
-			[
-				{ text: "Cancel", style: "cancel" },
-				{
-					text: "Remove",
-					style: "destructive",
-					onPress: () =>
-						remove.mutate(rule.id, { onSuccess: () => router.back() }),
-				},
-			],
-		);
+	const confirmRemove = () => remove.confirm(rule, () => router.back());
 
 	return (
 		<Sheet title="Filing rule" actionLabel="Save" onAction={save} busy={busy}>

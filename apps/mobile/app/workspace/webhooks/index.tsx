@@ -10,12 +10,14 @@ import {
 	ListSkeleton,
 } from "../../../src/workspace/components";
 import { formatInstant } from "../../../src/workspace/format";
+import { useConfirmDeleteEndpoint } from "../../../src/workspace/webhooks/delete";
 import { healthOf } from "../../../src/workspace/webhooks/events";
 
 /** The webhook endpoints of the workspace, with how each one is doing. */
 export default function WebhooksScreen() {
 	const router = useRouter();
 	const endpoints = useWebhookEndpoints();
+	const remove = useConfirmDeleteEndpoint();
 	const rows = endpoints.data ?? [];
 	return (
 		<Screen
@@ -52,6 +54,11 @@ export default function WebhooksScreen() {
 				<SettingsSection footer="One signed POST per event, with a delivery log. Events can arrive out of order, so dedupe on the event id.">
 					{rows.map((endpoint) => {
 						const health = healthOf(endpoint);
+						const open = () =>
+							router.push({
+								pathname: "/workspace/webhooks/[id]",
+								params: { id: endpoint.id },
+							});
 						return (
 							<DetailRow
 								key={endpoint.id}
@@ -66,12 +73,16 @@ export default function WebhooksScreen() {
 									.filter(Boolean)
 									.join("\n")}
 								trailing={<Badge label={health.label} tone={health.tone} />}
-								onPress={() =>
-									router.push({
-										pathname: "/workspace/webhooks/[id]",
-										params: { id: endpoint.id },
-									})
-								}
+								onPress={open}
+								actions={[
+									{ label: "Edit", icon: "edit", onPress: open },
+									{
+										label: "Delete",
+										icon: "delete",
+										destructive: true,
+										onPress: () => remove.confirm(endpoint),
+									},
+								]}
 							/>
 						);
 					})}

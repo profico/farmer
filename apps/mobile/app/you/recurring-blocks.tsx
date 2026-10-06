@@ -12,6 +12,7 @@ import {
 	SettingsSwitch,
 } from "../../src/ui/settings-list";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
+import { useConfirmDeleteBlock } from "../../src/you/confirm-delete";
 import { daysSummary, hoursLabel } from "../../src/you/format";
 
 /** The break the app suggests, as the server makes it: Monday to Friday,
@@ -21,7 +22,7 @@ const SUGGESTED_BREAK = { daysOfWeek: [1, 2, 3, 4, 5], durationSeconds: 1800 };
 /**
  * The recurring blocks: time, such as a daily break or a standing meeting,
  * that goes on the timesheet without the person logging it. A press opens
- * a block to change, pause or delete it.
+ * a block to change, pause or delete it. A long press offers Edit and Delete.
  */
 export default function RecurringBlocksScreen() {
 	const router = useRouter();
@@ -29,6 +30,7 @@ export default function RecurringBlocksScreen() {
 	const blocks = useRecurringBlocks();
 	const tasks = useTasks();
 	const enableBreak = useEnableBreakBlock();
+	const remove = useConfirmDeleteBlock();
 	const weekStartsOn = whoami.data?.weekStartsOn ?? 1;
 
 	// The break is found by its system key, never by its name: an admin can
@@ -46,6 +48,8 @@ export default function RecurringBlocksScreen() {
 		!blocks.data.some((block) => block.task.id === breakTask.id);
 
 	const add = () => router.push("/you/recurring-block");
+	const edit = (id: string) =>
+		router.push({ pathname: "/you/recurring-block", params: { id } });
 
 	return (
 		<YouScreen
@@ -54,6 +58,11 @@ export default function RecurringBlocksScreen() {
 			refreshing={blocks.isRefetching}
 			onRefresh={() => void blocks.refetch()}
 		>
+			{remove.error ? (
+				<Inset>
+					<ErrorBanner message={messageOf(remove.error) ?? ""} />
+				</Inset>
+			) : null}
 			{enableBreak.error ? (
 				<Inset>
 					<ErrorBanner message={messageOf(enableBreak.error) ?? ""} />
@@ -109,12 +118,20 @@ export default function RecurringBlocksScreen() {
 										.filter((part) => part)
 										.join(", ")}
 									value={block.active ? "" : "Paused"}
-									onPress={() =>
-										router.push({
-											pathname: "/you/recurring-block",
-											params: { id: block.id },
-										})
-									}
+									onPress={() => edit(block.id)}
+									actions={[
+										{
+											label: "Edit",
+											icon: "edit",
+											onPress: () => edit(block.id),
+										},
+										{
+											label: "Delete",
+											icon: "delete",
+											destructive: true,
+											onPress: () => remove.confirm(block),
+										},
+									]}
 								/>
 							))}
 						</SettingsSection>

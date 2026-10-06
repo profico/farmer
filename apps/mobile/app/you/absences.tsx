@@ -133,7 +133,7 @@ export default function AbsencesScreen() {
 					message={`You have no time off in ${monthTitle(year, month)}.`}
 				/>
 			) : (
-				<SettingsSection footer="Press a day to delete it.">
+				<SettingsSection footer="Press a day, or hold it, to delete it.">
 					{absences.data.map((entry) => (
 						<SettingsValue
 							key={entry.id}
@@ -145,6 +145,14 @@ export default function AbsencesScreen() {
 								.filter((part) => part)
 								.join(", ")}
 							value={formatHours(entry.durationSeconds)}
+							actions={[
+								!remove.isPending && {
+									label: "Delete",
+									icon: "delete",
+									destructive: true,
+									onPress: () => confirmDelete(entry),
+								},
+							]}
 							onPress={
 								remove.isPending ? undefined : () => confirmDelete(entry)
 							}

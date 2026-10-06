@@ -6,6 +6,7 @@ import { Text } from "./components";
 import { ControlHost } from "./host";
 import { Icon } from "./icon";
 import type { IconName } from "./icons";
+import { useRowMenu } from "./row-menu";
 import {
 	type RowBase,
 	type RowTint,
@@ -98,6 +99,7 @@ function Row({
 	tint = "gray",
 	title,
 	subtitle,
+	actions,
 	trailing,
 	onPress,
 	destructive,
@@ -115,15 +117,17 @@ function Row({
 	selected?: boolean;
 }) {
 	const palette = usePalette();
+	const menu = useRowMenu(title, actions ?? []);
 	const { last } = useRowPosition();
 	return (
 		<Pressable
+			{...menu}
 			accessible={grouped}
 			accessibilityRole={onPress ? "button" : undefined}
 			accessibilityState={selected !== undefined ? { selected } : undefined}
 			accessibilityLabel={grouped ? accessibilityLabel : undefined}
 			onPress={onPress}
-			disabled={!onPress}
+			disabled={!onPress && !menu.onLongPress}
 			style={({ pressed }) => ({
 				flexDirection: "row",
 				alignItems: "center",

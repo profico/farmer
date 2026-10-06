@@ -13,6 +13,7 @@ import { useProjects } from "../../../src/api/queries";
 import { projectPageAccess } from "../../../src/projects/access";
 import { ProjectMark } from "../../../src/projects/components/project-mark";
 import { ProjectRow } from "../../../src/projects/components/project-row";
+import { useConfirmProjectStatus } from "../../../src/projects/confirm-status";
 import {
 	groupByClient,
 	PROJECT_SORTS,
@@ -136,12 +137,41 @@ export default function ProjectsScreen() {
 	const list = useProjectList();
 	const clients = useClients(access.canManageProjects);
 	const archive = useArchiveProject();
+	const status = useConfirmProjectStatus();
 	const [search, setSearch] = useState("");
 	const [sort, setSort] = useState<ProjectSort>("month");
 	const [archivedOpen, setArchivedOpen] = useState(false);
 
 	const openProject = (project: ProjectDetail) =>
 		router.push({ pathname: "/projects/[id]", params: { id: project.id } });
+
+	// Settings and Archive or Restore, for a person who manages the project.
+	const actionsFor = (project: ProjectDetail) =>
+		projectPageAccess(access.isAdmin, project.role).canManageSettings
+			? [
+					{
+						label: "Settings",
+						icon: "settings",
+						onPress: () =>
+							router.push({
+								pathname: "/projects/[id]/settings",
+								params: { id: project.id },
+							}),
+					} as const,
+					project.status === "archived"
+						? ({
+								label: "Restore",
+								icon: "restore",
+								onPress: () => status.confirm(project),
+							} as const)
+						: ({
+								label: "Archive",
+								icon: "archive",
+								destructive: true,
+								onPress: () => status.confirm(project),
+							} as const),
+				]
+			: [];
 
 	const restore = (project: ProjectDetail) =>
 		Alert.alert(
@@ -259,6 +289,7 @@ export default function ProjectsScreen() {
 										key={project.id}
 										project={project}
 										onPress={() => openProject(project)}
+										actions={actionsFor(project)}
 									/>
 								))}
 							</ListCard>
@@ -281,6 +312,7 @@ export default function ProjectsScreen() {
 											key={project.id}
 											project={project}
 											onPress={() => openProject(project)}
+											actions={actionsFor(project)}
 											trailing={
 												projectPageAccess(access.isAdmin, project.role)
 													.canManageSettings ? (

@@ -8,6 +8,7 @@ import { groupedCorners, RADIUS } from "./corner";
 import { ControlHost } from "./host";
 import { Icon } from "./icon";
 import { useCornerMorph } from "./press-morph";
+import { useRowMenu } from "./row-menu";
 import {
 	type RowBase,
 	rowsWithPosition,
@@ -71,6 +72,7 @@ function Row({
 	icon,
 	title,
 	subtitle,
+	actions,
 	trailing,
 	onPress,
 	destructive,
@@ -88,6 +90,7 @@ function Row({
 	selected?: boolean;
 }) {
 	const palette = usePalette();
+	const menu = useRowMenu(title, actions ?? []);
 	const { index, count } = useRowPosition();
 	const corners = groupedCorners(index, count);
 	// The Expressive list item: a pressed row morphs toward a large corner.
@@ -107,6 +110,7 @@ function Row({
 			]}
 		>
 			<Pressable
+				{...menu}
 				accessible
 				accessibilityRole={
 					checked !== undefined ? "switch" : onPress ? "button" : undefined
@@ -122,7 +126,7 @@ function Row({
 				onPress={onPress}
 				onPressIn={onPress ? morph.onPressIn : undefined}
 				onPressOut={onPress ? morph.onPressOut : undefined}
-				disabled={!onPress}
+				disabled={!onPress && !menu.onLongPress}
 				android_ripple={{ color: palette.outlineVariant }}
 				style={{
 					flexDirection: "row",

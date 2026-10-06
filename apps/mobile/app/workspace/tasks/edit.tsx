@@ -4,7 +4,6 @@ import { Pressable, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import {
-	useArchiveTask,
 	useCreateTask,
 	useManagedTasks,
 	useUpdateTask,
@@ -21,6 +20,7 @@ import { Icon } from "../../../src/ui/icon";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import { usePalette } from "../../../src/ui/theme";
 import { SPACE } from "../../../src/ui/type";
+import { useTaskArchive } from "../../../src/workspace/catalog/archive";
 import {
 	DEFAULT_TASK_COLOR,
 	EDITABLE_GROUPS,
@@ -29,12 +29,7 @@ import {
 	TASK_COLORS,
 	TASK_GROUP_LABELS,
 } from "../../../src/workspace/catalog/task-groups";
-import {
-	ActionRow,
-	ChoiceSection,
-	confirmDestructive,
-	notifyError,
-} from "../../../src/workspace/components";
+import { ActionRow, ChoiceSection } from "../../../src/workspace/components";
 import { paramOf } from "../../../src/workspace/params";
 
 const NAME_MAX_LENGTH = 80;
@@ -136,7 +131,7 @@ function TaskForm({
 	const router = useRouter();
 	const create = useCreateTask();
 	const update = useUpdateTask();
-	const archive = useArchiveTask();
+	const archive = useTaskArchive();
 	const [name, setName] = useState(initialName);
 	const [group, setGroup] = useState(initialGroup);
 	const [color, setColor] = useState(initialColor);
@@ -150,7 +145,7 @@ function TaskForm({
 		group !== initialGroup ||
 		color !== initialColor ||
 		description.trim() !== initialDescription.trim();
-	const busy = create.isPending || update.isPending || archive.isPending;
+	const busy = create.isPending || update.isPending || archive.pending;
 	const failure = messageOf(create.error ?? update.error);
 
 	const save = () => {
@@ -164,17 +159,6 @@ function TaskForm({
 		const done = { onSuccess: () => router.back() };
 		if (id) update.mutate({ id, body }, done);
 		else create.mutate(body, done);
-	};
-
-	const doArchive = () => {
-		if (!id) return;
-		archive.mutate(
-			{ id, archived: true },
-			{
-				onSuccess: () => router.back(),
-				onError: (error) => notifyError("Could not archive the task", error),
-			},
-		);
 	};
 
 	return (
@@ -218,15 +202,11 @@ function TaskForm({
 							label="Archive task"
 							icon="archive"
 							destructive
-							busy={archive.isPending}
+							busy={archive.pending}
 							onPress={() =>
-								confirmDestructive({
-									title: `Archive ${initialName}?`,
-									message:
-										"The task leaves the task list. Its entries keep it. You can restore it later.",
-									action: "Archive",
-									onConfirm: doArchive,
-								})
+								archive.confirmArchive({ id, name: initialName }, () =>
+									router.back(),
+								)
 							}
 						/>
 					</SettingsSection>

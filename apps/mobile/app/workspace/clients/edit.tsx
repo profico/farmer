@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import { useAccess } from "../../../src/api/capabilities";
 import {
-	useArchiveClient,
 	useClients,
 	useCreateClient,
 	useRenameClient,
@@ -17,12 +16,8 @@ import {
 } from "../../../src/ui/components";
 import { messageOf } from "../../../src/ui/errors";
 import { SettingsSection } from "../../../src/ui/settings-list";
-import {
-	ActionRow,
-	confirmDestructive,
-	NoteRow,
-	notifyError,
-} from "../../../src/workspace/components";
+import { useClientArchive } from "../../../src/workspace/catalog/archive";
+import { ActionRow, NoteRow } from "../../../src/workspace/components";
 import { paramOf } from "../../../src/workspace/params";
 
 const NAME_MAX_LENGTH = 120;
@@ -91,10 +86,10 @@ function ClientForm({
 	const router = useRouter();
 	const create = useCreateClient();
 	const rename = useRenameClient();
-	const archive = useArchiveClient();
+	const archive = useClientArchive();
 	const [name, setName] = useState(initialName);
 	const trimmed = name.trim();
-	const busy = create.isPending || rename.isPending || archive.isPending;
+	const busy = create.isPending || rename.isPending || archive.pending;
 	const failure = messageOf(create.error ?? rename.error);
 
 	const save = () => {
@@ -102,23 +97,6 @@ function ClientForm({
 		const done = { onSuccess: () => router.back() };
 		if (id) rename.mutate({ id, body: { name: trimmed } }, done);
 		else create.mutate({ name: trimmed }, done);
-	};
-
-	const setArchived = (next: boolean) => {
-		if (!id) return;
-		archive.mutate(
-			{ id, archived: next },
-			{
-				onSuccess: () => router.back(),
-				onError: (error) =>
-					notifyError(
-						next
-							? "Could not archive the client"
-							: "Could not restore the client",
-						error,
-					),
-			},
-		);
 	};
 
 	return (
@@ -153,8 +131,8 @@ function ClientForm({
 						<ActionRow
 							label="Restore client"
 							icon="restore"
-							onPress={() => setArchived(false)}
-							busy={archive.isPending}
+							onPress={() => id && archive.restore({ id }, () => router.back())}
+							busy={archive.pending}
 						/>
 					) : (
 						<ActionRow
@@ -162,15 +140,12 @@ function ClientForm({
 							icon="archive"
 							destructive
 							onPress={() =>
-								confirmDestructive({
-									title: `Archive ${initialName}?`,
-									message:
-										"An archived client is hidden from the project lists. You can restore it later. A client with an active project cannot be archived.",
-									action: "Archive",
-									onConfirm: () => setArchived(true),
-								})
+								id &&
+								archive.confirmArchive({ id, name: initialName }, () =>
+									router.back(),
+								)
 							}
-							busy={archive.isPending}
+							busy={archive.pending}
 						/>
 					)}
 				</SettingsSection>

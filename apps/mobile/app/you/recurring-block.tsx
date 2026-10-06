@@ -2,12 +2,11 @@ import { Switch } from "@expo/ui";
 import type { RecurringBlock, Task } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { useTasks, useWhoami } from "../../src/api/queries";
 import {
 	useCreateRecurringBlock,
-	useDeleteRecurringBlock,
 	useRecurringBlocks,
 	useUpdateRecurringBlock,
 } from "../../src/api/you";
@@ -28,6 +27,7 @@ import { ControlHost } from "../../src/ui/host";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
 import { WeekdayChips } from "../../src/you/components/weekday-chips";
+import { useConfirmDeleteBlock } from "../../src/you/confirm-delete";
 import { descriptionRequiredFor } from "../../src/you/format";
 
 /** Add a recurring block, or change one (`id`). */
@@ -76,7 +76,7 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 	const tasks = useTasks();
 	const create = useCreateRecurringBlock();
 	const update = useUpdateRecurringBlock();
-	const remove = useDeleteRecurringBlock();
+	const remove = useConfirmDeleteBlock();
 
 	const [projectId, setProjectId] = useState(block?.project?.id ?? null);
 	const [taskId, setTaskId] = useState(block?.task.id ?? null);
@@ -100,7 +100,7 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 				? "This task needs a note."
 				: null;
 
-	const busy = create.isPending || update.isPending || remove.isPending;
+	const busy = create.isPending || update.isPending || remove.pending;
 	const failure = messageOf(create.error ?? update.error ?? remove.error);
 
 	const save = () => {
@@ -139,16 +139,7 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 	};
 
 	const confirmDelete = () => {
-		if (!block) return;
-		Alert.alert("Delete this recurring block?", "This cannot be undone.", [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Delete",
-				style: "destructive",
-				onPress: () =>
-					remove.mutate(block.id, { onSuccess: () => router.back() }),
-			},
-		]);
+		if (block) remove.confirm(block, () => router.back());
 	};
 
 	return (

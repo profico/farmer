@@ -5,13 +5,13 @@ import { Alert, View } from "react-native";
 
 import { useAccess } from "../../../../src/api/capabilities";
 import {
-	useArchiveProject,
 	useClients,
 	useProject,
 	useUpdateProject,
 } from "../../../../src/api/projects";
 import { projectPageAccess } from "../../../../src/projects/access";
 import { ProjectFields } from "../../../../src/projects/components/project-fields";
+import { useConfirmProjectStatus } from "../../../../src/projects/confirm-status";
 import { useIconUpload } from "../../../../src/projects/icon-upload";
 import {
 	formOf,
@@ -46,7 +46,7 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 	const clients = useClients();
 	const update = useUpdateProject(project.id);
 	const openToOrg = useUpdateProject(project.id);
-	const archive = useArchiveProject();
+	const status = useConfirmProjectStatus();
 	const [saved, setSaved] = useState<ProjectForm>(() => formOf(project));
 	const [form, setForm] = useState<ProjectForm>(saved);
 	const [tried, setTried] = useState(false);
@@ -74,31 +74,7 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 		});
 	};
 
-	const changeStatus = () =>
-		Alert.alert(
-			archived ? `Restore ${project.name}?` : `Archive ${project.name}?`,
-			archived
-				? "People assigned to it can log time on it again."
-				: "Nobody can log more time on it until it is restored. Everything already logged stays where it is.",
-			[
-				{ text: "Cancel", style: "cancel" },
-				{
-					text: archived ? "Restore" : "Archive",
-					style: archived ? "default" : "destructive",
-					onPress: () =>
-						archive.mutate(
-							{ id: project.id, archive: !archived },
-							{
-								onError: (error) =>
-									Alert.alert(
-										"Could not change the project's status",
-										messageOf(error) ?? "",
-									),
-							},
-						),
-				},
-			],
-		);
+	const changeStatus = () => status.confirm(project);
 
 	if (clients.isPending) {
 		return (

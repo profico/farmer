@@ -4,6 +4,8 @@ import { Platform, Pressable, View } from "react-native";
 
 import { formatReportHours, plural } from "../../reports/format";
 import { Text } from "../../ui/components";
+import { useRowMenu } from "../../ui/row-menu";
+import type { RowMenuEntry } from "../../ui/row-menu-items";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 import { projectTitle } from "../model";
@@ -26,13 +28,18 @@ export function ProjectRow({
 	project,
 	onPress,
 	trailing,
+	actions,
 }: {
 	project: ProjectDetail;
+	/** The long-press menu. The caller leaves out an action that the
+	 *  person may not do. */
+	actions?: readonly RowMenuEntry[];
 	onPress: () => void;
 	/** A control at the end of the row, such as "Restore". */
 	trailing?: ReactNode;
 }) {
 	const palette = usePalette();
+	const menu = useRowMenu(projectTitle(project), actions ?? []);
 	const archived = project.status === "archived";
 	const month = formatReportHours(project.stats.monthSeconds);
 	const subtitle = [teamLine(project), archived ? "Archived" : ""]
@@ -41,6 +48,7 @@ export function ProjectRow({
 	return (
 		<View style={{ flexDirection: "row", alignItems: "center" }}>
 			<Pressable
+				{...menu}
 				accessible
 				accessibilityRole="button"
 				accessibilityLabel={`${projectTitle(project)}, ${subtitle}, ${month} hours this month`}

@@ -14,6 +14,8 @@ import { Skeleton, Text } from "../ui/components";
 import { ControlHost } from "../ui/host";
 import { Icon } from "../ui/icon";
 import { LoadingIndicator } from "../ui/loading";
+import { useRowMenu } from "../ui/row-menu";
+import type { RowMenuEntry } from "../ui/row-menu-items";
 import { SettingsChoice, SettingsSection } from "../ui/settings-list";
 import { useRowPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
@@ -150,8 +152,11 @@ function RowFrame({
 	accessibilityLabel,
 	accessibilityRole,
 	disabled,
+	menu,
 }: {
 	children: ReactNode;
+	/** The long-press menu of the row. */
+	menu?: { title: string; items: readonly RowMenuEntry[] };
 	onPress?: () => void;
 	accessibilityLabel?: string;
 	accessibilityRole?: "button";
@@ -159,14 +164,20 @@ function RowFrame({
 }) {
 	const palette = usePalette();
 	const { last } = useRowPosition();
+	const menuProps = useRowMenu(menu?.title ?? "", menu?.items ?? []);
 	return (
 		<Pressable
-			accessible={Boolean(onPress) || accessibilityLabel !== undefined}
+			{...menuProps}
+			accessible={
+				Boolean(onPress) ||
+				accessibilityLabel !== undefined ||
+				menuProps.onLongPress != null
+			}
 			accessibilityRole={onPress ? (accessibilityRole ?? "button") : undefined}
 			accessibilityLabel={accessibilityLabel}
 			accessibilityState={onPress ? { disabled: Boolean(disabled) } : undefined}
 			onPress={onPress}
-			disabled={!onPress || disabled}
+			disabled={(!onPress && !menuProps.onLongPress) || disabled}
 			android_ripple={{ color: palette.outlineVariant }}
 			style={({ pressed }) => ({
 				paddingLeft: SPACE.l,
@@ -276,12 +287,16 @@ export function DetailRow({
 	onPress,
 	accessibilityLabel,
 	muted,
+	actions,
 }: {
 	title: string;
 	subtitle?: string;
 	trailing?: ReactNode;
 	onPress?: () => void;
 	accessibilityLabel?: string;
+	/** The long-press menu, and the same actions for a screen reader. The
+	 *  caller leaves out an action that the person may not do. */
+	actions?: readonly RowMenuEntry[];
 	/** Draws the title in the colour for a secondary line, such as for an
 	 *  archived row. */
 	muted?: boolean;
@@ -290,6 +305,7 @@ export function DetailRow({
 	return (
 		<RowFrame
 			onPress={onPress}
+			menu={{ title, items: actions ?? [] }}
 			accessibilityLabel={
 				accessibilityLabel ?? [title, subtitle].filter(Boolean).join(", ")
 			}

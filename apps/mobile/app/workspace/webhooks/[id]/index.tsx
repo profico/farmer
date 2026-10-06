@@ -4,7 +4,6 @@ import { useState } from "react";
 import { View } from "react-native";
 
 import {
-	useDeleteWebhookEndpoint,
 	useResendWebhookDelivery,
 	useRollWebhookSecret,
 	useSendWebhookTest,
@@ -29,7 +28,6 @@ import {
 	ActionRow,
 	Badge,
 	confirmAction,
-	confirmDestructive,
 	DetailRow,
 	ListSkeleton,
 	NoteRow,
@@ -38,6 +36,7 @@ import {
 } from "../../../../src/workspace/components";
 import { formatInstant } from "../../../../src/workspace/format";
 import { paramOf } from "../../../../src/workspace/params";
+import { useConfirmDeleteEndpoint } from "../../../../src/workspace/webhooks/delete";
 import {
 	healthOf,
 	type Status,
@@ -98,14 +97,14 @@ function EndpointBody({
 	const update = useUpdateWebhookEndpoint();
 	const test = useSendWebhookTest();
 	const roll = useRollWebhookSecret();
-	const remove = useDeleteWebhookEndpoint();
+	const remove = useConfirmDeleteEndpoint();
 	// The rolled secret lives only in this state. The next screen or a
 	// press on "Done" drops it.
 	const [secret, setSecret] = useState<string | null>(null);
 	const health = healthOf(endpoint);
 	const off = endpoint.disabledAt !== null;
 	const busy =
-		update.isPending || test.isPending || roll.isPending || remove.isPending;
+		update.isPending || test.isPending || roll.isPending || remove.pending;
 
 	const rollSecret = () =>
 		confirmAction({
@@ -142,17 +141,7 @@ function EndpointBody({
 		setDisabled(false);
 	};
 
-	const deleteEndpoint = () =>
-		confirmDestructive({
-			title: "Delete this endpoint?",
-			message: `Farmer stops sending events to ${endpoint.url}. Its delivery log is deleted too.`,
-			action: "Delete",
-			onConfirm: () =>
-				remove.mutate(endpoint.id, {
-					onSuccess: () => router.back(),
-					onError: (error) => notifyError("Could not delete", error),
-				}),
-		});
+	const deleteEndpoint = () => remove.confirm(endpoint, () => router.back());
 
 	return (
 		<View style={{ gap: SPACE.l }}>
@@ -250,7 +239,7 @@ function EndpointBody({
 					label="Delete"
 					destructive
 					disabled={busy}
-					busy={remove.isPending}
+					busy={remove.pending}
 					onPress={deleteEndpoint}
 				/>
 			</SettingsSection>

@@ -1,9 +1,12 @@
 import { useRouter } from "expo-router";
 
 import { useFilingRules } from "../../src/api/you";
-import { EmptyState, ErrorState } from "../../src/ui/components";
+import { EmptyState, ErrorBanner, ErrorState } from "../../src/ui/components";
+import { messageOf } from "../../src/ui/errors";
+import { Inset } from "../../src/ui/screen";
 import { SettingsLink, SettingsSection } from "../../src/ui/settings-list";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
+import { useConfirmRemoveRule } from "../../src/you/confirm-delete";
 
 /**
  * The filing rules: a meeting or a block with one of these names is filed
@@ -15,6 +18,9 @@ import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 export default function FilingRulesScreen() {
 	const router = useRouter();
 	const rules = useFilingRules();
+	const remove = useConfirmRemoveRule();
+	const edit = (id: string) =>
+		router.push({ pathname: "/you/filing-rule", params: { id } });
 
 	return (
 		<YouScreen
@@ -22,6 +28,11 @@ export default function FilingRulesScreen() {
 			refreshing={rules.isRefetching}
 			onRefresh={() => void rules.refetch()}
 		>
+			{remove.error ? (
+				<Inset>
+					<ErrorBanner message={messageOf(remove.error) ?? ""} />
+				</Inset>
+			) : null}
 			{rules.isPending ? (
 				<ListSkeleton rows={3} />
 			) : rules.isError ? (
@@ -41,12 +52,20 @@ export default function FilingRulesScreen() {
 							subtitle={`${rule.project.name}, ${
 								rule.targetTask?.name ?? rule.task.name
 							}`}
-							onPress={() =>
-								router.push({
-									pathname: "/you/filing-rule",
-									params: { id: rule.id },
-								})
-							}
+							onPress={() => edit(rule.id)}
+							actions={[
+								{
+									label: "Edit",
+									icon: "edit",
+									onPress: () => edit(rule.id),
+								},
+								{
+									label: "Remove",
+									icon: "delete",
+									destructive: true,
+									onPress: () => remove.confirm(rule),
+								},
+							]}
 						/>
 					))}
 				</SettingsSection>

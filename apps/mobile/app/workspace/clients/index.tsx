@@ -6,6 +6,7 @@ import { useClients } from "../../../src/api/workspace";
 import { EmptyState, ErrorState, IconButton } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
 import { SettingsSection } from "../../../src/ui/settings-list";
+import { useClientArchive } from "../../../src/workspace/catalog/archive";
 import { matchesSearch } from "../../../src/workspace/catalog/search";
 import {
 	Badge,
@@ -22,6 +23,7 @@ export default function ClientsScreen() {
 	const router = useRouter();
 	const access = useAccess();
 	const clients = useClients();
+	const archive = useClientArchive();
 	const [query, setQuery] = useState("");
 
 	const matching = (clients.data ?? []).filter((client) =>
@@ -44,6 +46,31 @@ export default function ClientsScreen() {
 				client.isInternal ? <Badge label="Internal" tone="accent" /> : undefined
 			}
 			onPress={access.isAdmin ? () => edit(client.id) : undefined}
+			actions={
+				access.isAdmin
+					? [
+							{
+								label: "Edit",
+								icon: "edit",
+								onPress: () => edit(client.id),
+							},
+							// The Internal client cannot be archived, as in its sheet.
+							!client.isInternal &&
+								(client.archivedAt
+									? {
+											label: "Restore",
+											icon: "restore",
+											onPress: () => archive.restore(client),
+										}
+									: {
+											label: "Archive",
+											icon: "archive",
+											destructive: true,
+											onPress: () => archive.confirmArchive(client),
+										}),
+						]
+					: []
+			}
 		/>
 	);
 
