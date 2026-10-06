@@ -129,6 +129,7 @@ export function EntriesDrilldown({
 						// iOS puts the label beside the menu, so both sit on one
 						// centre line. Android keeps its floating label field.
 						alignItems: Platform.OS === "ios" ? "center" : "flex-end",
+						justifyContent: Platform.OS === "ios" ? "space-between" : undefined,
 						gap: SPACE.m,
 					}}
 				>

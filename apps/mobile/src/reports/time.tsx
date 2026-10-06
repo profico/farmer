@@ -1,7 +1,7 @@
 import type { TimeReport } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { EmptyState, ErrorState, Skeleton } from "../ui/components";
 import { ListSearch } from "../ui/list-search";
@@ -172,11 +172,16 @@ export function TimeReport({
 						style={{
 							flexDirection: "row",
 							flexWrap: "wrap",
-							alignItems: "flex-end",
+							// iOS puts the label beside the menu and the share action at
+							// the end. Android keeps its floating label field.
+							alignItems: Platform.OS === "ios" ? "center" : "flex-end",
+							justifyContent:
+								Platform.OS === "ios" ? "space-between" : undefined,
 							gap: SPACE.m,
 						}}
 					>
 						<MenuPicker
+							inline={Platform.OS === "ios"}
 							label="Sort by"
 							options={SORTS}
 							value={sort}

@@ -69,6 +69,7 @@ export const ICONS = {
 	importData: { md: "file-upload", sf: "square.and.arrow.down" },
 	folderFilled: { md: "folder", sf: "folder.fill" },
 	unfiled: { md: "radio-button-unchecked", sf: "circle.dashed" },
+	share: { md: "share", sf: "square.and.arrow.up" },
 	restore: { md: "unarchive", sf: "arrow.uturn.backward" },
 } as const;
 
