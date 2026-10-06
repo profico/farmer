@@ -383,9 +383,7 @@ function Timesheet({
 					extended={fabState.extended}
 					onPress={logTime}
 					onAssistant={
-						assistant
-							? () => router.push("/assistant/new", { withAnchor: true })
-							: undefined
+						assistant ? () => router.push("/assistant/new") : undefined
 					}
 				/>
 			) : null}

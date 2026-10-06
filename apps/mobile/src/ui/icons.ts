@@ -49,6 +49,7 @@ export const ICONS = {
 	webhook: { md: "webhook", sf: "arrow.triangle.branch" },
 	audit: { md: "fact-check", sf: "list.bullet.clipboard" },
 	assistant: { md: "auto-awesome", sf: "sparkles" },
+	chats: { md: "forum", sf: "bubble.left.and.bubble.right" },
 	send: { md: "arrow-upward", sf: "arrow.up" },
 	settings: { md: "settings", sf: "gearshape" },
 	display: { md: "brightness-medium", sf: "circle.lefthalf.filled" },

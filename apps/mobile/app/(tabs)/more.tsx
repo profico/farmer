@@ -218,9 +218,7 @@ export default function MoreScreen() {
 							tint="purple"
 							title="Assistant"
 							subtitle="Ask about your time, or let it log time for you"
-							onPress={() =>
-								router.push("/assistant/new", { withAnchor: true })
-							}
+							onPress={() => router.push("/assistant/new")}
 						/>
 					) : null}
 					{pageRows.map((entry) => (

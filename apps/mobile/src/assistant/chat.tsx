@@ -11,6 +11,7 @@ import {
 
 import { useAssistantThread, useCreateThread } from "../api/assistant";
 import { ErrorBanner, ErrorState, Skeleton, Text } from "../ui/components";
+import { IconButton } from "../ui/icon-button";
 import { LoadingIndicator } from "../ui/loading";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -110,7 +111,8 @@ export function Chat({ id }: { id: string | null }) {
 		try {
 			const made = await create.mutateAsync();
 			// The run lives outside the screen, so the thread's own screen
-			// shows it from the first frame. Back then goes to the list.
+			// shows it from the first frame. Back then goes to the screen that
+			// opened the new chat.
 			void actions.send(made.id, text);
 			router.replace({ pathname: "/assistant/[id]", params: { id: made.id } });
 			return true;
@@ -131,6 +133,16 @@ export function Chat({ id }: { id: string | null }) {
 			<Stack.Screen
 				options={{
 					title: id === null ? "New chat" : (thread.data?.thread.title ?? ""),
+					// The history is one tap away, so Back leaves the assistant
+					// at once. `dismissTo` goes back to the list when it is under
+					// this chat, and replaces the chat with it when it is not.
+					headerRight: () => (
+						<IconButton
+							icon="chats"
+							label="Chat history"
+							onPress={() => router.dismissTo("/assistant")}
+						/>
+					),
 				}}
 			/>
 			<View
