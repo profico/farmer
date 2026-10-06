@@ -28,7 +28,11 @@ import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
 import { pushRelayUrl } from "../lib/push-relay";
 import { slackEscape, slackLink } from "../lib/slack-client";
-import { hasNotifiableDevice, sendNativeAlert } from "./native-push";
+import {
+	type NotifiableDevice,
+	notifiableDevices,
+	sendNativeAlert,
+} from "./native-push";
 import { notificationsService } from "./notifications.service";
 import { slackService } from "./slack.service";
 
@@ -298,6 +302,8 @@ export const deliveryBlocks = async (
 export type NotifyAdapter = (
 	to: NotifyRecipient,
 	event: NotifyEvent,
+	/** The phones that `notify` read already, for the native channel. */
+	devices?: NotifiableDevice[],
 ) => Promise<ChannelResult>;
 
 const pushAdapter: NotifyAdapter = async (to, event) => {
@@ -334,13 +340,17 @@ const slackAdapter: NotifyAdapter = (to, event) =>
 
 // The transport reads no database while `PUSH_RELAY_ENABLED` is off, and
 // answers false for a person with no phone that allows notifications.
-const nativeAdapter: NotifyAdapter = (to, event) =>
-	sendNativeAlert(to.userId, {
-		kind: event.kind,
-		title: event.title ?? "Farmer",
-		body: event.body,
-		url: event.url,
-	});
+const nativeAdapter: NotifyAdapter = (to, event, devices) =>
+	sendNativeAlert(
+		to.userId,
+		{
+			kind: event.kind,
+			title: event.title ?? "Farmer",
+			body: event.body,
+			url: event.url,
+		},
+		devices,
+	);
 
 const REAL_ADAPTERS = {
 	push: pushAdapter,
@@ -364,18 +374,20 @@ const NOTHING_SENT = {
 	slack: false,
 } satisfies NotifyOutcome;
 
-/** Whether the mobile app takes this person's Slack kinds: the relay is on,
- *  the person did not ask for Slack, and a phone of theirs allows
- *  notifications. The relay check comes first, so a server with push off
- *  reads nothing more. */
-const appTakesSlackKinds = async (to: NotifyRecipient): Promise<boolean> => {
-	if (!pushRelayUrl()) return false;
+/** The phones that take this person's Slack kinds: the relay is on, the
+ *  person did not ask for Slack, and a phone of theirs allows
+ *  notifications. The list is empty when the app does not take them. The
+ *  relay check comes first, so a server with push off reads nothing more. */
+const appPhonesForSlackKinds = async (
+	to: NotifyRecipient,
+): Promise<NotifiableDevice[]> => {
+	if (!pushRelayUrl()) return [];
 	const settings = await notificationsService.settingsFor(
 		to.organizationId,
 		to.userId,
 	);
-	if (settings.remindersChannel === "slack") return false;
-	return hasNotifiableDevice(to.userId);
+	if (settings.remindersChannel === "slack") return [];
+	return notifiableDevices(to.userId);
 };
 
 /**
@@ -401,9 +413,12 @@ export const notify = async (
 	);
 	if (blocks.has(to.userId)) return { ...NOTHING_SENT };
 
-	const attempt = async (channel: NotifyChannel): Promise<ChannelResult> => {
+	const attempt = async (
+		channel: NotifyChannel,
+		devices?: NotifiableDevice[],
+	): Promise<ChannelResult> => {
 		try {
-			return await adapters[channel](to, event);
+			return await adapters[channel](to, event, devices);
 		} catch (error) {
 			console.error("[notify] channel failed", {
 				channel,
@@ -418,9 +433,9 @@ export const notify = async (
 
 	// The app instead of Slack, and Slack again for this one message when
 	// every push to the person failed.
-	let takenByApp = false;
+	let appPhones: NotifiableDevice[] = [];
 	try {
-		takenByApp = kind.appInsteadOfSlack && (await appTakesSlackKinds(to));
+		if (kind.appInsteadOfSlack) appPhones = await appPhonesForSlackKinds(to);
 	} catch (error) {
 		console.error("[notify] could not choose the channel", {
 			kind: event.kind,
@@ -429,8 +444,8 @@ export const notify = async (
 			error,
 		});
 	}
-	if (takenByApp) {
-		const native = await attempt("native");
+	if (appPhones.length > 0) {
+		const native = await attempt("native", appPhones);
 		if (native === true) return { ...NOTHING_SENT, native };
 		const slack = await attempt("slack");
 		// The native push failed, and the failure may be only a relay error or a
