@@ -1,9 +1,11 @@
 import { Redirect, Stack } from "expo-router";
 import { Platform } from "react-native";
 
-import { useStackOptions } from "../../src/navigation/section-stack";
+import {
+	useFormOptions,
+	useStackOptions,
+} from "../../src/navigation/section-stack";
 import { useSignedIn } from "../../src/session/session";
-import { usePalette } from "../../src/ui/theme";
 
 /** The forms of the workspace screens. Each opens over its list. */
 const FORMS = [
@@ -26,16 +28,8 @@ const FORMS = [
 export default function WorkspaceLayout() {
 	const { workspace } = useSignedIn();
 	const options = useStackOptions();
-	const palette = usePalette();
+	const form = useFormOptions({ headerShown: Platform.OS === "ios" });
 	if (!workspace) return <Redirect href="/" />;
-	const form = {
-		presentation:
-			Platform.OS === "ios" ? ("formSheet" as const) : ("modal" as const),
-		sheetGrabberVisible: true,
-		sheetAllowedDetents: [1],
-		headerShown: Platform.OS === "ios",
-		contentStyle: { backgroundColor: palette.surface },
-	};
 	return (
 		<Stack screenOptions={options}>
 			{FORMS.map((name) => (

@@ -2,9 +2,9 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
-import { Platform } from "react-native";
 
 import { DataProvider } from "../src/api/data-provider";
+import { useFormOptions } from "../src/navigation/section-stack";
 import { useSystemBack } from "../src/navigation/system-back";
 import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
@@ -19,6 +19,7 @@ function Navigator() {
 	const palette = usePalette();
 	const { reduceMotion } = useMotionPreference();
 	useSystemBack();
+	const form = useFormOptions();
 
 	// The window behind every screen follows the theme, so a transition
 	// never shows a colour from another theme behind a screen.
@@ -34,16 +35,6 @@ function Navigator() {
 	// person never sees the Server screen flash past.
 	if (state.status === "loading") return null;
 	const signedIn = state.status === "signed_in";
-
-	// The forms open as sheets on iOS and as full-screen dialogs on Android,
-	// as each platform draws a form over a screen.
-	const form = {
-		presentation:
-			Platform.OS === "ios" ? ("formSheet" as const) : ("modal" as const),
-		sheetGrabberVisible: true,
-		sheetAllowedDetents: [1],
-		contentStyle: { backgroundColor: palette.surface },
-	};
 
 	return (
 		<Stack

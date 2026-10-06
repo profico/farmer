@@ -60,6 +60,27 @@ export const useStackOptions = (): StackOptions => {
 };
 
 /**
+ * The options of a form: a sheet on iOS and a full-screen dialog on
+ * Android, as each platform draws a form over a screen. A screen cannot set
+ * its own presentation reliably, so the layout declares it. The nested
+ * stacks of `app/you` and `app/workspace` pass `headerShown` for their
+ * forms. The root stack has its header off already.
+ */
+export const useFormOptions = ({
+	headerShown,
+}: { headerShown?: boolean } = {}) => {
+	const palette = usePalette();
+	const options = {
+		presentation:
+			Platform.OS === "ios" ? ("formSheet" as const) : ("modal" as const),
+		sheetGrabberVisible: true,
+		sheetAllowedDetents: [1],
+		contentStyle: { backgroundColor: palette.surface },
+	};
+	return headerShown === undefined ? options : { ...options, headerShown };
+};
+
+/**
  * The stack of one group of screens (`app/you`, `app/workspace`,
  * `app/assistant`). Each screen sets its own title with `<Stack.Screen>`,
  * so a new screen in the folder needs no change here.
