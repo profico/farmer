@@ -195,22 +195,32 @@ function GrowBar({
 			delay: reduce ? 0 : delay,
 			duration: reduce ? 0 : 900,
 			easing: Easing.bezier(0.16, 1, 0.3, 1),
-			// A size is not a transform, so it runs on the JS thread.
-			useNativeDriver: false,
+			// The bar has its size from the start and a scale grows it, so the
+			// animation runs on the native thread.
+			useNativeDriver: true,
 		});
 		animation.start();
 		return () => animation.stop();
 	}, [active, reduce, delay, grow]);
-	const size = grow.interpolate({
-		inputRange: [0, 1],
-		outputRange: ["0%", `${Math.max(0, Math.min(1, fraction)) * 100}%`],
-	});
+	const share = `${Math.max(0, Math.min(1, fraction)) * 100}%` as const;
 	return (
 		<Animated.View
 			style={
 				vertical
-					? { width: "100%", height: size, backgroundColor: color }
-					: { height, width: size, backgroundColor: color }
+					? {
+							width: "100%",
+							height: share,
+							backgroundColor: color,
+							transformOrigin: "bottom",
+							transform: [{ scaleY: grow }],
+						}
+					: {
+							height,
+							width: share,
+							backgroundColor: color,
+							transformOrigin: "left",
+							transform: [{ scaleX: grow }],
+						}
 			}
 		/>
 	);
