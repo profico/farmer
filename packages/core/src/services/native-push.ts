@@ -21,6 +21,8 @@
 import {
 	fromBase64Url,
 	PUSH_INFO,
+	pushEnvelope,
+	type PushKind,
 	sealForDevice,
 	toBase64Url,
 } from "@farmer/push-crypto";
@@ -74,14 +76,24 @@ const liveDevices = (userId: string) =>
 
 type Device = Awaited<ReturnType<typeof liveDevices>>[number];
 
-/** Seal a payload for one phone, as JSON. A payload over the relay's limit
- *  throws here, so it fails as one send and never reaches the relay as a
- *  400. */
+/** The largest freshness fields (`@farmer/push-crypto/freshness`) that
+ *  `seal` adds: the longest kind, a 13-digit time and a full id. `fitAlert`
+ *  keeps room for them. */
+const LARGEST_ENVELOPE = pushEnvelope("liveactivity", 9_999_999_999_999);
+
+/** Seal a payload for one phone, as JSON, with the freshness fields: the
+ *  relay kind of the push that carries it, the send time and a new id. The
+ *  phone refuses a payload in a push of another kind, an old one, and one
+ *  that it saw already. A payload over the relay's limit throws here, so it
+ *  fails as one send and never reaches the relay as a 400. */
 const seal = async (
 	device: Device,
+	pushKind: PushKind,
 	payload: NativeAlert | SealedTimer,
 ): Promise<string> => {
-	const plaintext = encoder.encode(JSON.stringify(payload));
+	const plaintext = encoder.encode(
+		JSON.stringify({ ...payload, ...pushEnvelope(pushKind) }),
+	);
 	if (plaintext.byteLength > MAX_PLAINTEXT_BYTES) {
 		throw new Error("The push payload is over the relay's limit.");
 	}
@@ -177,7 +189,7 @@ export type NativeAlert = {
 export const fitAlert = (alert: NativeAlert): NativeAlert => {
 	const title = truncateJson(alert.title, 200);
 	const fixed = encoder.encode(
-		JSON.stringify({ ...alert, title, body: "" }),
+		JSON.stringify({ ...alert, title, body: "", ...LARGEST_ENVELOPE }),
 	).byteLength;
 	const body = truncateJson(
 		alert.body,
@@ -216,7 +228,7 @@ export const sendNativeAlert = async (
 				send(baseUrl, device, {
 					relayId: device.relayId,
 					kind: "alert",
-					ciphertext: await seal(device, payload),
+					ciphertext: await seal(device, "alert", payload),
 				}),
 			),
 		);
@@ -311,7 +323,7 @@ const publishToIos = async (
 	device: Device,
 	change: TimerChange,
 ): Promise<void> => {
-	const ciphertext = await seal(device, sealedTimerOf(change));
+	const ciphertext = await seal(device, "liveactivity", sealedTimerOf(change));
 	const contentState = contentStateOf(change);
 	const nowSeconds = Math.floor(Date.now() / 1000);
 
@@ -368,7 +380,7 @@ const publishToAndroid = async (
 	await send(baseUrl, device, {
 		relayId: device.relayId,
 		kind: "data",
-		ciphertext: await seal(device, {
+		ciphertext: await seal(device, "data", {
 			...sealedTimerOf(change),
 			state: contentStateOf(change),
 		}),

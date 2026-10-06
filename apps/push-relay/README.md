@@ -249,7 +249,11 @@ it.
 - **Sealed value:** `base64url(enc || ct)`, no padding. `enc` is 65 bytes. `ct`
   ends with the 16-byte GCM tag.
 - **Info:** `PUSH_INFO`, `"farmer push v1"`. A new plaintext format gets a new
-  value.
+  value. A new field that an old app can ignore does not.
+- **Freshness:** the server adds `pushKind`, `sentAt` and `id` to each
+  plaintext (`@farmer/push-crypto/freshness`). The device refuses a payload in
+  a push of another kind, an old one, and one that it saw already. The relay
+  cannot read these fields, and cannot change them.
 
 ```ts
 import { PUSH_INFO, sealForDevice } from "@farmer/push-crypto";

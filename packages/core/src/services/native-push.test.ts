@@ -192,12 +192,21 @@ describe("alerts", () => {
 		expect(relay.requests).toHaveLength(1);
 		const [push] = relay.requests;
 		expect(push).toMatchObject({ relayId: IOS, kind: "alert" });
-		expect(await opened(iosKey, present(push, "push").ciphertext)).toEqual({
+		const { pushKind, sentAt, id, ...alert } = await opened(
+			iosKey,
+			present(push, "push").ciphertext,
+		);
+		expect(alert).toEqual({
 			kind: "log-reminder",
 			title: "Log your hours",
 			body: "Today is empty",
 			url: `/${ORG}/time`,
 		});
+		// The freshness fields: the relay kind of this push, the send time and
+		// a random id.
+		expect(pushKind).toBe("alert");
+		expect(Math.abs(Date.now() - Number(sentAt))).toBeLessThan(60_000);
+		expect(String(id)).toMatch(/^[A-Za-z0-9_-]{12}$/);
 	});
 
 	// The limit is on the sealed JSON, where a line break or a quote costs
@@ -362,6 +371,7 @@ describe("the timer's Live Activity", () => {
 			event: "start",
 			workspace: "Native Org",
 			task: timer.taskName,
+			pushKind: "liveactivity",
 		});
 	});
 
@@ -466,7 +476,14 @@ describe("the timer's Live Activity", () => {
 			kind: "timer",
 			event: "update",
 			state: { state: "held", runningSinceMs: null },
+			pushKind: "data",
 		});
+		// Each push has its own id, so the phone can refuse a replay.
+		const started = await opened(
+			androidKey,
+			present(relay.requests[0], "start").ciphertext,
+		);
+		expect(started.id).not.toBe(paused.id);
 	});
 });
 

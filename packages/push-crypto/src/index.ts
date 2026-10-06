@@ -34,6 +34,16 @@ import {
 	HkdfSha256,
 } from "@hpke/core";
 
+import { PUSH_ID_BYTES, type PushEnvelope, type PushKind } from "./freshness";
+
+export {
+	checkFreshness,
+	PUSH_KINDS,
+	PUSH_MAX_AGE_MS,
+	type PushEnvelope,
+	type PushKind,
+} from "./freshness";
+
 /** The `info` value that a farmer server and the app use for a push. A new
  *  version of the plaintext format gets a new value, so an old app cannot
  *  open a payload that it cannot read. */
@@ -161,3 +171,15 @@ export const generateDeviceKeyPair = async (): Promise<{
 	);
 	return { privateKey: pair.privateKey, publicKeyRaw };
 };
+
+/** The freshness fields of one push (`./freshness`): its relay kind, the
+ *  send time and a new random id. For the server only: the id needs a random
+ *  source, which the app's engine does not have. */
+export const pushEnvelope = (
+	pushKind: PushKind,
+	nowMs: number = Date.now(),
+): PushEnvelope => ({
+	pushKind,
+	sentAt: nowMs,
+	id: toBase64Url(crypto.getRandomValues(new Uint8Array(PUSH_ID_BYTES))),
+});

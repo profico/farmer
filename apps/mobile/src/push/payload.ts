@@ -1,10 +1,22 @@
+import { PUSH_KINDS } from "@farmer/push-crypto/freshness";
 import { z } from "zod";
 
 /**
  * The plaintext of a sealed push, as `packages/core/src/services/native-push.ts`
  * writes it. Every field is parsed: a payload of a newer Server that this
  * app cannot read is dropped, not shown half.
+ *
+ * Each payload also has the freshness fields of
+ * `@farmer/push-crypto/freshness`: the relay kind of its push, the send time
+ * and a random id. The app refuses a payload without them.
  */
+
+/** The freshness fields of each payload. */
+export const pushEnvelopeSchema = z.object({
+	pushKind: z.enum(PUSH_KINDS),
+	sentAt: z.number(),
+	id: z.string().min(1).max(64),
+});
 
 /** An alert: `{ kind, title, body, url? }`. `url` is a web path. */
 export const alertPayload = z.object({
@@ -43,10 +55,11 @@ export const timerPayload = z.discriminatedUnion("event", [
 ]);
 export type TimerPayload = z.output<typeof timerPayload>;
 
-/** The FCM data map of the relay: string values only. */
+/** The FCM data map of the relay: string values only. `k` is the relay
+ *  kind of the push; the sealed `pushKind` must be the same. */
 export const fcmData = z.object({
 	e: z.string().min(1),
-	k: z.enum(["alert", "data", "liveactivity"]).optional(),
+	k: z.string().optional(),
 });
 
 /** The data of a local notification that the app showed for a push. The

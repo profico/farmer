@@ -11,7 +11,19 @@ import {
 	utf8Decode,
 	utf8Encode,
 } from "./device";
-import { fromBase64Url, PUSH_INFO, sealForDevice, toBase64Url } from "./index";
+import {
+	checkFreshness,
+	PUSH_MAX_AGE_MS,
+	PUSH_SEEN_LIMIT,
+	rememberPushId,
+} from "./freshness";
+import {
+	fromBase64Url,
+	PUSH_INFO,
+	pushEnvelope,
+	sealForDevice,
+	toBase64Url,
+} from "./index";
 
 const encoder = new TextEncoder();
 
@@ -131,5 +143,69 @@ describe("the device codecs", () => {
 		expect(() => utf8Decode(new Uint8Array([0xc3]))).toThrow(
 			"The bytes are not UTF-8.",
 		);
+	});
+});
+
+describe("interop: the freshness fields", () => {
+	/** Seal a payload with the server's envelope, open it on the device, and
+	 *  read the envelope back as the app does. */
+	const roundTrip = async (kind: "alert" | "data", nowMs: number) => {
+		const device = deviceKeyPairFromSeed(seed());
+		const payload = {
+			kind: "log-reminder",
+			title: "Log your hours",
+			body: "Friday is empty.",
+			...pushEnvelope(kind, nowMs),
+		};
+		const sealed = await sealForDevice(
+			device.publicKey,
+			encoder.encode(JSON.stringify(payload)),
+			PUSH_INFO,
+		);
+		// SAFETY: the test sealed `JSON.stringify(payload)` one line above.
+		return JSON.parse(
+			openSealedText(device.privateKey, sealed),
+		) as typeof payload;
+	};
+
+	test("a fresh payload of the right kind is accepted once", async () => {
+		const now = Date.now();
+		const opened = await roundTrip("alert", now);
+		expect(opened.pushKind).toBe("alert");
+		expect(opened.sentAt).toBe(now);
+		expect(opened.id).toMatch(/^[A-Za-z0-9_-]{12}$/);
+		expect(checkFreshness(opened, "alert", now + 1000, [])).toBe("ok");
+		const seen = rememberPushId([], opened.id);
+		expect(checkFreshness(opened, "alert", now + 2000, seen)).toBe("replayed");
+	});
+
+	test("a payload in a push of another kind is refused", async () => {
+		const now = Date.now();
+		const opened = await roundTrip("data", now);
+		expect(checkFreshness(opened, "alert", now, [])).toBe("wrong_kind");
+		expect(checkFreshness(opened, null, now, [])).toBe("wrong_kind");
+	});
+
+	test("a payload older than 24 hours is refused", async () => {
+		const now = Date.now();
+		const opened = await roundTrip("alert", now - PUSH_MAX_AGE_MS - 1);
+		expect(checkFreshness(opened, "alert", now, [])).toBe("stale");
+	});
+
+	test("each push gets a new id", () => {
+		const ids = new Set(
+			Array.from({ length: 100 }, () => pushEnvelope("alert").id),
+		);
+		expect(ids.size).toBe(100);
+	});
+
+	test("the seen list keeps the newest ids only", () => {
+		let seen: string[] = [];
+		for (let i = 0; i < PUSH_SEEN_LIMIT + 10; i += 1) {
+			seen = rememberPushId(seen, `id-${i}`);
+		}
+		expect(seen).toHaveLength(PUSH_SEEN_LIMIT);
+		expect(seen.at(-1)).toBe(`id-${PUSH_SEEN_LIMIT + 9}`);
+		expect(seen).not.toContain("id-0");
 	});
 });

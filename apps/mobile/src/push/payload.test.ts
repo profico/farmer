@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { appTargetOf, isSurfaceStop, timerPayload } from "./payload";
+import {
+	appTargetOf,
+	isSurfaceStop,
+	pushEnvelopeSchema,
+	timerPayload,
+} from "./payload";
 
 describe("appTargetOf", () => {
 	test("maps the Server's web paths to app routes", () => {
@@ -76,5 +81,36 @@ describe("isSurfaceStop", () => {
 		]) {
 			expect(isSurfaceStop(url)).toBe(false);
 		}
+	});
+});
+
+describe("pushEnvelopeSchema", () => {
+	test("reads the freshness fields that the Server seals", () => {
+		const parsed = pushEnvelopeSchema.parse({
+			kind: "log-reminder",
+			title: "Log",
+			body: "now",
+			pushKind: "alert",
+			sentAt: 1_760_000_000_000,
+			id: "abcdefghijkl",
+		});
+		expect(parsed).toEqual({
+			pushKind: "alert",
+			sentAt: 1_760_000_000_000,
+			id: "abcdefghijkl",
+		});
+	});
+
+	test("refuses a payload without them, or with an unknown kind", () => {
+		expect(
+			pushEnvelopeSchema.safeParse({ kind: "timer", event: "end" }).success,
+		).toBe(false);
+		expect(
+			pushEnvelopeSchema.safeParse({
+				pushKind: "sms",
+				sentAt: 1,
+				id: "abcdefghijkl",
+			}).success,
+		).toBe(false);
 	});
 });

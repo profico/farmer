@@ -84,12 +84,20 @@ phone with `sealForDevice` and `PUSH_INFO`. The relay forwards at most 3,072
 base64url characters, so the body is cut to fit (`fitAlert`), at a character
 boundary and with an ellipsis.
 
+Each sealed payload, alert or timer, also has the freshness fields of
+`@farmer/push-crypto/freshness`: `pushKind` (the relay `kind` of the push),
+`sentAt` (Unix milliseconds) and `id` (12 random base64url characters). The
+app and the iOS Notification Service Extension refuse a payload whose
+`pushKind` is not the kind of the push that brought it, that is older than 24
+hours, or whose `id` is in the last 50 that they accepted. Thus the relay
+cannot send an old sealed value again.
+
 ### The relay's answers
 
 | Answer | What the server does |
 |---|---|
 | `200`, `202` | Delivered. |
-| `404`, `410` | Deletes the row. The app registers again in the foreground. |
+| `404` `unknown_relay_id`, `410` `device_gone` | Deletes the row. The app registers again in the foreground. A `404` or `410` without that code is a failure, and the row stays. |
 | `409 activity_gone` | Clears `live_activity_token`. A timer start then sends a push-to-start. |
 | `409 start_token_gone`, `no_start_token` | Keeps the row. No activity opens. |
 | `429`, `5xx`, a timeout | Logs it and counts it as failed. |
