@@ -85,7 +85,6 @@ const WRITES_ONLY = {
 	"integrations/settings.ts": ["PATCH"],
 	"integrations/github.ts": ["DELETE"],
 	"integrations/google-calendar.ts": ["DELETE"],
-	"holidays/index.ts": ["PATCH"],
 };
 
 describe("admin routes refuse an API token", () => {

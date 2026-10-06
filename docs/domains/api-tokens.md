@@ -96,8 +96,8 @@ device-flow session and the session of the mobile app pass.
 - **Workspace integrations** (GitHub, Slack), each route.
 - **People** and **invitations**, each route.
 - **Settings**: the policy, the reminders, the organization `PATCH`, the
-  integration settings `PATCH`, the holidays `PATCH` and the disconnect of
-  GitHub or Google Calendar.
+  integration settings `PATCH` and the disconnect of GitHub or Google
+  Calendar.
 - **The assistant settings**: the `POST`, `PATCH` and `DELETE`. The `GET` stays
   open to a member, as in the web app.
 

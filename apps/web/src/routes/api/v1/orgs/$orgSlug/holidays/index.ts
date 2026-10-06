@@ -33,7 +33,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/holidays/")({
 				},
 			}),
 			PATCH: apiRoute({
-				signInOnly: true,
 				input: setHolidayDisabledInput,
 				run: async (ctx, input): Promise<ApiHolidaySwitch> => {
 					const { holidaysService } = await import("@farmer/core/services");
