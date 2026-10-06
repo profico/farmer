@@ -1,10 +1,11 @@
 import type { TimeEntry } from "@farmer/api-client";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
 import { dayOfMonth, weekdayOf } from "../lib/days";
 import { formatHours } from "../lib/duration";
 import { Card, ErrorState, Skeleton, Text } from "../ui/components";
+import { CORNER } from "../ui/corner";
 import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -127,7 +128,8 @@ export function MonthView({
 										minHeight: 52,
 										alignItems: "center",
 										justifyContent: "center",
-										borderRadius: 10,
+										borderRadius:
+											Platform.OS === "android" ? CORNER.medium : 10,
 										borderWidth: isToday ? 2 : 0,
 										borderColor: palette.primary,
 										backgroundColor: holiday

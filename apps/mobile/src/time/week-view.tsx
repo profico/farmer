@@ -8,7 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
 import { useProjects, useTasks, useTracking } from "../api/queries";
 import { useHome, useRemoveRow, useWriteCell } from "../api/time";
@@ -25,6 +25,7 @@ import {
 	Skeleton,
 	Text,
 } from "../ui/components";
+import { groupedCorners, RADIUS } from "../ui/corner";
 import { showDialog } from "../ui/dialog";
 import { messageOf } from "../ui/errors";
 import { useRowMenu } from "../ui/row-menu";
@@ -145,7 +146,7 @@ function CellStepper({
 				alignItems: "center",
 				gap: SPACE.m,
 				backgroundColor: palette.surfaceContainerHigh,
-				borderRadius: 16,
+				borderRadius: Platform.OS === "android" ? RADIUS.listGroup : 16,
 				padding: SPACE.xs,
 			}}
 		>
@@ -183,6 +184,8 @@ function CellStepper({
  *  its notes and its removal. */
 function RowCard({
 	row,
+	index,
+	count,
 	days,
 	selected,
 	entries,
@@ -193,6 +196,9 @@ function RowCard({
 	onFailure,
 }: {
 	row: GridRow;
+	/** The place of the row in the list, for the segmented corners. */
+	index: number;
+	count: number;
 	days: string[];
 	selected: string;
 	entries: readonly TimeEntry[];
@@ -215,7 +221,12 @@ function RowCard({
 		},
 	]);
 	return (
-		<Card style={{ gap: SPACE.m }}>
+		<Card
+			style={[
+				{ gap: SPACE.m },
+				Platform.OS === "android" ? groupedCorners(index, count) : null,
+			]}
+		>
 			<View
 				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
 			>
@@ -275,7 +286,7 @@ function RowCard({
 								flex: 1,
 								alignItems: "center",
 								paddingVertical: SPACE.xs,
-								borderRadius: 8,
+								borderRadius: Platform.OS === "android" ? RADIUS.chip : 8,
 								borderWidth: 1,
 								borderColor: isSelected
 									? palette.primary
@@ -549,30 +560,35 @@ export function WeekView({
 					message="Add a row to start filling it in, or copy the week before."
 				/>
 			) : (
-				rows.map((row) => (
-					<RowCard
-						key={row.key}
-						row={row}
-						days={days}
-						selected={selected}
-						entries={list}
-						onSelect={onSelect}
-						onNotes={() =>
-							router.push({
-								pathname: "/time/notes",
-								params: {
-									from,
-									to,
-									projectId: row.projectId ?? "",
-									taskId: row.taskId,
-								},
-							})
-						}
-						onRemove={() => confirmRemove(row)}
-						removing={removeRow.isPending}
-						onFailure={(message) => onNotify(message, "warning")}
-					/>
-				))
+				// The rows of the week are a segmented list on Android: 2dp apart.
+				<View style={Platform.OS === "android" ? { gap: 2 } : { gap: SPACE.m }}>
+					{rows.map((row, index) => (
+						<RowCard
+							key={row.key}
+							row={row}
+							index={index}
+							count={rows.length}
+							days={days}
+							selected={selected}
+							entries={list}
+							onSelect={onSelect}
+							onNotes={() =>
+								router.push({
+									pathname: "/time/notes",
+									params: {
+										from,
+										to,
+										projectId: row.projectId ?? "",
+										taskId: row.taskId,
+									},
+								})
+							}
+							onRemove={() => confirmRemove(row)}
+							removing={removeRow.isPending}
+							onFailure={(message) => onNotify(message, "warning")}
+						/>
+					))}
+				</View>
 			)}
 			<AddRow
 				existing={new Set(rows.map((row) => row.key))}
