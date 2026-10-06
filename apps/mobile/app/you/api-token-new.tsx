@@ -52,7 +52,6 @@ export default function NewApiTokenSheet() {
 						secret={token}
 						subject="token"
 						message="Shown once. Keep it where you keep a password. If you lose it, revoke it and make a new one. Send it as a bearer token in the Authorization header."
-						onDone={() => router.back()}
 					/>
 				</View>
 			</Sheet>

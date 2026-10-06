@@ -28,7 +28,9 @@ export function SecretCard({
 	message?: string;
 	/** The line under the warning, such as the old secret's end of life. */
 	note?: string;
-	onDone: () => void;
+	/** A Done button on the card. Leave it out when the screen already has
+	 *  one, such as the action of a sheet. */
+	onDone?: () => void;
 }) {
 	const palette = usePalette();
 	const capitalized = `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
@@ -107,7 +109,7 @@ export function SecretCard({
 						Copy
 					</Text>
 				</Pressable>
-				<ActionButton label="Done" onPress={onDone} />
+				{onDone ? <ActionButton label="Done" onPress={onDone} /> : null}
 			</View>
 		</View>
 	);
