@@ -23,7 +23,10 @@ export type ApiMe = {
  */
 export type ApiCapabilities = {
 	isAdmin: boolean;
-	/** Admin, or a PM or Team Lead on any project. Gates Clients. */
+	/** Admin, or a PM or Team Lead on any project. Gates Clients. The same
+	 *  check as `clientsService.create` (`assertCanCreateProjects`), so a
+	 *  person with only a people list does not see a New client that
+	 *  answers 403. */
 	canManageClients: boolean;
 	/** Admin, or a PM or Team Lead on any project. Gates creating projects. */
 	canManageProjects: boolean;
@@ -38,7 +41,7 @@ export type ApiCapabilities = {
  *  rule the web app already applies. */
 export const toApiCapabilities = (access: Access): ApiCapabilities => ({
 	isAdmin: access.isAdmin,
-	canManageClients: access.isAdmin || access.isLeadSomewhere,
+	canManageClients: access.canCreateProjects(),
 	canManageProjects: access.canCreateProjects(),
 	leadsPeople: access.isTeamLead,
 	canSeeAllReports: access.isAdmin,

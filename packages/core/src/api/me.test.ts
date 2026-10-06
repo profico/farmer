@@ -60,11 +60,30 @@ describe("toApiCapabilities", () => {
 		});
 	});
 
-	// A people list makes a Team Lead. It opens Clients, as the web sidebar
-	// does, but it does not let the person create a project on a member row.
+	// A people list makes a Team Lead, but `clientsService.create` asks for a
+	// PM or Team Lead row on a project. Without one, Clients would offer a New
+	// client that the server refuses.
 	test("a person with a people list and only a member row leads people", () => {
 		expect(
 			toApiCapabilities(accessWith([["p1", "member"]], { leadOf: ["u2"] })),
-		).toStrictEqual({ ...NONE, canManageClients: true, leadsPeople: true });
+		).toStrictEqual({ ...NONE, leadsPeople: true });
+	});
+
+	test("canManageClients is the check of clientsService.create", () => {
+		for (const access of [
+			accessWith([]),
+			accessWith([["p1", "member"]], { leadOf: ["u2"] }),
+			accessWith([["p1", "pm"]]),
+			accessWith([["p1", "team_lead"]]),
+			accessWith([], { isAdmin: true }),
+		]) {
+			let allowed = true;
+			try {
+				access.assertCanCreateProjects();
+			} catch {
+				allowed = false;
+			}
+			expect(toApiCapabilities(access).canManageClients).toBe(allowed);
+		}
 	});
 });
