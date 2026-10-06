@@ -49,7 +49,12 @@ export default function ReportsScreen() {
 	};
 
 	return (
-		<Screen title="Reports" refreshing={refreshing} onRefresh={refresh}>
+		<Screen
+			title="Reports"
+			largeTitle
+			refreshing={refreshing}
+			onRefresh={refresh}
+		>
 			{access.fullApi ? (
 				<Inset>
 					<SegmentedControl options={PARTS} value={part} onChange={setChosen} />

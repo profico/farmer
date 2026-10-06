@@ -5,22 +5,22 @@ import {
 	type Access,
 	useAccess,
 	useAssistantAvailable,
-} from "../../src/api/capabilities";
-import { usePendingCount } from "../../src/api/onboarding";
-import { useMe, useWorkspace } from "../../src/api/queries";
-import { APP_VERSION } from "../../src/config";
-import { useSession } from "../../src/session/session";
-import { ErrorState, Skeleton } from "../../src/ui/components";
-import { showDialog } from "../../src/ui/dialog";
-import type { IconName } from "../../src/ui/icons";
-import { Inset, Screen } from "../../src/ui/screen";
+} from "../../../src/api/capabilities";
+import { usePendingCount } from "../../../src/api/onboarding";
+import { useMe, useWorkspace } from "../../../src/api/queries";
+import { APP_VERSION } from "../../../src/config";
+import { useSession } from "../../../src/session/session";
+import { ErrorState, Skeleton } from "../../../src/ui/components";
+import { showDialog } from "../../../src/ui/dialog";
+import type { IconName } from "../../../src/ui/icons";
+import { Inset, Screen } from "../../../src/ui/screen";
 import {
 	type RowTint,
 	SettingsChoice,
 	SettingsLink,
 	SettingsSection,
 	SettingsValue,
-} from "../../src/ui/settings-list";
+} from "../../../src/ui/settings-list";
 
 type Entry = {
 	title: string;
@@ -210,7 +210,7 @@ export default function MoreScreen() {
 		);
 
 	return (
-		<Screen title="More">
+		<Screen title="More" largeTitle>
 			{assistant || pageRows.length > 0 ? (
 				<SettingsSection>
 					{assistant ? (

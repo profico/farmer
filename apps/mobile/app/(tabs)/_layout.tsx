@@ -100,7 +100,7 @@ function SignedInTabs() {
 			// shows every label by default.
 			labelVisibilityMode="labeled"
 		>
-			<NativeTabs.Trigger name="index" contentStyle={scene}>
+			<NativeTabs.Trigger name="(time)" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>Time</NativeTabs.Trigger.Label>
 				<NativeTabs.Trigger.Icon sf="clock" md="schedule" />
 			</NativeTabs.Trigger>

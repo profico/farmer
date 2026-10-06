@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { Platform, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -50,6 +50,13 @@ export type ScreenProps = {
 	overline?: string;
 	/** Controls at the end of the title row. */
 	actions?: ReactNode;
+	/** iOS: the navigation bar draws the title as a large title, and the
+	 *  header of the stack must be on (`tabRootOptions`). The content then
+	 *  holds no title, and the system insets the scroll view. */
+	largeTitle?: boolean;
+	/** iOS, with `largeTitle`: bar items (`Stack.Toolbar`). Android draws
+	 *  `actions` in the title row. */
+	toolbar?: ReactNode;
 	refreshing?: boolean;
 	onRefresh?: () => void;
 	/** False under a navigation header, which already clears the status bar. */
@@ -67,6 +74,8 @@ export function Screen({
 	title,
 	overline,
 	actions,
+	largeTitle = false,
+	toolbar,
 	refreshing,
 	onRefresh,
 	topInset = true,
@@ -77,12 +86,19 @@ export function Screen({
 	const palette = usePalette();
 	const insets = useSafeAreaInsets();
 	const pull = usePullToRefresh(refreshing ?? false, onRefresh);
+	const native = Platform.OS === "ios" && largeTitle;
+	// The system finds the scroll view of a large title down the first
+	// child of each view, so the scroll view takes no wrapper on iOS.
+	const Root = native ? Fragment : View;
+	const rootProps = native
+		? {}
+		: { style: { flex: 1, backgroundColor: palette.background } };
 	return (
-		<View style={{ flex: 1, backgroundColor: palette.background }}>
+		<Root {...rootProps}>
 			<ScrollView
 				style={{ flex: 1, backgroundColor: palette.background }}
 				contentContainerStyle={{
-					paddingTop: (topInset ? insets.top : 0) + SPACE.s,
+					paddingTop: native ? SPACE.s : (topInset ? insets.top : 0) + SPACE.s,
 					paddingBottom: insets.bottom + SPACE.xxl + bottomSpace,
 					gap: SPACE.l,
 				}}
@@ -92,7 +108,7 @@ export function Screen({
 						: undefined
 				}
 				scrollEventThrottle={onScrollOffset ? 32 : undefined}
-				contentInsetAdjustmentBehavior="never"
+				contentInsetAdjustmentBehavior={native ? "automatic" : "never"}
 				keyboardShouldPersistTaps="handled"
 				refreshControl={
 					onRefresh ? (
@@ -108,7 +124,18 @@ export function Screen({
 					) : undefined
 				}
 			>
-				{title ? (
+				{native ? (
+					<>
+						{toolbar}
+						{overline ? (
+							<View style={{ paddingHorizontal: SPACE.l }}>
+								<Text variant="labelLarge" color={palette.onSurfaceVariant}>
+									{overline}
+								</Text>
+							</View>
+						) : null}
+					</>
+				) : title ? (
 					<View
 						style={{
 							flexDirection: "row",
@@ -139,7 +166,7 @@ export function Screen({
 				) : null}
 				{children}
 			</ScrollView>
-			{topInset ? (
+			{topInset && !native ? (
 				// The status bar is transparent (edge to edge). Without this
 				// band, the content scrolls under the clock and the icons.
 				<View
@@ -154,7 +181,7 @@ export function Screen({
 					}}
 				/>
 			) : null}
-		</View>
+		</Root>
 	);
 }
 

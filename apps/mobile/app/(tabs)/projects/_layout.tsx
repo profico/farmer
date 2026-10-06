@@ -1,7 +1,10 @@
 import { Stack } from "expo-router";
 import { Platform } from "react-native";
 
-import { useStackOptions } from "../../../src/navigation/section-stack";
+import {
+	tabRootOptions,
+	useStackOptions,
+} from "../../../src/navigation/section-stack";
 
 /** The Projects tab, a project, its settings, team and GitHub
  *  repositories, and a new project. */
@@ -12,7 +15,7 @@ export default function ProjectsLayout() {
 	const headerBackTitle = Platform.OS === "ios" ? "Projects" : undefined;
 	return (
 		<Stack screenOptions={options}>
-			<Stack.Screen name="index" options={{ headerShown: false }} />
+			<Stack.Screen name="index" options={tabRootOptions("Projects")} />
 			<Stack.Screen
 				name="[id]/index"
 				options={{ title: "", headerBackTitle }}

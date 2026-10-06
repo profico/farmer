@@ -10,6 +10,7 @@ import {
 	useProjectList,
 } from "../../../src/api/projects";
 import { useProjects } from "../../../src/api/queries";
+import { HeaderActions } from "../../../src/navigation/header-actions";
 import { projectPageAccess } from "../../../src/projects/access";
 import { ProjectMark } from "../../../src/projects/components/project-mark";
 import { ProjectRow } from "../../../src/projects/components/project-row";
@@ -338,6 +339,20 @@ export default function ProjectsScreen() {
 	return (
 		<Screen
 			title="Projects"
+			largeTitle
+			toolbar={
+				access.fullApi && access.canManageProjects ? (
+					<HeaderActions
+						actions={[
+							{
+								icon: "add",
+								label: "New project",
+								onPress: () => router.push("/projects/new"),
+							},
+						]}
+					/>
+				) : undefined
+			}
 			overline={
 				access.fullApi && list.data
 					? `${counts.active} active, ${counts.archived} archived`

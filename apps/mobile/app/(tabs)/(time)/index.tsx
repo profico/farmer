@@ -1,62 +1,66 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 
-import { useAccess, useAssistantAvailable } from "../../src/api/capabilities";
+import {
+	useAccess,
+	useAssistantAvailable,
+} from "../../../src/api/capabilities";
 import {
 	useEntries,
 	useTimer,
 	useTracking,
 	useUnfiled,
 	useWhoami,
-} from "../../src/api/queries";
+} from "../../../src/api/queries";
 import {
 	useCopyDay,
 	useCopyWeek,
 	useHolidays,
 	useHome,
 	useSyncNow,
-} from "../../src/api/time";
-import { addDays, dayTitle, periodTitle, weekOf } from "../../src/lib/days";
+} from "../../../src/api/time";
+import { addDays, dayTitle, periodTitle, weekOf } from "../../../src/lib/days";
 import {
 	daysOfMonth,
 	monthOf,
 	monthTitle,
 	shiftMonth,
-} from "../../src/time/calendar";
-import { DateJump } from "../../src/time/components/date-field";
+} from "../../../src/time/calendar";
+import { DateJump } from "../../../src/time/components/date-field";
 import {
 	FAB_CLEARANCE,
 	LogTimeFab,
 	useFabExtended,
-} from "../../src/time/components/log-time-fab";
-import { MoreMenu } from "../../src/time/components/more-menu";
-import { type Notice, Snackbar } from "../../src/time/components/snackbar";
-import { TargetsStrip } from "../../src/time/components/targets-strip";
-import { UnfiledBanner } from "../../src/time/components/unfiled-banner";
+} from "../../../src/time/components/log-time-fab";
+import { MoreMenu } from "../../../src/time/components/more-menu";
+import { type Notice, Snackbar } from "../../../src/time/components/snackbar";
+import { TargetsStrip } from "../../../src/time/components/targets-strip";
+import { TimeToolbar } from "../../../src/time/components/time-toolbar";
+import { UnfiledBanner } from "../../../src/time/components/unfiled-banner";
 import {
 	copyDayBody,
 	copyDayMessage,
 	copyWeekBody,
 	copyWeekMessage,
-} from "../../src/time/copy";
-import { DAY_PARAM, isDayKey } from "../../src/time/day-link";
-import { DayView } from "../../src/time/day-view";
-import { committed } from "../../src/time/haptics";
-import { MonthView } from "../../src/time/month-view";
-import { syncMessage } from "../../src/time/sync";
-import { WeekView } from "../../src/time/week-view";
+} from "../../../src/time/copy";
+import { DAY_PARAM, isDayKey } from "../../../src/time/day-link";
+import { DayView } from "../../../src/time/day-view";
+import { committed } from "../../../src/time/haptics";
+import { MonthView } from "../../../src/time/month-view";
+import { syncMessage } from "../../../src/time/sync";
+import { WeekView } from "../../../src/time/week-view";
 import {
 	ActionButton,
 	ErrorState,
 	IconButton,
 	Skeleton,
 	Text,
-} from "../../src/ui/components";
-import { messageOf } from "../../src/ui/errors";
-import { Inset, Screen } from "../../src/ui/screen";
-import { SegmentedControl } from "../../src/ui/segmented";
-import { SPACE } from "../../src/ui/type";
+} from "../../../src/ui/components";
+import { messageOf } from "../../../src/ui/errors";
+import { Inset, Screen } from "../../../src/ui/screen";
+import { SegmentedControl } from "../../../src/ui/segmented";
+import { SPACE } from "../../../src/ui/type";
 
 type View3 = "day" | "week" | "month";
 
@@ -282,11 +286,19 @@ function Timesheet({
 		}
 	};
 
+	// iOS: the large title follows the scroll view only when it is the first
+	// child of its screen, so the screen takes no wrapper there.
+	const Root = fab ? View : Fragment;
+	const rootProps = fab ? { style: { flex: 1 } } : {};
 	return (
-		<View style={{ flex: 1 }}>
+		<Root {...rootProps}>
 			<Screen
 				overline={workspaceName}
 				title="Time"
+				largeTitle
+				toolbar={
+					<TimeToolbar actions={actions} onAction={onAction} onLog={logTime} />
+				}
 				refreshing={entries.isRefetching}
 				onRefresh={refresh}
 				bottomSpace={fab ? FAB_CLEARANCE : 0}
@@ -393,6 +405,6 @@ function Timesheet({
 				floating
 				lift={fab ? FAB_CLEARANCE : 0}
 			/>
-		</View>
+		</Root>
 	);
 }

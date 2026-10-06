@@ -73,3 +73,25 @@ export function SectionStack() {
 	if (!workspace) return <Redirect href="/" />;
 	return <Stack screenOptions={options} />;
 }
+
+/**
+ * The options of the first screen of a tab. iOS draws its title as a large
+ * title in the navigation bar, which collapses as the list scrolls and
+ * which the system blurs at the edge. Android draws the title in the
+ * content, so its header stays hidden.
+ */
+export const tabRootOptions = (
+	title: string,
+): ComponentProps<typeof Stack.Screen>["options"] =>
+	Platform.OS === "ios"
+		? {
+				headerShown: true,
+				title,
+				headerLargeTitleEnabled: true,
+				headerTransparent: true,
+				headerStyle: { backgroundColor: "transparent" },
+				headerShadowVisible: false,
+				headerLargeTitleShadowVisible: false,
+				unstable_headerLeftItems: undefined,
+			}
+		: { headerShown: false };
