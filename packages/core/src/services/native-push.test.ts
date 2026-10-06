@@ -462,6 +462,22 @@ describe("the timer's Live Activity", () => {
 		expect((await deviceRow(IOS))?.liveActivityToken).toBeNull();
 	});
 
+	test.each(["activity_token_unbound", "activity_token_mismatch"])(
+		"403 %s clears the token, and a start then opens a new activity",
+		async (code) => {
+			await addDevice(IOS, iosPublic, { liveActivityToken: "stale-token-1" });
+			relay.answer(IOS, { status: 403, error: code });
+
+			await start();
+			await settleNativePushForTests();
+
+			expect(
+				relay.requests.map((r) => r.liveActivity?.token ?? "push-to-start"),
+			).toEqual(["stale-token-1", "push-to-start"]);
+			expect((await deviceRow(IOS))?.liveActivityToken).toBeNull();
+		},
+	);
+
 	test("confirm, discard and the sweep end the activity and forget the token", async () => {
 		const today = new Date().toISOString().slice(0, 10);
 		const ending: [string, () => Promise<void>][] = [

@@ -109,6 +109,7 @@ cannot send an old sealed value again.
 | `200`, `202` | Delivered. |
 | `404` `unknown_relay_id`, `410` `device_gone` | Deletes the row. The app registers again in the foreground. A `404` or `410` without that code is a failure, and the row stays. |
 | `409 activity_gone` | Clears `live_activity_token`. A timer start then sends a push-to-start. |
+| `403 activity_token_unbound` or `activity_token_mismatch` | Same as `409 activity_gone`: clear the token. |
 | `409 start_token_gone`, `no_start_token` | Keeps the row. No activity opens. |
 | `429`, `5xx`, a timeout | Logs it and counts it as failed. |
 

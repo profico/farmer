@@ -279,6 +279,12 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 		if (answer === "refused") {
 			// An API token cannot register a phone (403). Not an error to show.
 			logOnce("server", "the Server refused the phone registration");
+		} else if (wantedActivityToken && live()) {
+			// The Server clears a token that the relay refused. Send the running
+			// one again, so a push-to-start does not replace a live activity.
+			await updateDevice(session.origin, session.token, id, {
+				liveActivityToken: wantedActivityToken,
+			});
 		}
 	} catch (error) {
 		logOnce("sync", `push registration failed: ${String(error)}`);
@@ -290,9 +296,25 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
  *  next `syncPush` sends it again when a relay call failed. */
 let wantedActivityToken: string | null | undefined;
 
+/** The token of the activity that runs now, or null. The native event for it
+ *  fires when the module loads, before any listener exists, so after a restart
+ *  the app reads it here. */
+const runningActivityToken = (): string | null => {
+	try {
+		return LiveActivity?.activityPushToken() ?? null;
+	} catch {
+		return null;
+	}
+};
+
 /** Bind the wanted Live Activity token at the relay (iOS). Never throws. */
 const bindActivityToken = async (live: Live): Promise<void> => {
 	try {
+		// After a restart nothing has been learned yet. Ask the activity itself,
+		// so a running activity is bound again.
+		if (wantedActivityToken === undefined && Platform.OS === "ios") {
+			wantedActivityToken = runningActivityToken();
+		}
 		const stored = await readRelay();
 		if (!stored) return;
 		const platform = Platform.OS === "ios" ? "ios" : "android";
