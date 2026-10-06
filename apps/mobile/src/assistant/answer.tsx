@@ -144,7 +144,13 @@ function AnswerTable({
 			// The columns have a fixed order: the position is the column.
 			key={column}
 			style={{
-				width: widths[column],
+				// The column is at least its own width. When the table is narrower
+				// than the frame, each column takes a share of the rest in
+				// proportion to its width, so the rows and the lines fill the
+				// frame. A wider table keeps its widths and scrolls.
+				flexBasis: widths[column],
+				flexGrow: widths[column],
+				flexShrink: 0,
 				paddingHorizontal: SPACE.m,
 				paddingVertical: SPACE.s,
 			}}
@@ -176,8 +182,9 @@ function AnswerTable({
 				borderColor: palette.outlineVariant,
 				backgroundColor: palette.surface,
 			}}
+			contentContainerStyle={{ flexGrow: 1 }}
 		>
-			<View>
+			<View style={{ flexGrow: 1 }}>
 				<View
 					style={{
 						flexDirection: "row",
