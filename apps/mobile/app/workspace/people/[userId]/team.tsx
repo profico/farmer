@@ -104,7 +104,15 @@ export default function TeamLeadPeopleScreen() {
 			) : people.isPending || current.isPending ? (
 				<ListSkeleton />
 			) : candidates.length === 0 ? (
-				<EmptyState icon="search" title="Nobody matches your search." />
+				query.trim() === "" ? (
+					<EmptyState
+						icon="people"
+						title="Nobody else is in the workspace"
+						message="Invite people first. Then come back to choose whom this person leads."
+					/>
+				) : (
+					<EmptyState icon="search" title="Nobody matches your search." />
+				)
 			) : (
 				<SettingsSection
 					title={
