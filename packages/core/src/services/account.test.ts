@@ -171,4 +171,16 @@ describe("unlinkIntegration", () => {
 		).rejects.toThrow("This is your only way to sign in.");
 		expect(await providersOf(GITHUB_ONLY)).toEqual(["github"]);
 	});
+
+	// Two grants are two rows, but neither is a sign-in method. A count of
+	// all rows let the person remove one of them.
+	test("counts only sign-in rows: two grants and no sign-in method is refused", async () => {
+		await expect(
+			accountService.unlinkIntegration(ctx(INTEGRATIONS_ONLY), "github"),
+		).rejects.toThrow("This is your only way to sign in.");
+		expect(await providersOf(INTEGRATIONS_ONLY)).toEqual([
+			"github",
+			"google-calendar",
+		]);
+	});
 });

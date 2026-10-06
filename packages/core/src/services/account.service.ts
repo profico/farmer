@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { INTEGRATION_PROVIDERS } from "../auth/audit-hooks";
 import { googleCredentials, signInProviders } from "../auth/sign-in-methods";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -58,10 +59,14 @@ export const accountService = {
 	 * does this through better-auth's `/unlink-account`, which needs a browser
 	 * session; the REST API has only a `Ctx`, so it comes here.
 	 *
-	 * The same rule as better-auth: the last account row of a person is
-	 * refused, because without it the person has no way to sign in. Only the
-	 * two integration providers are accepted, so this can never remove the
-	 * Google sign-in row (that is `unlinkGoogle`, with its own rule).
+	 * Only the two integration providers are accepted, so this can never
+	 * remove a sign-in row (Google sign-in is `unlinkGoogle`, with its own
+	 * rule). The guard counts only the sign-in rows (not
+	 * `INTEGRATION_PROVIDERS`): a grant is refused only when the person has
+	 * no sign-in row at all. Then the grant row is the last row that
+	 * better-auth can sign the person in with, and its removal locks the
+	 * person out. A count of all rows let a person with two grants and no
+	 * sign-in method remove one, and refused nothing that mattered.
 	 *
 	 * Not in the audit log: an integration grant is not a sign-in method (see
 	 * `docs/domains/audit-log.md`). Answers whether a row was removed.
@@ -75,7 +80,10 @@ export const accountService = {
 			columns: { providerId: true },
 		});
 		if (!rows.some((row) => row.providerId === providerId)) return false;
-		if (rows.length === 1) {
+		const signInRows = rows.filter(
+			(row) => !INTEGRATION_PROVIDERS.has(row.providerId),
+		);
+		if (signInRows.length === 0) {
 			throw new Error(
 				"This is your only way to sign in. Add another sign-in method before you disconnect it.",
 			);
