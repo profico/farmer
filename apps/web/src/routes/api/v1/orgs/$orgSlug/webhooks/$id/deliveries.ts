@@ -23,7 +23,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: listWebhookDeliveriesInput,
 				// A query string carries text; the schema wants a number.
 				raw: ({ params, query }: ApiRequest<OrgRowParams>): JsonValue => {

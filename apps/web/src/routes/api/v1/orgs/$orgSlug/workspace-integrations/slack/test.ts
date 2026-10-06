@@ -14,7 +14,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			POST: apiRoute({
-				signInOnly: true,
 				input: sendTestSlackMessageInput,
 				run: async (ctx, { userId }): Promise<ApiSlackTest> => {
 					const { slackService } = await import("@farmer/core/services");

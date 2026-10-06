@@ -27,7 +27,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/people/$userId/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: byUser,
 				raw: ({ params }: ApiRequest<PersonParams>) => ({
 					userId: params.userId,
@@ -38,7 +37,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/people/$userId/")({
 				},
 			}),
 			DELETE: apiRoute({
-				signInOnly: true,
 				input: byUser,
 				raw: ({ params }: ApiRequest<PersonParams>) => ({
 					userId: params.userId,

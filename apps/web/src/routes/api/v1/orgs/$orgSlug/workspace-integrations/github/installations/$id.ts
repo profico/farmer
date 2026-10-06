@@ -22,7 +22,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			DELETE: apiRoute({
-				signInOnly: true,
 				input: disconnectInstallationInput,
 				// A query flag, not a body: many clients drop the body of a DELETE.
 				raw: ({ params, query }: ApiRequest<OrgRowParams>) => ({

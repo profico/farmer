@@ -26,7 +26,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/organization")({
 				},
 			}),
 			PATCH: apiRoute({
-				signInOnly: true,
 				input: updateOrganizationSettingsInput,
 				run: async (ctx, input): Promise<ApiOrganizationSettings> => {
 					const { organizationService } = await import("@farmer/core/services");

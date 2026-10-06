@@ -45,7 +45,6 @@ export const Route = createFileRoute(
 		handlers: {
 			GET: apiRoute({ input: NO_INPUT, run: read }),
 			POST: apiRoute({
-				signInOnly: true,
 				input: setAssistantSettingsInput,
 				run: async (ctx, input): Promise<ApiAssistantSettings> => {
 					const {
@@ -69,7 +68,6 @@ export const Route = createFileRoute(
 				},
 			}),
 			PATCH: apiRoute({
-				signInOnly: true,
 				input: updateAssistantSettingsInput,
 				run: async (ctx, input): Promise<ApiAssistantSettings> => {
 					const { assistantService } = await import("@farmer/core/services");
@@ -78,7 +76,6 @@ export const Route = createFileRoute(
 				},
 			}),
 			DELETE: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiAssistantSettings> => {
 					const { assistantService } = await import("@farmer/core/services");

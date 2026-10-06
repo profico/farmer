@@ -16,7 +16,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiInstallUrl> => {
 					const { githubService } = await import("@farmer/core/services");

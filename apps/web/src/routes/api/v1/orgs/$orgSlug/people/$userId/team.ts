@@ -29,7 +29,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: byLead,
 				raw: ({ params }: ApiRequest<PersonParams>) => ({
 					leadUserId: params.userId,
@@ -41,7 +40,6 @@ export const Route = createFileRoute(
 				},
 			}),
 			POST: apiRoute({
-				signInOnly: true,
 				input: setTeamLeadPeopleInput,
 				raw: ({ params, body }: ApiRequest<PersonParams>) =>
 					bodyWithPath(body, { leadUserId: params.userId }),

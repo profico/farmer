@@ -25,9 +25,8 @@ export const Route = createFileRoute(
 )({
 	server: {
 		handlers: {
-			GET: apiRoute({ signInOnly: true, input: NO_INPUT, run: status }),
+			GET: apiRoute({ input: NO_INPUT, run: status }),
 			DELETE: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiSlackStatus> => {
 					const { slackService } = await import("@farmer/core/services");

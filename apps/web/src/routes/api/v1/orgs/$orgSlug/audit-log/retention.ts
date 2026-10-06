@@ -14,7 +14,6 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiAuditRetention> => {
 					const { auditService } = await import("@farmer/core/services");
@@ -22,7 +21,6 @@ export const Route = createFileRoute(
 				},
 			}),
 			PATCH: apiRoute({
-				signInOnly: true,
 				input: setAuditRetentionInput,
 				run: async (ctx, { days }): Promise<ApiAuditRetention> => {
 					const { auditService } = await import("@farmer/core/services");

@@ -18,7 +18,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/reminders/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiReminderSettings> => {
 					const { reminderSettingsService } =
@@ -29,7 +28,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/reminders/")({
 				},
 			}),
 			PATCH: apiRoute({
-				signInOnly: true,
 				input: updateReminderSettingsInput,
 				run: async (ctx, patch): Promise<ApiReminderSettings> => {
 					const { reminderSettingsService } =

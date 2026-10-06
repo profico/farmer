@@ -14,7 +14,6 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/people/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
-				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiPerson[]> => {
 					const { membersService } = await import("@farmer/core/services");
