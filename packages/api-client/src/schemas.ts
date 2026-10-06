@@ -16,30 +16,28 @@ import type { components } from "./openapi.gen";
 
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** `GET /meta`. `apiVersion` and `minMobileVersion` came with ADR 0005; a
- *  server from before it has neither, and counts as version 1. */
+/** `GET /meta`. */
 export const metaSchema = z.object({
 	app: z.literal("farmer"),
-	cliEnabled: z.boolean().default(true),
-	minCliVersion: z.string().optional(),
-	apiVersion: z.number().int().positive().default(1),
-	minMobileVersion: z.string().nullable().optional(),
-	/** The provider buttons, in the order of the login page. A server before
-	 *  API version 2 sends none. `kind` is an open set: a client draws a
-	 *  kind it does not know as an OpenID Connect source. */
-	signInMethods: z
-		.array(z.object({ id: z.string(), name: z.string(), kind: z.string() }))
-		.default([]),
+	cliEnabled: z.boolean(),
+	minCliVersion: z.string(),
+	apiVersion: z.number().int().positive(),
+	minMobileVersion: z.string(),
+	/** The provider buttons, in the order of the login page. `kind` is an
+	 *  open set: a client draws a kind it does not know as an OpenID Connect
+	 *  source. */
+	signInMethods: z.array(
+		z.object({ id: z.string(), name: z.string(), kind: z.string() }),
+	),
 	/** True when the server offers an email and password form. */
-	passwordSignIn: z.boolean().default(false),
-	/** The server sends native push through this relay. A server from
-	 *  before the mobile push sends no `pushRelay`: read it as off. */
-	pushRelay: z
-		.object({ enabled: z.boolean(), url: z.string().nullable().optional() })
-		.optional(),
-	/** The server stores images (`uploadImage`). Absent on a server from
-	 *  before API version 3: read it as false. */
-	uploadsEnabled: z.boolean().optional(),
+	passwordSignIn: z.boolean(),
+	/** The server sends native push through this relay. */
+	pushRelay: z.object({
+		enabled: z.boolean(),
+		url: z.string().nullable(),
+	}),
+	/** The server stores images (`uploadImage`). */
+	uploadsEnabled: z.boolean(),
 	/** A person may make a workspace (`createOrganization`). False in
 	 *  single-org mode. Absent before API version 3: read it as false. */
 	organizationCreation: z.boolean().optional(),
@@ -58,8 +56,7 @@ export const meSchema = z.object({
 export type Me = z.output<typeof meSchema>;
 export type Workspace = Me["organizations"][number];
 
-/** What the person may do in a workspace. A server from before API version
- *  2 sends none, and then the app shows only the member's screens. */
+/** What the person may do in a workspace. */
 export const capabilitiesSchema = z.object({
 	isAdmin: z.boolean(),
 	/** Admin, or a PM or Team Lead on any project. */
@@ -196,10 +193,9 @@ export const periodSchema = z.object({
 	workingDaysElapsed: z.number(),
 	targetSeconds: z.number().nullable(),
 	targetSoFarSeconds: z.number().nullable(),
-	/** The working days and the goal through the end of today. An old server
-	 *  omits both, so the app falls back to `targetSoFarSeconds`. */
-	workingDaysThroughToday: z.number().optional(),
-	targetThroughTodaySeconds: z.number().nullable().optional(),
+	/** The working days and the goal through the end of today. */
+	workingDaysThroughToday: z.number(),
+	targetThroughTodaySeconds: z.number().nullable(),
 	workSeconds: z.number(),
 	timeOffSeconds: z.number(),
 	totalSeconds: z.number(),

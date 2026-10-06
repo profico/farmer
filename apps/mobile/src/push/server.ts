@@ -40,13 +40,10 @@ const request = async (
 };
 
 const pushRelaySchema = z.object({
-	pushRelay: z
-		.object({ enabled: z.boolean(), url: z.string().nullable() })
-		.optional(),
+	pushRelay: z.object({ enabled: z.boolean(), url: z.string().nullable() }),
 });
 
-/** The relay that the Server uses, or null when push is off. A Server from
- *  before the mobile push sends no `pushRelay`, which means off. */
+/** The relay that the Server uses, or null when push is off. */
 export const serverRelayUrl = async (
 	origin: string,
 ): Promise<string | null> => {
@@ -54,7 +51,7 @@ export const serverRelayUrl = async (
 	if (!response.ok)
 		throw new Error(`GET /api/v1/meta answered ${response.status}.`);
 	const parsed = pushRelaySchema.safeParse(await response.json());
-	if (!parsed.success || !parsed.data.pushRelay) return null;
+	if (!parsed.success) return null;
 	const { enabled, url } = parsed.data.pushRelay;
 	return enabled && url ? url : null;
 };

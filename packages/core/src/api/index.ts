@@ -157,7 +157,7 @@
  *   GET    orgs/$slug/organization               ApiOrganizationSettings
  *   PATCH  orgs/$slug/organization               ApiOrganizationSettings
  *
- * The last screens of the web app (API version 3). `TL` and `PM` as above;
+ * The last screens of the web app. `TL` and `PM` as above;
  * "own" is the caller's own entries only:
  *
  *   GET    orgs/$slug/day-assembly?date          ApiDayAssembly

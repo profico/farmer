@@ -18,18 +18,13 @@ import type { ApiPushRelay } from "./mobile";
 export const MIN_CLI_VERSION = "0.1.0";
 
 /**
- * The version of the `/api/v1` contract. A `/meta` answer with no
- * `apiVersion` comes from a server older than the mobile app: treat it as
- * version 1, which is the member's time loop that the CLI uses.
+ * The version of the `/api/v1` contract. The CLI does not read it. The mobile
+ * app reads it to know that the routes it needs exist.
  *
- * Raise it when a route group is added that the mobile app must find. Version
- * 2 adds capabilities in `whoami`, the clients list and the sign-in methods in
- * `/meta`. Version 3 adds the routes of the web app's last screens: "Assemble
- * my day", the calendar picker and its notice, GitHub on an entry and on a
- * project, image uploads, the organization policy, the holiday switch, and
- * `/me/...` for a person before a workspace.
+ * Raise it when a route group is added that the mobile app must find, and
+ * add a gate in the app for a server below that version.
  */
-export const API_VERSION = 3;
+export const API_VERSION = 1;
 
 /** The oldest mobile app that can read this server's responses. Raise it for
  *  the same reasons as `MIN_CLI_VERSION`. */
@@ -53,17 +48,14 @@ export type ApiMeta = {
 	signInMethods: ApiSignInMethod[];
 	/** Whether this server offers an email and password form. */
 	passwordSignIn: boolean;
-	/** Whether this server sends native push, and through which relay. A
-	 *  server from before the mobile push sends no `pushRelay`, so a client
-	 *  reads it as optional and treats its absence as off. */
+	/** Whether this server sends native push, and through which relay. */
 	pushRelay: ApiPushRelay;
 	/** Whether this server stores uploaded images (a project icon, an
 	 *  organization logo). Without a store, `POST …/uploads` refuses each
-	 *  file. A server before API version 3 sends no field: read it as off. */
+	 *  file. */
 	uploadsEnabled: boolean;
 	/** Whether a person may make a new workspace (`POST /me/organizations`).
-	 *  False in single-org mode. A server before API version 3 sends no
-	 *  field: read it as off. */
+	 *  False in single-org mode. */
 	organizationCreation: boolean;
 	/** Whether `POST /api/auth/mobile/exchange` exists: the provider sign-in
 	 *  then ends in a one-time code, not in the session (ADR 0005). A server

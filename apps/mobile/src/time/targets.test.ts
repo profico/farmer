@@ -40,16 +40,6 @@ describe("the targets", () => {
 		expect(targetGap(period({ targetSoFarSeconds: null }))).toBeNull();
 	});
 
-	test("fall back to the target before today without the target through today", () => {
-		const old = period({
-			workingDaysThroughToday: undefined,
-			targetThroughTodaySeconds: undefined,
-		});
-		expect(targetGap(old)?.text).toBe(
-			"2:00 short of the 16:00 due by the end of today",
-		);
-	});
-
 	test("count today's own working day on a Monday", () => {
 		const monday = period({
 			workingDaysElapsed: 0,

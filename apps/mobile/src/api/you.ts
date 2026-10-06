@@ -79,11 +79,10 @@ const rollback = (
 
 /**
  * Whether the Server sends native push to the app. It comes from the shared
- * `/meta` query. A Server from before the mobile push sends no `pushRelay`:
- * that is off.
+ * `/meta` query.
  */
 export const usePushRelayEnabled = (): boolean =>
-	useMeta().data?.pushRelay?.enabled ?? false;
+	useMeta().data?.pushRelay.enabled ?? false;
 
 // ── Preferences ─────────────────────────────────────────────────────────
 

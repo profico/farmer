@@ -8,8 +8,7 @@
  */
 
 /** Whether this server sends native push, and through which relay. In
- *  `GET /meta`, so the app knows whether to register with the relay. A server
- *  from before the mobile push sends no `pushRelay`: treat it as off. */
+ *  `GET /meta`, so the app knows whether to register with the relay. */
 export type ApiPushRelay = {
 	enabled: boolean;
 	/** The relay's base URL, or null while push is off. */

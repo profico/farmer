@@ -15,8 +15,6 @@ export type ApiClientErrorKind =
 	| "unauthorized"
 	/** The token is good, but not for this workspace. */
 	| "no_access"
-	/** A 404 with no error code: this server is older than the route. */
-	| "unsupported"
 	/** A 2xx answer the client cannot read. */
 	| "invalid_response"
 	/** Any other refusal, with the server's own sentence. */

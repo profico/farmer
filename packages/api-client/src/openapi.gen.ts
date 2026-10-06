@@ -2788,7 +2788,7 @@ export interface components {
             /** @description False when this deployment has the API switched off. Every other route then answers 404. */
             cliEnabled: boolean;
             minCliVersion: string;
-            /** @description The version of this contract. A server that sends no `apiVersion` is version 1. */
+            /** @description The version of this contract. The mobile app reads it to find out whether the routes that it needs exist. */
             apiVersion: number;
             /** @description The oldest mobile app this server can serve. */
             minMobileVersion: string;
@@ -2804,15 +2804,15 @@ export interface components {
             }[];
             /** @description True when this server offers an email and password form. */
             passwordSignIn: boolean;
-            /** @description Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off. */
+            /** @description Whether this server sends native push to the mobile app, and through which relay. */
             pushRelay: {
                 enabled: boolean;
                 /** @description The relay's base URL, or null while push is off. */
                 url: string | null;
             };
-            /** @description True when this server stores uploaded images. A server before API version 3 sends no field: read it as off. */
+            /** @description True when this server stores uploaded images. */
             uploadsEnabled: boolean;
-            /** @description True when a person may make a new workspace. False in single-org mode. A server before API version 3 sends no field: read it as off. */
+            /** @description True when a person may make a new workspace. False in single-org mode. */
             organizationCreation: boolean;
             /** @description True when a provider sign-in in the mobile app ends in a one-time code that `POST /api/auth/mobile/exchange` turns into the session token. A server from before the exchange sends no field: read it as off. */
             signInExchange: boolean;

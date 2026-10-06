@@ -61,11 +61,9 @@ describe("isCliVersionSupported", () => {
 });
 
 describe("the mobile contract", () => {
-	// A server without `apiVersion` counts as version 1, so the first version
-	// that sends the field must be above it.
-	test("API_VERSION is an integer above 1", () => {
+	test("API_VERSION is a positive integer", () => {
 		expect(Number.isInteger(API_VERSION)).toBe(true);
-		expect(API_VERSION).toBeGreaterThan(1);
+		expect(API_VERSION).toBeGreaterThan(0);
 	});
 
 	test("MIN_MOBILE_VERSION is a version that the comparison reads", () => {

@@ -150,7 +150,7 @@ const ADMIN_CALLS: [string, (ctx: Ctx) => Promise<object | number | void>][] = [
 	],
 	["assistant: disconnect", (ctx) => assistantService.settings.disconnect(ctx)],
 	["assistant: models", (ctx) => assistantService.settings.listModels(ctx)],
-	// API version 3. Each of these had `orgAdminMiddleware` in the web app,
+	// The last screens of the web app. Each of these had `orgAdminMiddleware` in the web app,
 	// and the holiday switch had no check of its own before.
 	[
 		"holidays: switch one off",

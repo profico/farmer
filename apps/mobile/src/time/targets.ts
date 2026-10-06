@@ -39,12 +39,11 @@ const gapTone = (status: string | null, delta: number): TargetTone => {
 
 /**
  * "1:30 short of the 24:00 due by the end of today". The goal includes the
- * working day of today, so on a Monday it is one day, not 0. Without
- * `targetThroughTodaySeconds`, the goal is the target before today.
+ * working day of today, so on a Monday it is one day, not 0.
  */
 export const targetGap = (period: Period) => {
-	if (period.targetSoFarSeconds == null) return null;
-	const goal = period.targetThroughTodaySeconds ?? period.targetSoFarSeconds;
+	const goal = period.targetThroughTodaySeconds;
+	if (period.targetSoFarSeconds == null || goal == null) return null;
 	const delta = period.totalSoFarSeconds - goal;
 	return {
 		ahead: delta >= 0,

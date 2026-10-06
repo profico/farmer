@@ -274,7 +274,7 @@ const apiMeta = named(
 				.number()
 				.int()
 				.describe(
-					"The version of this contract. A server that sends no `apiVersion` is version 1.",
+					"The version of this contract. The mobile app reads it to find out whether the routes that it needs exist.",
 				),
 			minMobileVersion: z
 				.string()
@@ -304,13 +304,11 @@ const apiMeta = named(
 						.describe("The relay's base URL, or null while push is off."),
 				})
 				.describe(
-					"Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off.",
+					"Whether this server sends native push to the mobile app, and through which relay.",
 				),
 			uploadsEnabled: z
 				.boolean()
-				.describe(
-					"True when this server stores uploaded images. A server before API version 3 sends no field: read it as off.",
-				),
+				.describe("True when this server stores uploaded images."),
 			organizationCreation: z
 				.boolean()
 				.describe(
@@ -3846,7 +3844,7 @@ export const OPERATIONS: Operation[] = [
 		response: apiOrganizationSettings,
 		who: "An admin.",
 	},
-	// ── API version 3: the last screens of the web app ──────────────────────
+	// ── The last screens of the web app ─────────────────────────────────────
 	{
 		method: "get",
 		path: "/orgs/{orgSlug}/day-assembly",

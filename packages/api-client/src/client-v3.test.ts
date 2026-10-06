@@ -6,7 +6,6 @@ import { describe, expect, test } from "bun:test";
 
 import { FarmerClient } from "./client";
 import { ApiClientError } from "./errors";
-import { fetchMeta } from "./meta";
 import { ORIGIN, jsonReply, scriptedServer } from "./test-server";
 
 const failureOf = async (promise: Promise<object | void>) => {
@@ -202,14 +201,5 @@ describe("the steps before a workspace", () => {
 		);
 		expect(created.slug).toBe("studio");
 		expect(requests[0]?.body).toBe(JSON.stringify({ name: "Studio" }));
-	});
-
-	test("a server from before API version 3 says nothing of the new switches", async () => {
-		const { transport } = scriptedServer([
-			jsonReply(200, { app: "farmer", cliEnabled: true, apiVersion: 2 }),
-		]);
-		const meta = await fetchMeta(transport);
-		expect(meta.uploadsEnabled).toBeUndefined();
-		expect(meta.organizationCreation).toBeUndefined();
 	});
 });

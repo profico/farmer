@@ -142,8 +142,7 @@ export function TaskPicker({
 			<ErrorState error={tasks.error} onRetry={() => void tasks.refetch()} />
 		);
 	}
-	// Before the hidden list arrives, or on a server without it, every
-	// task shows.
+	// Before the hidden list arrives, every task shows.
 	const hiddenIds = new Set(hidden.data?.taskIds);
 	const offered = offeredTasks(
 		tasks.data.tasks,

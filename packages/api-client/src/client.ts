@@ -193,8 +193,7 @@ const search = (query: { readonly [name: string]: QueryValue } = {}) => {
  * A typed client for `/api/v1`. Every answer is parsed with its schema, and
  * every failure is an `ApiClientError`. The methods after the timer have the
  * name of their `operationId` in the OpenAPI document, so a route and its
- * method are easy to find from each other. Most of them need API version 2
- * (`meta.apiVersion`); on an older server they fail as `unsupported`.
+ * method are easy to find from each other.
  */
 export class FarmerClient {
 	readonly #transport: Transport;
@@ -1836,13 +1835,6 @@ export class FarmerClient {
 			return new ApiClientError(
 				"unauthorized",
 				"Your session has ended. Sign in again.",
-				details,
-			);
-		}
-		if (response.status === 404 && !body.success) {
-			return new ApiClientError(
-				"unsupported",
-				`${this.origin} does not have this feature yet. Ask the administrator to update it.`,
 				details,
 			);
 		}

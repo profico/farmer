@@ -1,4 +1,4 @@
-import { ApiClientError, type Timer } from "@farmer/api-client";
+import type { Timer } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Animated, type ColorValue, Linking, View } from "react-native";
@@ -80,14 +80,6 @@ function TimerCardBody() {
 
 	if (query.isPending) return <Skeleton height={132} radius={16} />;
 	if (query.isError) {
-		// A server from before the stopwatch has no timer route. The rest of
-		// the screen still works, so this card steps aside.
-		if (
-			query.error instanceof ApiClientError &&
-			query.error.kind === "unsupported"
-		) {
-			return null;
-		}
 		return <ErrorBanner message={query.error.message} />;
 	}
 
@@ -302,14 +294,6 @@ export function TimerCard() {
 		return () => animation.stop();
 	}, [look, opacity]);
 
-	// A server without the stopwatch shows no card, and no empty view takes
-	// a gap in the column.
-	if (
-		query.error instanceof ApiClientError &&
-		query.error.kind === "unsupported"
-	) {
-		return null;
-	}
 	return (
 		<Animated.View style={{ opacity }}>
 			<TimerCardBody />

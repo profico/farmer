@@ -52,16 +52,6 @@ describe("FarmerClient", () => {
 		expect(requests[1]?.url).toBe(`${ORIGIN}/api/v1/me`);
 	});
 
-	test("a 404 with no code is a route this server does not have", async () => {
-		const { transport } = scriptedServer([
-			new Response("Not Found", { status: 404 }),
-		]);
-		const error = await failureOf(
-			new FarmerClient(transport, "tok").timer("acme"),
-		);
-		expect(error.kind).toBe("unsupported");
-	});
-
 	test("a refusal carries the server's sentence and issues", async () => {
 		const { transport } = scriptedServer([
 			jsonReply(422, {
@@ -107,36 +97,29 @@ describe("FarmerClient", () => {
 	});
 });
 
-describe("fetchMeta", () => {
-	test("a server from before ADR 0005 counts as API version 1", async () => {
-		const { transport } = scriptedServer([
-			jsonReply(200, {
-				app: "farmer",
-				cliEnabled: true,
-				minCliVersion: "0.1.0",
-			}),
-		]);
-		const meta = await fetchMeta(transport);
-		expect(meta.apiVersion).toBe(1);
-		expect(meta.minMobileVersion).toBeUndefined();
-		expect(meta.signInMethods).toEqual([]);
-		expect(meta.passwordSignIn).toBe(false);
-	});
+const META = {
+	app: "farmer" as const,
+	cliEnabled: true,
+	minCliVersion: "0.1.0",
+	apiVersion: 1,
+	minMobileVersion: "0.1.0",
+	signInMethods: [],
+	passwordSignIn: false,
+	pushRelay: { enabled: false, url: null },
+	uploadsEnabled: false,
+	organizationCreation: true,
+};
 
-	test("the sign-in methods of version 2 are read", async () => {
+describe("fetchMeta", () => {
+	test("the sign-in methods are read", async () => {
 		const { transport } = scriptedServer([
 			jsonReply(200, {
-				app: "farmer",
-				cliEnabled: true,
-				minCliVersion: "0.1.0",
-				apiVersion: 2,
-				minMobileVersion: "0.1.0",
+				...META,
 				signInMethods: [
 					{ id: "google", name: "Google", kind: "social" },
 					{ id: "acme-sso", name: "Acme SSO", kind: "oidc" },
 				],
 				passwordSignIn: true,
-				pushRelay: { enabled: false, url: null },
 			}),
 		]);
 		const meta = await fetchMeta(transport);
@@ -154,14 +137,7 @@ describe("fetchMeta", () => {
 	});
 
 	test("a server that needs a newer app refuses this one", () => {
-		const meta = {
-			app: "farmer" as const,
-			cliEnabled: true,
-			apiVersion: 2,
-			minMobileVersion: "0.2.0",
-			signInMethods: [],
-			passwordSignIn: false,
-		};
+		const meta = { ...META, minMobileVersion: "0.2.0" };
 		expect(() => assertUsable(meta, ORIGIN, "0.1.9")).toThrow("Update the app");
 		expect(() => assertUsable(meta, ORIGIN, "0.2.0")).not.toThrow(
 			ApiClientError,
@@ -169,13 +145,7 @@ describe("fetchMeta", () => {
 	});
 
 	test("a server with the API off is refused", () => {
-		const meta = {
-			app: "farmer" as const,
-			cliEnabled: false,
-			apiVersion: 1,
-			signInMethods: [],
-			passwordSignIn: false,
-		};
+		const meta = { ...META, cliEnabled: false };
 		expect(() => assertUsable(meta, ORIGIN, "0.1.0")).toThrow("switched off");
 	});
 });
