@@ -1,4 +1,3 @@
-import { Button } from "@expo/ui";
 import { type ReactNode, useEffect, useState } from "react";
 import {
 	Animated,
@@ -7,16 +6,16 @@ import {
 	Pressable,
 	type StyleProp,
 	Text as RNText,
-	TextInput,
-	type TextInputProps,
 	View,
 	type ViewStyle,
 } from "react-native";
 
-import { ControlHost } from "./host";
+import { ActionButton } from "./action-button";
 import { Icon } from "./icon";
+import { IconBadge } from "./icon-badge";
 import type { IconName } from "./icons";
 import { useMotionPreference } from "./motion";
+import { SurfaceColor } from "./surface-color";
 import { usePalette } from "./theme";
 import { SPACE, TYPE, type TypeVariant } from "./type";
 
@@ -85,87 +84,15 @@ export function Card({
 				style,
 			]}
 		>
-			{children}
+			<SurfaceColor.Provider value={backgroundColor}>
+				{children}
+			</SurfaceColor.Provider>
 		</View>
 	);
 }
 
-export type ActionButtonProps = {
-	label: string;
-	onPress: () => void;
-	variant?: "filled" | "outlined" | "text";
-	disabled?: boolean;
-};
-
-/** The platform's own button, through `@expo/ui`. */
-export function ActionButton({
-	label,
-	onPress,
-	variant = "filled",
-	disabled,
-}: ActionButtonProps) {
-	return (
-		<ControlHost>
-			<Button
-				label={label}
-				onPress={onPress}
-				variant={variant}
-				disabled={disabled}
-			/>
-		</ControlHost>
-	);
-}
-
-/** A round button with one icon, for a toolbar or a stepper. */
-export function IconButton({
-	icon,
-	label,
-	onPress,
-	disabled,
-	tone = "plain",
-}: {
-	icon: IconName;
-	/** Read out by a screen reader. */
-	label: string;
-	onPress: () => void;
-	disabled?: boolean;
-	tone?: "plain" | "filled" | "tonal";
-}) {
-	const palette = usePalette();
-	const backgroundColor =
-		tone === "filled"
-			? palette.primary
-			: tone === "tonal"
-				? palette.secondaryContainer
-				: "transparent";
-	const color =
-		tone === "filled"
-			? palette.onPrimary
-			: tone === "tonal"
-				? palette.onSecondaryContainer
-				: palette.onSurfaceVariant;
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			onPress={onPress}
-			disabled={disabled}
-			hitSlop={4}
-			android_ripple={{ color: palette.outlineVariant, borderless: true }}
-			style={({ pressed }) => ({
-				width: 40,
-				height: 40,
-				borderRadius: 20,
-				alignItems: "center",
-				justifyContent: "center",
-				backgroundColor,
-				opacity: disabled ? 0.38 : Platform.OS === "ios" && pressed ? 0.5 : 1,
-			})}
-		>
-			<Icon name={icon} size={22} color={color} />
-		</Pressable>
-	);
-}
+export { ActionButton, type ActionButtonProps } from "./action-button";
+export { IconButton } from "./icon-button";
 
 /** One row of a list: a leading icon, two lines and a trailing value. */
 export function ListRow({
@@ -264,49 +191,7 @@ export function SectionHeader({ children }: { children: string }) {
 	);
 }
 
-/** A labelled text field, outlined as Material draws one. */
-export function Field({
-	label,
-	hint,
-	error,
-	...input
-}: TextInputProps & { label: string; hint?: string; error?: string | null }) {
-	const palette = usePalette();
-	return (
-		<View style={{ gap: SPACE.xs }}>
-			<Text variant="labelMedium" color={palette.onSurfaceVariant}>
-				{label}
-			</Text>
-			<TextInput
-				placeholderTextColor={palette.onSurfaceVariant}
-				selectionColor={palette.primary}
-				cursorColor={palette.primary}
-				{...input}
-				style={[
-					TYPE.bodyLarge,
-					{
-						color: palette.onSurface,
-						borderWidth: 1,
-						borderColor: error ? palette.error : palette.outline,
-						borderRadius: Platform.OS === "ios" ? 10 : 4,
-						paddingHorizontal: SPACE.l,
-						paddingVertical: SPACE.m,
-						minHeight: input.multiline ? 88 : 52,
-						textAlignVertical: input.multiline ? "top" : "center",
-					},
-				]}
-			/>
-			{error || hint ? (
-				<Text
-					variant="bodySmall"
-					color={error ? palette.error : palette.onSurfaceVariant}
-				>
-					{error ?? hint}
-				</Text>
-			) : null}
-		</View>
-	);
-}
+export { Field, type FieldProps } from "./field";
 
 /** A grey block that pulses while content loads. With less motion it stays
  *  still: a pulse is not the information, the block is. */
@@ -364,8 +249,11 @@ export function EmptyState({
 	title,
 	message,
 	action,
+	tone,
 }: {
 	icon: IconName;
+	/** Android: the tone of the badge behind the icon. */
+	tone?: "secondary" | "error";
 	title: string;
 	message?: string;
 	action?: ReactNode;
@@ -380,7 +268,11 @@ export function EmptyState({
 				paddingHorizontal: SPACE.xl,
 			}}
 		>
-			<Icon name={icon} size={40} color={palette.onSurfaceVariant} />
+			{Platform.OS === "android" ? (
+				<IconBadge icon={icon} tone={tone} />
+			) : (
+				<Icon name={icon} size={40} color={palette.onSurfaceVariant} />
+			)}
 			<Text variant="titleMedium" align="center">
 				{title}
 			</Text>
@@ -409,6 +301,7 @@ export function ErrorState({
 	return (
 		<EmptyState
 			icon="error"
+			tone="error"
 			title="Something went wrong"
 			message={error.message}
 			action={
