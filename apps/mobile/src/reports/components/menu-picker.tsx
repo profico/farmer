@@ -21,6 +21,7 @@ export function MenuPicker<T extends string>({
 	onChange,
 	enabled = true,
 	fill = false,
+	inline = false,
 }: {
 	label: string;
 	options: MenuOption<T>[];
@@ -28,8 +29,30 @@ export function MenuPicker<T extends string>({
 	onChange: (value: T) => void;
 	enabled?: boolean;
 	fill?: boolean;
+	/** iOS: the label stands beside the menu, which shows its value, as the
+	 *  row of a settings list does. Android ignores it. */
+	inline?: boolean;
 }) {
 	const palette = usePalette();
+	if (inline && Platform.OS === "ios") {
+		return (
+			<View
+				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
+			>
+				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+					{label}
+				</Text>
+				<MenuControl
+					options={options}
+					value={value}
+					onChange={onChange}
+					enabled={enabled}
+					fill={fill}
+					label={label}
+				/>
+			</View>
+		);
+	}
 	return (
 		<View
 			style={{ gap: SPACE.xs, alignItems: fill ? "stretch" : "flex-start" }}
