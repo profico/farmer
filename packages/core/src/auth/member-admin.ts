@@ -22,8 +22,11 @@ import { auth } from "./index";
  * write these rows here: a second writer has a second idea of who may write.
  *
  * `headers` must name a session of the caller: the browser's own headers, or
- * a cookie from `sessionCookieHeader`. An API token has no session, so the
- * route refuses it before it calls this.
+ * a cookie from `sessionCookieHeader`. A REST route passes a function that
+ * makes them (`ApiCaller.sessionHeaders`), because an API token has no
+ * session and that function refuses it. Each function here calls it only
+ * after its own checks, so a caller who is not an admin hears that, and
+ * not that an API token cannot do this.
  *
  * Each function checks the admin role first, the same check as
  * `orgAdminMiddleware` in the web app. The self and owner checks are the ones
@@ -62,9 +65,21 @@ const membershipOf = async (ctx: Ctx, userId: string) => {
 	return row;
 };
 
+/** The caller's session headers, or a function that makes them (and can
+ *  refuse an API token). */
+export type SessionHeaders = Headers | (() => Promise<Headers>);
+
+const headersOf = async (source: SessionHeaders): Promise<Headers> =>
+	source instanceof Headers ? source : source();
+
 export const memberAdmin = {
-	invite: async (ctx: Ctx, headers: Headers, input: InviteMemberInput) => {
+	invite: async (
+		ctx: Ctx,
+		sessionHeaders: SessionHeaders,
+		input: InviteMemberInput,
+	) => {
 		await requireAdmin(ctx);
+		const headers = await headersOf(sessionHeaders);
 		return viaBetterAuth(() =>
 			auth.api.createInvitation({
 				body: {
@@ -80,10 +95,15 @@ export const memberAdmin = {
 	/** better-auth's own resend: `createInvitation` with `resend: true` moves
 	 *  the expiry forward and sends the email and the Slack message again. It
 	 *  takes the address, so the id is resolved first, inside this org. */
-	resend: async (ctx: Ctx, headers: Headers, invitationId: string) => {
+	resend: async (
+		ctx: Ctx,
+		sessionHeaders: SessionHeaders,
+		invitationId: string,
+	) => {
 		await requireAdmin(ctx);
 		const pending = await membersService.pendingInvitation(ctx, invitationId);
 		if (!pending) throw new Error("Invitation not found");
+		const headers = await headersOf(sessionHeaders);
 		return viaBetterAuth(() =>
 			auth.api.createInvitation({
 				body: {
@@ -99,16 +119,25 @@ export const memberAdmin = {
 
 	/** Only a pending invitation of this org. An id from another org is the
 	 *  same 404 as an id that does not exist. */
-	cancel: async (ctx: Ctx, headers: Headers, invitationId: string) => {
+	cancel: async (
+		ctx: Ctx,
+		sessionHeaders: SessionHeaders,
+		invitationId: string,
+	) => {
 		await requireAdmin(ctx);
 		const pending = await membersService.pendingInvitation(ctx, invitationId);
 		if (!pending) throw new Error("Invitation not found");
+		const headers = await headersOf(sessionHeaders);
 		await viaBetterAuth(() =>
 			auth.api.cancelInvitation({ body: { invitationId }, headers }),
 		);
 	},
 
-	setRole: async (ctx: Ctx, headers: Headers, input: SetMemberRoleInput) => {
+	setRole: async (
+		ctx: Ctx,
+		sessionHeaders: SessionHeaders,
+		input: SetMemberRoleInput,
+	) => {
 		await requireAdmin(ctx);
 		if (input.userId === ctx.userId) {
 			throw new AccessError("You cannot change your own role");
@@ -117,6 +146,7 @@ export const memberAdmin = {
 		if (target.role === "owner") {
 			throw new AccessError("You cannot change the owner's role");
 		}
+		const headers = await headersOf(sessionHeaders);
 		await viaBetterAuth(() =>
 			auth.api.updateMemberRole({
 				body: {
@@ -132,7 +162,7 @@ export const memberAdmin = {
 	/** Removes the membership, then the person's rows on every team lead
 	 *  list. A stale list row let a person who came back reappear on a list,
 	 *  or a lead regain their old people. */
-	remove: async (ctx: Ctx, headers: Headers, userId: string) => {
+	remove: async (ctx: Ctx, sessionHeaders: SessionHeaders, userId: string) => {
 		await requireAdmin(ctx);
 		if (userId === ctx.userId) {
 			throw new AccessError("You cannot remove yourself");
@@ -150,6 +180,7 @@ export const memberAdmin = {
 				throw new AccessError("You cannot remove the only owner");
 			}
 		}
+		const headers = await headersOf(sessionHeaders);
 		await viaBetterAuth(() =>
 			auth.api.removeMember({
 				body: {

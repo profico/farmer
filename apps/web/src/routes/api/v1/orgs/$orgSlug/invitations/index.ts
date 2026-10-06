@@ -27,9 +27,12 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/invitations/")({
 			POST: apiRoute({
 				input: inviteMemberInput,
 				run: async (ctx, input, caller): Promise<ApiInvitation> => {
-					const headers = await caller.sessionHeaders();
 					const { memberAdmin } = await import("@farmer/core/auth");
-					const created = await memberAdmin.invite(ctx, headers, input);
+					const created = await memberAdmin.invite(
+						ctx,
+						caller.sessionHeaders,
+						input,
+					);
 					// Read back from the list, so the answer has the email state.
 					const { membersService } = await import("@farmer/core/services");
 					const rows = await membersService.listInvitations(ctx);

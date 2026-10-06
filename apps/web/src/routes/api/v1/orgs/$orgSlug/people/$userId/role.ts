@@ -23,9 +23,8 @@ export const Route = createFileRoute(
 				raw: ({ params, body }: ApiRequest<PersonParams>) =>
 					bodyWithPath(body, { userId: params.userId }),
 				run: async (ctx, input, caller): Promise<ApiPerson> => {
-					const headers = await caller.sessionHeaders();
 					const { memberAdmin } = await import("@farmer/core/auth");
-					await memberAdmin.setRole(ctx, headers, input);
+					await memberAdmin.setRole(ctx, caller.sessionHeaders, input);
 					const { membersService } = await import("@farmer/core/services");
 					const { person } = await membersService.profile(ctx, input.userId);
 					return toApiPerson(person);

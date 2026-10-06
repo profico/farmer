@@ -181,6 +181,51 @@ describe("memberAdmin", () => {
 		).rejects.toBeInstanceOf(AccessError);
 	});
 
+	// A REST route passes `caller.sessionHeaders`, which refuses an API token.
+	// A member who is not an admin must hear that, and not the API token
+	// refusal, so the function runs only after the admin check.
+	test("a member who is not an admin is refused before the session headers", async () => {
+		let asked = 0;
+		const apiTokenHeaders = async (): Promise<Headers> => {
+			asked += 1;
+			throw new AccessError("An API token cannot do this.");
+		};
+		await expect(
+			memberAdmin.invite(ctx(BOB), apiTokenHeaders, {
+				email: "someone@example.com",
+				role: "member",
+			}),
+		).rejects.toThrow("Admin access required");
+		await expect(
+			memberAdmin.setRole(ctx(BOB), apiTokenHeaders, {
+				userId: CAROL,
+				role: "admin",
+			}),
+		).rejects.toThrow("Admin access required");
+		await expect(
+			memberAdmin.remove(ctx(BOB), apiTokenHeaders, CAROL),
+		).rejects.toThrow("Admin access required");
+		await expect(
+			memberAdmin.cancel(ctx(BOB), apiTokenHeaders, "i-unknown"),
+		).rejects.toThrow("Admin access required");
+		await expect(
+			memberAdmin.resend(ctx(BOB), apiTokenHeaders, "i-unknown"),
+		).rejects.toThrow("Admin access required");
+		expect(asked).toBe(0);
+	});
+
+	test("an admin's session headers come from the function", async () => {
+		const created = await memberAdmin.invite(
+			ctx(ownerId),
+			async () => headers,
+			{
+				email: "from-a-function@example.com",
+				role: "member",
+			},
+		);
+		expect(created.email).toBe("from-a-function@example.com");
+	});
+
 	test("a member who is not an admin cannot tell a real invitation id from an unknown one", async () => {
 		const created = await memberAdmin.invite(ctx(ownerId), headers, {
 			email: "probe@example.com",

@@ -42,9 +42,8 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/people/$userId/")({
 					userId: params.userId,
 				}),
 				run: async (ctx, { userId }, caller): Promise<ApiDeleted> => {
-					const headers = await caller.sessionHeaders();
 					const { memberAdmin } = await import("@farmer/core/auth");
-					await memberAdmin.remove(ctx, headers, userId);
+					await memberAdmin.remove(ctx, caller.sessionHeaders, userId);
 					return { id: userId };
 				},
 			}),
