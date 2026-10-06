@@ -1,8 +1,7 @@
 import type { AssistantThread } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { FlatList, Pressable, RefreshControl, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FlatList, RefreshControl, View } from "react-native";
 
 import {
 	useAssistantThreads,
@@ -10,13 +9,12 @@ import {
 	useRenameThread,
 } from "../../src/api/assistant";
 import { AssistantGate, useAssistantReady } from "../../src/assistant/gate";
+import {
+	NewChatAction,
+	NEW_CHAT_CLEARANCE,
+} from "../../src/assistant/new-chat-action";
 import { RenameDialog } from "../../src/assistant/rename-dialog";
 import { useThreadRunning } from "../../src/assistant/runs";
-import {
-	FAB_CLEARANCE,
-	FAB_MARGIN,
-	FAB_SIZE,
-} from "../../src/time/components/log-time-fab";
 import {
 	ActionButton,
 	EmptyState,
@@ -24,62 +22,13 @@ import {
 	ErrorState,
 	ListRow,
 	Skeleton,
-	Text,
 } from "../../src/ui/components";
-import { RADIUS } from "../../src/ui/corner";
 import { showDialog } from "../../src/ui/dialog";
-import { Icon } from "../../src/ui/icon";
 import { LoadingIndicator } from "../../src/ui/loading";
 import { RowMoreMenu } from "../../src/ui/row-more-menu";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
-
-/** The gap between the icon and the label of the pill. */
-const PILL_GAP = SPACE.m;
-
-/** "New chat": an extended FAB at the bottom right, in the style of the
- *  Log time pill of the Time tab. */
-function NewChatPill({ onPress }: { onPress: () => void }) {
-	const palette = usePalette();
-	const insets = useSafeAreaInsets();
-	return (
-		<View
-			pointerEvents="box-none"
-			style={{
-				position: "absolute",
-				right: FAB_MARGIN,
-				bottom: FAB_MARGIN + insets.bottom,
-			}}
-		>
-			<Pressable
-				accessibilityRole="button"
-				accessibilityLabel="New chat"
-				onPress={onPress}
-				android_ripple={{
-					color: palette.onPrimaryContainer,
-					borderless: false,
-				}}
-				style={{
-					flexDirection: "row",
-					alignItems: "center",
-					gap: PILL_GAP,
-					height: FAB_SIZE,
-					paddingHorizontal: SPACE.l,
-					borderRadius: RADIUS.fab,
-					overflow: "hidden",
-					backgroundColor: palette.primaryContainer,
-					elevation: 3,
-				}}
-			>
-				<Icon name="add" color={palette.onPrimaryContainer} />
-				<Text variant="labelLarge" color={palette.onPrimaryContainer}>
-					New chat
-				</Text>
-			</Pressable>
-		</View>
-	);
-}
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -187,7 +136,7 @@ export default function AssistantThreadsScreen() {
 			<AssistantGate>
 				<FlatList
 					data={threads.data ?? []}
-					contentContainerStyle={{ paddingBottom: FAB_CLEARANCE }}
+					contentContainerStyle={{ paddingBottom: NEW_CHAT_CLEARANCE }}
 					keyExtractor={(thread) => thread.id}
 					contentInsetAdjustmentBehavior="automatic"
 					refreshControl={
@@ -249,7 +198,7 @@ export default function AssistantThreadsScreen() {
 			</AssistantGate>
 			{/* No new chat while the gate above says why the assistant
 			    cannot answer. */}
-			{ready ? <NewChatPill onPress={start} /> : null}
+			{ready ? <NewChatAction onPress={start} /> : null}
 			<RenameDialog
 				// A new key gives each rename a fresh field.
 				key={renaming?.id ?? "closed"}
