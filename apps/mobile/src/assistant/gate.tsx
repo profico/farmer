@@ -4,6 +4,22 @@ import { useAccess, useAssistantSettings } from "../api/capabilities";
 import { EmptyState, ErrorState, Skeleton } from "../ui/components";
 import { Inset } from "../ui/screen";
 
+/** True when the assistant can answer: the same checks as
+ *  `AssistantGate`. A control that starts a conversation shows only then. */
+export function useAssistantReady(): boolean {
+	const access = useAccess();
+	const settings = useAssistantSettings();
+	const data = settings.data;
+	return (
+		access.fullApi &&
+		data !== undefined &&
+		data.available &&
+		!data.keyUnreadable &&
+		data.configured &&
+		data.enabled
+	);
+}
+
 /**
  * Shows the chat only when it can answer. Each state has its own sentence,
  * as on the web: a server without the routes, the assistant switched off on

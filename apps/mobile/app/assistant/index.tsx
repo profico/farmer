@@ -17,7 +17,7 @@ import {
 	useDeleteThread,
 	useRenameThread,
 } from "../../src/api/assistant";
-import { AssistantGate } from "../../src/assistant/gate";
+import { AssistantGate, useAssistantReady } from "../../src/assistant/gate";
 import { RenameDialog } from "../../src/assistant/rename-dialog";
 import { useThreadRunning } from "../../src/assistant/runs";
 import {
@@ -93,6 +93,7 @@ export default function AssistantThreadsScreen() {
 	const palette = usePalette();
 	const threads = useAssistantThreads();
 	const create = useCreateThread();
+	const ready = useAssistantReady();
 	const rename = useRenameThread();
 	const remove = useDeleteThread();
 	const [renaming, setRenaming] = useState<AssistantThread | null>(null);
@@ -164,14 +165,18 @@ export default function AssistantThreadsScreen() {
 			<Stack.Screen
 				options={{
 					title: "Assistant",
-					headerRight: () => (
-						<IconButton
-							icon="add"
-							label="New conversation"
-							onPress={start}
-							disabled={create.isPending}
-						/>
-					),
+					// No new conversation while the gate below says why the
+					// assistant cannot answer.
+					headerRight: ready
+						? () => (
+								<IconButton
+									icon="add"
+									label="New conversation"
+									onPress={start}
+									disabled={create.isPending}
+								/>
+							)
+						: () => null,
 				}}
 			/>
 			<AssistantGate>
