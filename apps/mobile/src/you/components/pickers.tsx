@@ -2,16 +2,17 @@ import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { useEffect, useRef, useState } from "react";
 import { Platform, useColorScheme, View } from "react-native";
 
+import {
+	datePickerBound,
+	datePickerResult,
+	datePickerValue,
+	timePickerResult,
+	timePickerValue,
+} from "../../time/calendar";
 import type { IconName } from "../../ui/icons";
 import { SettingsValue } from "../../ui/settings-list";
 import type { RowTint } from "../../ui/settings-list";
 import { SPACE } from "../../ui/type";
-import {
-	clockOfPickedTime,
-	keyOfPickedDate,
-	pickerDateOf,
-	pickerTimeOf,
-} from "../format";
 
 // Rows of a settings list that hold a time or a day, with the system's own
 // picker. On Android a press opens the Material dialog. On iOS a press
@@ -92,11 +93,11 @@ export function TimeSetting({
 				{open ? (
 					<DateTimePicker
 						mode="time"
-						value={pickerTimeOf(value)}
+						value={timePickerValue(value)}
 						presentation="dialog"
 						onValueChange={(_event, date) => {
 							setOpen(false);
-							const next = clockOfPickedTime(date);
+							const next = timePickerResult(date);
 							if (next !== value) onChange(next);
 						}}
 						onDismiss={() => setOpen(false)}
@@ -118,11 +119,11 @@ export function TimeSetting({
 					<DateTimePicker
 						mode="time"
 						display="spinner"
-						value={pickerTimeOf(draft)}
+						value={timePickerValue(draft)}
 						themeVariant={scheme === "dark" ? "dark" : "light"}
 						style={{ width: "100%" }}
 						onValueChange={(_event, date) => {
-							setDraft(clockOfPickedTime(date));
+							setDraft(timePickerResult(date));
 							if (timer.current) clearTimeout(timer.current);
 							timer.current = setTimeout(commit, SETTLE_MS);
 						}}
@@ -150,7 +151,7 @@ export function DateSetting({
 }) {
 	const scheme = useColorScheme();
 	const [open, setOpen] = useState(false);
-	const minimumDate = minimum ? pickerDateOf(minimum) : undefined;
+	const minimumDate = minimum ? datePickerBound(minimum) : undefined;
 
 	if (Platform.OS === "android") {
 		return (
@@ -163,12 +164,12 @@ export function DateSetting({
 				{open ? (
 					<DateTimePicker
 						mode="date"
-						value={pickerDateOf(value)}
+						value={datePickerValue(value, "android")}
 						minimumDate={minimumDate}
 						presentation="dialog"
 						onValueChange={(_event, date) => {
 							setOpen(false);
-							onChange(keyOfPickedDate(date, "android"));
+							onChange(datePickerResult(date, "android"));
 						}}
 						onDismiss={() => setOpen(false)}
 					/>
@@ -189,12 +190,12 @@ export function DateSetting({
 					<DateTimePicker
 						mode="date"
 						display="inline"
-						value={pickerDateOf(value)}
+						value={datePickerValue(value, "ios")}
 						minimumDate={minimumDate}
 						themeVariant={scheme === "dark" ? "dark" : "light"}
 						style={{ width: "100%" }}
 						onValueChange={(_event, date) => {
-							onChange(keyOfPickedDate(date, "ios"));
+							onChange(datePickerResult(date, "ios"));
 							setOpen(false);
 						}}
 					/>

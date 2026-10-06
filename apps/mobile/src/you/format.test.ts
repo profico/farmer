@@ -2,14 +2,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-	clockOfPickedTime,
 	daysSummary,
 	descriptionRequiredFor,
 	hoursLabel,
-	keyOfPickedDate,
 	orderedWeekdays,
-	pickerDateOf,
-	pickerTimeOf,
 	shiftMonth,
 	taskGroupLabel,
 } from "./format";
@@ -33,28 +29,6 @@ describe("durations", () => {
 		expect(hoursLabel(30 * 60)).toBe("30 minutes");
 		expect(hoursLabel(3600 + 60)).toBe("1 hour 1 minute");
 		expect(hoursLabel(0)).toBe("0 minutes");
-	});
-});
-
-describe("native pickers", () => {
-	test("an Android date is midnight in UTC", () => {
-		expect(keyOfPickedDate(new Date(Date.UTC(2026, 9, 6)), "android")).toBe(
-			"2026-10-06",
-		);
-	});
-
-	test("an iOS date is read in the phone's time zone", () => {
-		expect(keyOfPickedDate(new Date(2026, 9, 6, 23, 30), "ios")).toBe(
-			"2026-10-06",
-		);
-		expect(keyOfPickedDate(pickerDateOf("2026-01-31"), "ios")).toBe(
-			"2026-01-31",
-		);
-	});
-
-	test("a time goes to the picker and back unchanged", () => {
-		expect(clockOfPickedTime(pickerTimeOf("09:05"))).toBe("09:05");
-		expect(clockOfPickedTime(pickerTimeOf("17:30"))).toBe("17:30");
 	});
 });
 

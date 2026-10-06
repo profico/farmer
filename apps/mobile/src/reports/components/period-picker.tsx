@@ -3,6 +3,11 @@ import { useState } from "react";
 import { Platform, View } from "react-native";
 
 import { addDays } from "../../lib/days";
+import {
+	datePickerBound,
+	datePickerResult,
+	datePickerValue,
+} from "../../time/calendar";
 import { ActionButton, IconButton, Text } from "../../ui/components";
 import { SegmentedControl } from "../../ui/segmented";
 import { usePalette } from "../../ui/theme";
@@ -19,22 +24,6 @@ import {
 	returnLabel,
 	stepPeriod,
 } from "../period";
-
-/** A day key as a date at noon on the phone, so no time zone moves it to
- *  the day before. */
-const toDate = (key: string) => {
-	const [year, month, day] = key.split("-").map(Number);
-	return new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1, 12);
-};
-
-const pad = (value: number) => String(value).padStart(2, "0");
-
-/** The day the picker chose. Compose gives midnight in UTC, and iOS gives
- *  a time on the phone, so the UTC day is read only for a UTC midnight. */
-const toKey = (date: Date) =>
-	date.getUTCHours() === 0 && date.getUTCMinutes() === 0
-		? `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
-		: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
 /** One end of a custom range: the system date picker. iOS shows the
  *  compact button; Android opens the Material dialog from a button. */
@@ -53,16 +42,18 @@ function DayField({
 }) {
 	const palette = usePalette();
 	const [open, setOpen] = useState(false);
+	const platform = Platform.OS === "android" ? "android" : "ios";
 	const picker = (
 		<DateTimePicker
-			value={toDate(value)}
+			value={datePickerValue(value, platform)}
 			mode="date"
-			display={Platform.OS === "ios" ? "compact" : "default"}
-			minimumDate={toDate(min)}
-			maximumDate={toDate(max)}
+			display={platform === "ios" ? "compact" : "default"}
+			minimumDate={datePickerBound(min)}
+			maximumDate={datePickerBound(max)}
 			onChange={(event, date) => {
 				setOpen(false);
-				if (event.type === "set" && date) onChange(toKey(date));
+				if (event.type === "set" && date)
+					onChange(datePickerResult(date, platform));
 			}}
 		/>
 	);

@@ -7,7 +7,7 @@ import { useHostTheme } from "../../ui/host";
 import { Icon } from "../../ui/icon";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
-import { pickedDay, pickerValue } from "../calendar";
+import { datePickerBound, pickedDay, pickerValue } from "../calendar";
 
 export type DateFieldProps = {
 	label: string;
@@ -53,8 +53,8 @@ function PickerDialog({
 				selectableDates={
 					minimum || maximum
 						? {
-								start: minimum ? pickerValue(minimum) : undefined,
-								end: maximum ? pickerValue(maximum) : undefined,
+								start: minimum ? datePickerBound(minimum) : undefined,
+								end: maximum ? datePickerBound(maximum) : undefined,
 							}
 						: undefined
 				}

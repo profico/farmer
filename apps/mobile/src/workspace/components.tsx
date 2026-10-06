@@ -9,6 +9,13 @@ import {
 	View,
 } from "react-native";
 
+import {
+	datePickerBound,
+	datePickerResult,
+	datePickerValue,
+	timePickerResult,
+	timePickerValue,
+} from "../time/calendar";
 import { Skeleton, Text } from "../ui/components";
 import { showDialog } from "../ui/dialog";
 import { ControlHost } from "../ui/host";
@@ -429,29 +436,6 @@ export function ChoiceSection<T extends string | number>({
 	);
 }
 
-const pad = (value: number) => String(value).padStart(2, "0");
-
-/** A day key (yyyy-MM-dd) as a `Date` at noon in the phone's timezone, so
- *  no timezone moves it to the day before. */
-const dateOfKey = (key: string) => {
-	const [year = 1970, month = 1, day = 1] = key.split("-").map(Number);
-	return new Date(year, month - 1, day, 12);
-};
-
-const keyOfDate = (date: Date) =>
-	`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-/** "HH:mm" as a `Date` of today in the phone's timezone. */
-const dateOfTime = (time: string) => {
-	const [hours = 0, minutes = 0] = time.split(":").map(Number);
-	const date = new Date();
-	date.setHours(hours, minutes, 0, 0);
-	return date;
-};
-
-const timeOfDate = (date: Date) =>
-	`${pad(date.getHours())}:${pad(date.getMinutes())}`;
-
 /**
  * A row with a day or a time and the system picker. iOS draws the compact
  * picker at the end of the row. Android shows the value, and a press opens
@@ -484,12 +468,15 @@ export function PickerRow({
 }) {
 	const palette = usePalette();
 	const [open, setOpen] = useState(false);
-	const toDate = mode === "date" ? dateOfKey : dateOfTime;
-	const fromDate = mode === "date" ? keyOfDate : timeOfDate;
+	const platform = IOS ? "ios" : "android";
+	const toDate = (key: string) =>
+		mode === "date" ? datePickerValue(key, platform) : timePickerValue(key);
+	const fromDate = (date: Date) =>
+		mode === "date" ? datePickerResult(date, platform) : timePickerResult(date);
 	const current = value === null ? new Date() : toDate(value);
 	const bounds = {
-		minimumDate: minimum ? dateOfKey(minimum) : undefined,
-		maximumDate: maximum ? dateOfKey(maximum) : undefined,
+		minimumDate: minimum ? datePickerBound(minimum) : undefined,
+		maximumDate: maximum ? datePickerBound(maximum) : undefined,
 	};
 
 	if (IOS && (value !== null || open)) {

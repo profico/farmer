@@ -121,34 +121,3 @@ export const dayMonth = (key: string): string =>
 /** "Thursday" of a day key. */
 export const weekdayOfKey = (key: string): string =>
 	weekdayName(new Date(`${key}T00:00:00Z`).getUTCDay());
-
-// ── Dates from the native pickers ───────────────────────────────────────
-
-/** The `Date` a native picker opens on for a day key: noon on that day in
- *  the phone's own time zone, far from the edge of any day. */
-export const pickerDateOf = (key: string): Date => {
-	const [year, month, day] = key.split("-").map(Number);
-	return new Date(year ?? 2000, (month ?? 1) - 1, day ?? 1, 12);
-};
-
-/**
- * The day key a native date picker chose. The Android picker gives the
- * day at midnight in UTC, and the iOS picker gives a time on the day in
- * the phone's own time zone, so each is read in its own way.
- */
-export const keyOfPickedDate = (date: Date, platform: string): string =>
-	platform === "android"
-		? date.toISOString().slice(0, 10)
-		: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-/** The `Date` a native time picker opens on for "HH:mm", in the phone's
- *  own time zone. */
-export const pickerTimeOf = (time: string): Date => {
-	const minutes = minutesOf(time);
-	return new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60);
-};
-
-/** "HH:mm" of the time a native time picker chose. Both platforms give it
- *  in the phone's own time zone. */
-export const clockOfPickedTime = (date: Date): string =>
-	clockOf(date.getHours() * 60 + date.getMinutes());
