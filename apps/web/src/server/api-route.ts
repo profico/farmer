@@ -510,6 +510,21 @@ const sessionHeadersOf = async (
 };
 
 /**
+ * Refuses an API token on a route that manages a person's credentials: the
+ * signed-in devices and the API tokens. A token that could mint another one
+ * would turn a leaked key into a lasting one, which a revoke of the first
+ * would not end. A device-flow or mobile session, or a signed-in browser,
+ * may.
+ */
+export const requireSignIn = async (via: ApiCredentialKind): Promise<void> => {
+	if (via !== "api_token") return;
+	const { AccessError } = await import("@farmer/core/services");
+	throw new AccessError(
+		"An API token cannot manage sign-ins or API tokens. Sign in with `farmer login` or the mobile app.",
+	);
+};
+
+/**
  * A handler for an org-scoped route: `/api/v1/orgs/$orgSlug/…`.
  *
  * Returns the handler itself, so a route reads

@@ -51,3 +51,8 @@ export const CLI_VERSION_HEADER = "x-farmer-cli-version";
 /** The prefix of the CLI's `User-Agent`. A session created by the device flow
  *  records it, which is how Preferences → Signed-in devices names the row. */
 export const CLI_USER_AGENT_PREFIX = "farmer-cli/";
+
+/** The prefix of the mobile app's `User-Agent`, `farmer-mobile/0.1.0 (android
+ *  35)`. Its sessions record it, so the list of signed-in devices can name
+ *  the phone. */
+export const MOBILE_USER_AGENT_PREFIX = "farmer-mobile/";

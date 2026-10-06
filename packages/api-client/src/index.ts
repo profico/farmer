@@ -25,6 +25,7 @@ export { normalizeOrigin } from "./origin";
 export * from "./bodies";
 export { type JsonValue, jsonValueSchema } from "./json";
 export * from "./schemas";
+export * from "./schemas-account";
 export * from "./schemas-admin";
 export * from "./schemas-assistant";
 export * from "./schemas-day";

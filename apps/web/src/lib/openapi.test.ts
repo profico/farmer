@@ -113,7 +113,8 @@ describe("the OpenAPI document", () => {
 		expect(Whoami?.required).toContain("capabilities");
 	});
 
-	// A secret goes out only in the two answers that make one. A field named
+	// A secret goes out only in the answers that make one: a new webhook
+	// endpoint, a rolled secret and a new API token. A field named
 	// like a secret on any other response is a leak waiting for a client. A
 	// request body may carry one: that is how a key goes in.
 	test("puts a secret only in the answers that make one", () => {
@@ -138,7 +139,11 @@ describe("the OpenAPI document", () => {
 			)
 			.map(([id]) => id)
 			.sort();
-		expect(withSecret).toEqual(["WebhookEndpointCreated", "WebhookSecret"]);
+		expect(withSecret).toEqual([
+			"PersonalTokenCreated",
+			"WebhookEndpointCreated",
+			"WebhookSecret",
+		]);
 	});
 
 	test("documents the assistant's turn as a stream of events", () => {

@@ -8,26 +8,34 @@ import { notify, notifyError } from "../components";
 import { copyText } from "../share";
 
 /**
- * The signing secret of an endpoint, shown one time. The secret is only in
- * the answer of a create or a roll. The caller keeps it in component state
- * and drops it when the person presses "Done". It goes to no route
- * parameter, no query cache and no log.
+ * A secret that the server shows one time: the signing secret of a webhook
+ * endpoint, or a new API token. It is only in the answer of a create or a
+ * roll. The caller keeps it in component state and drops it when the person
+ * presses "Done". It goes to no route parameter, no query cache and no log.
+ * The words default to the signing secret.
  */
 export function SecretCard({
 	secret,
 	note,
 	onDone,
+	subject = "secret",
+	message = "Shown once. Use it to verify the Farmer-Signature header. If you lose it, roll the secret. The old one stays valid for 24 hours.",
 }: {
 	secret: string;
+	/** What the value is called in the labels: "secret" or "token". */
+	subject?: string;
+	/** The warning under the title. */
+	message?: string;
 	/** The line under the warning, such as the old secret's end of life. */
 	note?: string;
 	onDone: () => void;
 }) {
 	const palette = usePalette();
+	const capitalized = `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
 	const copy = () =>
 		copyText(secret).then(
-			() => notify("Secret copied"),
-			(error: Error) => notifyError("Could not copy the secret", error),
+			() => notify(`${capitalized} copied`),
+			(error: Error) => notifyError(`Could not copy the ${subject}`, error),
 		);
 	return (
 		<View
@@ -40,11 +48,10 @@ export function SecretCard({
 			}}
 		>
 			<Text variant="titleSmall" color={palette.primary}>
-				Copy the secret
+				Copy the {subject}
 			</Text>
 			<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-				Shown once. Use it to verify the Farmer-Signature header. If you lose
-				it, roll the secret. The old one stays valid for 24 hours.
+				{message}
 			</Text>
 			{note ? (
 				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
@@ -60,7 +67,9 @@ export function SecretCard({
 			>
 				<RNText
 					selectable
-					accessibilityLabel="Signing secret"
+					accessibilityLabel={
+						subject === "secret" ? "Signing secret" : capitalized
+					}
 					style={[
 						TYPE.bodyMedium,
 						{
@@ -81,7 +90,7 @@ export function SecretCard({
 			>
 				<Pressable
 					accessibilityRole="button"
-					accessibilityLabel="Copy the secret"
+					accessibilityLabel={`Copy the ${subject}`}
 					onPress={() => void copy()}
 					hitSlop={8}
 					android_ripple={{ color: palette.outlineVariant }}

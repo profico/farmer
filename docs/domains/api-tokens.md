@@ -59,6 +59,30 @@ recommends a token for anything that runs without a person.
   (see `apps/cli/CLAUDE.md`). PostHog's `api_request` event records which kind
   answered as `api_credential` (`session`, `api_token` or `cookie`).
 
+## The routes for the mobile app
+
+The mobile app shows Signed-in devices and API tokens, as Preferences does.
+Each route calls the service that the
+server function calls, so the web app and the app read one definition.
+
+| Route | Service |
+|---|---|
+| `GET /api/v1/me/sessions` | `sessionsService.listMine` |
+| `DELETE /api/v1/me/sessions/$id` | `sessionsService.revoke` |
+| `GET`, `POST /api/v1/orgs/$orgSlug/api-tokens` | `apiTokensService.listMine`, `create` |
+| `DELETE /api/v1/orgs/$orgSlug/api-tokens/$id` | `apiTokensService.revoke` |
+
+- **An API token cannot call them.** `requireSignIn` in `server/api-route.ts`
+  answers 403. A token that could make a token would turn one leaked key into
+  a lasting one, and a revoke of the first would not end it. A sign-in session
+  of the CLI or the app may call them.
+- **The current session comes from the bearer token.** `currentIdFor` names
+  the row, and `revoke` refuses it with 422. The client signs out with
+  `DELETE /api/v1/session` and clears its own token. A cookie read has no
+  token, so no row is current.
+- A session of the app records `farmer-mobile/<version> (<platform> <os>)`
+  and the list names it "Farmer app on Android" or "Farmer app on iOS".
+
 ## The API reference
 
 `/api-docs` (Scalar, `components/site/api-reference.tsx`) offers two schemes in

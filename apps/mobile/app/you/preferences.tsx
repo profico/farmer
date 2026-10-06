@@ -171,6 +171,24 @@ export default function PreferencesScreen() {
 				/>
 			</SettingsSection>
 
+			<SettingsSection
+				title="Devices and tokens"
+				footer="The browsers, terminals and phones signed in to your account, and the tokens that scripts use. Both are the same in every workspace."
+			>
+				<SettingsLink
+					icon="devices"
+					tint="gray"
+					title="Signed-in devices"
+					onPress={() => router.push("/you/devices")}
+				/>
+				<SettingsLink
+					icon="key"
+					tint="gray"
+					title="API tokens"
+					onPress={() => router.push("/you/api-tokens")}
+				/>
+			</SettingsSection>
+
 			{access.isAdmin ? (
 				<SettingsSection
 					title="Related"

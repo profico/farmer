@@ -1,6 +1,6 @@
 import { and, desc, eq, gt } from "drizzle-orm";
 
-import { CLI_USER_AGENT_PREFIX } from "../api/errors";
+import { CLI_USER_AGENT_PREFIX, MOBILE_USER_AGENT_PREFIX } from "../api/errors";
 import { db } from "../db";
 import { session } from "../db/schema/auth";
 import { UserFacingError } from "../lib/user-facing-error";
@@ -27,7 +27,11 @@ import type { Ctx } from "./types";
  * a CLI session from the workspace that did not happen to be active.
  */
 
-export type SessionKind = "cli" | "browser";
+export type SessionKind = "cli" | "browser" | "mobile";
+
+/** The part of a Ctx that a per-person function reads. Any Ctx is one, and
+ *  a `/me` route builds one without a workspace. */
+type PersonCtx = Pick<Ctx, "userId" | "actor">;
 
 /** One row of the list. Never the token: the token is the credential, and a
  *  list that carried it would be a list of ways to become this person. */
@@ -109,6 +113,20 @@ export const describeUserAgent = (userAgent: string | null): SessionDevice => {
 			label: platform ? `Farmer CLI (${platform})` : "Farmer CLI",
 		};
 	}
+	if (ua.startsWith(MOBILE_USER_AGENT_PREFIX)) {
+		// "farmer-mobile/0.1.0 (android 35)": the platform is the first word
+		// in the brackets.
+		const platform = /\((ios|android)\b/i.exec(ua)?.[1]?.toLowerCase();
+		return {
+			kind: "mobile",
+			label:
+				platform === "ios"
+					? "Farmer app on iOS"
+					: platform === "android"
+						? "Farmer app on Android"
+						: "Farmer app",
+		};
+	}
 	const browser = firstMatch(BROWSERS, ua);
 	const system = firstMatch(SYSTEMS, ua);
 	const label =
@@ -120,6 +138,27 @@ export const describeUserAgent = (userAgent: string | null): SessionDevice => {
 
 export const sessionsService = {
 	/**
+	 * The id of the caller's live session that `token` is, or null. A request
+	 * with a bearer token needs it to know which row is "this device", since
+	 * the token itself is never in the list. Null for a token that matches no
+	 * session of the caller, such as another person's.
+	 */
+	currentIdFor: async (
+		ctx: PersonCtx,
+		token: string,
+	): Promise<string | null> => {
+		const row = await db.query.session.findFirst({
+			where: and(
+				eq(session.token, token),
+				eq(session.userId, ctx.userId),
+				gt(session.expiresAt, new Date()),
+			),
+			columns: { id: true },
+		});
+		return row?.id ?? null;
+	},
+
+	/**
 	 * The caller's sessions that can still be used, the current one first and
 	 * then the most recently renewed.
 	 *
@@ -128,8 +167,8 @@ export const sessionsService = {
 	 * device anybody needs to act on.
 	 */
 	listMine: async (
-		ctx: Ctx,
-		currentSessionId: string,
+		ctx: PersonCtx,
+		currentSessionId: string | null,
 	): Promise<MySession[]> => {
 		const rows = await db
 			.select({
@@ -172,9 +211,9 @@ export const sessionsService = {
 	 * and the CLI gets a 401 and deletes its stored token.
 	 */
 	revoke: async (
-		ctx: Ctx,
+		ctx: PersonCtx,
 		sessionId: string,
-		currentSessionId: string,
+		currentSessionId: string | null,
 	): Promise<{ revoked: boolean }> => {
 		if (sessionId === currentSessionId) throw new CurrentSessionRevokeError();
 		const deleted = await db

@@ -23,6 +23,7 @@ export default function YouLayout() {
 			<Stack.Screen name="recurring-block" options={form} />
 			<Stack.Screen name="absence" options={form} />
 			<Stack.Screen name="filing-rule" options={form} />
+			<Stack.Screen name="api-token-new" options={form} />
 			<Stack.Screen
 				name="rewind"
 				options={{

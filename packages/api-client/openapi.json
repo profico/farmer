@@ -359,6 +359,324 @@
 				}
 			}
 		},
+		"/me/sessions": {
+			"get": {
+				"operationId": "listSessions",
+				"summary": "List the signed-in devices",
+				"description": "The caller's sign-ins that can still be used: browsers, terminals and phones. The session of the request comes first, with `isCurrent`. A session belongs to the person and not to a workspace. Needs a sign-in session, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Session"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/sessions/{id}": {
+			"delete": {
+				"operationId": "revokeSession",
+				"summary": "Sign out another device",
+				"description": "Ends one of the caller's other sessions. The session of the request is refused with 422: to end it, call `DELETE /session`. Needs a sign-in session, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Revoked"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/api-tokens": {
+			"get": {
+				"operationId": "listApiTokens",
+				"summary": "List the caller's API tokens",
+				"description": "Every token of the caller, in every workspace, oldest first. An expired token stays in the list. The list never has a token, only its last four characters. Needs a sign-in session, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/PersonalToken"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "createApiToken",
+				"summary": "Make an API token",
+				"description": "`workspace: \"this\"` binds the token to the workspace in the path. The answer has the token, and no other call does. A person may have 50 tokens. Needs a sign-in session, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/NewPersonalToken"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PersonalTokenCreated"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/api-tokens/{id}": {
+			"delete": {
+				"operationId": "revokeApiToken",
+				"summary": "Revoke an API token",
+				"description": "The next request made with the token is refused. Needs a sign-in session, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Revoked"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/session": {
 			"delete": {
 				"operationId": "signOut",
@@ -17936,6 +18254,177 @@
 					"updatedAt"
 				]
 			},
+			"Session": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"label": {
+						"type": "string",
+						"description": "A name for the device, such as \"Farmer app on Android\" or \"Chrome on macOS\"."
+					},
+					"kind": {
+						"type": "string",
+						"enum": [
+							"cli",
+							"browser",
+							"mobile"
+						]
+					},
+					"ipAddress": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "When the session was last renewed. It moves at most once a day."
+					},
+					"expiresAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"isCurrent": {
+						"type": "boolean",
+						"description": "True for the session the request is made with. No row has it when the request has no session token."
+					}
+				},
+				"required": [
+					"id",
+					"label",
+					"kind",
+					"ipAddress",
+					"createdAt",
+					"updatedAt",
+					"expiresAt",
+					"isCurrent"
+				]
+			},
+			"Revoked": {
+				"type": "object",
+				"properties": {
+					"revoked": {
+						"type": "boolean",
+						"description": "False when the row was already gone. It is not an error."
+					}
+				},
+				"required": [
+					"revoked"
+				]
+			},
+			"PersonalToken": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "A UUID."
+					},
+					"name": {
+						"type": "string"
+					},
+					"hint": {
+						"type": "string",
+						"description": "The last four characters of the token."
+					},
+					"scope": {
+						"type": "string",
+						"enum": [
+							"read",
+							"write"
+						]
+					},
+					"workspace": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"slug": {
+										"type": "string"
+									},
+									"name": {
+										"type": "string"
+									}
+								},
+								"required": [
+									"slug",
+									"name"
+								]
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The workspace the token is bound to, or null for all."
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"lastUsedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "An instant, ISO 8601 in UTC."
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"expiresAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "An instant, ISO 8601 in UTC."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Null for a token that never expires."
+					},
+					"expired": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"id",
+					"name",
+					"hint",
+					"scope",
+					"workspace",
+					"createdAt",
+					"lastUsedAt",
+					"expiresAt",
+					"expired"
+				]
+			},
+			"PersonalTokenCreated": {
+				"type": "object",
+				"properties": {
+					"token": {
+						"type": "string",
+						"description": "The token. Readable only in this answer."
+					},
+					"apiToken": {
+						"$ref": "#/components/schemas/PersonalToken"
+					}
+				},
+				"required": [
+					"token",
+					"apiToken"
+				]
+			},
 			"DayAssembly": {
 				"type": "object",
 				"properties": {
@@ -19402,6 +19891,59 @@
 				"required": [
 					"url",
 					"enabledEvents"
+				]
+			},
+			"NewPersonalToken": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"scope": {
+						"type": "string",
+						"enum": [
+							"read",
+							"write"
+						]
+					},
+					"workspace": {
+						"type": "string",
+						"enum": [
+							"this",
+							"all"
+						]
+					},
+					"expiresInDays": {
+						"anyOf": [
+							{
+								"anyOf": [
+									{
+										"type": "number",
+										"const": 30
+									},
+									{
+										"type": "number",
+										"const": 90
+									},
+									{
+										"type": "number",
+										"const": 365
+									}
+								]
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": [
+					"name",
+					"scope",
+					"workspace",
+					"expiresInDays"
 				]
 			},
 			"WebhookEndpointPatch": {

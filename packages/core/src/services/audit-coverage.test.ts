@@ -342,7 +342,11 @@ const SERVICES = {
 	},
 	sessionsService: {
 		service: sessionsService,
-		coverage: { recorded: { revoke: true }, exempt: {}, reads: ["listMine"] },
+		coverage: {
+			recorded: { revoke: true },
+			exempt: {},
+			reads: ["listMine", "currentIdFor"],
+		},
 	},
 	mobileDevicesService: {
 		service: mobileDevicesService,

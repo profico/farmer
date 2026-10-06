@@ -3,6 +3,7 @@ import {
 	GoogleLogoIcon,
 	IdentificationCardIcon,
 	KeyIcon,
+	DeviceMobileIcon,
 	TerminalWindowIcon,
 } from "@phosphor-icons/react";
 import {
@@ -300,7 +301,12 @@ function SessionRow({ session }: { session: MySession }) {
 			toast.error(error.message ?? "Could not sign out that device"),
 	});
 
-	const Icon = session.kind === "cli" ? TerminalWindowIcon : BrowserIcon;
+	const Icon =
+		session.kind === "cli"
+			? TerminalWindowIcon
+			: session.kind === "mobile"
+				? DeviceMobileIcon
+				: BrowserIcon;
 
 	return (
 		<SettingRow
@@ -340,7 +346,9 @@ function SessionRow({ session }: { session: MySession }) {
 								<AlertDialogDescription>
 									{session.kind === "cli"
 										? "The terminal is signed out at its next command, and it asks you to run farmer login again."
-										: "That browser is signed out the next time it loads a page."}
+										: session.kind === "mobile"
+											? "The app is signed out the next time it asks the server for data, and it asks you to sign in again."
+											: "That browser is signed out the next time it loads a page."}
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
@@ -364,7 +372,7 @@ function SessionRow({ session }: { session: MySession }) {
 }
 
 /**
- * Every browser and terminal signed in to this account, with a way to end each.
+ * Every browser, terminal and phone signed in to this account, with a way to end each.
  *
  * It exists for the CLI: `farmer login` stores a session token on a machine,
  * and it stays valid for as long as the session does. A person who loses that
@@ -380,7 +388,7 @@ function SignedInDevicesSection() {
 	return (
 		<PageSection
 			title="Signed-in devices"
-			description="Every browser and terminal signed in to your account, in every workspace. Revoke any you don't recognise, or one on a device you no longer have."
+			description="Every browser, terminal and phone signed in to your account, in every workspace. Revoke any you don't recognise, or one on a device you no longer have."
 		>
 			<SettingList>
 				{sessions.map((session) => (

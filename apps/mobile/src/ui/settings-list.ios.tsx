@@ -100,6 +100,7 @@ function Row({
 	tint = "gray",
 	title,
 	subtitle,
+	subtitleLines = 2,
 	actions,
 	trailing,
 	onPress,
@@ -170,7 +171,7 @@ function Row({
 						<Text
 							variant="bodySmall"
 							color={palette.onSurfaceVariant}
-							numberOfLines={2}
+							numberOfLines={subtitleLines}
 						>
 							{subtitle}
 						</Text>

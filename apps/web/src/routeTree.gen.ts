@@ -81,6 +81,7 @@ import { Route as OrgSlugSettingsInstanceFeaturesRouteImport } from './routes/$o
 import { Route as OrgSlugSettingsInstanceEmailRouteImport } from './routes/$orgSlug/settings/instance/email'
 import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
 import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
+import { Route as ApiV1MeSessionsIndexRouteImport } from './routes/api/v1/me/sessions/index'
 import { Route as ApiV1MeInvitationsIndexRouteImport } from './routes/api/v1/me/invitations/index'
 import { Route as ApiV1MeImportClaimsIndexRouteImport } from './routes/api/v1/me/import-claims/index'
 import { Route as ApiV1MeDevicesIndexRouteImport } from './routes/api/v1/me/devices/index'
@@ -95,6 +96,7 @@ import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes
 import { Route as ApiV1OrgsOrgSlugOrganizationRouteImport } from './routes/api/v1/orgs/$orgSlug/organization'
 import { Route as ApiV1OrgsOrgSlugHomeRouteImport } from './routes/api/v1/orgs/$orgSlug/home'
 import { Route as ApiV1OrgsOrgSlugDayAssemblyRouteImport } from './routes/api/v1/orgs/$orgSlug/day-assembly'
+import { Route as ApiV1MeSessionsIdRouteImport } from './routes/api/v1/me/sessions/$id'
 import { Route as ApiV1MeDevicesInstallationIdRouteImport } from './routes/api/v1/me/devices/$installationId'
 import { Route as ApiV1OrgsOrgSlugWebhooksIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/index'
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
@@ -111,6 +113,7 @@ import { Route as ApiV1OrgsOrgSlugHolidaysIndexRouteImport } from './routes/api/
 import { Route as ApiV1OrgsOrgSlugFilingRulesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/filing-rules/index'
 import { Route as ApiV1OrgsOrgSlugClientsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/clients/index'
 import { Route as ApiV1OrgsOrgSlugAuditLogIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/audit-log/index'
+import { Route as ApiV1OrgsOrgSlugApiTokensIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/api-tokens/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
 import { Route as ApiV1OrgsOrgSlugTimerSettingsRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/settings'
 import { Route as ApiV1OrgsOrgSlugTimerResumeRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/resume'
@@ -145,6 +148,7 @@ import { Route as ApiV1OrgsOrgSlugAuditLogRetentionRouteImport } from './routes/
 import { Route as ApiV1OrgsOrgSlugAuditLogExportRouteImport } from './routes/api/v1/orgs/$orgSlug/audit-log/export'
 import { Route as ApiV1OrgsOrgSlugAssistantSettingsRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/settings'
 import { Route as ApiV1OrgsOrgSlugAssistantModelsRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/models'
+import { Route as ApiV1OrgsOrgSlugApiTokensIdRouteImport } from './routes/api/v1/orgs/$orgSlug/api-tokens/$id'
 import { Route as ApiV1OrgsOrgSlugAbsencesIdRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/$id'
 import { Route as ApiV1MeInvitationsIdDeclineRouteImport } from './routes/api/v1/me/invitations/$id/decline'
 import { Route as ApiV1MeInvitationsIdAcceptRouteImport } from './routes/api/v1/me/invitations/$id/accept'
@@ -584,6 +588,11 @@ const OrgSlugProjectsProjectIdSettingsRoute =
     path: '/projects/$projectId/settings',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const ApiV1MeSessionsIndexRoute = ApiV1MeSessionsIndexRouteImport.update({
+  id: '/sessions/',
+  path: '/sessions/',
+  getParentRoute: () => ApiV1MeRoute,
+} as any)
 const ApiV1MeInvitationsIndexRoute = ApiV1MeInvitationsIndexRouteImport.update({
   id: '/invitations/',
   path: '/invitations/',
@@ -660,6 +669,11 @@ const ApiV1OrgsOrgSlugDayAssemblyRoute =
     path: '/api/v1/orgs/$orgSlug/day-assembly',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1MeSessionsIdRoute = ApiV1MeSessionsIdRouteImport.update({
+  id: '/sessions/$id',
+  path: '/sessions/$id',
+  getParentRoute: () => ApiV1MeRoute,
+} as any)
 const ApiV1MeDevicesInstallationIdRoute =
   ApiV1MeDevicesInstallationIdRouteImport.update({
     id: '/devices/$installationId',
@@ -754,6 +768,12 @@ const ApiV1OrgsOrgSlugAuditLogIndexRoute =
   ApiV1OrgsOrgSlugAuditLogIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/audit-log/',
     path: '/api/v1/orgs/$orgSlug/audit-log/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugApiTokensIndexRoute =
+  ApiV1OrgsOrgSlugApiTokensIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/api-tokens/',
+    path: '/api/v1/orgs/$orgSlug/api-tokens/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAbsencesIndexRoute =
@@ -958,6 +978,12 @@ const ApiV1OrgsOrgSlugAssistantModelsRoute =
   ApiV1OrgsOrgSlugAssistantModelsRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/assistant/models',
     path: '/api/v1/orgs/$orgSlug/assistant/models',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugApiTokensIdRoute =
+  ApiV1OrgsOrgSlugApiTokensIdRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/api-tokens/$id',
+    path: '/api/v1/orgs/$orgSlug/api-tokens/$id',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAbsencesIdRoute =
@@ -1381,6 +1407,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
+  '/api/v1/me/sessions/$id': typeof ApiV1MeSessionsIdRoute
   '/api/v1/orgs/$orgSlug/day-assembly': typeof ApiV1OrgsOrgSlugDayAssemblyRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRouteWithChildren
@@ -1395,11 +1422,13 @@ export interface FileRoutesByFullPath {
   '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/me/import-claims/': typeof ApiV1MeImportClaimsIndexRoute
   '/api/v1/me/invitations/': typeof ApiV1MeInvitationsIndexRoute
+  '/api/v1/me/sessions/': typeof ApiV1MeSessionsIndexRoute
   '/api/v1/me/import-claims/$organizationId/accept': typeof ApiV1MeImportClaimsOrganizationIdAcceptRoute
   '/api/v1/me/import-claims/$organizationId/decline': typeof ApiV1MeImportClaimsOrganizationIdDeclineRoute
   '/api/v1/me/invitations/$id/accept': typeof ApiV1MeInvitationsIdAcceptRoute
   '/api/v1/me/invitations/$id/decline': typeof ApiV1MeInvitationsIdDeclineRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
+  '/api/v1/orgs/$orgSlug/api-tokens/$id': typeof ApiV1OrgsOrgSlugApiTokensIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
   '/api/v1/orgs/$orgSlug/audit-log/export': typeof ApiV1OrgsOrgSlugAuditLogExportRoute
@@ -1434,6 +1463,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
+  '/api/v1/orgs/$orgSlug/api-tokens/': typeof ApiV1OrgsOrgSlugApiTokensIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log/': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
   '/api/v1/orgs/$orgSlug/clients/': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules/': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
@@ -1574,6 +1604,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
+  '/api/v1/me/sessions/$id': typeof ApiV1MeSessionsIdRoute
   '/api/v1/orgs/$orgSlug/day-assembly': typeof ApiV1OrgsOrgSlugDayAssemblyRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRouteWithChildren
@@ -1588,11 +1619,13 @@ export interface FileRoutesByTo {
   '/api/v1/me/devices': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/me/import-claims': typeof ApiV1MeImportClaimsIndexRoute
   '/api/v1/me/invitations': typeof ApiV1MeInvitationsIndexRoute
+  '/api/v1/me/sessions': typeof ApiV1MeSessionsIndexRoute
   '/api/v1/me/import-claims/$organizationId/accept': typeof ApiV1MeImportClaimsOrganizationIdAcceptRoute
   '/api/v1/me/import-claims/$organizationId/decline': typeof ApiV1MeImportClaimsOrganizationIdDeclineRoute
   '/api/v1/me/invitations/$id/accept': typeof ApiV1MeInvitationsIdAcceptRoute
   '/api/v1/me/invitations/$id/decline': typeof ApiV1MeInvitationsIdDeclineRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
+  '/api/v1/orgs/$orgSlug/api-tokens/$id': typeof ApiV1OrgsOrgSlugApiTokensIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
   '/api/v1/orgs/$orgSlug/audit-log/export': typeof ApiV1OrgsOrgSlugAuditLogExportRoute
@@ -1627,6 +1660,7 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
+  '/api/v1/orgs/$orgSlug/api-tokens': typeof ApiV1OrgsOrgSlugApiTokensIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
   '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
@@ -1770,6 +1804,7 @@ export interface FileRoutesById {
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
+  '/api/v1/me/sessions/$id': typeof ApiV1MeSessionsIdRoute
   '/api/v1/orgs/$orgSlug/day-assembly': typeof ApiV1OrgsOrgSlugDayAssemblyRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRouteWithChildren
@@ -1784,11 +1819,13 @@ export interface FileRoutesById {
   '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/me/import-claims/': typeof ApiV1MeImportClaimsIndexRoute
   '/api/v1/me/invitations/': typeof ApiV1MeInvitationsIndexRoute
+  '/api/v1/me/sessions/': typeof ApiV1MeSessionsIndexRoute
   '/api/v1/me/import-claims/$organizationId/accept': typeof ApiV1MeImportClaimsOrganizationIdAcceptRoute
   '/api/v1/me/import-claims/$organizationId/decline': typeof ApiV1MeImportClaimsOrganizationIdDeclineRoute
   '/api/v1/me/invitations/$id/accept': typeof ApiV1MeInvitationsIdAcceptRoute
   '/api/v1/me/invitations/$id/decline': typeof ApiV1MeInvitationsIdDeclineRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
+  '/api/v1/orgs/$orgSlug/api-tokens/$id': typeof ApiV1OrgsOrgSlugApiTokensIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
   '/api/v1/orgs/$orgSlug/audit-log/export': typeof ApiV1OrgsOrgSlugAuditLogExportRoute
@@ -1823,6 +1860,7 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
+  '/api/v1/orgs/$orgSlug/api-tokens/': typeof ApiV1OrgsOrgSlugApiTokensIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log/': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
   '/api/v1/orgs/$orgSlug/clients/': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules/': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
@@ -1967,6 +2005,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
     | '/api/v1/me/devices/$installationId'
+    | '/api/v1/me/sessions/$id'
     | '/api/v1/orgs/$orgSlug/day-assembly'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
@@ -1981,11 +2020,13 @@ export interface FileRouteTypes {
     | '/api/v1/me/devices/'
     | '/api/v1/me/import-claims/'
     | '/api/v1/me/invitations/'
+    | '/api/v1/me/sessions/'
     | '/api/v1/me/import-claims/$organizationId/accept'
     | '/api/v1/me/import-claims/$organizationId/decline'
     | '/api/v1/me/invitations/$id/accept'
     | '/api/v1/me/invitations/$id/decline'
     | '/api/v1/orgs/$orgSlug/absences/$id'
+    | '/api/v1/orgs/$orgSlug/api-tokens/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
     | '/api/v1/orgs/$orgSlug/audit-log/export'
@@ -2020,6 +2061,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences/'
+    | '/api/v1/orgs/$orgSlug/api-tokens/'
     | '/api/v1/orgs/$orgSlug/audit-log/'
     | '/api/v1/orgs/$orgSlug/clients/'
     | '/api/v1/orgs/$orgSlug/filing-rules/'
@@ -2160,6 +2202,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
     | '/api/v1/me/devices/$installationId'
+    | '/api/v1/me/sessions/$id'
     | '/api/v1/orgs/$orgSlug/day-assembly'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
@@ -2174,11 +2217,13 @@ export interface FileRouteTypes {
     | '/api/v1/me/devices'
     | '/api/v1/me/import-claims'
     | '/api/v1/me/invitations'
+    | '/api/v1/me/sessions'
     | '/api/v1/me/import-claims/$organizationId/accept'
     | '/api/v1/me/import-claims/$organizationId/decline'
     | '/api/v1/me/invitations/$id/accept'
     | '/api/v1/me/invitations/$id/decline'
     | '/api/v1/orgs/$orgSlug/absences/$id'
+    | '/api/v1/orgs/$orgSlug/api-tokens/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
     | '/api/v1/orgs/$orgSlug/audit-log/export'
@@ -2213,6 +2258,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences'
+    | '/api/v1/orgs/$orgSlug/api-tokens'
     | '/api/v1/orgs/$orgSlug/audit-log'
     | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/filing-rules'
@@ -2355,6 +2401,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
     | '/api/v1/me/devices/$installationId'
+    | '/api/v1/me/sessions/$id'
     | '/api/v1/orgs/$orgSlug/day-assembly'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
@@ -2369,11 +2416,13 @@ export interface FileRouteTypes {
     | '/api/v1/me/devices/'
     | '/api/v1/me/import-claims/'
     | '/api/v1/me/invitations/'
+    | '/api/v1/me/sessions/'
     | '/api/v1/me/import-claims/$organizationId/accept'
     | '/api/v1/me/import-claims/$organizationId/decline'
     | '/api/v1/me/invitations/$id/accept'
     | '/api/v1/me/invitations/$id/decline'
     | '/api/v1/orgs/$orgSlug/absences/$id'
+    | '/api/v1/orgs/$orgSlug/api-tokens/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
     | '/api/v1/orgs/$orgSlug/audit-log/export'
@@ -2408,6 +2457,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences/'
+    | '/api/v1/orgs/$orgSlug/api-tokens/'
     | '/api/v1/orgs/$orgSlug/audit-log/'
     | '/api/v1/orgs/$orgSlug/clients/'
     | '/api/v1/orgs/$orgSlug/filing-rules/'
@@ -2526,6 +2576,7 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugWhoamiRoute: typeof ApiV1OrgsOrgSlugWhoamiRoute
   ApiV1OrgsOrgSlugWorkingHoursRoute: typeof ApiV1OrgsOrgSlugWorkingHoursRoute
   ApiV1OrgsOrgSlugAbsencesIdRoute: typeof ApiV1OrgsOrgSlugAbsencesIdRoute
+  ApiV1OrgsOrgSlugApiTokensIdRoute: typeof ApiV1OrgsOrgSlugApiTokensIdRoute
   ApiV1OrgsOrgSlugAssistantModelsRoute: typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   ApiV1OrgsOrgSlugAssistantSettingsRoute: typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
   ApiV1OrgsOrgSlugAuditLogExportRoute: typeof ApiV1OrgsOrgSlugAuditLogExportRoute
@@ -2559,6 +2610,7 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugTimerResumeRoute: typeof ApiV1OrgsOrgSlugTimerResumeRoute
   ApiV1OrgsOrgSlugTimerSettingsRoute: typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   ApiV1OrgsOrgSlugAbsencesIndexRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
+  ApiV1OrgsOrgSlugApiTokensIndexRoute: typeof ApiV1OrgsOrgSlugApiTokensIndexRoute
   ApiV1OrgsOrgSlugAuditLogIndexRoute: typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
   ApiV1OrgsOrgSlugClientsIndexRoute: typeof ApiV1OrgsOrgSlugClientsIndexRoute
   ApiV1OrgsOrgSlugFilingRulesIndexRoute: typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
@@ -3128,6 +3180,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugProjectsProjectIdSettingsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/api/v1/me/sessions/': {
+      id: '/api/v1/me/sessions/'
+      path: '/sessions'
+      fullPath: '/api/v1/me/sessions/'
+      preLoaderRoute: typeof ApiV1MeSessionsIndexRouteImport
+      parentRoute: typeof ApiV1MeRoute
+    }
     '/api/v1/me/invitations/': {
       id: '/api/v1/me/invitations/'
       path: '/invitations'
@@ -3225,6 +3284,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/orgs/$orgSlug/day-assembly'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugDayAssemblyRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/me/sessions/$id': {
+      id: '/api/v1/me/sessions/$id'
+      path: '/sessions/$id'
+      fullPath: '/api/v1/me/sessions/$id'
+      preLoaderRoute: typeof ApiV1MeSessionsIdRouteImport
+      parentRoute: typeof ApiV1MeRoute
     }
     '/api/v1/me/devices/$installationId': {
       id: '/api/v1/me/devices/$installationId'
@@ -3336,6 +3402,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/audit-log'
       fullPath: '/api/v1/orgs/$orgSlug/audit-log/'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugAuditLogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/api-tokens/': {
+      id: '/api/v1/orgs/$orgSlug/api-tokens/'
+      path: '/api/v1/orgs/$orgSlug/api-tokens'
+      fullPath: '/api/v1/orgs/$orgSlug/api-tokens/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugApiTokensIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/absences/': {
@@ -3574,6 +3647,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/assistant/models'
       fullPath: '/api/v1/orgs/$orgSlug/assistant/models'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugAssistantModelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/api-tokens/$id': {
+      id: '/api/v1/orgs/$orgSlug/api-tokens/$id'
+      path: '/api/v1/orgs/$orgSlug/api-tokens/$id'
+      fullPath: '/api/v1/orgs/$orgSlug/api-tokens/$id'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugApiTokensIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/absences/$id': {
@@ -4073,9 +4153,11 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 interface ApiV1MeRouteChildren {
   ApiV1MeOrganizationsRoute: typeof ApiV1MeOrganizationsRoute
   ApiV1MeDevicesInstallationIdRoute: typeof ApiV1MeDevicesInstallationIdRoute
+  ApiV1MeSessionsIdRoute: typeof ApiV1MeSessionsIdRoute
   ApiV1MeDevicesIndexRoute: typeof ApiV1MeDevicesIndexRoute
   ApiV1MeImportClaimsIndexRoute: typeof ApiV1MeImportClaimsIndexRoute
   ApiV1MeInvitationsIndexRoute: typeof ApiV1MeInvitationsIndexRoute
+  ApiV1MeSessionsIndexRoute: typeof ApiV1MeSessionsIndexRoute
   ApiV1MeImportClaimsOrganizationIdAcceptRoute: typeof ApiV1MeImportClaimsOrganizationIdAcceptRoute
   ApiV1MeImportClaimsOrganizationIdDeclineRoute: typeof ApiV1MeImportClaimsOrganizationIdDeclineRoute
   ApiV1MeInvitationsIdAcceptRoute: typeof ApiV1MeInvitationsIdAcceptRoute
@@ -4085,9 +4167,11 @@ interface ApiV1MeRouteChildren {
 const ApiV1MeRouteChildren: ApiV1MeRouteChildren = {
   ApiV1MeOrganizationsRoute: ApiV1MeOrganizationsRoute,
   ApiV1MeDevicesInstallationIdRoute: ApiV1MeDevicesInstallationIdRoute,
+  ApiV1MeSessionsIdRoute: ApiV1MeSessionsIdRoute,
   ApiV1MeDevicesIndexRoute: ApiV1MeDevicesIndexRoute,
   ApiV1MeImportClaimsIndexRoute: ApiV1MeImportClaimsIndexRoute,
   ApiV1MeInvitationsIndexRoute: ApiV1MeInvitationsIndexRoute,
+  ApiV1MeSessionsIndexRoute: ApiV1MeSessionsIndexRoute,
   ApiV1MeImportClaimsOrganizationIdAcceptRoute:
     ApiV1MeImportClaimsOrganizationIdAcceptRoute,
   ApiV1MeImportClaimsOrganizationIdDeclineRoute:
@@ -4197,6 +4281,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugWhoamiRoute: ApiV1OrgsOrgSlugWhoamiRoute,
   ApiV1OrgsOrgSlugWorkingHoursRoute: ApiV1OrgsOrgSlugWorkingHoursRoute,
   ApiV1OrgsOrgSlugAbsencesIdRoute: ApiV1OrgsOrgSlugAbsencesIdRoute,
+  ApiV1OrgsOrgSlugApiTokensIdRoute: ApiV1OrgsOrgSlugApiTokensIdRoute,
   ApiV1OrgsOrgSlugAssistantModelsRoute: ApiV1OrgsOrgSlugAssistantModelsRoute,
   ApiV1OrgsOrgSlugAssistantSettingsRoute:
     ApiV1OrgsOrgSlugAssistantSettingsRoute,
@@ -4244,6 +4329,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugTimerResumeRoute: ApiV1OrgsOrgSlugTimerResumeRoute,
   ApiV1OrgsOrgSlugTimerSettingsRoute: ApiV1OrgsOrgSlugTimerSettingsRoute,
   ApiV1OrgsOrgSlugAbsencesIndexRoute: ApiV1OrgsOrgSlugAbsencesIndexRoute,
+  ApiV1OrgsOrgSlugApiTokensIndexRoute: ApiV1OrgsOrgSlugApiTokensIndexRoute,
   ApiV1OrgsOrgSlugAuditLogIndexRoute: ApiV1OrgsOrgSlugAuditLogIndexRoute,
   ApiV1OrgsOrgSlugClientsIndexRoute: ApiV1OrgsOrgSlugClientsIndexRoute,
   ApiV1OrgsOrgSlugFilingRulesIndexRoute: ApiV1OrgsOrgSlugFilingRulesIndexRoute,

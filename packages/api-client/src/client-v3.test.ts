@@ -160,6 +160,81 @@ describe("the admin's routes", () => {
 	});
 });
 
+describe("the sign-ins and the API tokens", () => {
+	const session = {
+		id: "s-1",
+		label: "Farmer app on Android",
+		kind: "mobile",
+		ipAddress: null,
+		createdAt: "2026-10-01T08:00:00.000Z",
+		updatedAt: "2026-10-01T08:00:00.000Z",
+		expiresAt: "2026-10-31T08:00:00.000Z",
+		isCurrent: true,
+	};
+	const apiToken = {
+		id: "t-1",
+		name: "Export",
+		hint: "AbCd",
+		scope: "read",
+		workspace: null,
+		createdAt: "2026-10-01T08:00:00.000Z",
+		lastUsedAt: null,
+		expiresAt: null,
+		expired: false,
+	};
+
+	test("the sessions are read outside an organization", async () => {
+		const { transport, requests } = scriptedServer([jsonReply(200, [session])]);
+		const rows = await new FarmerClient(transport, "tok").listSessions();
+		expect(rows[0]?.isCurrent).toBe(true);
+		expect(requests[0]?.url).toBe(`${ORIGIN}/api/v1/me/sessions`);
+	});
+
+	test("a revoke names the session in the path", async () => {
+		const { transport, requests } = scriptedServer([
+			jsonReply(200, { revoked: true }),
+		]);
+		const result = await new FarmerClient(transport, "tok").revokeSession(
+			"a/b",
+		);
+		expect(result.revoked).toBe(true);
+		expect(requests[0]?.method).toBe("DELETE");
+		expect(requests[0]?.url).toBe(`${ORIGIN}/api/v1/me/sessions/a%2Fb`);
+	});
+
+	test("a new token comes back once, with its row", async () => {
+		const { transport, requests } = scriptedServer([
+			jsonReply(200, { token: "fmr_abc", apiToken }),
+		]);
+		const created = await new FarmerClient(transport, "tok").createApiToken(
+			"acme",
+			{ name: "Export", scope: "read", workspace: "this", expiresInDays: 90 },
+		);
+		expect(created.token).toBe("fmr_abc");
+		expect(created.apiToken.hint).toBe("AbCd");
+		expect(requests[0]?.url).toBe(`${ORIGIN}/api/v1/orgs/acme/api-tokens`);
+		expect(requests[0]?.body).toBe(
+			JSON.stringify({
+				name: "Export",
+				scope: "read",
+				workspace: "this",
+				expiresInDays: 90,
+			}),
+		);
+	});
+
+	test("a token is listed and revoked in the organization's path", async () => {
+		const { transport, requests } = scriptedServer([
+			jsonReply(200, [apiToken]),
+			jsonReply(200, { revoked: false }),
+		]);
+		const client = new FarmerClient(transport, "tok");
+		expect(await client.listApiTokens("acme")).toHaveLength(1);
+		expect((await client.revokeApiToken("acme", "t-1")).revoked).toBe(false);
+		expect(requests[1]?.url).toBe(`${ORIGIN}/api/v1/orgs/acme/api-tokens/t-1`);
+	});
+});
+
 describe("the steps before a workspace", () => {
 	test("the invitations are read outside an organization", async () => {
 		const { transport, requests } = scriptedServer([
