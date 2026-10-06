@@ -70,6 +70,16 @@ export const mixHex = (a: string, b: string, weight: number) => {
 	);
 };
 
+/**
+ * A hex colour at an opacity, as `#rrggbbaa`. The colour shows the surface
+ * under it, so it is correct on any container. An alpha that the colour
+ * already has is replaced.
+ */
+export const withAlpha = (hex: string, opacity: number) =>
+	`${hex.slice(0, 7)}${Math.round(clamp(opacity, 0, 1) * 255)
+		.toString(16)
+		.padStart(2, "0")}`;
+
 /** WCAG 2 contrast ratio of two hex colours. */
 export const contrastRatio = (a: string, b: string) => {
 	const luminance = (hex: string) => {

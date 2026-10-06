@@ -29,16 +29,25 @@ export function ActionButton({
 	const palette = usePalette();
 	const spec = SIZES[size];
 	const morph = useCornerMorph(evenCorners(spec.height / 2), spec.pressed);
-	const container =
-		variant === "filled"
+	// Material 3 draws a disabled button in the on-surface colour: the
+	// container at 12% and the label at 38%. A fade of the whole button kept
+	// the label in its own tone, so it was hard to read on some themes.
+	const filledLike =
+		variant === "filled" || variant === "tonal" || variant === "elevated";
+	const container = disabled
+		? filledLike
+			? palette.disabledContainer
+			: "transparent"
+		: variant === "filled"
 			? palette.primary
 			: variant === "tonal"
 				? palette.secondaryContainer
 				: variant === "elevated"
 					? palette.surfaceContainerLow
 					: "transparent";
-	const content =
-		variant === "filled"
+	const content = disabled
+		? palette.onDisabled
+		: variant === "filled"
 			? palette.onPrimary
 			: variant === "tonal"
 				? palette.onSecondaryContainer
@@ -54,9 +63,8 @@ export function ActionButton({
 						overflow: "hidden",
 						backgroundColor: container,
 						borderWidth: variant === "outlined" ? 1 : 0,
-						borderColor: palette.outline,
-						elevation: variant === "elevated" ? 1 : 0,
-						opacity: disabled ? 0.38 : 1,
+						borderColor: disabled ? palette.disabledContainer : palette.outline,
+						elevation: variant === "elevated" && !disabled ? 1 : 0,
 					},
 					morph.style,
 				]}

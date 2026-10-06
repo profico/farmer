@@ -35,6 +35,10 @@ export type Palette = {
 	scrim: ColorValue;
 	outline: ColorValue;
 	outlineVariant: ColorValue;
+	/** A disabled control, as Material 3 draws it: the container is the
+	 *  on-surface colour at 12%, and the label or the icon is at 38%. */
+	disabledContainer: ColorValue;
+	onDisabled: ColorValue;
 	error: ColorValue;
 	onError: ColorValue;
 	errorContainer: ColorValue;

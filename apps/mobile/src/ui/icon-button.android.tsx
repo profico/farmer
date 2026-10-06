@@ -20,14 +20,19 @@ export function IconButton({
 }: IconButtonProps) {
 	const palette = usePalette();
 	const morph = useCornerMorph(evenCorners(20), 12);
-	const backgroundColor =
-		tone === "filled"
+	// The disabled colours of Material 3, as in `action-button.android.tsx`.
+	const backgroundColor = disabled
+		? tone === "plain"
+			? "transparent"
+			: palette.disabledContainer
+		: tone === "filled"
 			? palette.primary
 			: tone === "tonal"
 				? palette.secondaryContainer
 				: "transparent";
-	const color =
-		tone === "filled"
+	const color = disabled
+		? palette.onDisabled
+		: tone === "filled"
 			? palette.onPrimary
 			: tone === "tonal"
 				? palette.onSecondaryContainer
@@ -48,7 +53,6 @@ export function IconButton({
 				margin: -4,
 				alignItems: "center",
 				justifyContent: "center",
-				opacity: disabled ? 0.38 : 1,
 			}}
 		>
 			<Animated.View

@@ -1,4 +1,4 @@
-import { mixHex, oklchToHex } from "./color";
+import { mixHex, oklchToHex, withAlpha } from "./color";
 import type { Palette } from "./palette";
 
 // The farmer palette and the seed themes of the web app, for the phone.
@@ -376,6 +376,8 @@ export const paletteOf = (
 			tokens.bg,
 			high ? (dark ? 0.32 : 0.28) : dark ? 0.13 : 0.11,
 		),
+		disabledContainer: withAlpha(tokens.fg, 0.12),
+		onDisabled: withAlpha(tokens.fg, 0.38),
 		error: tokens.bad,
 		onError: tokens.bg,
 		errorContainer: mixHex(tokens.bad, tokens.bg, dark ? 0.22 : 0.12),

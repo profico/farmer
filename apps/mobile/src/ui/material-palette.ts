@@ -1,4 +1,4 @@
-import { hexToOklch, mixHex, oklchToHex } from "./color";
+import { hexToOklch, mixHex, oklchToHex, withAlpha } from "./color";
 import { type Contrast, farmerTokens, type Scheme } from "./farmer-theme";
 import type { Palette } from "./palette";
 
@@ -128,6 +128,8 @@ export const materialPalette = (
 		scrim: colors.scrim,
 		outline: high ? colors.onSurfaceVariant : colors.outline,
 		outlineVariant: high ? colors.outline : colors.outlineVariant,
+		disabledContainer: withAlpha(rgb(colors.onSurface), 0.12),
+		onDisabled: withAlpha(rgb(colors.onSurface), 0.38),
 		error: colors.error,
 		onError: colors.onError,
 		errorContainer: colors.errorContainer,
