@@ -15,7 +15,9 @@ export function subscribeHolds(listener: () => void): () => void {
 /**
  * Tells the app that some code wants the Back event, for example a
  * `BackHandler` listener. While a hold is open, the app keeps the Back
- * gesture and Android does not play the back-to-home preview. Call the
+ * gesture and Android does not play the back-to-home preview. Nothing calls
+ * this yet. It stays as the documented way for a future `BackHandler` user
+ * to keep the gesture. Call the
  * returned function to release the hold. Expo Router's own listener needs no
  * hold: `useSystemBack` reads the router state for it.
  */

@@ -80,8 +80,9 @@ export function DialogHost() {
 										: palette.primary;
 								return (
 									<Pressable
-										// The buttons never change while the dialog shows.
-										key={button.text ?? "button"}
+										// The buttons never change while the dialog shows, and two buttons may share a text.
+										// oxlint-disable-next-line react/no-array-index-key -- fixed list, text is not unique
+										key={index}
 										accessibilityRole="button"
 										onPress={() => pressDialogButton(dialog.id, index)}
 										android_ripple={{ color: palette.outlineVariant }}

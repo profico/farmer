@@ -79,7 +79,8 @@ export const notify = (message: string) => {
 	showDialog(message);
 };
 
-/** The failure of a change, in the system's dialog, with the server's own
+/** The failure of a change, in the app's dialog (the Material 3 dialog of
+ *  `src/ui/dialog-host.android.tsx` on Android), with the server's own
  *  sentence. A 403 for an API token arrives here too. */
 export const notifyError = (title: string, error: Error) =>
 	showDialog(title, error.message || "Something went wrong. Try again.");

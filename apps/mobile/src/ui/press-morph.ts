@@ -73,14 +73,15 @@ export function useToggleMorph(selected: boolean, rest: number, on: number) {
 	const choice = useSpring("fastSpatial");
 	const state = useSharedValue(selected ? 1 : 0);
 	const press = useSharedValue(0);
+	// `choice` is a new object on each render, so the effect reads its
+	// parts. A re-render in the middle of a spring must not restart it.
+	const spring = choice.reduced ? undefined : choice.spring;
 	useEffect(() => {
 		const target = selected ? 1 : 0;
 		state.set(
-			choice.reduced
-				? withTiming(target, { duration: 0 })
-				: withSpring(target, choice.spring),
+			spring ? withSpring(target, spring) : withTiming(target, { duration: 0 }),
 		);
-	}, [selected, choice, state]);
+	}, [selected, spring, state]);
 	const style = useAnimatedStyle(() => {
 		const base = interpolate(state.value, [0, 1], [rest, on]);
 		// The pressed shape is the shape that the toggle would swap to.
