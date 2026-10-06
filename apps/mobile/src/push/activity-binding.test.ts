@@ -34,6 +34,20 @@ describe("activityBinding", () => {
 		expect(activityBinding("ios", undefined, "abc")).toBeNull();
 	});
 
+	test("force binds a running token that the relay already holds", () => {
+		expect(activityBinding("ios", "abc", "abc", true)).toEqual({
+			liveActivityToken: "abc",
+		});
+	});
+
+	test("force sends nothing when no activity runs", () => {
+		expect(activityBinding("ios", null, null, true)).toBeNull();
+		expect(activityBinding("ios", null, "abc", true)).toEqual({
+			liveActivityToken: null,
+		});
+		expect(activityBinding("ios", undefined, "abc", true)).toBeNull();
+	});
+
 	test("never sends on Android", () => {
 		expect(activityBinding("android", "abc", null)).toBeNull();
 		expect(activityBinding("android", null, "abc")).toBeNull();

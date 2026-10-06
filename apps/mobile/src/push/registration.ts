@@ -267,7 +267,8 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 		if (!pushToken || !live()) return;
 		const relay = await ensureRelay(relayUrl, pushToken, live);
 		if (!relay || !live()) return;
-		await bindActivityToken(live);
+		// The relay call comes first. The report to the Server follows below.
+		await bindActivityToken(live, true);
 		const publicKey = await devicePublicKey();
 		const allowed = await notificationsAllowed();
 		const id = await installationId();
@@ -312,8 +313,13 @@ const runningActivityToken = (): string | null => {
 	}
 };
 
-/** Bind the wanted Live Activity token at the relay (iOS). Never throws. */
-const bindActivityToken = async (live: Live): Promise<void> => {
+/**
+ * Bind the wanted Live Activity token at the relay (iOS). Never throws.
+ * `force` binds a running activity's token again, even when the app thinks
+ * the relay holds it. The relay can lose the binding, and the app cannot see
+ * that. The relay bind is idempotent.
+ */
+const bindActivityToken = async (live: Live, force = false): Promise<void> => {
 	try {
 		// After a restart nothing has been learned yet. Ask the activity itself,
 		// so a running activity is bound again.
@@ -327,6 +333,7 @@ const bindActivityToken = async (live: Live): Promise<void> => {
 			platform,
 			wantedActivityToken,
 			stored.activityToken,
+			force,
 		);
 		if (!update) return;
 		const answer = await updateRelay(stored.relayUrl, stored, update);

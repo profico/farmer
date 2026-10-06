@@ -183,7 +183,11 @@ opens the sealed payload with the phone's private key. Use
   sends the token to the Server and calls `updateRelay` with
   `liveActivityToken` at the same time. The app sends `null` when the native
   event `onActivityEnded` reports that no activity is active. A failed relay
-  call is logged, and the next `syncPush` sends the token again. Android
+  call is logged, and the next `syncPush` sends the token again. Each
+  `syncPush` also binds a running activity's token again, before it reports
+  the token to the Server, because the relay can lose a binding that the app
+  still remembers. The relay bind is idempotent. The app makes no relay call
+  for this when no activity runs. Android
   never sends it. The relay refuses a push to a token that no device
   bound (`apps/push-relay/README.md`, "Live Activity tokens"). No one ran
   this on a device with APNs.
