@@ -13,11 +13,17 @@ export default function ProjectsLayout() {
 	return (
 		<Stack screenOptions={options}>
 			<Stack.Screen name="index" options={{ headerShown: false }} />
-			<Stack.Screen name="[id]/index" options={{ title: "", headerBackTitle }} />
+			<Stack.Screen
+				name="[id]/index"
+				options={{ title: "", headerBackTitle }}
+			/>
 			<Stack.Screen name="[id]/settings" options={{ title: "Settings" }} />
 			<Stack.Screen name="[id]/team" options={{ title: "Team" }} />
 			<Stack.Screen name="[id]/repositories" options={{ title: "GitHub" }} />
-			<Stack.Screen name="new" options={{ title: "New project", headerBackTitle }} />
+			<Stack.Screen
+				name="new"
+				options={{ title: "New project", headerBackTitle }}
+			/>
 		</Stack>
 	);
 }
