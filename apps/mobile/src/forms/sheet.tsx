@@ -101,9 +101,16 @@ export function FormSection({
 	const palette = usePalette();
 	return (
 		<View style={{ gap: SPACE.s }}>
-			<Text variant="labelLarge" color={palette.onSurfaceVariant}>
-				{label}
-			</Text>
+			{/* Android names a section as the Expressive settings lists do. */}
+			{Platform.OS === "android" ? (
+				<Text variant="titleSmallEmphasized" color={palette.primary}>
+					{label}
+				</Text>
+			) : (
+				<Text variant="labelLarge" color={palette.onSurfaceVariant}>
+					{label}
+				</Text>
+			)}
 			{children}
 		</View>
 	);
