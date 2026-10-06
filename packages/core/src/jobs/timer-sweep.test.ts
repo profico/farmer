@@ -234,3 +234,16 @@ test("a second pass finds nothing left to do", async () => {
 	expect(again).toMatchObject({ running: 0, dropped: 0 });
 	expect(sent).toHaveLength(0);
 });
+
+test("a row that changed since the read is not counted or announced", async () => {
+	await startTimer();
+
+	// Both passes read the row before either one writes.
+	const [first, second] = await Promise.all([
+		runTimerSweepOnce({ now: later(13 * HOUR) }),
+		runTimerSweepOnce({ now: later(13 * HOUR) }),
+	]);
+
+	expect(first.dropped + second.dropped).toBe(1);
+	expect(sent.filter((message) => message.channel === "push")).toHaveLength(1);
+});
