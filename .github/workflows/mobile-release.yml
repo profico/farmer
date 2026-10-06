@@ -222,7 +222,10 @@ jobs:
           FARMER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           FARMER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           FARMER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        # Only arm64-v8a: every phone that people use has it. Four ABIs took
+        # about 34 minutes on a cold runner. An x86_64 emulator cannot
+        # install this APK; build it locally for an emulator.
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
 
       - name: Name the APK and write its checksum
         env:
@@ -235,7 +238,10 @@ jobs:
           mkdir -p out
           apk="out/farmer-$VERSION-$suffix.apk"
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$apk"
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$apk" | grep -E 'certificate (DN|SHA-256)'
+          # The runner has more than one build-tools version, so a glob
+          # gives more than one path. Use the newest.
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --print-certs "$apk" | grep -E 'certificate (DN|SHA-256)'
           (cd out && sha256sum "$(basename "$apk")" | tee "$(basename "$apk").sha256")
 
       - name: Upload the APK
