@@ -6,6 +6,7 @@ import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import type { SheetProps } from "./sheet";
 
+export { FormGroup } from "./form-group";
 export { FormSection } from "./form-section";
 
 /**
@@ -56,7 +57,7 @@ export function Sheet({
 			    sheet the insets of the hook can be zero. */}
 			<SafeAreaView
 				edges={["bottom"]}
-				style={{ flex: 1, backgroundColor: palette.surface }}
+				style={{ flex: 1, backgroundColor: palette.background }}
 			>
 				<KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
 					<ScrollView

@@ -61,6 +61,7 @@ export const ICONS = {
 	commit: { md: "commit", sf: "smallcircle.filled.circle" },
 	pullRequest: { md: "call-merge", sf: "arrow.triangle.merge" },
 	coffee: { md: "free-breakfast", sf: "cup.and.saucer" },
+	updown: { md: "unfold-more", sf: "chevron.up.chevron.down" },
 	expand: { md: "expand-more", sf: "chevron.down" },
 	collapse: { md: "expand-less", sf: "chevron.up" },
 	more: { md: "more-vert", sf: "ellipsis.circle" },
