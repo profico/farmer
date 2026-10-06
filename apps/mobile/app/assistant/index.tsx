@@ -1,15 +1,7 @@
 import type { AssistantThread } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-	ActionSheetIOS,
-	Alert,
-	FlatList,
-	Platform,
-	Pressable,
-	RefreshControl,
-	View,
-} from "react-native";
+import { Alert, FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -38,6 +30,7 @@ import {
 import { RADIUS } from "../../src/ui/corner";
 import { Icon } from "../../src/ui/icon";
 import { LoadingIndicator } from "../../src/ui/loading";
+import { useOpenRowMenu } from "../../src/ui/row-menu";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
@@ -109,31 +102,40 @@ function ThreadRow({
 	thread,
 	now,
 	onOpen,
-	onActions,
+	onRename,
+	onDelete,
 }: {
 	thread: AssistantThread;
 	/** The time the list was opened, for the "Today" and "Yesterday" words. */
 	now: number;
 	onOpen: () => void;
-	onActions: () => void;
+	onRename: () => void;
+	onDelete: () => void;
 }) {
 	const palette = usePalette();
 	const running = useThreadRunning(thread.id);
+	const openMenu = useOpenRowMenu();
+	// A long press and the "more" button open the same menu.
+	const actions = [
+		{ label: "Rename", icon: "edit", onPress: onRename },
+		{ label: "Delete", icon: "delete", destructive: true, onPress: onDelete },
+	] as const;
 	return (
 		<ListRow
 			icon="assistant"
 			title={thread.title}
 			subtitle={running ? "Working" : whenOf(thread.updatedAt, now)}
 			onPress={onOpen}
+			actions={actions}
 			trailing={
 				<View style={{ flexDirection: "row", alignItems: "center" }}>
 					{running ? (
 						<LoadingIndicator size={24} color={palette.primary} />
 					) : null}
 					<IconButton
-						icon="edit"
-						label={`Rename or delete ${thread.title}`}
-						onPress={onActions}
+						icon="more"
+						label={`Actions for ${thread.title}`}
+						onPress={() => openMenu(thread.title, actions)}
 					/>
 				</View>
 			}
@@ -143,7 +145,7 @@ function ThreadRow({
 
 /**
  * The person's conversations with the assistant, newest first. A row opens
- * the conversation. Its button renames or deletes it.
+ * the conversation. A long press, or the "more" button, renames or deletes it.
  */
 export default function AssistantThreadsScreen() {
 	const router = useRouter();
@@ -179,33 +181,6 @@ export default function AssistantThreadsScreen() {
 				},
 			],
 		);
-
-	const actionsFor = (thread: AssistantThread) => {
-		if (Platform.OS === "ios") {
-			ActionSheetIOS.showActionSheetWithOptions(
-				{
-					title: thread.title,
-					options: ["Rename", "Delete", "Cancel"],
-					destructiveButtonIndex: 1,
-					cancelButtonIndex: 2,
-				},
-				(index) => {
-					if (index === 0) setRenaming(thread);
-					if (index === 1) confirmDelete(thread);
-				},
-			);
-			return;
-		}
-		Alert.alert(thread.title, undefined, [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Delete",
-				style: "destructive",
-				onPress: () => confirmDelete(thread),
-			},
-			{ text: "Rename", onPress: () => setRenaming(thread) },
-		]);
-	};
 
 	return (
 		<>
@@ -271,7 +246,8 @@ export default function AssistantThreadsScreen() {
 									params: { id: item.id },
 								})
 							}
-							onActions={() => actionsFor(item)}
+							onRename={() => setRenaming(item)}
+							onDelete={() => confirmDelete(item)}
 						/>
 					)}
 				/>

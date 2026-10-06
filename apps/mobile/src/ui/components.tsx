@@ -15,6 +15,8 @@ import { Icon } from "./icon";
 import { IconBadge } from "./icon-badge";
 import type { IconName } from "./icons";
 import { useMotionPreference } from "./motion";
+import { useRowMenu } from "./row-menu";
+import type { RowMenuEntry } from "./row-menu-items";
 import { SurfaceColor } from "./surface-color";
 import { usePalette } from "./theme";
 import { SPACE, TYPE, type TypeVariant } from "./type";
@@ -104,6 +106,7 @@ export function ListRow({
 	onPress,
 	selected,
 	accessibilityLabel,
+	actions,
 }: {
 	icon?: IconName;
 	/** A mark at the start of the row, in place of `icon`. */
@@ -116,10 +119,15 @@ export function ListRow({
 	/** What a screen reader says for the row. The title and the subtitle
 	 *  when not given. */
 	accessibilityLabel?: string;
+	/** The menu of a long press, and the same actions for a screen reader.
+	 *  The caller leaves out an action that the person may not do. */
+	actions?: readonly RowMenuEntry[];
 }) {
 	const palette = usePalette();
+	const menu = useRowMenu(title, actions ?? []);
 	return (
 		<Pressable
+			{...menu}
 			// A row that opens or picks something is one element with one label.
 			// A row without a press stays open, so a button at its end is
 			// reachable on its own.

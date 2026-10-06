@@ -61,6 +61,9 @@ export const ICONS = {
 	coffee: { md: "free-breakfast", sf: "cup.and.saucer" },
 	expand: { md: "expand-more", sf: "chevron.down" },
 	collapse: { md: "expand-less", sf: "chevron.up" },
+	more: { md: "more-vert", sf: "ellipsis" },
+	archive: { md: "archive", sf: "archivebox" },
+	restore: { md: "unarchive", sf: "arrow.uturn.backward" },
 } as const;
 
 export type IconName = keyof typeof ICONS;

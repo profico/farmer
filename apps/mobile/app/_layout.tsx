@@ -9,6 +9,7 @@ import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
 import { reapplyScheme } from "../src/ui/display-prefs";
 import { useMotionPreference } from "../src/ui/motion";
+import { RowMenuProvider } from "../src/ui/row-menu";
 import { usePalette } from "../src/ui/theme";
 
 function Navigator() {
@@ -78,7 +79,9 @@ export default function RootLayout() {
 			<DataProvider>
 				<StatusBar style="auto" />
 				<PushBridge />
-				<Navigator />
+				<RowMenuProvider>
+					<Navigator />
+				</RowMenuProvider>
 			</DataProvider>
 		</SessionProvider>
 	);
