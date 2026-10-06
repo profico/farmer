@@ -177,12 +177,6 @@ export const iosPaletteOf = (
 	};
 };
 
-/** The system roles that the palette does not name, for a test. */
-export const iosSystemColors = (
-	scheme: Scheme,
-	contrast: Contrast,
-): Readonly<System> => SYSTEM[contrast][scheme];
-
 /** `systemBackground`: the ground of a plain list, which has no cards on
  *  it. A grouped list uses `palette.background` instead. */
 export const iosPlainBackground = (scheme: Scheme) =>

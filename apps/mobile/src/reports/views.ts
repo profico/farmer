@@ -177,7 +177,7 @@ const VIEW_KEY = {
 
 /** The column keys that a view counts. A renamed task keeps its view, and
  *  a new kind of absence is in "Non-vacation leave". */
-export const keysFor = (
+const keysFor = (
 	view: AbsenceView,
 	columns: { key: string }[],
 ): Set<string> => {
@@ -213,7 +213,3 @@ export const absenceView = (
 		})
 		.filter((row) => row.entries.length > 0);
 };
-
-/** Names in the Croatian order of the alphabet, as on the web. */
-export const byName = (a: { name: string }, b: { name: string }) =>
-	a.name.localeCompare(b.name, "hr");

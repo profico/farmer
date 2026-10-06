@@ -30,7 +30,7 @@ export const subjectOf = (message: string) => message.split("\n")[0] ?? "";
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
 /** One act on a pull request, as a label. */
-export const activityLabel = (kind: string, reviewState: string | null) => {
+const activityLabel = (kind: string, reviewState: string | null) => {
 	switch (kind) {
 		case "opened":
 			return "Opened";
@@ -125,7 +125,7 @@ const verbOf = (kind: string) => {
 };
 
 /** One line for each different act on a pull request. */
-export const describePullRequestActivity = (
+const describePullRequestActivity = (
 	activity: readonly { kind: string; number: number; title: string }[],
 ) => [
 	...new Set(activity.map((a) => `${verbOf(a.kind)} #${a.number}: ${a.title}`)),

@@ -19,8 +19,7 @@ import { scope, useWorkspace, type Workspace } from "./queries";
  * `useAssistantSettings` in `capabilities.ts`, because the menu reads it.
  */
 
-export const assistantKey = (w: Workspace) =>
-	[...scope(w), "assistant"] as const;
+const assistantKey = (w: Workspace) => [...scope(w), "assistant"] as const;
 export const threadsKey = (w: Workspace) =>
 	[...assistantKey(w), "threads"] as const;
 export const threadKey = (w: Workspace, id: string) =>

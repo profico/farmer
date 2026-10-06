@@ -176,9 +176,3 @@ export class FlowKeeper {
 		if (this.#active === flow) this.#active = null;
 	}
 }
-
-/** True for a link that claims to be a sign-in callback. */
-export const isAuthCallback = (url: string) =>
-	url === AUTH_CALLBACK ||
-	url.startsWith(`${AUTH_CALLBACK}?`) ||
-	url.startsWith(`${AUTH_CALLBACK}/`);

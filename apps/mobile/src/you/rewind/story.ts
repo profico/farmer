@@ -18,7 +18,7 @@ export const isRewindOpen = (year: number, today: string): boolean =>
 	(year === yearOf(today) && monthOf(today) >= REWIND_OPENS_MONTH);
 
 /** This year's Rewind in December, last year's in January, else null. */
-export const featuredRewindYear = (today: string): number | null => {
+const featuredRewindYear = (today: string): number | null => {
 	const month = monthOf(today);
 	if (month === REWIND_OPENS_MONTH) return yearOf(today);
 	if (month === 1) return yearOf(today) - 1;

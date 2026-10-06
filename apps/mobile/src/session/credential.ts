@@ -10,7 +10,7 @@
 export const API_TOKEN_PREFIX = "fmr_";
 
 /** Whether the credential is an API token that the person pasted. */
-export const isApiToken = (token: string): boolean =>
+const isApiToken = (token: string): boolean =>
 	token.startsWith(API_TOKEN_PREFIX);
 
 /** Whether a sign-out revokes the credential on the server. */

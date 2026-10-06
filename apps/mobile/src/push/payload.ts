@@ -28,7 +28,7 @@ export const alertPayload = z.object({
 export type AlertPayload = z.output<typeof alertPayload>;
 
 /** The content state of the timer: numbers and the workspace slug. */
-export const timerContentState = z.object({
+const timerContentState = z.object({
 	state: z.enum(["running", "held"]),
 	/** Unix milliseconds on the Server's clock, or null while held. */
 	runningSinceMs: z.number().nullable(),

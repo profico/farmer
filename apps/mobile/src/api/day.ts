@@ -25,10 +25,10 @@ const MINUTE = 60_000;
 
 const githubKey = (w: Workspace) => [...scope(w), "github"] as const;
 
-export const attachedCommitsKey = (w: Workspace, id: string) =>
+const attachedCommitsKey = (w: Workspace, id: string) =>
 	[...githubKey(w), "attached-commits", id] as const;
 
-export const attachedPullRequestsKey = (w: Workspace, id: string) =>
+const attachedPullRequestsKey = (w: Workspace, id: string) =>
 	[...githubKey(w), "attached-pull-requests", id] as const;
 
 /** The suggestions of a day. They come from the calendar, GitHub and what

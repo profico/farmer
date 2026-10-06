@@ -2,7 +2,7 @@
 // so `bun test` can run them.
 
 /** 0 is Sunday, as the server counts. */
-export const WEEKDAY_NAMES = [
+const WEEKDAY_NAMES = [
 	"Sunday",
 	"Monday",
 	"Tuesday",
@@ -37,17 +37,11 @@ export const daysSummary = (days: number[], weekStartsOn: number): string => {
 		.join(", ");
 };
 
-const pad = (value: number) => String(value).padStart(2, "0");
-
 /** Minutes after midnight of "HH:mm". */
-export const minutesOf = (time: string): number => {
+const minutesOf = (time: string): number => {
 	const [hours, minutes] = time.split(":").map(Number);
 	return (hours ?? 0) * 60 + (minutes ?? 0);
 };
-
-/** "HH:mm" of minutes after midnight. */
-export const clockOf = (minutes: number): string =>
-	`${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
 
 /** The seconds of a working day from its start and end, or 0. */
 export const daySeconds = (start: string, end: string): number =>

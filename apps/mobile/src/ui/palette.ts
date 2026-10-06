@@ -1,9 +1,5 @@
 import type { ColorValue } from "react-native";
 
-/** The farmer accent, the web's `--acc` in light mode. The live accent is
- *  `usePalette().primary`, which follows the chosen theme. */
-export const SEED_COLOR = "#6f4ebe";
-
 /** The colour roles the screens use, named as Material 3 names them. */
 export type Palette = {
 	background: ColorValue;

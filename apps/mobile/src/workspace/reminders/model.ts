@@ -34,7 +34,7 @@ export const MEMBER_TYPE_LABELS = {
 } satisfies { [type in MemberType]: string };
 
 /** The days as the server numbers them: Sunday is 0. */
-export const WEEKDAYS = [
+const WEEKDAYS = [
 	{ day: 0, label: "Sunday" },
 	{ day: 1, label: "Monday" },
 	{ day: 2, label: "Tuesday" },
@@ -52,7 +52,7 @@ export const orderedWeekdays = (weekStartsOn: number) => [
 
 /** The member types in the stored order, so the order of the presses does
  *  not change what is sent. */
-export const memberTypesOf = (values: readonly string[]): MemberType[] =>
+const memberTypesOf = (values: readonly string[]): MemberType[] =>
 	MEMBER_TYPES.filter((type) => values.includes(type));
 
 /** Rounds "HH:mm" to the nearest quarter hour. The server accepts nothing

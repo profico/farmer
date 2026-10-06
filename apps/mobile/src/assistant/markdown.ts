@@ -55,7 +55,7 @@ const chartSpecSchema = z.object({
 
 /** A fence body as a chart, or null. A malformed chart shows as code, so its
  *  numbers stay on the screen. */
-export const parseChartSpec = (source: string): ChartSpec | null => {
+const parseChartSpec = (source: string): ChartSpec | null => {
 	try {
 		const parsed = chartSpecSchema.safeParse(JSON.parse(source));
 		return parsed.success ? parsed.data : null;
@@ -360,7 +360,7 @@ export const parseInline = (text: string): Inline[] => {
 };
 
 /** A cell that is a quantity and nothing else: `7.25`, `-3`, `82%`. */
-export const isNumeric = (cell: string) =>
+const isNumeric = (cell: string) =>
 	/^[-+]?[$€£]?\s?\d[\d\s,.]*\s?(%|h|hrs?|€|\$|£)?$/i.test(cell.trim());
 
 /** The alignment of each column: the delimiter's, else right for a column

@@ -138,7 +138,7 @@ export const useTimer = ({ fresh = false }: { fresh?: boolean } = {}) => {
 	});
 };
 
-export type TimerAction = "pause" | "resume" | "discard";
+type TimerAction = "pause" | "resume" | "discard";
 
 /** Start, pause, resume and discard all answer the new timer state, which
  *  replaces the cached one. */

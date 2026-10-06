@@ -22,7 +22,7 @@ export const useMeta = () => {
 };
 
 /** The API version that added the routes for every screen of the app. */
-export const FULL_API_VERSION = 2;
+const FULL_API_VERSION = 2;
 
 /**
  * The API version that added the helpers of the day ("Assemble my day", the

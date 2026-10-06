@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 
 import { BackGesture } from "../../modules/back-gesture";
-import { holdCount, subscribeHolds, systemMayHandleBack } from "./back-holds";
 
 /**
  * On Android, hands the back gesture to the system at a place where the app
@@ -23,14 +22,9 @@ export function useSystemBack(): void {
 		const update = () => {
 			// Before the navigator is ready, the app keeps Back.
 			const canGoBack = navigation.isReady() ? navigation.canGoBack() : true;
-			native.setSystemOwnsBack(systemMayHandleBack(canGoBack, holdCount()));
+			native.setSystemOwnsBack(!canGoBack);
 		};
 		update();
-		const stopState = navigation.addListener("state", update);
-		const stopHolds = subscribeHolds(update);
-		return () => {
-			stopState();
-			stopHolds();
-		};
+		return navigation.addListener("state", update);
 	}, [navigation]);
 }

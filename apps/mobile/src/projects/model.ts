@@ -36,7 +36,7 @@ export const PROJECT_TYPES: {
 	{ value: "internal", label: "Internal", hint: "Our own work. Never billed." },
 ];
 
-export const asProjectType = (type: string): ProjectType =>
+const asProjectType = (type: string): ProjectType =>
 	PROJECT_TYPES.find((item) => item.value === type)?.value ?? "product_team";
 
 export const typeLabel = (type: string) =>
