@@ -1,8 +1,9 @@
-import { DateTimePicker } from "@expo/ui/community/datetime-picker";
+import { DatePickerDialog, Host } from "@expo/ui/jetpack-compose";
 import { useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 
 import { IconButton, Text } from "../../ui/components";
+import { useHostTheme } from "../../ui/host";
 import { Icon } from "../../ui/icon";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
@@ -40,19 +41,28 @@ function PickerDialog({
 	onPick: (day: string) => void;
 	onClose: () => void;
 }) {
+	// The host carries the app theme (the seed, or the wallpaper with
+	// Material You on), so the dialog does not draw the baseline purple.
+	const hostTheme = useHostTheme();
 	return (
-		<DateTimePicker
-			value={pickerValue(value)}
-			mode="date"
-			presentation="dialog"
-			minimumDate={minimum ? pickerValue(minimum) : undefined}
-			maximumDate={maximum ? pickerValue(maximum) : undefined}
-			onValueChange={(_event, date) => {
-				onClose();
-				onPick(pickedDay(date));
-			}}
-			onDismiss={onClose}
-		/>
+		<Host style={{ position: "absolute", width: 0, height: 0 }} {...hostTheme}>
+			<DatePickerDialog
+				initialDate={pickerValue(value).toISOString()}
+				selectableDates={
+					minimum || maximum
+						? {
+								start: minimum ? pickerValue(minimum) : undefined,
+								end: maximum ? pickerValue(maximum) : undefined,
+							}
+						: undefined
+				}
+				onDateSelected={(date) => {
+					onClose();
+					onPick(pickedDay(date));
+				}}
+				onDismissRequest={onClose}
+			/>
+		</Host>
 	);
 }
 
