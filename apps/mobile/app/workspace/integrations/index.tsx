@@ -19,6 +19,7 @@ import {
 	SettingsSection,
 	SettingsValue,
 } from "../../../src/ui/settings-list";
+import { AssistantSettingsSections } from "../../../src/workspace/assistant-settings";
 import {
 	ActionRow,
 	Badge,
@@ -57,14 +58,19 @@ export default function WorkspaceIntegrationsScreen() {
 				<GithubSection />
 				<SlackSection />
 				{access.isAdmin && assistant.data?.available ? (
-					<SettingsSection footer="The model provider for the assistant, and the house rules.">
-						<SettingsLink
-							icon="assistant"
-							title="Assistant"
-							onPress={() => router.push("/workspace/assistant")}
-						/>
-					</SettingsSection>
+					<AssistantSettingsSections settings={assistant.data} />
 				) : null}
+				<SettingsSection
+					title="Related"
+					footer="Your own GitHub account and Google Calendar connect under your account, not here."
+				>
+					<SettingsLink
+						icon="link"
+						tint="teal"
+						title="Your integrations"
+						onPress={() => router.push("/you/integrations")}
+					/>
+				</SettingsSection>
 			</Screen>
 		</>
 	);
