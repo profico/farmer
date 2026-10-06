@@ -16,6 +16,7 @@ export type AuditRetentionDays = 90 | 365 | 730 | 2555;
  * `satisfies` clause fails to compile when a kind has no label.
  */
 const KIND_LABELS = {
+	"organization.created": "Workspace created",
 	"organization.updated": "Workspace settings changed",
 	"org_settings.updated": "Tracking settings changed",
 	"reminder_settings.updated": "Reminder settings changed",
@@ -24,6 +25,7 @@ const KIND_LABELS = {
 	"audit_log.exported": "Audit log exported",
 	"member.invited": "Person invited",
 	"member.invitation_cancelled": "Invitation cancelled",
+	"member.invitation_declined": "Invitation declined",
 	"member.joined": "Person joined",
 	"member.removed": "Person removed",
 	"member.claim_declined": "Harvest import claim declined",
