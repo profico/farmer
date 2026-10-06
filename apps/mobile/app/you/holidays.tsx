@@ -3,7 +3,7 @@ import { Linking, View } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
 import { useWhoami, useWorkspace } from "../../src/api/queries";
-import { useHolidays } from "../../src/api/you";
+import { useHolidays, useSetHolidayDisabled } from "../../src/api/you";
 import {
 	EmptyState,
 	ErrorState,
@@ -14,16 +14,19 @@ import { Inset } from "../../src/ui/screen";
 import {
 	SettingsLink,
 	SettingsSection,
+	SettingsSwitch,
 	SettingsValue,
 } from "../../src/ui/settings-list";
 import { usePalette } from "../../src/ui/theme";
+import { notifyError } from "../../src/workspace/components";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 import { dayMonth, weekdayOfKey } from "../../src/you/format";
 
 /**
- * The public holidays of a year, read only. They are left out of every
- * target. An admin turns a day off on the web, because the API has no
- * route for it.
+ * The public holidays of a year. They are left out of every target. An
+ * admin turns off a holiday that the company does not observe with the
+ * switch of its row, as on the web. A Server before API version 3 has no
+ * route for the switch, so there the admin gets a link to the web.
  */
 export default function HolidaysScreen() {
 	const palette = usePalette();
@@ -35,6 +38,8 @@ export default function HolidaysScreen() {
 	const [chosen, setChosen] = useState<number | null>(null);
 	const year = chosen ?? currentYear;
 	const holidays = useHolidays(year);
+	const toggle = useSetHolidayDisabled(year);
+	const canSwitch = access.isAdmin && access.setupApi;
 
 	return (
 		<YouScreen
@@ -46,6 +51,9 @@ export default function HolidaysScreen() {
 				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 					Public holidays for this organization's country. They are left out of
 					every target: a working day is Monday to Friday minus these.
+					{canSwitch
+						? " Turn off a holiday that your company does not observe."
+						: ""}
 				</Text>
 				{year ? (
 					<View
@@ -94,18 +102,43 @@ export default function HolidaysScreen() {
 					message="No public holidays found for this country and year."
 				/>
 			) : (
-				<SettingsSection>
-					{holidays.data.map((holiday) => (
-						<SettingsValue
-							key={holiday.date}
-							title={holiday.name}
-							subtitle={`${weekdayOfKey(holiday.date)}, ${dayMonth(holiday.date)}`}
-							value={holiday.disabled ? "Not observed" : ""}
-						/>
-					))}
+				<SettingsSection
+					footer={
+						canSwitch
+							? "A holiday that is turned off is a working day in this organization."
+							: undefined
+					}
+				>
+					{holidays.data.map((holiday) => {
+						const when = `${weekdayOfKey(holiday.date)}, ${dayMonth(holiday.date)}`;
+						return canSwitch ? (
+							<SettingsSwitch
+								key={holiday.date}
+								title={holiday.name}
+								subtitle={holiday.disabled ? `${when}. Not observed` : when}
+								value={!holiday.disabled}
+								onValueChange={(observed) =>
+									toggle.mutate(
+										{ name: holiday.name, disabled: !observed },
+										{
+											onError: (error) =>
+												notifyError("Could not update the holiday", error),
+										},
+									)
+								}
+							/>
+						) : (
+							<SettingsValue
+								key={holiday.date}
+								title={holiday.name}
+								subtitle={when}
+								value={holiday.disabled ? "Not observed" : ""}
+							/>
+						);
+					})}
 				</SettingsSection>
 			)}
-			{access.isAdmin ? (
+			{access.isAdmin && !access.setupApi ? (
 				<SettingsSection footer="Turn off a holiday your company does not observe. You do this in Farmer on the web.">
 					<SettingsLink
 						icon="web"
