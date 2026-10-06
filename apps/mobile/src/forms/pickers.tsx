@@ -4,6 +4,7 @@ import { View } from "react-native";
 
 import { useProjects, useTasks } from "../api/queries";
 import { useHiddenTasks } from "../api/you";
+import { ProjectMark } from "../projects/components/project-mark";
 import {
 	ErrorState,
 	Field,
@@ -17,12 +18,14 @@ import { SPACE } from "../ui/type";
 
 /** A chosen value, with the list of the others folded under it. */
 function Choice({
+	leading,
 	title,
 	subtitle,
 	open,
 	onToggle,
 	children,
 }: {
+	leading?: ReactNode;
 	title: string;
 	subtitle?: string;
 	open: boolean;
@@ -39,6 +42,7 @@ function Choice({
 			}}
 		>
 			<ListRow
+				leading={leading}
 				title={title}
 				subtitle={subtitle}
 				onPress={onToggle}
@@ -107,6 +111,11 @@ export function ProjectPicker({
 
 	return (
 		<Choice
+			leading={
+				chosen ? (
+					<ProjectMark icon={chosen.icon ?? null} name={chosen.name} />
+				) : undefined
+			}
 			title={chosen?.name ?? "No project"}
 			subtitle={chosen?.client.name}
 			open={open}
@@ -132,6 +141,9 @@ export function ProjectPicker({
 			{shown.map((project) => (
 				<ListRow
 					key={project.id}
+					leading={
+						<ProjectMark icon={project.icon ?? null} name={project.name} />
+					}
 					title={
 						project.code ? `${project.name} (${project.code})` : project.name
 					}

@@ -12,7 +12,12 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import { useAccess } from "../api/capabilities";
-import { useStartTimer, useTimer, useTracking } from "../api/queries";
+import {
+	useProjects,
+	useStartTimer,
+	useTimer,
+	useTracking,
+} from "../api/queries";
 import { useWorkingHours } from "../api/you";
 import { formatHours } from "../lib/duration";
 import {
@@ -86,6 +91,11 @@ export function DayView({
 	const workingHours = useWorkingHours();
 	const timer = useTimer();
 	const start = useStartTimer();
+	const projects = useProjects();
+	// An entry names its project without the icon; the project list has it.
+	const icons = new Map(
+		(projects.data ?? []).map((project) => [project.id, project.icon ?? null]),
+	);
 	const from = days[0] ?? selected;
 	const to = days[6] ?? selected;
 
@@ -216,6 +226,9 @@ export function DayView({
 							>
 								<EntryRow
 									entry={entry}
+									projectIcon={
+										entry.project ? (icons.get(entry.project.id) ?? null) : null
+									}
 									onPress={() =>
 										router.push({
 											pathname: "/entry",

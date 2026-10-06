@@ -3,6 +3,7 @@ import { Platform, Pressable, View } from "react-native";
 
 import { useAccess } from "../api/capabilities";
 import { formatHours } from "../lib/duration";
+import { ProjectMark } from "../projects/components/project-mark";
 import { IconButton, Text } from "../ui/components";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -13,12 +14,54 @@ import { SPACE } from "../ui/type";
 export const canContinue = (entry: TimeEntry) =>
 	!entry.fillsDay && !entry.task.isAbsence;
 
+/**
+ * The mark at the head of an entry: its project's mark, as the web draws
+ * it. An entry with no project (time off, a meeting not filed yet) has a
+ * dot in the same square, so the rows keep one text edge.
+ */
+function EntryMark({
+	project,
+	icon,
+}: {
+	project: TimeEntry["project"];
+	icon: string | null;
+}) {
+	const palette = usePalette();
+	if (project) return <ProjectMark icon={icon} name={project.name} />;
+	return (
+		<View
+			style={{
+				width: 36,
+				height: 36,
+				borderRadius: Platform.OS === "ios" ? 9 : 11,
+				borderCurve: "continuous",
+				alignItems: "center",
+				justifyContent: "center",
+				backgroundColor: palette.surfaceContainerHigh,
+			}}
+		>
+			<View
+				style={{
+					width: 8,
+					height: 8,
+					borderRadius: 4,
+					backgroundColor: palette.onSurfaceVariant,
+				}}
+			/>
+		</View>
+	);
+}
+
 export function EntryRow({
 	entry,
+	projectIcon = null,
 	onPress,
 	onContinue,
 }: {
 	entry: TimeEntry;
+	/** The icon of the entry's project, from the project list. An entry
+	 *  does not carry it. */
+	projectIcon?: string | null;
 	onPress: () => void;
 	/** Absent when the entry cannot be continued, or a timer runs. */
 	onContinue?: () => void;
@@ -71,6 +114,7 @@ export function EntryRow({
 						: undefined,
 			})}
 		>
+			<EntryMark project={project} icon={projectIcon} />
 			<View style={{ flex: 1, gap: 2 }}>
 				<Text variant="titleMedium" numberOfLines={1}>
 					{title}

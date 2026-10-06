@@ -11,6 +11,7 @@ import {
 } from "../../../src/api/projects";
 import { useProjects } from "../../../src/api/queries";
 import { projectPageAccess } from "../../../src/projects/access";
+import { ProjectMark } from "../../../src/projects/components/project-mark";
 import { ProjectRow } from "../../../src/projects/components/project-row";
 import {
 	groupByClient,
@@ -99,7 +100,9 @@ function PlainList({ search }: { search: string }) {
 					{members.map((project) => (
 						<ListRow
 							key={project.id}
-							icon="folder"
+							leading={
+								<ProjectMark icon={project.icon ?? null} name={project.name} />
+							}
 							title={projectTitle(project)}
 							onPress={() =>
 								router.push({

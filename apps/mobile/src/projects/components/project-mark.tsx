@@ -50,7 +50,7 @@ export function ProjectMark({
 				<Image
 					source={{ uri: `${origin}${icon}` }}
 					style={{ width: side, height: side }}
-					resizeMode="cover"
+					resizeMode="contain"
 				/>
 			) : (
 				<RNText

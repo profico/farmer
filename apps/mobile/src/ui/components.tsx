@@ -170,6 +170,7 @@ export function IconButton({
 /** One row of a list: a leading icon, two lines and a trailing value. */
 export function ListRow({
 	icon,
+	leading,
 	title,
 	subtitle,
 	trailing,
@@ -178,6 +179,8 @@ export function ListRow({
 	accessibilityLabel,
 }: {
 	icon?: IconName;
+	/** A mark at the start of the row, in place of `icon`. */
+	leading?: ReactNode;
 	title: string;
 	subtitle?: string;
 	trailing?: ReactNode;
@@ -220,9 +223,10 @@ export function ListRow({
 							: undefined,
 			})}
 		>
-			{icon ? (
-				<Icon name={icon} color={palette.onSurfaceVariant} size={24} />
-			) : null}
+			{leading ??
+				(icon ? (
+					<Icon name={icon} color={palette.onSurfaceVariant} size={24} />
+				) : null)}
 			<View style={{ flex: 1 }}>
 				<Text variant="bodyLarge" numberOfLines={1}>
 					{title}
