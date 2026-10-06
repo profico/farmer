@@ -11,6 +11,9 @@ import type { DateFieldProps } from "./date-field";
 // the day of the key wherever the phone is (see `calendar.ts`).
 const UTC = "UTC";
 
+/** The width of the compact date pill, in points. */
+const DATE_JUMP_WIDTH = 132;
+
 /** The compact SwiftUI date picker beside its label, as a row of a form. */
 export function DateField({
 	label,
@@ -48,7 +51,9 @@ export function DateField({
 }
 
 /** The compact picker of the day on screen, for a title row. Its popover
- *  is the iOS calendar. */
+ *  is the iOS calendar. The picker has no width of its own in a row, so it
+ *  takes a fixed one, wide enough for the longest date, and the title next
+ *  to it gives way. */
 export function DateJump({
 	value,
 	onPick,
@@ -59,6 +64,7 @@ export function DateJump({
 }) {
 	return (
 		<DateTimePicker
+			style={{ width: DATE_JUMP_WIDTH }}
 			value={pickerValue(value)}
 			mode="date"
 			display="compact"
