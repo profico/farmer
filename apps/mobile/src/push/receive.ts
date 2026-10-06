@@ -1,4 +1,9 @@
-import { checkFreshness, rememberPushId } from "@farmer/push-crypto/freshness";
+import {
+	checkFreshness,
+	emptyPushSeen,
+	type PushSeen,
+	rememberPushId,
+} from "@farmer/push-crypto/freshness";
 import * as Notifications from "expo-notifications";
 import Storage from "expo-sqlite/kv-store";
 import { Platform } from "react-native";
@@ -79,26 +84,30 @@ const applyTimer = (payload: TimerPayload): void => {
 	for (const listener of timerListeners) listener();
 };
 
-/** The kv key of the ids of the last pushes that the app accepted. The kv
+/** The kv key of the ids of the pushes that the app accepted. The kv
  *  store and not memory: Android runs the push task in a new JavaScript
  *  context for a push that wakes the app, so a list in memory is empty each
  *  time. */
 const SEEN_KEY = "farmer.push.seen-ids";
 
-const seenIds = z.array(z.string());
+const seenState = z.object({
+	floor: z.number(),
+	entries: z.array(z.object({ id: z.string(), at: z.number() })),
+});
 
-const readSeen = (): string[] => {
+const readSeen = (): PushSeen => {
 	try {
 		const stored = Storage.getItemSync(SEEN_KEY);
-		const parsed = seenIds.safeParse(stored ? JSON.parse(stored) : []);
-		return parsed.success ? parsed.data : [];
+		if (!stored) return emptyPushSeen();
+		const parsed = seenState.safeParse(JSON.parse(stored));
+		return parsed.success ? parsed.data : emptyPushSeen();
 	} catch {
-		return [];
+		return emptyPushSeen();
 	}
 };
 
-/** Whether the app accepts a payload: the kind of its push, its age and its
- *  id (`@farmer/push-crypto/freshness`). An accepted id goes into the seen
+/** Whether the app accepts a payload: the kind of its push, its age, its
+ *  send time and its id (`@farmer/push-crypto/freshness`). An accepted id goes into the seen
  *  list. The read, the check and the write are synchronous, so two pushes
  *  cannot both pass with one id. */
 const acceptFresh = (
@@ -116,7 +125,7 @@ const acceptFresh = (
 	try {
 		Storage.setItemSync(
 			SEEN_KEY,
-			JSON.stringify(rememberPushId(seen, envelope.data.id)),
+			JSON.stringify(rememberPushId(seen, envelope.data, Date.now())),
 		);
 	} catch {
 		// A store that cannot be written still shows this push.

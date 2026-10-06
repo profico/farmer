@@ -14,9 +14,12 @@ import UserNotifications
 //
 // The extension also checks the freshness fields
 // (`packages/push-crypto/src/freshness.ts`): `pushKind` must be "alert",
-// `sentAt` must be less than 24 hours old, and the extension must not have
-// seen `id` before. It keeps the last 50 ids in the app group's
-// UserDefaults, because each push can start a new process. Without the
+// `sentAt` must be less than 24 hours old and not more than 5 minutes in
+// the future, and the extension must not have seen `id` before. It keeps
+// each id until its payload is stale, and at most 500 ids, in the app
+// group's UserDefaults, because each push can start a new process. If the
+// list is full, it forgets the oldest ids and refuses each payload that is
+// not newer than the newest one that it forgot. Without the
 // filtering entitlement an extension cannot drop a notification, so a
 // refused payload shows the relay's placeholder text and not the old one.
 class NotificationService: UNNotificationServiceExtension {
@@ -27,7 +30,10 @@ class NotificationService: UNNotificationServiceExtension {
   private static let encLength = 65
   private static let appGroup = "group.com.profico.farmer"
   private static let seenKey = "farmer.push.seen-ids"
-  private static let seenLimit = 50
+  private static let seenAtKey = "farmer.push.seen-at"
+  private static let seenFloorKey = "farmer.push.seen-floor"
+  private static let seenLimit = 500
+  private static let maxSkewMs: Double = 5 * 60 * 1000
   private static let maxAgeMs: Double = 24 * 60 * 60 * 1000
 
   private struct Alert: Decodable {
@@ -40,17 +46,34 @@ class NotificationService: UNNotificationServiceExtension {
     let id: String
   }
 
-  /// Whether the alert is fresh: the right kind, not old, and not seen
-  /// before. An accepted id goes into the seen list.
+  /// Whether the alert is fresh: the right kind, not old, not from the
+  /// future, and not seen before. An accepted id goes into the seen list.
   private static func acceptFresh(_ alert: Alert) -> Bool {
     guard alert.pushKind == "alert" else { return false }
     let nowMs = Date().timeIntervalSince1970 * 1000
+    guard alert.sentAt - nowMs <= maxSkewMs else { return false }
     guard nowMs - alert.sentAt <= maxAgeMs else { return false }
     let defaults = UserDefaults(suiteName: appGroup)
-    var seen = defaults?.stringArray(forKey: seenKey) ?? []
-    guard !seen.contains(alert.id) else { return false }
-    seen.append(alert.id)
-    defaults?.set(Array(seen.suffix(seenLimit)), forKey: seenKey)
+    var floor = defaults?.double(forKey: seenFloorKey) ?? 0
+    guard alert.sentAt > floor else { return false }
+    let ids = defaults?.stringArray(forKey: seenKey) ?? []
+    let times = (defaults?.array(forKey: seenAtKey) as? [Double]) ?? []
+    var entries: [(id: String, at: Double)] = []
+    if ids.count == times.count {
+      entries = Array(zip(ids, times))
+    }
+    guard !entries.contains(where: { $0.id == alert.id }) else { return false }
+    entries = entries.filter { nowMs - $0.at <= maxAgeMs }
+    entries.append((id: alert.id, at: alert.sentAt))
+    entries.sort { $0.at < $1.at }
+    if entries.count > seenLimit {
+      let dropped = entries.prefix(entries.count - seenLimit)
+      floor = max(floor, dropped.map { $0.at }.max() ?? floor)
+      entries = Array(entries.suffix(seenLimit))
+    }
+    defaults?.set(entries.map { $0.id }, forKey: seenKey)
+    defaults?.set(entries.map { $0.at }, forKey: seenAtKey)
+    defaults?.set(floor, forKey: seenFloorKey)
     return true
   }
 
