@@ -13632,7 +13632,14 @@
 					"workingDaysElapsed": {
 						"type": "integer",
 						"minimum": -9007199254740991,
-						"maximum": 9007199254740991
+						"maximum": 9007199254740991,
+						"description": "Working days before today."
+					},
+					"workingDaysThroughToday": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991,
+						"description": "Working days before today, plus today when today is a working day."
 					},
 					"targetSeconds": {
 						"anyOf": [
@@ -13656,7 +13663,21 @@
 							{
 								"type": "null"
 							}
-						]
+						],
+						"description": "The target for the working days before today. The status compares against this. It is 0 on the first working day of a period."
+					},
+					"targetThroughTodaySeconds": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The goal including today: what the person should have logged by the end of today. The status does not read it."
 					},
 					"workSeconds": {
 						"type": "integer",
@@ -13700,8 +13721,10 @@
 					"to",
 					"workingDays",
 					"workingDaysElapsed",
+					"workingDaysThroughToday",
 					"targetSeconds",
 					"targetSoFarSeconds",
+					"targetThroughTodaySeconds",
 					"workSeconds",
 					"timeOffSeconds",
 					"totalSeconds",

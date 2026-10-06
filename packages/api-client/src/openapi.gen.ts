@@ -3010,9 +3010,15 @@ export interface components {
             /** @description A day, yyyy-MM-dd. */
             to: string;
             workingDays: number;
+            /** @description Working days before today. */
             workingDaysElapsed: number;
+            /** @description Working days before today, plus today when today is a working day. */
+            workingDaysThroughToday: number;
             targetSeconds: number | null;
+            /** @description The target for the working days before today. The status compares against this. It is 0 on the first working day of a period. */
             targetSoFarSeconds: number | null;
+            /** @description The goal including today: what the person should have logged by the end of today. The status does not read it. */
+            targetThroughTodaySeconds: number | null;
             workSeconds: number;
             timeOffSeconds: number;
             totalSeconds: number;
