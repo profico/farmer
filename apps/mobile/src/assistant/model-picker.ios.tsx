@@ -10,11 +10,11 @@ import {
 	Text,
 } from "../ui/components";
 import { useMotionPreference } from "../ui/motion";
+import { SearchField } from "../ui/search-field";
 import { SettingsChoice } from "../ui/settings-list";
 import { RowPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
-import { SearchField } from "../workspace/components";
 import {
 	type ModelPickerProps,
 	priceOf,

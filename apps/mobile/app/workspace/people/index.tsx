@@ -12,6 +12,7 @@ import {
 import { HeaderActions } from "../../../src/navigation/header-actions";
 import { EmptyState, ErrorState, Text } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
+import { SearchField } from "../../../src/ui/search-field";
 import { SegmentedControl } from "../../../src/ui/segmented";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import { usePalette } from "../../../src/ui/theme";
@@ -25,7 +26,6 @@ import {
 	ListSkeleton,
 	notify,
 	notifyError,
-	SearchField,
 } from "../../../src/workspace/components";
 import {
 	matchesSearch,

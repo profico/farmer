@@ -7,13 +7,13 @@ import {
 } from "../../../src/api/workspace";
 import { ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
+import { SearchField } from "../../../src/ui/search-field";
 import { SettingsChoice, SettingsSection } from "../../../src/ui/settings-list";
 import { matchesSearch } from "../../../src/workspace/catalog/search";
 import {
 	ListSkeleton,
 	NoteRow,
 	notifyError,
-	SearchField,
 } from "../../../src/workspace/components";
 import {
 	offsetOf,

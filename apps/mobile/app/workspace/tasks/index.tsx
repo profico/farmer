@@ -8,6 +8,7 @@ import { useManagedTasks } from "../../../src/api/workspace";
 import { HeaderActions } from "../../../src/navigation/header-actions";
 import { EmptyState, ErrorState } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/screen";
+import { SearchField } from "../../../src/ui/search-field";
 import { SettingsSection } from "../../../src/ui/settings-list";
 import { useTaskArchive } from "../../../src/workspace/catalog/archive";
 import { matchesSearch } from "../../../src/workspace/catalog/search";
@@ -20,7 +21,6 @@ import {
 	DetailRow,
 	ListSkeleton,
 	NoteRow,
-	SearchField,
 } from "../../../src/workspace/components";
 import { formatDay } from "../../../src/workspace/format";
 

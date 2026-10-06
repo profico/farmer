@@ -4,7 +4,6 @@ import {
 	type ColorValue,
 	Platform,
 	Pressable,
-	TextInput,
 	ToastAndroid,
 	View,
 } from "react-native";
@@ -28,7 +27,7 @@ import type { RowMenuEntry } from "../ui/row-menu-items";
 import { SettingsChoice, SettingsSection } from "../ui/settings-list";
 import { useRowPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
-import { SPACE, TYPE } from "../ui/type";
+import { SPACE } from "../ui/type";
 
 // The primitives of the workspace screens that the kit of `src/ui` does not
 // have. They take their colours from the theme hook and sit inside a
@@ -87,67 +86,6 @@ export const notify = (message: string) => {
 };
 
 export { notifyError };
-
-/** A search box above a list. */
-export function SearchField({
-	value,
-	onChangeText,
-	placeholder,
-}: {
-	value: string;
-	onChangeText: (value: string) => void;
-	placeholder: string;
-}) {
-	const palette = usePalette();
-	return (
-		<View
-			style={{
-				flexDirection: "row",
-				alignItems: "center",
-				gap: SPACE.s,
-				marginHorizontal: SPACE.l,
-				paddingHorizontal: SPACE.m,
-				minHeight: IOS ? 36 : 56,
-				borderRadius: IOS ? 10 : 28,
-				backgroundColor: palette.surfaceContainerHigh,
-			}}
-		>
-			<Icon
-				name="search"
-				size={IOS ? 16 : 24}
-				color={palette.onSurfaceVariant}
-			/>
-			<TextInput
-				value={value}
-				onChangeText={onChangeText}
-				placeholder={placeholder}
-				placeholderTextColor={palette.onSurfaceVariant}
-				selectionColor={palette.primary}
-				cursorColor={palette.primary}
-				accessibilityLabel={placeholder}
-				autoCorrect={false}
-				autoCapitalize="none"
-				returnKeyType="search"
-				clearButtonMode="while-editing"
-				style={[
-					TYPE.bodyLarge,
-					{ flex: 1, color: palette.onSurface, paddingVertical: SPACE.s },
-				]}
-			/>
-			{!IOS && value !== "" ? (
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel="Clear the search"
-					onPress={() => onChangeText("")}
-					// The icon is 20dp: 14dp on each side makes the 48dp target.
-					hitSlop={{ top: 14, bottom: 14, left: 14, right: 12 }}
-				>
-					<Icon name="close" size={20} color={palette.onSurfaceVariant} />
-				</Pressable>
-			) : null}
-		</View>
-	);
-}
 
 /** The frame of one row inside a `SettingsSection`: the padding and, on
  *  iOS, the hairline under each row except the last. */

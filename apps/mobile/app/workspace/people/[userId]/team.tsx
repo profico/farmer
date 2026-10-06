@@ -9,6 +9,7 @@ import {
 import { HeaderActions } from "../../../../src/navigation/header-actions";
 import { EmptyState, ErrorState } from "../../../../src/ui/components";
 import { Screen } from "../../../../src/ui/screen";
+import { SearchField } from "../../../../src/ui/search-field";
 import {
 	SettingsChoice,
 	SettingsSection,
@@ -17,7 +18,6 @@ import {
 	ListSkeleton,
 	notify,
 	notifyError,
-	SearchField,
 } from "../../../../src/workspace/components";
 import { peopleCount } from "../../../../src/workspace/format";
 import { paramOf } from "../../../../src/workspace/params";

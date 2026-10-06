@@ -26,6 +26,7 @@ import {
 } from "../../../../src/ui/components";
 import { messageOf } from "../../../../src/ui/errors";
 import { Screen } from "../../../../src/ui/screen";
+import { SearchField } from "../../../../src/ui/search-field";
 import { SettingsSection } from "../../../../src/ui/settings-list";
 import { usePalette } from "../../../../src/ui/theme";
 import { SPACE } from "../../../../src/ui/type";
@@ -36,7 +37,6 @@ import {
 	ListSkeleton,
 	NoteRow,
 	notifyError,
-	SearchField,
 } from "../../../../src/workspace/components";
 
 const matches = (search: string, fullName: string) =>

@@ -7,8 +7,9 @@ import { usePeople, useSendSlackTest } from "../../../src/api/workspace";
 import { FormSection, Sheet } from "../../../src/forms/sheet";
 import { EmptyState, ErrorBanner, Skeleton } from "../../../src/ui/components";
 import { messageOf } from "../../../src/ui/errors";
+import { SearchField } from "../../../src/ui/search-field";
 import { SettingsChoice, SettingsSection } from "../../../src/ui/settings-list";
-import { SearchField, notify } from "../../../src/workspace/components";
+import { notify } from "../../../src/workspace/components";
 
 const NOT_SENT =
 	"Couldn't send. Check that Slack is connected and that this person is in the workspace.";
