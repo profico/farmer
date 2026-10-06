@@ -304,11 +304,22 @@ export function PushBridge() {
 				}
 			},
 		);
+		const ended = LiveActivity.addListener("onActivityEnded", (event) => {
+			const { origin: o, token: t } = live.current;
+			// Another activity can still be active: its token stays bound.
+			if (o && t && event.remaining === 0) {
+				void reportLiveActivityToken(
+					{ origin: o, token: t },
+					{ liveActivityToken: null },
+				);
+			}
+		});
 		const start = LiveActivity.addListener("onPushToStartToken", (event) => {
 			void reportPushToStartToken(event.token);
 		});
 		return () => {
 			activity.remove();
+			ended.remove();
 			start.remove();
 		};
 	}, []);

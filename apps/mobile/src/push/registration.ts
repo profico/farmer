@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { LiveActivity } from "../../modules/live-activity";
 import { APP_VERSION } from "../config";
+import { activityBinding } from "./activity-binding";
 import { devicePublicKey, forgetDeviceKey } from "./keys";
 import {
 	type ApnsEnvironment,
@@ -262,6 +263,7 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 		if (!pushToken || !live()) return;
 		const relay = await ensureRelay(relayUrl, pushToken, live);
 		if (!relay || !live()) return;
+		await bindActivityToken(live);
 		const publicKey = await devicePublicKey();
 		const allowed = await notificationsAllowed();
 		const id = await installationId();
@@ -283,18 +285,67 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 	}
 };
 
-/** Tell the Server about this phone's Live Activity token (iOS). */
+/** The Live Activity token that the app learned last. A string is a running
+ *  activity, null is "no activity", undefined is "nothing learned yet". The
+ *  next `syncPush` sends it again when a relay call failed. */
+let wantedActivityToken: string | null | undefined;
+
+/** Bind the wanted Live Activity token at the relay (iOS). Never throws. */
+const bindActivityToken = async (live: Live): Promise<void> => {
+	try {
+		const stored = await readRelay();
+		if (!stored) return;
+		const platform = Platform.OS === "ios" ? "ios" : "android";
+		const update = activityBinding(
+			platform,
+			wantedActivityToken,
+			stored.activityToken,
+		);
+		if (!update) return;
+		const answer = await updateRelay(stored.relayUrl, stored, update);
+		if (answer === "ok" && live()) {
+			await writeRelay({
+				...stored,
+				activityToken: update.liveActivityToken ?? null,
+			});
+		} else if (answer !== "ok") {
+			// The next `syncPush` tries again. A 401 starts a new registration.
+			logOnce(
+				"activity",
+				`the relay did not take the activity token: ${answer}`,
+			);
+		}
+	} catch (error) {
+		logOnce("activity", `could not bind the activity token: ${String(error)}`);
+	}
+};
+
+/**
+ * Tell the Server and the relay about this phone's Live Activity token
+ * (iOS). A null token means that the activity ended. The two calls run
+ * together, and one failure does not stop the other.
+ */
 export const reportLiveActivityToken = async (
 	session: PushSession,
 	patch: DevicePatch,
 ): Promise<void> => {
+	if (patch.liveActivityToken !== undefined) {
+		wantedActivityToken = patch.liveActivityToken;
+	}
 	if (!(await readRelay())) return;
-	await updateDevice(
-		session.origin,
-		session.token,
-		await installationId(),
-		patch,
-	);
+	const live = liveCheck();
+	const toServer = async () =>
+		updateDevice(session.origin, session.token, await installationId(), patch);
+	const results = await Promise.allSettled([
+		toServer(),
+		bindActivityToken(live),
+	]);
+	if (results[0].status === "rejected") {
+		logOnce(
+			"activity-server",
+			`Server activity report: ${String(results[0].reason)}`,
+		);
+	}
 };
 
 /** Tell the relay about a new push-to-start token (iOS). */

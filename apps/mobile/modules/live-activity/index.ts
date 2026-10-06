@@ -43,6 +43,12 @@ type NativeLiveActivity = {
 		event: "onActivityPushToken",
 		listener: (event: { activityId: string; token: string }) => void,
 	): Subscription;
+	/** An activity ended. `remaining` counts the activities that are still
+	 *  active, so zero means that no activity holds a token now. */
+	addListener(
+		event: "onActivityEnded",
+		listener: (event: { activityId: string; remaining: number }) => void,
+	): Subscription;
 	addListener(
 		event: "onPushToStartToken",
 		listener: (event: { token: string }) => void,

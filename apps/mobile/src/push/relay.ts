@@ -89,6 +89,9 @@ export type RelayUpdate = {
 	pushToken?: string;
 	apnsEnvironment?: ApnsEnvironment;
 	liveActivityPushToStartToken?: string | null;
+	/** A string binds a per-activity token to this device. Null unbinds
+	 *  every per-activity token of the device. */
+	liveActivityToken?: string | null;
 };
 
 /** `PUT /v1/devices/:relayId`. Never throws. */

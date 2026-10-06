@@ -74,6 +74,9 @@ const relayRegistration = z.object({
 	deviceSecret: z.string(),
 	pushToken: z.string(),
 	pushToStartToken: z.string().nullable(),
+	/** The per-activity token that the relay holds for this device. Absent
+	 *  or null: none. */
+	activityToken: z.string().nullable().optional(),
 	/** Unix milliseconds of the last successful `PUT` or `POST`. */
 	checkedAt: z.number(),
 });

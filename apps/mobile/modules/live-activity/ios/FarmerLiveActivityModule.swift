@@ -65,7 +65,7 @@ public class FarmerLiveActivityModule: Module {
   public func definition() -> ModuleDefinition {
     Name("FarmerLiveActivity")
 
-    Events("onActivityPushToken", "onPushToStartToken")
+    Events("onActivityPushToken", "onPushToStartToken", "onActivityEnded")
 
     OnCreate {
       self.observe()
@@ -160,7 +160,30 @@ public class FarmerLiveActivityModule: Module {
     })
   }
 
+  /// Tells JavaScript that an activity ended, with the number of activities
+  /// that are still active. JavaScript unbinds the token at the relay when
+  /// that number is zero.
+  private func watchEnd(of activity: Activity<TimerAttributes>) {
+    tasks.watch("\(activity.id)#state") {
+      Task { [weak self] in
+        for await state in activity.activityStateUpdates {
+          guard state == .ended || state == .dismissed else { continue }
+          let remaining = Activity<TimerAttributes>.activities.filter {
+            $0.id != activity.id
+              && ($0.activityState == .active || $0.activityState == .stale)
+          }.count
+          self?.sendEvent("onActivityEnded", [
+            "activityId": activity.id,
+            "remaining": remaining,
+          ])
+          break
+        }
+      }
+    }
+  }
+
   private func watchToken(of activity: Activity<TimerAttributes>) {
+    watchEnd(of: activity)
     tasks.watch(activity.id) {
       Task { [weak self] in
         for await data in activity.pushTokenUpdates {
