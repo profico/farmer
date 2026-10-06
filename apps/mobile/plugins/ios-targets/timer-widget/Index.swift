@@ -1,7 +1,7 @@
 import SwiftUI
 import WidgetKit
 
-// WRITTEN, NOT COMPILED. The widget extension has one widget: the timer's
+// BUILT ON A MAC, NOT RUN ON A DEVICE. The widget extension has one widget: the timer's
 // Live Activity.
 @main
 struct FarmerWidgets: WidgetBundle {

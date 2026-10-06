@@ -1,6 +1,6 @@
 import Foundation
 
-// WRITTEN, NOT COMPILED. The widget target has a copy of this file.
+// BUILT ON A MAC, NOT RUN ON A DEVICE. The widget target has a copy of this file.
 //
 // Reads an item that the app wrote with expo-secure-store into the app
 // group's Keychain (`apps/mobile/src/push/storage.ts`). expo-secure-store

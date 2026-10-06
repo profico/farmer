@@ -1,8 +1,8 @@
 import ActivityKit
 import ExpoModulesCore
 
-// WRITTEN, NOT COMPILED: this file was written on Linux, where Xcode does not
-// run. Build it on a Mac before a release.
+// BUILT ON A MAC, NOT RUN ON A DEVICE: the iOS app built on a Mac on
+// 6 Oct 2026. Run it on a device before a release.
 
 struct LabelsRecord: Record {
   @Field var workspaceName: String = ""

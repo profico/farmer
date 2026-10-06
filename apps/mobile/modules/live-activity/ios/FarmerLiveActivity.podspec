@@ -1,5 +1,5 @@
 # The timer's Live Activity: start, update and end it from the app, and
-# report its push tokens. WRITTEN, NOT COMPILED (see ../index.ts).
+# report its push tokens. BUILT ON A MAC, NOT RUN ON A DEVICE (see ../index.ts).
 Pod::Spec.new do |s|
   s.name           = 'FarmerLiveActivity'
   s.version        = '0.1.0'

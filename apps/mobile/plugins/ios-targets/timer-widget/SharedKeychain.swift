@@ -1,6 +1,6 @@
 import Foundation
 
-// WRITTEN, NOT COMPILED. A COPY of
+// BUILT ON A MAC, NOT RUN ON A DEVICE. A COPY of
 // `plugins/ios-targets/notification-service/SharedKeychain.swift`.
 //
 // Reads an item that the app wrote with expo-secure-store into the app

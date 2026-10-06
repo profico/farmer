@@ -7,8 +7,8 @@ type Subscription = { remove(): void };
  * `ios/FarmerLiveActivityModule.swift`, and the widget that draws it is in
  * `plugins/ios-targets/timer-widget`.
  *
- * WRITTEN, NOT COMPILED: this module and the widget were written on Linux,
- * where Xcode does not run.
+ * BUILT ON A MAC, NOT RUN ON A DEVICE: the iOS app built on a Mac on
+ * 6 Oct 2026. Run this module and the widget on a device before a release.
  */
 
 /** The content state, as the Server sends it (`docs/domains/mobile.md`).

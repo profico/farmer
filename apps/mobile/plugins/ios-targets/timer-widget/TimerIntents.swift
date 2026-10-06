@@ -1,7 +1,7 @@
 import AppIntents
 import Foundation
 
-// WRITTEN, NOT COMPILED.
+// BUILT ON A MAC, NOT RUN ON A DEVICE.
 //
 // Pause and Resume on the Live Activity. The intent runs in the widget
 // extension and calls the Server itself, with the session that the app keeps

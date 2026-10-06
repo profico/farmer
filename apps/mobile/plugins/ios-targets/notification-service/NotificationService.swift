@@ -1,7 +1,7 @@
 import CryptoKit
 import UserNotifications
 
-// WRITTEN, NOT COMPILED: written on Linux, where Xcode does not run.
+// BUILT ON A MAC, NOT RUN ON A DEVICE: the iOS app built on a Mac on 6 Oct 2026.
 //
 // The relay sends an alert with a placeholder text ("Farmer", "New
 // notification") and the sealed payload in `e` (`apps/push-relay/README.md`).

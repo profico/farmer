@@ -3,7 +3,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-// WRITTEN, NOT COMPILED.
+// BUILT ON A MAC, NOT RUN ON A DEVICE.
 //
 // The timer's Live Activity: the elapsed time, the project and the task, and
 // Pause or Resume and Stop. A running timer counts with

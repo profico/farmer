@@ -9,8 +9,9 @@
 //   `@bacons/apple-targets` adds: the Notification Service Extension that
 //   opens an alert, and the widget that draws the Live Activity.
 //
-// WRITTEN, NOT COMPILED: the Swift sources were written on Linux, where Xcode
-// does not run. Build the iOS app on a Mac before a release.
+// BUILT ON A MAC, NOT RUN ON A DEVICE: the iOS app built on a Mac on
+// 6 Oct 2026. Run the app, the extension and the widget on a device before a
+// release.
 
 const {
 	withEntitlementsPlist,
@@ -39,18 +40,27 @@ const withLiveActivities = (config) =>
 	});
 
 /** @type {import("expo/config-plugins").ConfigPlugin} */
-const withIosPush = (config) =>
-	withPlugins(config, [
+const withIosPush = (config) => {
+	const appleTeamId = process.env.APPLE_TEAM_ID ?? config.ios?.appleTeamId;
+	if (!appleTeamId) {
+		// A build for a device or for release cannot sign the extensions
+		// without a team. A build for the simulator does not need one.
+		console.warn(
+			"[with-ios-push] Neither APPLE_TEAM_ID nor ios.appleTeamId is set. The iOS extensions have no signing team.",
+		);
+	}
+	return withPlugins(config, [
 		withAppGroup,
 		withLiveActivities,
 		[
 			"@bacons/apple-targets",
 			{
 				root: "./plugins/ios-targets",
-				appleTeamId: process.env.APPLE_TEAM_ID ?? config.ios?.appleTeamId,
+				appleTeamId,
 			},
 		],
 	]);
+};
 
 module.exports = withIosPush;
 module.exports.APP_GROUP = APP_GROUP;
