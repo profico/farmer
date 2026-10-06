@@ -54,10 +54,18 @@ const toDevice = (row: DeviceRow): Device => ({
 	lastSeenAt: row.last_seen_at,
 });
 
+/** The most Live Activity tokens that one device keeps. The app has one
+ *  activity at a time, so a few cover a start that overlaps an end. */
+export const MAX_ACTIVITY_TOKENS = 4;
+
 /**
- * The relay's only table. There are no migrations: the schema is one
- * `CREATE TABLE IF NOT EXISTS`. A later column needs an `ALTER TABLE` that
- * checks `PRAGMA table_info` first.
+ * There are no migrations: the schema is `CREATE TABLE IF NOT EXISTS`, so a
+ * new table appears on the next start. A later column in an old table needs
+ * an `ALTER TABLE` that checks `PRAGMA table_info` first.
+ *
+ * `live_activity_token` binds a per-activity token to one device. The token
+ * is unique, so no second device can claim it. The foreign key removes the
+ * tokens with their device.
  */
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS device (
@@ -72,6 +80,13 @@ CREATE TABLE IF NOT EXISTS device (
 	last_seen_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS device_last_seen_at ON device (last_seen_at);
+CREATE TABLE IF NOT EXISTS live_activity_token (
+	token TEXT PRIMARY KEY,
+	relay_id TEXT NOT NULL REFERENCES device (relay_id) ON DELETE CASCADE,
+	created_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS live_activity_token_relay_id
+	ON live_activity_token (relay_id, created_at);
 `;
 
 export class DeviceStore {
@@ -81,6 +96,7 @@ export class DeviceStore {
 		this.#db = db;
 		this.#db.run("PRAGMA journal_mode = WAL;");
 		this.#db.run("PRAGMA busy_timeout = 5000;");
+		this.#db.run("PRAGMA foreign_keys = ON;");
 		this.#db.run(SCHEMA);
 	}
 
@@ -173,6 +189,76 @@ export class DeviceStore {
 	delete(relayId: string): void {
 		this.#db
 			.query("DELETE FROM device WHERE relay_id = $relayId")
+			.run({ relayId });
+	}
+
+	/** The relay id that a per-activity token is bound to, or null. */
+	activityTokenOwner(token: string): string | null {
+		return (
+			this.#db
+				.query<{ relay_id: string }, { token: string }>(
+					"SELECT relay_id FROM live_activity_token WHERE token = $token",
+				)
+				.get({ token })?.relay_id ?? null
+		);
+	}
+
+	/** The per-activity tokens of one device, the newest first. */
+	activityTokens(relayId: string): string[] {
+		return this.#db
+			.query<{ token: string }, { relayId: string }>(
+				`SELECT token FROM live_activity_token WHERE relay_id = $relayId
+				 ORDER BY created_at DESC, rowid DESC`,
+			)
+			.all({ relayId })
+			.map((row) => row.token);
+	}
+
+	/**
+	 * Bind a per-activity token to a device. Returns `conflict` when another
+	 * device holds the token. A device keeps at most `MAX_ACTIVITY_TOKENS`: the
+	 * oldest go first.
+	 */
+	bindActivityToken(
+		relayId: string,
+		token: string,
+		now: number,
+	): "bound" | "conflict" {
+		return this.#db.transaction((): "bound" | "conflict" => {
+			const owner = this.activityTokenOwner(token);
+			if (owner !== null && owner !== relayId) return "conflict";
+			this.#db
+				.query(
+					`INSERT INTO live_activity_token (token, relay_id, created_at)
+					 VALUES ($token, $relayId, $now)
+					 ON CONFLICT (token) DO UPDATE SET created_at = $now`,
+				)
+				.run({ token, relayId, now });
+			this.#db
+				.query(
+					`DELETE FROM live_activity_token WHERE relay_id = $relayId
+					 AND token NOT IN (
+						SELECT token FROM live_activity_token WHERE relay_id = $relayId
+						ORDER BY created_at DESC, rowid DESC LIMIT $limit)`,
+				)
+				.run({ relayId, limit: MAX_ACTIVITY_TOKENS });
+			return "bound";
+		})();
+	}
+
+	/** Unbind one per-activity token of one device. */
+	removeActivityToken(relayId: string, token: string): void {
+		this.#db
+			.query(
+				"DELETE FROM live_activity_token WHERE relay_id = $relayId AND token = $token",
+			)
+			.run({ relayId, token });
+	}
+
+	/** Unbind every per-activity token of one device. */
+	clearActivityTokens(relayId: string): void {
+		this.#db
+			.query("DELETE FROM live_activity_token WHERE relay_id = $relayId")
 			.run({ relayId });
 	}
 
