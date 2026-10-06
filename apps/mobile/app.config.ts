@@ -7,6 +7,7 @@ import {
 	type ConfigPlugin,
 	withAndroidColors,
 	withAndroidColorsNight,
+	withAndroidStyles,
 	withDangerousMod,
 } from "expo/config-plugins";
 
@@ -72,6 +73,46 @@ const withDarkWindowBackground: ConfigPlugin = (config) =>
 		});
 		return night;
 	});
+
+/** A light violet of the mark, for the buttons of a dialog in dark mode. */
+const BRAND_LIGHT = "#CDBDFF";
+
+/**
+ * The native dialogs (`Alert.alert`) take their buttons' colour from
+ * `colorAccent`. The theme did not set it, so the buttons were the teal of
+ * AppCompat. This sets the violet of the mark, and a light one at night.
+ */
+const withDialogAccent: ConfigPlugin = (config) =>
+	withAndroidStyles(
+		withAndroidColorsNight(
+			withAndroidColors(config, (colors) => {
+				colors.modResults = AndroidConfig.Colors.assignColorValue(
+					colors.modResults,
+					{ name: "colorAccent", value: BRAND },
+				);
+				return colors;
+			}),
+			(night) => {
+				night.modResults = AndroidConfig.Colors.assignColorValue(
+					night.modResults,
+					{ name: "colorAccent", value: BRAND_LIGHT },
+				);
+				return night;
+			},
+		),
+		(styles) => {
+			styles.modResults = AndroidConfig.Styles.assignStylesValue(
+				styles.modResults,
+				{
+					add: true,
+					name: "colorAccent",
+					value: "@color/colorAccent",
+					parent: AndroidConfig.Styles.getAppThemeGroup(),
+				},
+			);
+			return styles;
+		},
+	);
 
 // The app is one client for every Server (ADR 0005), so nothing here names a
 // server. The person gives the Server address on the first screen.
@@ -171,4 +212,6 @@ const config: ExpoConfig = {
 // `withPush` adds the one `expo-notifications` entry, with the brand's icon
 // (`assets/notification-icon.png`). `withNotificationIcon` writes the drawn
 // sizes of the same icon under the same resource names.
-export default withPush(withNotificationIcon(withDarkWindowBackground(config)));
+export default withPush(
+	withNotificationIcon(withDialogAccent(withDarkWindowBackground(config))),
+);
