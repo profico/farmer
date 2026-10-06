@@ -24,8 +24,11 @@ export const FAB_MARGIN = SPACE.l;
  *  it. */
 export const FAB_CLEARANCE = FAB_SIZE + FAB_MARGIN;
 
-/** The width of the assistant part of the split button. */
-const ASSISTANT_WIDTH = 64;
+/** The width of the assistant part of the split button, and of the Log
+ *  time part when it is collapsed, so the two parts match. */
+const PART_WIDTH = 64;
+/** The icon size of `Icon`. */
+const ICON_SIZE = 24;
 /** The space between the two parts of the split button. */
 const SPLIT_GAP = 2;
 /** The outer corner of a part: a full pill. */
@@ -123,7 +126,7 @@ export function LogTimeFab({
 				style={[
 					{
 						height: FAB_SIZE,
-						minWidth: FAB_SIZE,
+						minWidth: onAssistant ? PART_WIDTH : FAB_SIZE,
 						overflow: "hidden",
 						backgroundColor: palette.primaryContainer,
 						elevation: 3,
@@ -145,8 +148,10 @@ export function LogTimeFab({
 						flexDirection: "row",
 						alignItems: "center",
 						height: FAB_SIZE,
-						minWidth: FAB_SIZE,
-						paddingHorizontal: SPACE.l,
+						minWidth: onAssistant ? PART_WIDTH : FAB_SIZE,
+						paddingHorizontal: onAssistant
+							? (PART_WIDTH - ICON_SIZE) / 2
+							: SPACE.l,
 					}}
 				>
 					<Icon name="add" color={palette.onPrimaryContainer} />
@@ -169,7 +174,7 @@ export function LogTimeFab({
 					style={[
 						{
 							height: FAB_SIZE,
-							width: ASSISTANT_WIDTH,
+							width: PART_WIDTH,
 							overflow: "hidden",
 							backgroundColor: palette.primaryContainer,
 							elevation: 3,
@@ -189,7 +194,7 @@ export function LogTimeFab({
 						}}
 						style={{
 							height: FAB_SIZE,
-							width: ASSISTANT_WIDTH,
+							width: PART_WIDTH,
 							alignItems: "center",
 							justifyContent: "center",
 						}}
