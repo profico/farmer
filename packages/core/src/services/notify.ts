@@ -422,7 +422,16 @@ export const notify = async (
 	if (takenByApp) {
 		const native = await attempt("native");
 		if (native === true) return { ...NOTHING_SENT, native };
-		return { ...NOTHING_SENT, native, slack: await attempt("slack") };
+		const slack = await attempt("slack");
+		// The native push failed, and the failure may be only a relay error or a
+		// timeout. "No Slack match" then does not close the matter: a retry can
+		// still reach the phone. A timeout is ambiguous (the push may have
+		// arrived), so that retry may send a duplicate.
+		return {
+			...NOTHING_SENT,
+			native,
+			slack: slack === "unreachable" ? false : slack,
+		};
 	}
 
 	const results = await Promise.all(

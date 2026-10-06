@@ -40,6 +40,7 @@ import {
 	type NotifyAdapter,
 	notify,
 	setNotifyAdaptersForTests,
+	wasUnreachable,
 } from "./notify";
 import { timersService } from "./timers.service";
 import type { Ctx } from "./types";
@@ -341,6 +342,17 @@ describe("the Slack kinds", () => {
 
 		expect(outcome).toEqual({ push: false, native: false, slack: true });
 		expect(slack.sent).toEqual(["nudge"]);
+	});
+
+	test("a failed push with no Slack match stays open to a retry", async () => {
+		await addDevice(IOS, iosPublic);
+		relay.answer(IOS, { status: 503, error: "unavailable" });
+		setNotifyAdaptersForTests({ slack: async () => "unreachable" });
+
+		const outcome = await notify({ organizationId: ORG, userId: ME }, nudge);
+
+		expect(outcome).toEqual({ push: false, native: false, slack: false });
+		expect(wasUnreachable(outcome)).toBe(false);
 	});
 });
 
