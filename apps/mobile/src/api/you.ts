@@ -448,10 +448,14 @@ export const useSetHolidayDisabled = (year: number) => {
 						: day,
 				),
 			);
-			return { previous };
+			// The key goes in the context: the person can open another year
+			// before the answer arrives.
+			return { queryKey: yearKey, previous };
 		},
 		onError: (_error, _change, context) => {
-			if (context) queryClient.setQueryData(yearKey, context.previous);
+			if (context) {
+				queryClient.setQueryData(context.queryKey, context.previous);
+			}
 		},
 		onSettled: () =>
 			Promise.all(
