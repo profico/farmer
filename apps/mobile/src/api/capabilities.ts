@@ -24,12 +24,18 @@ export const useMeta = () => {
 /** The API version that added the routes for every screen of the app. */
 export const FULL_API_VERSION = 2;
 
+/** The API version that added the helpers of the day: "Assemble my day",
+ *  the calendar meetings, the calendar notice and GitHub on an entry. */
+export const DAY_API_VERSION = 3;
+
 export type Access = Capabilities & {
 	/** False until `meta` and `whoami` are both read. */
 	ready: boolean;
 	/** The Server has the routes of API version 2: the "You" screens, the
 	 *  other reports and the project settings. */
 	fullApi: boolean;
+	/** The Server has the routes of API version 3: the helpers of the day. */
+	dayApi: boolean;
 };
 
 /**
@@ -41,13 +47,16 @@ export type Access = Capabilities & {
 export const useAccess = (): Access => {
 	const meta = useMeta();
 	const whoami = useWhoami();
-	const fullApi = (meta.data?.apiVersion ?? 1) >= FULL_API_VERSION;
+	const apiVersion = meta.data?.apiVersion ?? 1;
+	const fullApi = apiVersion >= FULL_API_VERSION;
+	const dayApi = apiVersion >= DAY_API_VERSION;
 	const capabilities =
 		fullApi && whoami.data ? whoami.data.capabilities : NO_CAPABILITIES;
 	return {
 		...capabilities,
 		ready: meta.data !== undefined && whoami.data !== undefined,
 		fullApi,
+		dayApi,
 	};
 };
 
