@@ -14,6 +14,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/audit-log/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
+				signInOnly: true,
 				input: listAuditEventsInput,
 				run: async (ctx, input): Promise<ApiAuditPage> => {
 					const { auditService } = await import("@farmer/core/services");

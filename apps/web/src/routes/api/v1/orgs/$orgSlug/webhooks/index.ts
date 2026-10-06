@@ -21,6 +21,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
+				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiWebhookEndpoint[]> => {
 					const { webhooksService } = await import("@farmer/core/services");
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/")({
 				},
 			}),
 			POST: apiRoute({
+				signInOnly: true,
 				input: createWebhookEndpointInput,
 				run: async (ctx, input): Promise<ApiWebhookEndpointCreated> => {
 					const { webhooksService } = await import("@farmer/core/services");

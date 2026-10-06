@@ -21,6 +21,7 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			POST: apiRoute({
+				signInOnly: true,
 				input: resendWebhookDeliveryInput,
 				raw: ({ params }: ApiRequest<OrgRowParams>) => ({
 					deliveryId: params.id,

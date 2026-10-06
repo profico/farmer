@@ -22,6 +22,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/$id/test")(
 		server: {
 			handlers: {
 				POST: apiRoute({
+					signInOnly: true,
 					input: z.object({ endpointId: webhookEndpointIdInput }),
 					raw: ({ params }: ApiRequest<OrgRowParams>) => ({
 						endpointId: params.id,

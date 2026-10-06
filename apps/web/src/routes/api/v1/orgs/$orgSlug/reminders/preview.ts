@@ -16,6 +16,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/reminders/preview")(
 		server: {
 			handlers: {
 				GET: apiRoute({
+					signInOnly: true,
 					input: reminderPreviewInput,
 					run: async (ctx, { kind, date }): Promise<ApiReminderPreview> => {
 						const { reminderSettingsService } =

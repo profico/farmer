@@ -20,6 +20,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/invitations/$id/")({
 	server: {
 		handlers: {
 			DELETE: apiRoute({
+				signInOnly: true,
 				input: byId,
 				raw: ({ params }: ApiRequest<OrgRowParams>) => ({
 					invitationId: params.id,

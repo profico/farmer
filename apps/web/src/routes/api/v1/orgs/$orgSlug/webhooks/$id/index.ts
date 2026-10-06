@@ -37,6 +37,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/$id/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
+				signInOnly: true,
 				input: byId,
 				raw: fromPath,
 				run: async (ctx, { endpointId }): Promise<ApiWebhookEndpoint> => {
@@ -47,6 +48,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/$id/")({
 				},
 			}),
 			PATCH: apiRoute({
+				signInOnly: true,
 				input: updateWebhookEndpointInput,
 				raw: ({ params, body }: ApiRequest<OrgRowParams>) => {
 					const patch = patchBody.safeParse(body);
@@ -68,6 +70,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/webhooks/$id/")({
 			// `remove` is silent about an id it did not find, so the endpoint is
 			// read first: a missing one, or another organization's, is a 404.
 			DELETE: apiRoute({
+				signInOnly: true,
 				input: byId,
 				raw: fromPath,
 				run: async (ctx, { endpointId }): Promise<ApiDeleted> => {

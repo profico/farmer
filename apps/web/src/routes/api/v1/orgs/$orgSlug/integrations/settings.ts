@@ -29,6 +29,7 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			PATCH: apiRoute({
+				signInOnly: true,
 				input: updateIntegrationSettingsInput,
 				run: async (ctx, input): Promise<ApiIntegrationSettingsResult> => {
 					const { integrationSettingsService } =

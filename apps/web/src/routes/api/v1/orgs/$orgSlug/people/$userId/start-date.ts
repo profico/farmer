@@ -18,6 +18,7 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			POST: apiRoute({
+				signInOnly: true,
 				input: setMemberStartDateInput,
 				raw: ({ params, body }: ApiRequest<PersonParams>) =>
 					bodyWithPath(body, { userId: params.userId }),

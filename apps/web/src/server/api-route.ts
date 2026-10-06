@@ -101,6 +101,13 @@ export type ApiRouteSpec<
 	 * validates — the schema after it does that.
 	 */
 	raw?: (request: ApiRequest<TParams>) => JsonValue | Promise<JsonValue>;
+	/**
+	 * Refuse an API token on this route, with 403. Set it on a route that
+	 * manages a credential, an integration, a webhook, a person or a setting of
+	 * the workspace. See `requireSignIn`. The check runs before the input is
+	 * parsed, so a refused token learns nothing from a validation error.
+	 */
+	signInOnly?: boolean;
 	/** The service call. Returns the projection, never a row. */
 	run: (
 		ctx: Ctx,
@@ -511,7 +518,8 @@ const sessionHeadersOf = async (
 
 /**
  * Refuses an API token on a route that manages a person's credentials: the
- * signed-in devices and the API tokens. A token that could mint another one
+ * signed-in devices and the API tokens. An org-scoped route that manages the
+ * workspace sets `signInOnly` in its spec and gets the same refusal. A token that could mint another one
  * would turn a leaked key into a lasting one, which a revoke of the first
  * would not end. A device-flow or mobile session, or a signed-in browser,
  * may.
@@ -520,7 +528,7 @@ export const requireSignIn = async (via: ApiCredentialKind): Promise<void> => {
 	if (via !== "api_token") return;
 	const { AccessError } = await import("@farmer/core/services");
 	throw new AccessError(
-		"An API token cannot manage sign-ins or API tokens. Sign in with `farmer login` or the mobile app.",
+		"An API token cannot manage sign-ins, API tokens or the workspace. Sign in with `farmer login` or the mobile app.",
 	);
 };
 
@@ -540,6 +548,7 @@ export const apiRoute =
 			request,
 			() => orgPrincipal(request, params.orgSlug),
 			async ({ ctx, via, sessionToken }) => {
+				if (spec.signInOnly) await requireSignIn(via);
 				const input = await parseInput(spec, request, ctx, params);
 				if (!input.ok) return input.response;
 				const caller: ApiCaller = {

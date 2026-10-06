@@ -16,6 +16,7 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			DELETE: apiRoute({
+				signInOnly: true,
 				input: NO_INPUT,
 				run: (ctx): Promise<ApiIntegrations> =>
 					unlinkIntegration(ctx, "google-calendar"),

@@ -83,6 +83,27 @@ server function calls, so the web app and the app read one definition.
 - A session of the app records `farmer-mobile/<version> (<platform> <os>)`
   and the list names it "Farmer app on Android" or "Farmer app on iOS".
 
+## Routes that refuse a token
+
+A token is a long-lived key for a script. A leaked key of an admin must not
+reach the credentials and the settings of the workspace. A route spec sets
+`signInOnly: true`, and `apiRoute` calls `requireSignIn` before it parses the
+input. The route answers 403 for an API token. A browser session, the CLI's
+device-flow session and the session of the mobile app pass.
+
+- **Webhooks**, each route. An endpoint receives every member's time entries.
+- **Audit log**: the list, the export and the retention.
+- **Workspace integrations** (GitHub, Slack), each route.
+- **People** and **invitations**, each route.
+- **Settings**: the policy, the reminders, the organization `PATCH`, the
+  integration settings `PATCH` and the disconnect of GitHub or Google
+  Calendar.
+- **The assistant settings**: the `POST`, `PATCH` and `DELETE`. The `GET` stays
+  open to a member, as in the web app.
+
+The CLI calls none of these routes. A new route of this kind sets
+`signInOnly`. `server/api-route-gate.test.ts` lists the routes above.
+
 ## The API reference
 
 `/api-docs` (Scalar, `components/site/api-reference.tsx`) offers two schemes in

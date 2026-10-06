@@ -16,6 +16,7 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: apiRoute({
+				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiOrgPolicy> => {
 					const { orgSettingsService } = await import("@farmer/core/services");
@@ -23,6 +24,7 @@ export const Route = createFileRoute(
 				},
 			}),
 			PATCH: apiRoute({
+				signInOnly: true,
 				input: updateOrgSettingsInput,
 				run: async (ctx, input): Promise<ApiOrgPolicy> => {
 					const { orgSettingsService } = await import("@farmer/core/services");

@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/invitations/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
+				signInOnly: true,
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiInvitation[]> => {
 					const { membersService } = await import("@farmer/core/services");
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/invitations/")({
 				},
 			}),
 			POST: apiRoute({
+				signInOnly: true,
 				input: inviteMemberInput,
 				run: async (ctx, input, caller): Promise<ApiInvitation> => {
 					const { memberAdmin } = await import("@farmer/core/auth");
