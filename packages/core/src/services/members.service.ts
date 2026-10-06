@@ -288,7 +288,7 @@ export const membersService = {
 	 *  immediately (it is the row `mth_current_uidx` allows), so joining on
 	 *  `effectiveUntil is null` reported next month's type as though it already
 	 *  applied — and this list is what the members screen draws. */
-	list: async (ctx: Ctx): Promise<PersonRow[]> => {
+	list: async (ctx: Ctx, only?: { userId: string }): Promise<PersonRow[]> => {
 		const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 		const rows = await db
 			.select({
@@ -324,7 +324,12 @@ export const membersService = {
 					),
 				),
 			)
-			.where(eq(member.organizationId, ctx.organizationId))
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					only ? eq(member.userId, only.userId) : undefined,
+				),
+			)
 			.orderBy(asc(user.name));
 
 		// Only the unverified few need the account check; everyone who signed in
@@ -347,7 +352,12 @@ export const membersService = {
 		const leadRows = await db
 			.select({ leadUserId: teamLeadPerson.leadUserId, people: count() })
 			.from(teamLeadPerson)
-			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
+			.where(
+				and(
+					eq(teamLeadPerson.organizationId, ctx.organizationId),
+					only ? eq(teamLeadPerson.leadUserId, only.userId) : undefined,
+				),
+			)
 			.groupBy(teamLeadPerson.leadUserId);
 		const leadsPeople = new Map(
 			leadRows.map((r) => [r.leadUserId, Number(r.people)]),
@@ -810,11 +820,11 @@ export const membersService = {
 	profile: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
 		const [people, typeHistory, leads] = await Promise.all([
-			membersService.list(ctx),
+			membersService.list(ctx, { userId }),
 			membersService.typeHistory(ctx, userId),
 			teamLeadsService.listPeople(ctx, userId),
 		]);
-		const person = people.find((row) => row.userId === userId);
+		const person = people[0];
 		if (!person) throw new Error("Person not found");
 		return { person, typeHistory, leads };
 	},
