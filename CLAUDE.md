@@ -19,7 +19,7 @@ bun run build               # turbo: builds all workspaces
 bun run test                # turbo: runs the bun test suites of packages/core, apps/cli and apps/web
 bun run check               # oxfmt --check + oxlint — what CI runs
 bun run typecheck           # turbo: tsc --noEmit in every workspace — also what CI runs
-bun run complexity          # cccc: no function over 40 cognitive or 40 cyclomatic (cccc.toml)
+bun run complexity          # cccc: no function over 40 cognitive or 40 cyclomatic (cccc.toml) — also what CI runs
 bun run lint                # oxlint only
 bun run format              # oxfmt --write
 
@@ -78,7 +78,7 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 [`cccc`](https://github.com/moznion/cccc) measures the cognitive and the cyclomatic complexity of each function. `cccc.toml` sets both limits to 40. **Run `bun run complexity` before you say that a change is done, and make sure that it passes.** It reads every language in the tree, the Kotlin and the Swift too.
 
 - When a function goes over a limit, split it: extract a helper, a sub-component or an early return. Do not raise a limit, and do not add the file to `exclude`. That list holds only generated files.
-- `cccc` is a single binary, not an npm package. Download it from the [releases](https://github.com/moznion/cccc/releases) and put it on your `PATH`. The `cargo install cccc-cli` build has no Kotlin.
+- `cccc` is a single binary, not an npm package. Download v1.7.0 (the version that CI uses, in `.github/workflows/ci.yml`) from the [releases](https://github.com/moznion/cccc/releases) and put it on your `PATH`. The `cargo install cccc-cli` build has no Kotlin.
 - `cccc --top-cognitive 20 .` lists the worst functions. `cccc --no-config --table <file>` measures one file.
 
 ## Architecture

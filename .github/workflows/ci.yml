@@ -47,6 +47,17 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      # The action only installs cccc (no `path`). The step after it runs the
+      # same script as a developer, so CI and a local run use one command.
+      # Keep `version` the same as the binary in the AGENTS.md instructions.
+      - name: Install cccc
+        uses: moznion/cccc-action@v1
+        with:
+          version: v1.7.0
+
+      - name: Complexity
+        run: bun run complexity
+
       # packages/core's suite runs against PGLite (real Postgres in-process, see
       # src/test/harness.ts), so this step needs no service container and no
       # DATABASE_URL. It previously ran vitest in apps/web — a workspace with no
