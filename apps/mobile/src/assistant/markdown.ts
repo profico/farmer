@@ -135,6 +135,137 @@ const parsePrompts = (text: string) =>
 const BULLET = /^\s*[-*]\s+/;
 const NUMBERED = /^\s*\d+[.)]\s+/;
 const HEADING = /^(#{1,3})\s+(.*)$/;
+const RULE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
+
+/** A block read from `lines`, and the index of the first line after it. A
+ *  blank line gives `null` and is skipped. `next` is always past the line
+ *  where the reader started, or the loop would never end. */
+type Read = { block: Block | null; next: number };
+
+/** A fence body as the block it stands for. `streaming` changes only an
+ *  open directive fence. */
+const fenceBlock = (
+	text: string,
+	body: string[],
+	lang: string | null,
+	closed: boolean,
+	streaming: boolean,
+): Block => {
+	// A closed fence whose body is a chart is a chart, with any tag:
+	// a small model writes ```json for the same object.
+	if (closed) {
+		const spec = parseChartSpec(text);
+		if (spec) return { kind: "chart", spec };
+	}
+	if (streaming && !closed && lang === "farmer-chart") {
+		return { kind: "chart", spec: null };
+	}
+	// Chips do not wait for the closing fence: a turn that stops a
+	// token early must still give the follow-ups.
+	if (lang === "farmer-next") {
+		return {
+			kind: "next",
+			prompts: parsePrompts(text),
+			ready: closed || !streaming,
+		};
+	}
+	return fencedTable(body) ?? { kind: "code", text, lang };
+};
+
+/** A fenced block, or null when the line at `start` opens no fence. An open
+ *  fence runs to the end of the text that has arrived. */
+const readFence = (
+	lines: string[],
+	start: number,
+	streaming: boolean,
+): Read | null => {
+	const fence = /^```([\w-]*)\s*$/.exec((lines[start] ?? "").trim());
+	if (!fence) return null;
+	const lang = fence[1] || null;
+	const body: string[] = [];
+	let index = start + 1;
+	while (index < lines.length && !/^```/.test(lines[index] ?? "")) {
+		body.push(lines[index] ?? "");
+		index += 1;
+	}
+	const closed = index < lines.length;
+	const block = fenceBlock(body.join("\n"), body, lang, closed, streaming);
+	return { block, next: index + 1 };
+};
+
+const readHeading = (line: string): Block | null => {
+	const heading = HEADING.exec(line);
+	if (!heading) return null;
+	const length = heading[1]?.length ?? 1;
+	return {
+		kind: "h",
+		level: length === 3 ? 3 : length === 2 ? 2 : 1,
+		text: heading[2] ?? "",
+	};
+};
+
+/** The run of list items from `start`, which the caller has matched. */
+const takeList = (
+	lines: string[],
+	start: number,
+	pattern: RegExp,
+	kind: "ol" | "ul",
+): Read => {
+	const items: string[] = [];
+	let index = start;
+	while (index < lines.length && pattern.test(lines[index] ?? "")) {
+		items.push((lines[index] ?? "").replace(pattern, ""));
+		index += 1;
+	}
+	return { block: { kind, items }, next: index };
+};
+
+/** Whether a paragraph stops before `line`. */
+const endsParagraph = (line: string, next: string) =>
+	line.trim() === "" ||
+	BULLET.test(line) ||
+	NUMBERED.test(line) ||
+	/^#{1,3}\s+/.test(line) ||
+	isTableLine(line) ||
+	startsTable(line, next) ||
+	/^```/.test(line);
+
+const takeParagraph = (lines: string[], start: number): Read => {
+	const paragraph: string[] = [];
+	let index = start;
+	while (
+		index < lines.length &&
+		!endsParagraph(lines[index] ?? "", lines[index + 1] ?? "")
+	) {
+		paragraph.push(lines[index] ?? "");
+		index += 1;
+	}
+	// A lone table header while the answer streams matches nothing above.
+	// Take the line as its own paragraph, so the loop always moves on.
+	if (paragraph.length === 0) {
+		paragraph.push(lines[start] ?? "");
+		index += 1;
+	}
+	return { block: { kind: "p", text: paragraph.join("\n") }, next: index };
+};
+
+const readBlock = (
+	lines: string[],
+	index: number,
+	streaming: boolean,
+): Read => {
+	const line = lines[index] ?? "";
+	const fence = readFence(lines, index, streaming);
+	if (fence) return fence;
+	if (startsTable(line, lines[index + 1] ?? "")) return takeTable(lines, index);
+	const heading = readHeading(line);
+	if (heading) return { block: heading, next: index + 1 };
+	if (RULE.test(line)) return { block: { kind: "hr" }, next: index + 1 };
+	if (NUMBERED.test(line)) return takeList(lines, index, NUMBERED, "ol");
+	if (BULLET.test(line)) return takeList(lines, index, BULLET, "ul");
+	if (line.trim() === "") return { block: null, next: index + 1 };
+	return takeParagraph(lines, index);
+};
 
 /**
  * The blocks of an answer. `streaming` changes only an open directive fence:
@@ -144,131 +275,11 @@ export const parseBlocks = (source: string, streaming: boolean): Block[] => {
 	const blocks: Block[] = [];
 	const lines = source.split("\n");
 	let index = 0;
-
 	while (index < lines.length) {
-		const line = lines[index] ?? "";
-
-		const fence = /^```([\w-]*)\s*$/.exec(line.trim());
-		if (fence) {
-			const lang = fence[1] || null;
-			const body: string[] = [];
-			index += 1;
-			while (index < lines.length && !/^```/.test(lines[index] ?? "")) {
-				body.push(lines[index] ?? "");
-				index += 1;
-			}
-			const closed = index < lines.length;
-			index += 1;
-			const text = body.join("\n");
-
-			// A closed fence whose body is a chart is a chart, with any tag:
-			// a small model writes ```json for the same object.
-			if (closed) {
-				const spec = parseChartSpec(text);
-				if (spec) {
-					blocks.push({ kind: "chart", spec });
-					continue;
-				}
-			}
-			if (streaming && !closed && lang === "farmer-chart") {
-				blocks.push({ kind: "chart", spec: null });
-				continue;
-			}
-			// Chips do not wait for the closing fence: a turn that stops a
-			// token early must still give the follow-ups.
-			if (lang === "farmer-next") {
-				blocks.push({
-					kind: "next",
-					prompts: parsePrompts(text),
-					ready: closed || !streaming,
-				});
-				continue;
-			}
-			const table = fencedTable(body);
-			if (table) {
-				blocks.push(table);
-				continue;
-			}
-			blocks.push({ kind: "code", text, lang });
-			continue;
-		}
-
-		if (startsTable(line, lines[index + 1] ?? "")) {
-			const table = takeTable(lines, index);
-			blocks.push(table.block);
-			index = table.next;
-			continue;
-		}
-
-		const heading = HEADING.exec(line);
-		if (heading) {
-			const length = heading[1]?.length ?? 1;
-			blocks.push({
-				kind: "h",
-				level: length === 3 ? 3 : length === 2 ? 2 : 1,
-				text: heading[2] ?? "",
-			});
-			index += 1;
-			continue;
-		}
-
-		if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-			blocks.push({ kind: "hr" });
-			index += 1;
-			continue;
-		}
-
-		if (NUMBERED.test(line)) {
-			const items: string[] = [];
-			while (index < lines.length && NUMBERED.test(lines[index] ?? "")) {
-				items.push((lines[index] ?? "").replace(NUMBERED, ""));
-				index += 1;
-			}
-			blocks.push({ kind: "ol", items });
-			continue;
-		}
-
-		if (BULLET.test(line)) {
-			const items: string[] = [];
-			while (index < lines.length && BULLET.test(lines[index] ?? "")) {
-				items.push((lines[index] ?? "").replace(BULLET, ""));
-				index += 1;
-			}
-			blocks.push({ kind: "ul", items });
-			continue;
-		}
-
-		if (line.trim() === "") {
-			index += 1;
-			continue;
-		}
-
-		const paragraph: string[] = [];
-		while (index < lines.length) {
-			const current = lines[index] ?? "";
-			if (
-				current.trim() === "" ||
-				BULLET.test(current) ||
-				NUMBERED.test(current) ||
-				/^#{1,3}\s+/.test(current) ||
-				isTableLine(current) ||
-				startsTable(current, lines[index + 1] ?? "") ||
-				/^```/.test(current)
-			) {
-				break;
-			}
-			paragraph.push(current);
-			index += 1;
-		}
-		// A lone table header while the answer streams matches nothing above.
-		// Take the line as its own paragraph, so the loop always moves on.
-		if (paragraph.length === 0) {
-			paragraph.push(line);
-			index += 1;
-		}
-		blocks.push({ kind: "p", text: paragraph.join("\n") });
+		const { block, next } = readBlock(lines, index, streaming);
+		if (block) blocks.push(block);
+		index = next;
 	}
-
 	return blocks;
 };
 
