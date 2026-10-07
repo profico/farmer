@@ -176,8 +176,9 @@ export const pullRequestReviewTombstone = pgTable(
 //
 // Keyed by (person, sha), not by entry: the entry is the row the person just
 // edited, and the engine may choose another one. Another person's copy of the
-// same commit is their own decision. A manual attach (`attachCommits`) deletes
-// the row, so the person can change their mind.
+// same commit is their own decision. A manual attach (`attachCommits`) keeps
+// the row: it puts the commit on the entry that the person chose, and the
+// engine still keeps it off every other entry.
 //
 // `date` is the day the engine buckets the commit on (the author date, in the
 // org timezone). Only a day inside the automation window is read by the
@@ -203,7 +204,7 @@ export const commitDetachTombstone = pgTable(
 // opened, merged, closed or reviewed. It is separate from
 // `pullRequestReviewTombstone`, which refuses a review BLOCK for a PR and day
 // and still lets the review stay evidence. This row refuses the event itself.
-// It has the same key, life and way back as `commitDetachTombstone`.
+// It has the same key and life as `commitDetachTombstone`.
 export const pullRequestEventDetachTombstone = pgTable(
 	"pull_request_event_detach_tombstone",
 	{

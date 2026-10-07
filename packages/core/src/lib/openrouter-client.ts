@@ -190,9 +190,9 @@ export class OpenRouterStreamCutError extends OpenRouterError {
  *
  *  Only a failure with no output is safe to repeat: a stall, a network fault
  *  before the headers, an HTTP 408 or 5xx, an error frame, or a stream that
- *  closed empty. An HTTP 429 is not retried. The 180 s total deadline is not retried, because it
- *  already cost three minutes. The return value is a short code for the log
- *  and for telemetry. */
+ *  closed empty. An HTTP 429 is not retried. The 180 s total deadline is not
+ *  retried, because it already cost three minutes. The return value is a short
+ *  code for the log and for telemetry. */
 export const retryableBeforeOutput = (error: Error): string | null => {
 	if (error instanceof OpenRouterStreamCutError) {
 		if (error.outputStarted || error.timedOut) return null;

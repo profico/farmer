@@ -9,7 +9,8 @@ export const runRecordSchema = z.object({
 	repeat: z.number().int(),
 	pass: z.boolean(),
 	reason: z.string(),
-	/** Model calls that answered a step, not counting a retry or the closing call. */
+	/** Model calls that answered a step, not counting a retry or the closing
+	 *  call. */
 	steps: z.number().int(),
 	/** True when the loop used every step and made the closing call. */
 	ceiling: z.boolean(),
@@ -23,7 +24,8 @@ export const runRecordSchema = z.object({
 	retryReasons: z.array(z.string()),
 	errors: z.array(z.string()),
 	costUsd: z.number(),
-	/** True when OpenRouter sent no cost and the figure comes from the price list. */
+	/** True when OpenRouter sent no cost and the figure comes from the price
+	 *  list. */
 	costEstimated: z.boolean(),
 	inputTokens: z.number().int(),
 	outputTokens: z.number().int(),

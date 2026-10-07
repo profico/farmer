@@ -389,8 +389,9 @@ const projectNameFor = (ctx: Ctx, projectId: JsonValue | undefined) =>
 const normalizedName = (name: string) =>
 	foldForSearch(name).replace(/\s+/g, " ");
 
-/** The email of a person, only where another person shares the name. Every tool
- *  result goes to the model provider, and a list of addresses is a mailing list. */
+/** The email of a person, only where another person shares the name. Every
+ *  tool result goes to the model provider, and a list of addresses is a
+ *  mailing list. */
 const emailWhereNameClashes = <T extends { name: string; email: string }>(
 	rows: readonly T[],
 ) => {
@@ -477,8 +478,9 @@ const capRows = <T>(rows: readonly T[], max = MAX_LIST_ROWS) => ({
 });
 
 /** The stopwatch as the model reads it. `timerId` names the row, so a card
- *  that asks to discard one timer cannot discard another. Hours are decimal, and `willLogHours`
- *  is what stopping now would log: the elapsed time rounded to 15 minutes. */
+ *  that asks to discard one timer cannot discard another. Hours are decimal,
+ *  and `willLogHours` is what stopping now would log: the elapsed time rounded
+ *  to 15 minutes. */
 const timerSummary = (view: TimerView) => {
 	const state = view.droppedAt ? "dropped" : view.paused ? "paused" : "running";
 	// A person has one timer for all workspaces. When it runs in another
@@ -522,7 +524,8 @@ const timerSummary = (view: TimerView) => {
 	};
 };
 
-/** How long a new switch waits for its first sync. The settings page uses the same. */
+/** How long a new switch waits for its first sync. The settings page uses
+ *  the same. */
 const SWITCH_SYNC_WAIT_MS = 5000;
 
 const discardTimerInput = z.object({ timerId: z.uuid() });

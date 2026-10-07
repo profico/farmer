@@ -266,7 +266,7 @@ export const dayAssemblyService = {
 		// on an entry of the day again (attached by hand) is simply here, as a
 		// logged meeting is: it is neither counted nor offered, toggle or not.
 		const entryIds = existing.map((entry) => entry.id);
-		const [refused, refusedEventSet, heldCommits, heldEvents] =
+		const [refusedCommitSet, refusedEventSet, heldCommits, heldEvents] =
 			await Promise.all([
 				refusedCommitShas(
 					ctx,
@@ -292,7 +292,7 @@ export const dayAssemblyService = {
 		const heldShas = new Set(heldCommits.map((row) => row.sha));
 		const heldEventIds = new Set(heldEvents.map((row) => row.eventId));
 		const refusedShas = new Set(
-			[...refused].filter((sha) => !heldShas.has(sha)),
+			[...refusedCommitSet].filter((sha) => !heldShas.has(sha)),
 		);
 		const refusedEvents = new Set(
 			[...refusedEventSet].filter((eventId) => !heldEventIds.has(eventId)),
@@ -300,7 +300,7 @@ export const dayAssemblyService = {
 		dismissedCount += refusedShas.size + refusedEvents.size;
 		const offeredCommits = commits.filter(
 			(commit) =>
-				!(refused.has(commit.sha) && heldShas.has(commit.sha)) &&
+				!(refusedCommitSet.has(commit.sha) && heldShas.has(commit.sha)) &&
 				(includeDismissed || !refusedShas.has(commit.sha)),
 		);
 		const offeredEvents = pullRequestEvents.filter(
