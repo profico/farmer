@@ -1343,6 +1343,7 @@ describe("approval tiers", () => {
 			"update_recurring_block_rule",
 			"link_github_repo",
 			"update_integration_settings",
+			"set_hour_fund",
 		]) {
 			const tool = present(findTool(name), name);
 			expect(tool.kind).toBe("write");

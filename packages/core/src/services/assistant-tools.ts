@@ -59,8 +59,11 @@ import {
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
 	monthReportInput,
+	monthPeriodInput,
 	projectIdInput,
 	projectRoleEnum,
+	readHourFundInput,
+	setMonthlyHourFundInput,
 	setTimeEntryOvertimeInput,
 	startTimerInput,
 	suggestCommitsInput,
@@ -85,13 +88,20 @@ import {
 import type { Access } from "./access.service";
 import { clientsService } from "./clients.service";
 import { complianceService, type PeriodTarget } from "./compliance.service";
-import { ctxAccess, ctxDb, ctxTimezone, ctxWeekStartsOn } from "./context";
+import {
+	ctxAccess,
+	ctxDb,
+	ctxTimezone,
+	ctxWeekStartsOn,
+	requireAdmin,
+} from "./context";
 import { dayAssemblyService } from "./day-assembly.service";
 import { safeErrorMessage, withRecoveryHint } from "./error-message";
 import { filingRulesService } from "./filing-rules.service";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { holidaysService } from "./holidays.service";
+import { hourFundService } from "./hour-fund.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { membersService } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
@@ -405,6 +415,44 @@ const attachmentIdList = (key: string, args: JsonRecord) => [
 ];
 
 const shortSha = (sha: string) => sha.slice(0, 7);
+
+const MONTH_NAMES = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+] as const;
+
+/** "March 2026", for a card. "?" for a month the model got wrong. */
+const monthLabel = (
+	year: JsonValue | undefined,
+	month: JsonValue | undefined,
+) => {
+	const parsed = z
+		.object({ year: z.number(), month: z.number().int().min(1).max(12) })
+		.safeParse({ year, month });
+	return parsed.success
+		? `${MONTH_NAMES[parsed.data.month - 1]} ${parsed.data.year}`
+		: "?";
+};
+
+/** A month's fund as text for a card, or "not set". Never throws. */
+const fundText = async (ctx: Ctx, args: JsonRecord) => {
+	const parsed = monthPeriodInput.safeParse(args);
+	if (!parsed.success) return "not set";
+	const seconds = await hourFundService
+		.get(ctx, parsed.data.year, parsed.data.month)
+		.catch(() => null);
+	return seconds === null ? "not set" : hours(seconds);
+};
 
 /** The most rows a list tool returns. A model reads a long list badly and the
  *  result goes to the model provider, so a longer list is cut and says so. */
@@ -2232,6 +2280,94 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					end: event.end,
 					meetingUrl: event.meetingUrl,
 				})),
+			};
+		},
+	},
+	// ── Hour fund ───────────────────────────────────────────────────────────
+	{
+		name: "get_hour_fund",
+		kind: "read",
+		available: adminOnly,
+		description:
+			"The organization's monthly hour fund: the hours every person with a target is measured against in that month. It is ONE figure for the whole organization, not a person's hours. Pass year to list the months that have a fund (a month with no fund is absent, which is not a fund of zero), or year and month to read one month together with the suggested fund: the working days (weekdays that are not public holidays) times 8 hours. The suggestion is never saved. Hours are decimal. Admin only, as the Settings page for it is.",
+		schema: readHourFundInput,
+		run: async (ctx, args) => {
+			// The service reads have no role check. The page that shows the fund is
+			// for Admins, so the tool holds the same line itself.
+			await requireAdmin(ctx);
+			const input = readHourFundInput.parse(args);
+			if (input.month === undefined) {
+				const rows = await hourFundService.listForYear(ctx, input.year);
+				return {
+					year: input.year,
+					months: rows.map((row) => ({
+						month: row.month,
+						fundHours: row.fundSeconds / 3600,
+					})),
+				};
+			}
+			const [fundSeconds, suggestion] = await Promise.all([
+				hourFundService.get(ctx, input.year, input.month),
+				hourFundService.suggestForMonth(ctx, input.year, input.month),
+			]);
+			return {
+				year: input.year,
+				month: input.month,
+				// Null: no fund is entered, so nobody has an Expected figure.
+				fundHours: nullableHours(fundSeconds),
+				suggestion: {
+					workingDays: suggestion.workingDays,
+					fundHours: suggestion.fundSeconds / 3600,
+				},
+			};
+		},
+	},
+	{
+		name: "set_hour_fund",
+		kind: "write",
+		available: adminOnly,
+		// Every target of the month changes with it.
+		confirm: true,
+		description:
+			"Set the organization's hour fund for one month, in SECONDS (hours times 3600). It changes the target of every person who has one, for that month. Admin only. Read get_hour_fund first: suggestion.fundHours is the figure the working days give. The change is recorded in the audit log.",
+		schema: setMonthlyHourFundInput,
+		summarize: async (ctx, args) =>
+			`Set the hour fund for ${monthLabel(args.year, args.month)} to ${hours(args.fundSeconds)} (now ${await fundText(ctx, args)})`,
+		run: async (ctx, args) => {
+			const input = setMonthlyHourFundInput.parse(args);
+			await hourFundService.set(ctx, input);
+			return {
+				set: true,
+				year: input.year,
+				month: input.month,
+				fundHours: input.fundSeconds / 3600,
+			};
+		},
+	},
+	{
+		name: "clear_hour_fund",
+		kind: "destructive",
+		available: adminOnly,
+		description:
+			"Remove the organization's hour fund for one month, which returns the month to no fund at all. This is not a fund of zero: with no fund nobody has an Expected figure or a verdict for that month. Admin only. The change is recorded in the audit log. A month with no fund is refused, and nothing changes.",
+		schema: monthPeriodInput,
+		summarize: async (ctx, args) =>
+			`Remove the hour fund for ${monthLabel(args.year, args.month)} (now ${await fundText(ctx, args)})`,
+		run: async (ctx, args) => {
+			const input = monthPeriodInput.parse(args);
+			await requireAdmin(ctx);
+			// `clear` answers nothing, so a month with no fund would read as a
+			// success. Say that nothing was removed.
+			const before = await hourFundService.get(ctx, input.year, input.month);
+			if (before === null) {
+				throw new Error("No fund is set for that month - nothing was cleared");
+			}
+			await hourFundService.clear(ctx, input.year, input.month);
+			return {
+				cleared: true,
+				year: input.year,
+				month: input.month,
+				wasHours: before / 3600,
 			};
 		},
 	},
