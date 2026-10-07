@@ -78,6 +78,20 @@ class TimerActionReceiver : BroadcastReceiver() {
      */
     @Volatile
     internal var onChanged: (() -> Unit)? = null
+      private set
+
+    private val listenerLock = Any()
+
+    internal fun setListener(listener: () -> Unit) {
+      synchronized(listenerLock) { onChanged = listener }
+    }
+
+    /** Clears the listener only when it is still the same lambda. */
+    internal fun clearListener(listener: () -> Unit) {
+      synchronized(listenerLock) {
+        if (onChanged === listener) onChanged = null
+      }
+    }
   }
 
   private fun run(context: Context, path: String, settled: AtomicBoolean) {
@@ -94,7 +108,8 @@ class TimerActionReceiver : BroadcastReceiver() {
       null
     }
     // A late answer still tells a running app to read the timer again.
-    if (result != null) onChanged?.invoke()
+    // The callback can throw. A throw must not skip the notification below.
+    if (result != null) runCatching { onChanged?.invoke() }
     if (!settled.compareAndSet(false, true)) return
     when (result) {
       null -> TimerNotifier.post(
@@ -127,7 +142,10 @@ class TimerActionReceiver : BroadcastReceiver() {
     val connection = url.openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "POST"
-      // 3 s + 4 s, inside DEADLINE_MS with time for the Keystore decrypt.
+      // These timeouts do not bound the request. The connect timeout does
+      // not include DNS and it applies to each address. The read timeout
+      // applies to each read. The watcher and `settled` set the real bound.
+      // The timeouts only make a stalled request end sooner.
       connection.connectTimeout = 3_000
       connection.readTimeout = 4_000
       connection.doOutput = true

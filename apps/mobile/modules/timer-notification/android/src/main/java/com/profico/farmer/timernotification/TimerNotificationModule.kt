@@ -32,12 +32,16 @@ class TimerNotificationModule : Module() {
 
     Events("onTimerAction")
 
+    // A new module instance can start before the old one is destroyed.
+    // Each instance clears only the listener that it set.
+    val listener: () -> Unit = { sendEvent("onTimerAction") }
+
     OnCreate {
-      TimerActionReceiver.onChanged = { sendEvent("onTimerAction") }
+      TimerActionReceiver.setListener(listener)
     }
 
     OnDestroy {
-      TimerActionReceiver.onChanged = null
+      TimerActionReceiver.clearListener(listener)
     }
 
     Function("canPost") {
