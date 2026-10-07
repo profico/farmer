@@ -25,6 +25,8 @@ bun run format              # oxfmt --write
 
 # Database (packages/core, run through root turbo)
 bun run db:generate         # drizzle-kit generate → packages/core/drizzle/*.sql
+                            # then deletes all but the newest snapshot in drizzle/meta.
+                            # Never run bare `drizzle-kit generate`.
 bun run db:migrate          # drizzle-kit migrate
 bun run db:check            # `select 1` sanity check
 bun run db:studio           # drizzle-kit studio
