@@ -72,8 +72,52 @@ const chainOf = (cause: unknown): Error[] => {
 	return chain;
 };
 
+/**
+ * The class names of a database error, as `name` or the constructor gives
+ * them: Drizzle's `DrizzleQueryError`, postgres.js's `PostgresError`, and the
+ * `DatabaseError` of PGLite and pg, whose `name` is `error`.
+ *
+ * `withoutQueryValues` and the PostHog `before_send` filter
+ * (`apps/web/src/lib/posthog-server.ts`) both read this list.
+ */
+export const DATABASE_ERROR_CLASSES: ReadonlySet<string> = new Set([
+	"DrizzleQueryError",
+	"PostgresError",
+	"DatabaseError",
+	"error",
+]);
+
+/** Drizzle's class does not set `name`, so a tool that reads only `name` sees
+ *  `Error`. Its message always starts with this text. */
+const DRIZZLE_MESSAGE_START = "Failed query: ";
+
+/** The message of a database error after `withoutQueryValues`, when no code
+ *  or name is known. */
+export const DATABASE_ERROR_MESSAGE = "Database error";
+
+/** A message that `withoutQueryValues` made: the fixed text, and the code and
+ *  the names of the constraint, the table and the column if known. */
+const QUERY_FREE_MESSAGE =
+	/^Database error(?: \((?:code|constraint|table|column) [^\s,()]+(?:, (?:code|constraint|table|column) [^\s,()]+)*\))?$/;
+
+/** Whether an error with this class and this message is a database error.
+ *  For a tool that has only the text of an error, not the error. */
+export const isDatabaseErrorText = (
+	type: string | undefined,
+	message: string | undefined,
+): boolean =>
+	(type !== undefined && DATABASE_ERROR_CLASSES.has(type)) ||
+	(message?.startsWith(DRIZZLE_MESSAGE_START) ?? false);
+
+/** Whether a message holds no values of a query, because
+ *  `withoutQueryValues` made it. */
+export const isQueryFreeMessage = (message: string): boolean =>
+	QUERY_FREE_MESSAGE.test(message);
+
 const isDatabaseError = (error: Error): boolean =>
-	error instanceof DrizzleQueryError || serverError.safeParse(error).success;
+	error instanceof DrizzleQueryError ||
+	serverError.safeParse(error).success ||
+	DATABASE_ERROR_CLASSES.has(classOf(error));
 
 /** PGLite's class has a minified constructor name, and Drizzle's class does
  *  not set `name`. So use `name` unless it is the default. */
@@ -171,8 +215,8 @@ export const withoutQueryValues = (error: Error): Error => {
 	const places = placesOf(chain).map(([key, value]) => `${key} ${value}`);
 	const copy = new Error(
 		places.length > 0
-			? `Database error (${places.join(", ")})`
-			: "Database error",
+			? `${DATABASE_ERROR_MESSAGE} (${places.join(", ")})`
+			: DATABASE_ERROR_MESSAGE,
 	);
 	copy.name = classOf(error);
 	copy.stack = `${copy.name}: ${copy.message}\n${framesOf(error.stack ?? "")}`;
