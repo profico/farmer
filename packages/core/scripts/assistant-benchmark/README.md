@@ -112,7 +112,7 @@ The summary compares models in this order. A step applies only when the
 earlier steps are equal.
 
 1. Pass rate: the number of passing runs.
-2. Pass^3: the number of questions where all repeats pass.
+2. Pass^N (N is the repeat count): the number of questions where all repeats pass.
 3. Latency: the p50 wall time, in whole seconds.
 4. Cost: the cost for each run, to 0.0001 USD.
 
@@ -138,6 +138,8 @@ the table. They are not in the rank key. Read them before you choose a model.
 | `questions.ts` | The questions and the checks. |
 | `questions.test.ts` | Tests for the checks. |
 | `stub.ts` | The scripted model for `--stub`. |
-| `models.ts` | The pinned model ids. |
+| `models.ts` | The pinned model ids, and the production alias for comparison. |
+| `out-dir.ts` | The results directory. It refuses a path in the repository outside `results/`. |
+| `out-dir.test.ts` | Tests for the results directory. |
 | `report.ts` | The summary. Run it alone: `bun scripts/assistant-benchmark/report.ts <dir>`. |
 | `types.ts` | The record of one run. |

@@ -127,12 +127,19 @@ export const markdown = (
 	runs: RunRecord[],
 ): string => {
 	const ids = QUESTIONS.map((question) => question.id);
+	// The most repeats that one model ran for one question.
+	const counts = new Map<string, number>();
+	for (const run of runs) {
+		const key = `${run.model} ${run.question}`;
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	const repeats = Math.max(1, ...counts.values());
 	const lines: string[] = [`# ${title}`, ""];
 	const total = runs.reduce((sum, run) => sum + run.costUsd, 0);
 	lines.push(
 		`Runs: ${runs.length}. Total cost: ${usd(total, 2)}.`,
 		"",
-		"| Rank | Model | Pass | Pass^3 | p50 s | p95 s | p95 first s | Stalls | Errors | Cost per run | Total cost |",
+		`| Rank | Model | Pass | Pass^${repeats} | p50 s | p95 s | p95 first s | Stalls | Errors | Cost per run | Total cost |`,
 		"|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
 	);
 	ranked.forEach((summary, index) => {

@@ -1,4 +1,6 @@
-// The models under test. Every id is pinned, and each one supports tools on
+// The models under test. Every id is pinned, except the last one,
+// `~deepseek/deepseek-flash-latest`. It is an alias on purpose, because it is
+// the production model and the comparison needs it. Each id supports tools on
 // OpenRouter as of 7 Oct 2026. The runner checks the list again before a paid
 // run and drops a model that has expired or lost tool support.
 
