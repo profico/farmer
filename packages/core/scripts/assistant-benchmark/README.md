@@ -44,7 +44,7 @@ The stub replaces only the network client. All other parts are real.
 | `--repeats N` | 3 | Runs of each question for each model. |
 | `--concurrency N` | 3 | Models that run at the same time. Use 1 for a clean latency figure. |
 | `--cap USD` | 8 | The runner stops all children when the spend passes this value. |
-| `--out DIR` | `results/<date>` | Where the results go. |
+| `--out DIR` | `results/<date>` | Where the results go. A relative DIR is under `results/`, which git ignores. A path in the repository outside `results/` is refused. |
 | `--stub` | off | Use the scripted model. No key and no cost. |
 
 A stopped run can continue. Start it again with the same `--out`. The runner

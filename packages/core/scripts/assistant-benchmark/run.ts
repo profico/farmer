@@ -9,13 +9,14 @@
 // continue: start it again with the same `--out`, and finished runs are kept.
 
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { z } from "zod";
 
 import { MODELS } from "./models";
+import { resultsDir } from "./out-dir";
 import { QUESTIONS } from "./questions";
 import { writeReport } from "./report";
 import { RUN_PREFIX, type RunRecord, runRecordSchema } from "./types";
@@ -40,9 +41,11 @@ const stub = values.stub;
 const repeats = Number(values.repeats);
 const cap = Number(values.cap);
 const concurrency = Number(values.concurrency);
-const out = resolve(
-	values.out ||
-		`${here}/results/${stub ? "stub" : new Date().toISOString().slice(0, 10)}`,
+const out = resultsDir(
+	here,
+	values.out,
+	stub,
+	new Date().toISOString().slice(0, 10),
 );
 
 if (!stub && !process.env.OPENROUTER_API_KEY) {
