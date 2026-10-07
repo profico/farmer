@@ -13,6 +13,24 @@ import { ctxAccess } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
+/** The next sync files a meeting on the project of a rule. It must not be an
+ *  archived project, as the picker in the dialog does not offer one. */
+const assertProjectActive = async (ctx: Ctx, projectId: string) => {
+	const live = await db.query.project.findFirst({
+		where: and(
+			eq(project.id, projectId),
+			eq(project.organizationId, ctx.organizationId),
+			eq(project.status, "active"),
+		),
+		columns: { id: true },
+	});
+	if (!live) {
+		throw new Error(
+			"That project is archived. Pick another one for this rule.",
+		);
+	}
+};
+
 // Standing answers to "which project does this meeting belong to".
 //
 // The engines file nothing: a synced meeting lands project-less on purpose, and
@@ -204,6 +222,7 @@ export const filingRulesService = {
 		// project leaves the batch unwritten.
 		for (const projectId of byProject.keys()) {
 			await assertProjectInOrg(ctx, projectId);
+			await assertProjectActive(ctx, projectId);
 			access.assertCanTrackOn(projectId);
 		}
 		let remembered = 0;
@@ -239,6 +258,7 @@ export const filingRulesService = {
 		if (!existing) throw new Error("Filing rule not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
+		await assertProjectActive(ctx, input.projectId);
 		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(input.projectId);
 		const targetTaskId =
