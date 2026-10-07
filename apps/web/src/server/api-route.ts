@@ -226,8 +226,8 @@ const cookieUser = async (
  *  - A sentence a service threw on purpose is 404 when it says "not found" and
  *    422 otherwise.
  *  - Anything else — a `TypeError`, a `DrizzleQueryError`, a `PostgresError` —
- *    can carry SQL, a hostname or a file path. It is logged and answered with a
- *    generic 500.
+ *    can carry SQL, a hostname or a file path. It is answered with a generic
+ *    500, and `serve` writes it to the log.
  */
 const failure = async (error: Error): Promise<Response> => {
 	const { classifyServiceError } = await import("@farmer/core/services");
@@ -247,7 +247,6 @@ const failure = async (error: Error): Promise<Response> => {
 		case "not_found":
 			return refuse(404, { error: verdict.message, code: "not_found" });
 		case "unsafe":
-			console.error("[api] request failed", error);
 			return refuse(500, {
 				error: "The server failed. Try again in a moment.",
 				code: "server_error",
@@ -282,7 +281,7 @@ const serve = async <
 	writes: boolean,
 ): Promise<Response> => {
 	const startedAt = performance.now();
-	const { captureApiFailure, captureApiRequest } =
+	const { captureApiFailure, captureApiRequest, routeTemplate } =
 		await import("#/lib/posthog-api.ts");
 	// Filled in as the pipeline learns who is calling, and reported once by
 	// whichever step answers.
@@ -365,14 +364,26 @@ const serve = async <
 	try {
 		return finish(await handle(principal));
 	} catch (error) {
-		if (error instanceof Error) return finish(await failure(error), error);
-		console.error("[api] request failed", error);
-		return finish(
-			refuse(500, {
-				error: "The server failed. Try again in a moment.",
-				code: "server_error",
-			}),
-		);
+		const response =
+			error instanceof Error
+				? await failure(error)
+				: refuse(500, {
+						error: "The server failed. Try again in a moment.",
+						code: "server_error",
+					});
+		if (response.status >= 500) {
+			// A database error holds the values of its query, such as a token
+			// or an email address. `loggableError` keeps only its class, its
+			// code and the names of the constraint and the table.
+			const { loggableError } = await import("@farmer/core/lib/loggable-error");
+			console.error("[api] request failed", {
+				route: routeTemplate(report.pathname),
+				method: report.method,
+				status: response.status,
+				...loggableError(error),
+			});
+		}
+		return finish(response, error instanceof Error ? error : undefined);
 	}
 };
 
