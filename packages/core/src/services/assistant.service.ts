@@ -19,6 +19,7 @@ import {
 	OpenRouterError,
 	type OpenRouterModel,
 	OpenRouterStreamCutError,
+	retryableBeforeOutput,
 	streamChatCompletion,
 	verifyKey,
 } from "../lib/openrouter-client";
@@ -989,6 +990,18 @@ type TurnTrace = {
 	generationId: string | null;
 };
 
+/** The model for the one retry of a stalled or failed call.
+ *
+ *  `ASSISTANT_FALLBACK_MODEL` names it. The default is pinned, because a
+ *  `~...-latest` id moves to new versions without notice. An empty value counts
+ *  as unset. When it equals the primary model, the retry asks the same model. */
+export const ASSISTANT_FALLBACK_MODEL_DEFAULT = "z-ai/glm-5.3-flash";
+const fallbackModel = (primary: string): string => {
+	const configured = process.env.ASSISTANT_FALLBACK_MODEL?.trim();
+	const fallback = configured || ASSISTANT_FALLBACK_MODEL_DEFAULT;
+	return fallback === primary ? primary : fallback;
+};
+
 /**
  * One billed model call, timed and reported.
  *
@@ -1010,67 +1023,96 @@ const generate = async (
 		tools?: ChatTool[];
 		signal?: AbortSignal;
 		onDelta?: (text: string) => void;
+		/** Allow one retry on the fallback model. Defaults to true. */
+		retry?: boolean;
 	},
 ): Promise<ChatTurn> => {
 	const spanId = crypto.randomUUID();
-	trace.generationId = spanId;
-	const startedAt = Date.now();
-	const common = {
-		organizationId: ctx.organizationId,
-		userId: ctx.userId,
-		traceId: trace.id,
-		spanId,
-		conversationId: trace.conversationId,
-		model: trace.model,
-		step,
-		input: opts.messages,
-		tools: opts.tools ?? [],
-	};
-	try {
-		const turn = await chatModel().streamChatCompletion({
-			apiKey: opts.apiKey,
-			model: trace.model,
-			messages: opts.messages,
-			tools: opts.tools,
-			signal: opts.signal,
-			onDelta: opts.onDelta,
-		});
-		reportGeneration({
-			...common,
-			latencySeconds: (Date.now() - startedAt) / 1000,
-			inputTokens: turn.promptTokens,
-			outputTokens: turn.completionTokens,
-			costUsd: turn.costUsd,
-			finishReason: turn.finishReason,
-			toolCalls: turn.toolCalls,
-			outputText: turn.content,
-			error: null,
-		});
-		return turn;
-	} catch (error) {
-		// A cut stream still billed for what it sent, so its tokens, cost and
-		// text are reported with the error. Any other failure sent nothing.
-		const partial =
-			error instanceof OpenRouterStreamCutError ? error.partial : null;
-		// The person gets a fixed line, so this is the only place that records
-		// why the stream was cut. The message holds the provider's own text.
-		if (error instanceof OpenRouterStreamCutError)
-			console.error(
-				`[assistant] stream cut (trace ${common.traceId}, conversation ${common.conversationId}, model ${common.model}, step ${common.step ?? "none"})`,
-				error.message,
-			);
-		reportGeneration({
-			...common,
-			latencySeconds: (Date.now() - startedAt) / 1000,
-			inputTokens: partial?.promptTokens ?? null,
-			outputTokens: partial?.completionTokens ?? null,
-			costUsd: partial?.costUsd ?? null,
-			finishReason: null,
-			toolCalls: partial?.toolCalls ?? [],
-			outputText: partial?.content ?? "",
-			error: error instanceof Error ? error.message : String(error),
-		});
-		throw error;
+	let retryReason: string | null = null;
+	for (let attempt = 1; ; attempt += 1) {
+		// The retry goes to the fallback model. When it is the same model, the
+		// same model is asked once more.
+		const model = attempt === 1 ? trace.model : fallbackModel(trace.model);
+		// A retry is its own billed call, so it has its own span. Telemetry
+		// reads `generationId` as the call whose tool calls any span came from.
+		const attemptSpanId = attempt === 1 ? spanId : crypto.randomUUID();
+		trace.generationId = attemptSpanId;
+		const startedAt = Date.now();
+		const common = {
+			organizationId: ctx.organizationId,
+			userId: ctx.userId,
+			traceId: trace.id,
+			spanId: attemptSpanId,
+			conversationId: trace.conversationId,
+			model,
+			step,
+			attempt,
+			retryReason,
+			input: opts.messages,
+			tools: opts.tools ?? [],
+		};
+		try {
+			const turn = await chatModel().streamChatCompletion({
+				apiKey: opts.apiKey,
+				model,
+				messages: opts.messages,
+				tools: opts.tools,
+				signal: opts.signal,
+				onDelta: opts.onDelta,
+			});
+			reportGeneration({
+				...common,
+				latencySeconds: (Date.now() - startedAt) / 1000,
+				inputTokens: turn.promptTokens,
+				outputTokens: turn.completionTokens,
+				costUsd: turn.costUsd,
+				finishReason: turn.finishReason,
+				servedModel: turn.servedModel ?? null,
+				provider: turn.provider ?? null,
+				firstProgressMs: turn.firstProgressMs ?? null,
+				toolCalls: turn.toolCalls,
+				outputText: turn.content,
+				error: null,
+			});
+			return turn;
+		} catch (error) {
+			// A cut stream still billed for what it sent, so its tokens, cost and
+			// text are reported with the error. Any other failure sent nothing.
+			const partial =
+				error instanceof OpenRouterStreamCutError ? error.partial : null;
+			// A person who pressed Stop is never retried.
+			const nextRetryReason =
+				attempt === 1 &&
+				opts.retry !== false &&
+				opts.signal?.aborted !== true &&
+				error instanceof Error
+					? retryableBeforeOutput(error)
+					: null;
+			// The person gets a fixed line, so this is the only place that records
+			// why the call failed. The message holds the provider's own text.
+			if (error instanceof OpenRouterError)
+				console.error(
+					`[assistant] ${error instanceof OpenRouterStreamCutError ? "stream cut" : "model call failed"} (trace ${common.traceId}, conversation ${common.conversationId}, model ${model}, served ${partial?.servedModel ?? "none"}, provider ${partial?.provider ?? "none"}, first progress ${String(partial?.firstProgressMs ?? "none")} ms, step ${common.step ?? "none"}, attempt ${String(attempt)}, ${nextRetryReason ? `retry (${nextRetryReason})` : "no retry"})`,
+					error.message,
+					error.cause ?? "",
+				);
+			reportGeneration({
+				...common,
+				latencySeconds: (Date.now() - startedAt) / 1000,
+				inputTokens: partial?.promptTokens ?? null,
+				outputTokens: partial?.completionTokens ?? null,
+				costUsd: partial?.costUsd ?? null,
+				finishReason: null,
+				servedModel: partial?.servedModel ?? null,
+				provider: partial?.provider ?? null,
+				firstProgressMs: partial?.firstProgressMs ?? null,
+				toolCalls: partial?.toolCalls ?? [],
+				outputText: partial?.content ?? "",
+				error: error instanceof Error ? error.message : String(error),
+			});
+			if (nextRetryReason === null) throw error;
+			retryReason = nextRetryReason;
+		}
 	}
 };
 
@@ -1085,6 +1127,7 @@ const generateTitle = async (
 		// `step: null` — this is not a step of the answer. It is one more billed
 		// call on the same question, which is why it is on the same trace.
 		const turn = await generate(ctx, trace, null, {
+			retry: false,
 			apiKey,
 			// The turn's own signal: a reader who has left does not need their
 			// thread named, and this is billed like any other completion.

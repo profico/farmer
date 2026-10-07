@@ -124,6 +124,13 @@ export const posthogAiSink = {
 				organization_id: event.organizationId,
 				ai_step: event.step,
 				ai_finish_reason: event.finishReason,
+				// `$ai_model` is the id that was asked for. These say what served it,
+				// how long the first progress took, and whether this call is a retry.
+				ai_served_model: event.servedModel,
+				ai_provider_served: event.provider,
+				ai_first_progress_ms: event.firstProgressMs,
+				ai_attempt: event.attempt,
+				ai_retry_reason: event.retryReason,
 				ai_called_tools: event.toolCalls.map((call) => call.name),
 			},
 		});

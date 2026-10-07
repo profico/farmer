@@ -41,7 +41,23 @@ export type AiGeneration = {
 	/** The thread, so a trace can be read in the context of the conversation it
 	 *  belongs to. */
 	conversationId: string;
+	/** The model id this call asked for. On a retry it is the fallback. */
 	model: string;
+	/** The model that served the call, from the response chunks. Null when
+	 *  nothing arrived. It differs from `model` when an id such as
+	 *  `~...-latest` moved to a new version. */
+	servedModel: string | null;
+	/** The upstream provider that served the call. Null when unknown. */
+	provider: string | null;
+	/** Milliseconds from the request start to the first progress (a content,
+	 *  reasoning or tool-call delta, a finish reason or usage). Null when
+	 *  nothing arrived. */
+	firstProgressMs: number | null;
+	/** 1 for the first call of a step, 2 for the one retry. */
+	attempt: number;
+	/** Why this call is a retry (`stall`, `network`, `http_503`,
+	 *  `upstream_error`, `empty_stream`). Null on a first call. */
+	retryReason: string | null;
 	/** Which step of the turn this was, counting from 1. The closing
 	 *  out-of-steps call is `null`: it is the loop talking to the model about
 	 *  its own ceiling, not a step anybody asked for. */

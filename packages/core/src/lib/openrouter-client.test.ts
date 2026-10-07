@@ -11,10 +11,13 @@
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 
+import { at } from "../test/harness";
 import {
 	ABORTED,
 	OpenRouterError,
+	OpenRouterNetworkError,
 	OpenRouterStreamCutError,
+	retryableBeforeOutput,
 	streamChatCompletion,
 } from "./openrouter-client";
 
@@ -397,5 +400,306 @@ describe("a stream that ends without a finish reason", () => {
 			)) as typeof globalThis.fetch;
 		const turn = await call(new AbortController().signal);
 		expect(turn.finishReason).toBe("stop");
+	});
+});
+
+// ── the no-progress watchdog ─────────────────────────────────────────────────
+//
+// OpenRouter keeps a stalled call open with `: OPENROUTER PROCESSING` comment
+// lines. A call that ran 180 s with no tokens died twice in production, so the
+// client aborts a call that makes no progress, and it must not count those
+// comments as progress. The limit is a few milliseconds here.
+
+const STALL_MS = 60;
+const enc = new TextEncoder();
+
+/** A body that sends each chunk at its offset in milliseconds and then stays
+ *  open until the request signal fires, as a stalled upstream does. A step
+ *  with `close` ends the body instead. */
+const timedStream = (
+	steps: { at: number; text?: string; close?: boolean }[],
+	signal: AbortSignal | null | undefined,
+) =>
+	new ReadableStream<Uint8Array>({
+		start(controller) {
+			const timers = steps.map((step) =>
+				setTimeout(() => {
+					if (step.text) controller.enqueue(enc.encode(step.text));
+					if (step.close) controller.close();
+				}, step.at),
+			);
+			signal?.addEventListener("abort", () => {
+				for (const timer of timers) clearTimeout(timer);
+				controller.error(new DOMException("aborted", "AbortError"));
+			});
+		},
+	});
+
+const frame = (payload: string) => `data: ${payload}\n\n`;
+const keepAlive = ": OPENROUTER PROCESSING\n\n";
+
+/** Answers with the given steps, and records the request bodies. */
+const serveTimed = (steps: Parameters<typeof timedStream>[0]) => {
+	const bodies: string[] = [];
+	// SAFETY: a test stub for `fetch`. It reads the request body and signal and
+	// answers one shape: a timed event stream.
+	globalThis.fetch = (async (
+		_input: string | URL | Request,
+		init?: RequestInit,
+	) => {
+		bodies.push(String(init?.body ?? ""));
+		return new Response(timedStream(steps, init?.signal), {
+			status: 200,
+			headers: { "Content-Type": "text/event-stream" },
+		});
+	}) as typeof globalThis.fetch;
+	return bodies;
+};
+
+const watched = (
+	over: { tools?: Parameters<typeof streamChatCompletion>[0]["tools"] } = {},
+) =>
+	streamChatCompletion({
+		apiKey: "test-key",
+		model: "test/model",
+		messages: [{ role: "user", content: "hello" }],
+		stallTimeoutMs: STALL_MS,
+		...over,
+	});
+
+/** The error a call rejects with. Fails the test when it resolves. */
+const caught = async (work: Promise<unknown>): Promise<Error> => {
+	try {
+		await work;
+	} catch (error) {
+		if (error instanceof Error) return error;
+		throw error;
+	}
+	throw new Error("the call was expected to fail");
+};
+
+const reasoning = (text: string) =>
+	JSON.stringify({ choices: [{ delta: { reasoning: text } }] });
+
+describe("the no-progress watchdog", () => {
+	test("keep-alive comments only abort at the stall limit", async () => {
+		serveTimed(
+			[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120].map((offset) => ({
+				at: offset,
+				text: keepAlive,
+			})),
+		);
+		const startedAt = Date.now();
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(error).toMatchObject({
+			stalled: true,
+			timedOut: false,
+			outputStarted: false,
+			message: "stream stalled: no progress before the stall limit",
+		});
+		// It stopped near the limit, not after the last comment.
+		expect(Date.now() - startedAt).toBeLessThan(STALL_MS + 60);
+		expect(retryableBeforeOutput(error)).toBe("stall");
+	});
+
+	test("an empty delta is not progress", async () => {
+		serveTimed(
+			[0, 20, 40, 60].map((offset) => ({
+				at: offset,
+				text: frame(JSON.stringify({ choices: [{ delta: { content: "" } }] })),
+			})),
+		);
+		await expect(watched()).rejects.toMatchObject({ stalled: true });
+	});
+
+	test("steady reasoning deltas over a longer total are not aborted", async () => {
+		const steps = [0, 30, 60, 90, 120, 150].map((offset) => ({
+			at: offset,
+			text: frame(reasoning("thinking ")),
+		}));
+		serveTimed([
+			...steps,
+			{ at: 180, text: frame(delta("Answer")) },
+			{ at: 190, text: frame(finish("stop")), close: true },
+		]);
+		const startedAt = Date.now();
+		const turn = await watched();
+		// The total is three times the limit; each gap is half of it.
+		expect(Date.now() - startedAt).toBeGreaterThan(STALL_MS * 2);
+		expect(turn.content).toBe("Answer");
+		expect(turn.finishReason).toBe("stop");
+		expect(turn.firstProgressMs).toBeLessThan(STALL_MS);
+	});
+
+	test("content and then a stall is a stall that is not retryable", async () => {
+		serveTimed([{ at: 0, text: frame(delta("Half an answer")) }]);
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(error).toMatchObject({
+			stalled: true,
+			outputStarted: true,
+			partial: { content: "Half an answer" },
+		});
+		expect(retryableBeforeOutput(error)).toBeNull();
+	});
+
+	test("a reasoning delta counts as output for the retry rule", async () => {
+		serveTimed([{ at: 0, text: frame(reasoning("hmm")) }]);
+		const error = await caught(watched());
+		expect(error).toMatchObject({ stalled: true, outputStarted: true });
+		expect(retryableBeforeOutput(error)).toBeNull();
+	});
+
+	test("a stall before the headers is a stall", async () => {
+		// SAFETY: a test stub for `fetch` that never answers and fails when the
+		// request signal fires.
+		globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) =>
+			new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener("abort", () => {
+					reject(new DOMException("aborted", "AbortError"));
+				});
+			})) as typeof globalThis.fetch;
+		await expect(watched()).rejects.toMatchObject({
+			name: "OpenRouterStreamCutError",
+			stalled: true,
+			outputStarted: false,
+		});
+	});
+
+	test("a Stop is still an abort, not a stall", async () => {
+		const controller = new AbortController();
+		serveTimed([{ at: 0, text: frame(delta("Half")) }]);
+		setTimeout(() => {
+			controller.abort();
+		}, 10);
+		const turn = await streamChatCompletion({
+			apiKey: "test-key",
+			model: "test/model",
+			messages: [{ role: "user", content: "hello" }],
+			signal: controller.signal,
+			stallTimeoutMs: 1000,
+		});
+		expect(turn.finishReason).toBe(ABORTED);
+	});
+
+	test("the served model, the provider and the first progress are read", async () => {
+		serveTimed([
+			{ at: 0, text: keepAlive },
+			{
+				at: 20,
+				text: frame(
+					JSON.stringify({
+						model: "z-ai/glm-5.3-flash-20261001",
+						provider: "Z.AI",
+						choices: [{ delta: { content: "Hi" } }],
+					}),
+				),
+			},
+			{ at: 25, text: frame(finish("stop")), close: true },
+		]);
+		const turn = await watched();
+		expect(turn.servedModel).toBe("z-ai/glm-5.3-flash-20261001");
+		expect(turn.provider).toBe("Z.AI");
+		// The comment at 0 ms does not count: the first progress is the delta.
+		expect(turn.firstProgressMs).toBeGreaterThanOrEqual(15);
+	});
+
+	test("tools are sent with require_parameters, and no tools are not", async () => {
+		const withTools = serveTimed([
+			{ at: 0, text: frame(finish("stop")), close: true },
+		]);
+		await watched({
+			tools: [
+				{
+					type: "function",
+					function: { name: "t", description: "d", parameters: {} },
+				},
+			],
+		});
+		expect(JSON.parse(at(withTools, 0)).provider).toEqual({
+			require_parameters: true,
+		});
+		const without = serveTimed([
+			{ at: 0, text: frame(finish("stop")), close: true },
+		]);
+		await watched();
+		expect(JSON.parse(at(without, 0)).provider).toBeUndefined();
+	});
+});
+
+describe("which failures may be retried", () => {
+	test("a TLS fault before the headers is a network error", async () => {
+		// SAFETY: a test stub for `fetch` that fails as a TLS fault does.
+		globalThis.fetch = (async (
+			_input: string | URL | Request,
+		): Promise<Response> => {
+			throw new TypeError("unknown certificate verification error");
+		}) as typeof globalThis.fetch;
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterNetworkError);
+		expect(error).toBeInstanceOf(OpenRouterError);
+		expect(error.cause).toBeInstanceOf(TypeError);
+		expect(retryableBeforeOutput(error)).toBe("network");
+	});
+
+	test("an HTTP status before streaming", () => {
+		const retryable = (status: number) =>
+			retryableBeforeOutput(new OpenRouterError("x", status));
+		expect(retryable(503)).toBe("http_503");
+		expect(retryable(429)).toBe("http_429");
+		expect(retryable(408)).toBe("http_408");
+		expect(retryable(401)).toBeNull();
+		expect(retryable(402)).toBeNull();
+		expect(retryable(400)).toBeNull();
+		expect(retryableBeforeOutput(new OpenRouterError("no status"))).toBeNull();
+	});
+
+	test("an error frame before any output", () => {
+		const emptyTurn = {
+			content: "",
+			toolCalls: [],
+			promptTokens: null,
+			completionTokens: null,
+			costUsd: null,
+			finishReason: "error",
+		};
+		const frameError = (code: string | number, turn = emptyTurn) =>
+			retryableBeforeOutput(
+				new OpenRouterStreamCutError(turn, { code, message: "m" }),
+			);
+		expect(frameError(502)).toBe("upstream_error");
+		expect(frameError("server_error")).toBe("upstream_error");
+		expect(frameError(429)).toBe("upstream_error");
+		expect(frameError(402)).toBeNull();
+		expect(frameError(502, { ...emptyTurn, content: "Half" })).toBeNull();
+	});
+
+	test("the total deadline is not retried", () => {
+		const emptyTurn = {
+			content: "",
+			toolCalls: [],
+			promptTokens: null,
+			completionTokens: null,
+			costUsd: null,
+			finishReason: null,
+		};
+		expect(
+			retryableBeforeOutput(
+				new OpenRouterStreamCutError(emptyTurn, null, true, true),
+			),
+		).toBeNull();
+	});
+
+	test("an HTTP 503 before streaming keeps its status", async () => {
+		// SAFETY: a test stub for `fetch` that answers one rejection.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(JSON.stringify({ error: { message: "overloaded" } }), {
+				status: 503,
+			})) as typeof globalThis.fetch;
+		await expect(watched()).rejects.toMatchObject({
+			status: 503,
+			message: "overloaded",
+		});
 	});
 });
