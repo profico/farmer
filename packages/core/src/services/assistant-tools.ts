@@ -393,8 +393,6 @@ const attachmentIdList = (key: string, args: JsonRecord) => [
 	...new Set(z.array(z.string()).catch([]).parse(args[key])),
 ];
 
-const shortSha = (sha: string) => sha.slice(0, 7);
-
 export const ASSISTANT_TOOLS: AssistantTool[] = [
 	// ── reads: who, and what exists ─────────────────────────────────────────
 	{
@@ -1392,7 +1390,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					cells: [
 						row.date,
 						row.repository ?? "",
-						shortSha(row.sha),
+						row.sha.slice(0, 7),
 						(row.message.split("\n")[0] ?? "").slice(0, 80),
 					],
 				})),
