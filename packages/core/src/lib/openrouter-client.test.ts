@@ -122,6 +122,34 @@ describe("a stream the caller stops part-way", () => {
 		expect(turn.toolCalls[0]?.arguments).toBe('{"fro');
 	});
 
+	test("an abort with a reason that is not an Error is still an abort", async () => {
+		const controller = new AbortController();
+		// SAFETY: as above.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(
+				new ReadableStream<Uint8Array>({
+					start(streamController) {
+						streamController.enqueue(
+							new TextEncoder().encode(`data: ${delta("Half")}\n\n`),
+						);
+						// The read fails with the plain value of the abort reason.
+						controller.signal.addEventListener("abort", () => {
+							streamController.error(controller.signal.reason);
+						});
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
+			)) as typeof globalThis.fetch;
+
+		const pending = call(controller.signal);
+		setTimeout(() => {
+			controller.abort("user stopped");
+		}, 10);
+		const turn = await pending;
+		expect(turn.content).toBe("Half");
+		expect(turn.finishReason).toBe(ABORTED);
+	});
+
 	test("an error that is not the abort still travels", async () => {
 		const controller = new AbortController();
 		// SAFETY: as above.

@@ -390,22 +390,23 @@ type ReadEnd = { aborted: boolean; timedOut: boolean };
  *  as though the question had never been asked. The partial answer is
  *  returned instead, under a finish reason that says what happened; the
  *  caller decides whether it is worth storing. Any other error is a real
- *  one and still travels. */
+ *  one and still travels: `null` says so, and the caller rethrows it. */
 const classifyReadError = (
-	error: Error,
+	error: Error | undefined,
 	signal: AbortSignal | undefined,
-): ReadEnd => {
+): ReadEnd | null => {
 	// Two shapes reach here: the `AbortError` a fetch body read rejects with,
 	// and whatever the runtime throws when a stream is torn down under it. The
 	// signal is the reliable half of the answer, so it is asked first.
-	const aborted = signal?.aborted === true || error.name === "AbortError";
+	// A signal aborted with a plain value rejects with that value, not an Error.
+	const aborted = signal?.aborted === true || error?.name === "AbortError";
 	// The app's own deadline reaches the body read through `AbortSignal.any`
 	// in `externalFetch`. It rejects with a `TimeoutError`, not an
 	// `AbortError`, and the caller's signal stays unfired. It is a cut, so
 	// the partial turn is kept and reported by the caller.
 	const timedOut =
 		!aborted && error instanceof DOMException && error.name === "TimeoutError";
-	if (!aborted && !timedOut) throw error;
+	if (!aborted && !timedOut) return null;
 	return { aborted, timedOut };
 };
 
@@ -516,8 +517,11 @@ export const streamChatCompletion = async (opts: {
 			}
 		}
 	} catch (error) {
-		if (!(error instanceof Error)) throw error;
-		const classified = classifyReadError(error, opts.signal);
+		const classified = classifyReadError(
+			error instanceof Error ? error : undefined,
+			opts.signal,
+		);
+		if (classified === null) throw error;
 		timedOut = classified.timedOut;
 		if (classified.aborted) state.finishReason = ABORTED;
 	} finally {
