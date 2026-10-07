@@ -18,9 +18,13 @@
  * on the same signals the web host handles.
  */
 
+import { durationFromEnv } from "../lib/http";
 import { startSchedulers, stopSchedulers } from "./scheduler";
 
-const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 10_000);
+const SHUTDOWN_GRACE_MS = durationFromEnv(
+	process.env.SHUTDOWN_GRACE_MS,
+	10_000,
+);
 
 console.log("[INFO] Starting task worker");
 const handles = startSchedulers();
