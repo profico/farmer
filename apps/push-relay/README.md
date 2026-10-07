@@ -130,8 +130,23 @@ limit of registrations, updates and removals for one address.
 
 ### `POST /v1/push`
 
-A farmer server sends a push. There is no authentication: only the device's
-own server knows the relay id (ADR 0006).
+A farmer server sends a push. The relay id is the credential for this route,
+and the route has no other authentication (ADR 0006).
+
+The relay makes the relay id from 128 random bits (`src/ids.ts`). Only three
+parties hold it: the phone, the farmer server of the phone, and the relay. A
+holder of the relay id can do these things:
+
+- Send a push to the phone. This includes a Live Activity state, which is not
+  encrypted, so the phone shows it.
+- Use the push budget of the phone (see "Rate limits"). The pushes of the
+  real server then get `429`.
+
+Thus keep the relay id secret, as a token. The relay logs only the first six
+characters of it. The farmer server does not send it in an API answer, an
+audit entry or a webhook event, and its push log lines do not show it. A second shared secret does not give
+more protection, because each party that holds the relay id would hold that
+secret too.
 
 ```json
 {

@@ -70,6 +70,15 @@ an organization for each message and checks the membership first.
   is refused, and no row changes. A relay that does not answer refuses a new
   binding. An unchanged registration, as on each foreground, makes no relay
   call. A new binding is also refused while `PUSH_RELAY_ENABLED` is off.
+- **The relay id is a credential.** The relay's `POST /v1/push` accepts a
+  push for any caller that names the relay id, and it has no other
+  authentication. Only the phone, this server and the relay hold the id. A
+  holder can send a Live Activity state to the phone and can use the push
+  budget of the phone. Thus the server never sends a relay id in an API
+  answer (`toApiMobileDevice`), an audit entry or a webhook event. When the
+  delete of a gone phone fails, the log line names the row id and the error
+  class, not the error, because a `DrizzleQueryError` lists the query's
+  parameters. See `apps/push-relay/README.md`.
 - **The public key is checked at registration.** The service seals a test
   value with it, so a key that is not a P-256 point is refused then, and not at
   the first push. A 64-byte `x || y` key is stored as the 65-byte point.
