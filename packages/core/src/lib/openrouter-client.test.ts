@@ -18,6 +18,7 @@ import {
 	OpenRouterNetworkError,
 	OpenRouterStreamCutError,
 	retryableBeforeOutput,
+	stallTimeoutFromEnv,
 	streamChatCompletion,
 } from "./openrouter-client";
 
@@ -125,7 +126,7 @@ describe("a stream the caller stops part-way", () => {
 		expect(turn.toolCalls[0]?.arguments).toBe('{"fro');
 	});
 
-	test("an error that is not the abort still travels", async () => {
+	test("an error that is not the abort is a network error with the cause", async () => {
 		const controller = new AbortController();
 		// SAFETY: as above.
 		globalThis.fetch = (async (_input: string | URL | Request) =>
@@ -138,7 +139,9 @@ describe("a stream the caller stops part-way", () => {
 				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
 			)) as typeof globalThis.fetch;
 
-		await expect(call(controller.signal)).rejects.toThrow("connection reset");
+		const error = await call(controller.signal).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(OpenRouterNetworkError);
+		expect(error).toHaveProperty("cause.message", "connection reset");
 	});
 });
 
@@ -701,5 +704,98 @@ describe("which failures may be retried", () => {
 			status: 503,
 			message: "overloaded",
 		});
+	});
+});
+
+/** A body that sends the given frames, then fails the way a reset socket does. */
+const resetBody = (frames: string[], fault: Error) =>
+	new ReadableStream<Uint8Array>({
+		start(controller) {
+			const encoder = new TextEncoder();
+			for (const text of frames) controller.enqueue(encoder.encode(text));
+		},
+		pull(controller) {
+			controller.error(fault);
+		},
+	});
+
+const serveReset = (frames: string[], fault: Error) => {
+	// SAFETY: a test stub for `fetch` that answers one streamed body.
+	globalThis.fetch = (async (_input: string | URL | Request) =>
+		new Response(resetBody(frames, fault), {
+			status: 200,
+			headers: { "Content-Type": "text/event-stream" },
+		})) as typeof globalThis.fetch;
+};
+
+describe("a body-read fault in the middle of a stream", () => {
+	test("with no output it is the retryable network error", async () => {
+		const fault = new TypeError("terminated");
+		serveReset([keepAlive], fault);
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterNetworkError);
+		expect(error.cause).toBe(fault);
+		expect(retryableBeforeOutput(error)).toBe("network");
+	});
+
+	test("after a content delta it is a cut that is not retried", async () => {
+		const fault = new Error("socket closed");
+		serveReset([frame(delta("Half"))], fault);
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(error).toMatchObject({ outputStarted: true, timedOut: false });
+		expect(error.message).not.toContain("socket closed");
+		expect(error.cause).toBe(fault);
+		expect(retryableBeforeOutput(error)).toBeNull();
+		if (error instanceof OpenRouterStreamCutError)
+			expect(error.partial.content).toBe("Half");
+	});
+
+	test("after a reasoning delta it is a cut that is not retried", async () => {
+		serveReset([frame(reasoning("thinking"))], new Error("reset"));
+		const error = await caught(watched());
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(retryableBeforeOutput(error)).toBeNull();
+	});
+
+	test("after a finish reason the answer is whole and is returned", async () => {
+		serveReset(
+			[frame(delta("Done")), frame(finish("stop"))],
+			new Error("reset"),
+		);
+		const turn = await watched();
+		expect(turn.content).toBe("Done");
+		expect(turn.finishReason).toBe("stop");
+	});
+
+	test("a throw in onDelta is not a network error", async () => {
+		serveReset([frame(delta("Hi"))], new Error("reset"));
+		const bug = new RangeError("caller bug");
+		const error = await caught(
+			streamChatCompletion({
+				apiKey: "test-key",
+				model: "test/model",
+				messages: [{ role: "user", content: "hello" }],
+				stallTimeoutMs: STALL_MS,
+				onDelta: () => {
+					throw bug;
+				},
+			}),
+		);
+		expect(error).toBe(bug);
+	});
+});
+
+describe("the stall limit from the environment", () => {
+	test("unset, empty or invalid gives the default", () => {
+		expect(stallTimeoutFromEnv(undefined)).toBe(60_000);
+		expect(stallTimeoutFromEnv("")).toBe(60_000);
+		expect(stallTimeoutFromEnv("  ")).toBe(60_000);
+		expect(stallTimeoutFromEnv("abc")).toBe(60_000);
+	});
+
+	test("an explicit number is used, and 0 stays 0", () => {
+		expect(stallTimeoutFromEnv("90000")).toBe(90_000);
+		expect(stallTimeoutFromEnv("0")).toBe(0);
 	});
 });

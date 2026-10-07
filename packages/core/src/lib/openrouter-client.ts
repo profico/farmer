@@ -24,6 +24,16 @@ export const OPENROUTER_STREAM_TIMEOUT_MS = Number(
 	process.env.OPENROUTER_STREAM_TIMEOUT_MS ?? 180_000,
 );
 
+/** Read the stall limit from the environment. An unset, empty or invalid value
+ *  gives the default: an empty variable in a compose file must not turn the
+ *  watchdog off. Only an explicit number, such as 0, is used. */
+export function stallTimeoutFromEnv(raw: string | undefined): number {
+	const trimmed = raw?.trim();
+	if (!trimmed) return 60_000;
+	const value = Number(trimmed);
+	return Number.isFinite(value) ? value : 60_000;
+}
+
 /** How long a call may go with no progress before it is aborted as a stall.
  *
  *  Progress is a content delta, a reasoning delta, a tool-call delta, a finish
@@ -32,8 +42,8 @@ export const OPENROUTER_STREAM_TIMEOUT_MS = Number(
  *  counting it would hide the stall. The default is above the slowest
  *  successful call seen in production (47 s). A value of 0 or less turns the
  *  watchdog off, and the total deadline above still applies. */
-export const OPENROUTER_STALL_TIMEOUT_MS = Number(
-	process.env.OPENROUTER_STALL_TIMEOUT_MS ?? 60_000,
+export const OPENROUTER_STALL_TIMEOUT_MS = stallTimeoutFromEnv(
+	process.env.OPENROUTER_STALL_TIMEOUT_MS,
 );
 
 /** Short: this one really is just a page fetch. */
@@ -428,6 +438,11 @@ export const streamChatCompletion = async (opts: {
 	let finishReason: string | null = null;
 	let timedOut = false;
 	let upstream: UpstreamError | null = null;
+	// A fault while the body is read (a reset, a closed socket, a TLS error).
+	let readError: Error | null = null;
+	// Set when the caller's `onDelta` threw. That is a bug in the caller, not a
+	// network fault, and it travels unchanged.
+	let callbackFailed = false;
 
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
@@ -521,7 +536,12 @@ export const streamChatCompletion = async (opts: {
 				if (text) {
 					progress(true);
 					content += text;
-					opts.onDelta?.(text);
+					try {
+						opts.onDelta?.(text);
+					} catch (callbackError) {
+						callbackFailed = true;
+						throw callbackError;
+					}
 				}
 
 				// A thinking model streams reasoning before its answer. It is progress,
@@ -573,7 +593,13 @@ export const streamChatCompletion = async (opts: {
 			!aborted &&
 			error instanceof DOMException &&
 			error.name === "TimeoutError";
-		if (!aborted && !timedOut && !stalled) throw error;
+		if (!aborted && !timedOut && !stalled) {
+			// Only a fault of the connection becomes a failed call. It is judged
+			// below, because a finish reason that already came means the answer
+			// is whole. Any other error is a real one and still travels.
+			if (callbackFailed || !(error instanceof Error)) throw error;
+			readError = error;
+		}
 		if (aborted) finishReason = ABORTED;
 	} finally {
 		// Releasing the lock lets the connection be torn down when the caller
@@ -629,6 +655,21 @@ export const streamChatCompletion = async (opts: {
 				false,
 				detail,
 			);
+		}
+		if (finishReason === null && readError) {
+			// With no output yet, the call is the same as one that failed before
+			// the headers, so it is retried. With output, it is a cut that is
+			// not retried, and the person gets the fixed line.
+			if (!outputStarted) throw new OpenRouterNetworkError(readError);
+			const cut = new OpenRouterStreamCutError(
+				turn,
+				null,
+				false,
+				false,
+				detail,
+			);
+			cut.cause = readError;
+			throw cut;
 		}
 		if (finishReason === null)
 			throw new OpenRouterStreamCutError(turn, null, timedOut, false, detail);

@@ -3016,6 +3016,7 @@ describe("a stalled model call", () => {
 	type Behavior =
 		| { kind: "stall"; before?: string }
 		| { kind: "reject" }
+		| { kind: "reset"; before?: string }
 		| { kind: "answer"; text: string; model?: string };
 
 	const frame = (payload: JsonRecord) =>
@@ -3035,9 +3036,25 @@ describe("a stalled model call", () => {
 			if (!behavior) throw new Error("fake fetch ran out of behaviors");
 			if (behavior.kind === "reject")
 				throw new TypeError("unknown certificate verification error");
+			let resetNext = false;
 			return new Response(
 				new ReadableStream<Uint8Array>({
+					pull(controller) {
+						if (resetNext) controller.error(new TypeError("terminated"));
+					},
 					start(controller) {
+						if (behavior.kind === "reset") {
+							if (behavior.before)
+								controller.enqueue(
+									frame({ choices: [{ delta: { content: behavior.before } }] }),
+								);
+							// Failing at once would discard the queued frame. Fail on the
+							// next pull, after the reader has taken it.
+							resetNext = true;
+							if (!behavior.before)
+								controller.error(new TypeError("terminated"));
+							return;
+						}
 						if (behavior.kind === "stall") {
 							controller.enqueue(enc.encode(": OPENROUTER PROCESSING\n\n"));
 							if (behavior.before)
@@ -3163,6 +3180,33 @@ describe("a stalled model call", () => {
 		);
 		expect(reported).toHaveLength(1);
 		expect(reported[0]?.outputText).toBe("March looks ");
+	});
+
+	test("a body reset with no output is retried once", async () => {
+		fakeFetch([{ kind: "reset" }, { kind: "answer", text: "Fine." }]);
+		const events = await ask();
+		expect(events.at(-1)?.type).toBe("done");
+		expect(requested).toEqual(["test/model", "z-ai/glm-5.3-flash"]);
+		expect(reported.map((event) => event.retryReason)).toEqual([
+			null,
+			"network",
+		]);
+	});
+
+	test("a body reset after output fails with the fixed line", async () => {
+		fakeFetch([
+			{ kind: "reset", before: "March looks " },
+			{ kind: "answer", text: "never asked" },
+		]);
+		const events = await ask();
+		expect(requested).toEqual(["test/model"]);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/connection.*closed/i,
+		);
+		expect(failure?.type === "error" && failure.message).not.toContain(
+			"terminated",
+		);
 	});
 
 	test("two stalls fail the turn after one retry", async () => {
