@@ -9,6 +9,10 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
+import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
@@ -258,24 +262,54 @@ export const dayAssemblyService = {
 
 		// A commit or an event that the person unlinked from an entry. The engine
 		// keeps it off every entry (see ./detach-tombstones), so the assembler does
-		// not offer it either, unless `includeDismissed` asks for it.
-		const [refusedShas, refusedEvents] = await Promise.all([
-			refusedCommitShas(
-				ctx,
-				commits.map((commit) => commit.sha),
-			),
-			refusedEventIds(
-				ctx,
-				pullRequestEvents.map((event) => event.eventId),
-			),
-		]);
+		// not offer it either, unless `includeDismissed` asks for it. One that is
+		// on an entry of the day again (attached by hand) is simply here, as a
+		// logged meeting is: it is neither counted nor offered, toggle or not.
+		const entryIds = existing.map((entry) => entry.id);
+		const [refused, refusedEventSet, heldCommits, heldEvents] =
+			await Promise.all([
+				refusedCommitShas(
+					ctx,
+					commits.map((commit) => commit.sha),
+				),
+				refusedEventIds(
+					ctx,
+					pullRequestEvents.map((event) => event.eventId),
+				),
+				entryIds.length === 0
+					? []
+					: db
+							.select({ sha: timeEntryGithubCommit.sha })
+							.from(timeEntryGithubCommit)
+							.where(inArray(timeEntryGithubCommit.timeEntryId, entryIds)),
+				entryIds.length === 0
+					? []
+					: db
+							.select({ eventId: timeEntryGithubPrActivity.eventId })
+							.from(timeEntryGithubPrActivity)
+							.where(inArray(timeEntryGithubPrActivity.timeEntryId, entryIds)),
+			]);
+		const heldShas = new Set(heldCommits.map((row) => row.sha));
+		const heldEventIds = new Set(heldEvents.map((row) => row.eventId));
+		const refusedShas = new Set(
+			[...refused].filter((sha) => !heldShas.has(sha)),
+		);
+		const refusedEvents = new Set(
+			[...refusedEventSet].filter((eventId) => !heldEventIds.has(eventId)),
+		);
 		dismissedCount += refusedShas.size + refusedEvents.size;
-		const offeredCommits = includeDismissed
-			? commits
-			: commits.filter((commit) => !refusedShas.has(commit.sha));
-		const offeredEvents = includeDismissed
-			? pullRequestEvents
-			: pullRequestEvents.filter((event) => !refusedEvents.has(event.eventId));
+		const offeredCommits = commits.filter(
+			(commit) =>
+				!(refused.has(commit.sha) && heldShas.has(commit.sha)) &&
+				(includeDismissed || !refusedShas.has(commit.sha)),
+		);
+		const offeredEvents = pullRequestEvents.filter(
+			(event) =>
+				!(
+					refusedEventSet.has(event.eventId) && heldEventIds.has(event.eventId)
+				) &&
+				(includeDismissed || !refusedEvents.has(event.eventId)),
+		);
 
 		// ── Meetings: calendar events not already logged ────────────────────────
 		let meetingSeconds = 0;

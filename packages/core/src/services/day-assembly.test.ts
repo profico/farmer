@@ -779,6 +779,43 @@ describe("offering back what was unlinked", () => {
 		);
 	});
 
+	test("an unlinked commit moved by hand to another entry is not offered", async () => {
+		await refuseTheCommit();
+		const [moved] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: devTaskId,
+				projectId: null,
+				date: MONDAY,
+				durationSeconds: 3600,
+				description: "Moved here",
+			})
+			.returning({ id: timeEntry.id });
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: present(moved, "the entry").id,
+			projectGithubRepoId: repoId,
+			sha: SHA,
+			message: "fix: the thing",
+			committedAt: new Date(`${MONDAY}T12:00:00.000Z`),
+			url: `https://github.com/acme/farmer/commit/${SHA}`,
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+
+		// It is on an entry already, as a logged meeting is: nothing to offer.
+		expect(
+			assembly.suggestions.some((s) =>
+				s.commits.some((commit) => commit.sha === SHA),
+			),
+		).toBe(false);
+		expect(assembly.dismissedCount).toBe(0);
+	});
+
 	test("accepting an unlinked commit keeps the tombstone", async () => {
 		await refuseTheCommit();
 		setGithubClientForTests({
