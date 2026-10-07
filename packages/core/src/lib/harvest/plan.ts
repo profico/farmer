@@ -1748,6 +1748,490 @@ function projectBudgetSeconds(
 	return budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null;
 }
 
+// People --------------------------------------------------------------------
+
+type SnapshotMember = HarvestSnapshot["members"][number];
+
+interface MemberIndex {
+	memberById: Map<string, SnapshotMember>;
+	memberByEmail: Map<string, SnapshotMember>;
+	/** Only the names that one member has. */
+	memberByName: Map<string, SnapshotMember>;
+}
+
+function indexMembers(snapshot: HarvestSnapshot): MemberIndex {
+	const memberById = new Map(snapshot.members.map((m) => [m.userId, m]));
+	const memberByEmail = new Map(
+		snapshot.members.map((m) => [m.email.trim().toLowerCase(), m]),
+	);
+	const memberNameCount = new Map<string, number>();
+	for (const m of snapshot.members) {
+		const key = normName(m.name);
+		memberNameCount.set(key, (memberNameCount.get(key) ?? 0) + 1);
+	}
+	const memberByName = new Map(
+		snapshot.members
+			.filter((m) => memberNameCount.get(normName(m.name)) === 1)
+			.map((m) => [normName(m.name), m]),
+	);
+	return { memberById, memberByEmail, memberByName };
+}
+
+function personMapped(
+	mappings: ReadonlyMap<string, string>,
+	sourceKey: string,
+): string | undefined {
+	return mappings.get(mappingKey("person", sourceKey));
+}
+
+interface Duplicates {
+	/** A second spelling's source key, to the person it is merged into. */
+	aliasOf: Map<string, string>;
+	aliasesOf: Map<string, ParsedPerson[]>;
+	duplicateGroups: HarvestDuplicateGroup[];
+	/** The parsed persons, with each second spelling merged into its person. */
+	persons: ParsedPerson[];
+}
+
+// Names that differ only in accents or punctuation ("Tin Primjerić" and
+// "Tin Primjeric") are two source keys. The admin says whether they are
+// one person. A group whose every member an earlier run mapped was
+// answered then: one user is one person, two users are two.
+function resolveDuplicates(
+	parsed: ParsedHarvest,
+	choices: HarvestChoices,
+	mappings: ReadonlyMap<string, string>,
+	blocked: HarvestBlocked[],
+): Duplicates {
+	const byFold = new Map<string, ParsedPerson[]>();
+	for (const p of parsed.persons) {
+		const fold = asciiFold(`${p.firstName} ${p.lastName}`);
+		if (fold === "") continue;
+		const list = byFold.get(fold);
+		if (list) list.push(p);
+		else byFold.set(fold, [p]);
+	}
+	const aliasOf = new Map<string, string>();
+	const aliasesOf = new Map<string, ParsedPerson[]>();
+	const duplicateGroups: HarvestDuplicateGroup[] = [];
+	for (const [key, members] of byFold) {
+		if (members.length < 2) continue;
+		const decision = decideDuplicateGroup(
+			key,
+			members,
+			choices,
+			mappings,
+			duplicateGroups,
+			blocked,
+		);
+		if (decision === null) continue;
+		const aliases = members.filter((m) => m.sourceKey !== decision);
+		for (const a of aliases) aliasOf.set(a.sourceKey, decision);
+		aliasesOf.set(decision, aliases);
+	}
+	const persons = parsed.persons.flatMap((p): ParsedPerson[] => {
+		if (aliasOf.has(p.sourceKey)) return [];
+		const aliases = aliasesOf.get(p.sourceKey);
+		return aliases ? [mergePersons(p, aliases)] : [p];
+	});
+	return { aliasOf, aliasesOf, duplicateGroups, persons };
+}
+
+/** The source key whose spelling one group keeps, or null when the group
+ *  stays separate people or blocks. Adds the group to `groups` when the
+ *  admin has to answer it. */
+function decideDuplicateGroup(
+	key: string,
+	members: readonly ParsedPerson[],
+	choices: HarvestChoices,
+	mappings: ReadonlyMap<string, string>,
+	groups: HarvestDuplicateGroup[],
+	blocked: HarvestBlocked[],
+): HarvestDuplicateDecision | null {
+	const names = members.map(displayName).join(" and ");
+	const localIds = new Set(
+		members.flatMap((m) => personMapped(mappings, m.sourceKey) ?? []),
+	);
+	if (members.every((m) => personMapped(mappings, m.sourceKey) !== undefined)) {
+		if (localIds.size > 1) return null;
+		return (members.find((m) => m.listed) ?? members[0])?.sourceKey ?? "";
+	}
+	const answer = choices.duplicates[key];
+	const decision =
+		answer === "separate" || members.some((m) => m.sourceKey === answer)
+			? (answer ?? null)
+			: null;
+	groups.push({
+		key,
+		people: members.map((m) => ({
+			sourceKey: m.sourceKey,
+			name: displayName(m),
+			listed: m.listed !== null,
+			rows: m.rows,
+			firstDate: m.firstDate,
+			lastDate: m.lastDate,
+		})),
+		decision,
+	});
+	if (decision === null) {
+		blocked.push({
+			kind: "person",
+			sourceKey: key,
+			message: `Decide whether ${names} are one person or different people`,
+		});
+		return null;
+	}
+	if (decision === "separate") return null;
+	if (localIds.size > 1) {
+		blocked.push({
+			kind: "person",
+			sourceKey: key,
+			message: `An earlier import made ${names} different people, so they cannot be one person now`,
+		});
+		return null;
+	}
+	return decision;
+}
+
+interface PersonDraft {
+	person: ParsedPerson;
+	review: HarvestPersonReview;
+	plan: HarvestPersonPlan;
+}
+
+interface PeopleDrafted {
+	drafts: PersonDraft[];
+	/** The user of each source key, or null for a person `start` creates. */
+	personUserId: Map<string, string | null>;
+	personActive: Map<string, boolean>;
+	personName: Map<string, string>;
+}
+
+/** One person's draft, and the user and state the rest of the plan reads. */
+interface DraftResult {
+	draft: PersonDraft;
+	userId: string | null;
+	active: boolean;
+}
+
+function draftPeople(
+	duplicates: Duplicates,
+	choices: HarvestChoices,
+	mappings: ReadonlyMap<string, string>,
+	members: MemberIndex,
+	blocked: HarvestBlocked[],
+): PeopleDrafted {
+	const out: PeopleDrafted = {
+		drafts: [],
+		personUserId: new Map(),
+		personActive: new Map(),
+		personName: new Map(),
+	};
+	for (const p of duplicates.persons) {
+		const name = displayName(p);
+		out.personName.set(p.sourceKey, name);
+		const aliases = duplicates.aliasesOf.get(p.sourceKey) ?? [];
+		const listedEmail = p.listed?.email.trim().toLowerCase() || null;
+		const { mapped, member, matchedBy } = matchPerson(
+			[p, ...aliases],
+			listedEmail,
+			mappings,
+			members,
+		);
+		const review: HarvestPersonReview = {
+			sourceKey: p.sourceKey,
+			name,
+			action: "create",
+			matchedBy,
+			localId: null,
+			email: "",
+			emailGuessed: false,
+			role: null,
+			type: null,
+			archived: false,
+			firstDate: p.firstDate,
+			lastDate: p.lastDate,
+			rows: p.rows,
+			blocked: null,
+			aliases: aliases.map(displayName),
+			invited: false,
+		};
+		const result =
+			mapped !== undefined || member
+				? draftMatched(p, review, mapped, member, blocked)
+				: draftCreated(p, review, listedEmail, choices);
+		out.drafts.push(result.draft);
+		out.personUserId.set(p.sourceKey, result.userId);
+		out.personActive.set(p.sourceKey, result.active);
+	}
+	return out;
+}
+
+interface PersonMatch {
+	mapped: string | undefined;
+	member: SnapshotMember | undefined;
+	matchedBy: HarvestMatchSource | null;
+}
+
+/** An earlier mapping of any spelling, then the listed address, then the
+ *  name of each spelling. */
+function matchPerson(
+	spellings: readonly ParsedPerson[],
+	listedEmail: string | null,
+	mappings: ReadonlyMap<string, string>,
+	members: MemberIndex,
+): PersonMatch {
+	const mapped = spellings
+		.map((s) => personMapped(mappings, s.sourceKey))
+		.find((id) => id !== undefined);
+	if (mapped !== undefined) {
+		return {
+			mapped,
+			member: members.memberById.get(mapped),
+			matchedBy: "earlier_import",
+		};
+	}
+	let member: SnapshotMember | undefined;
+	let matchedBy: HarvestMatchSource | null = null;
+	if (listedEmail !== null) {
+		member = members.memberByEmail.get(listedEmail);
+		if (member) matchedBy = "email";
+	}
+	for (const s of spellings) {
+		if (member) break;
+		member = members.memberByName.get(s.sourceKey);
+		if (member) matchedBy = "name";
+	}
+	return { mapped, member, matchedBy };
+}
+
+function draftMatched(
+	p: ParsedPerson,
+	review: HarvestPersonReview,
+	mapped: string | undefined,
+	member: SnapshotMember | undefined,
+	blocked: HarvestBlocked[],
+): DraftResult {
+	const localId = mapped ?? member?.userId ?? "";
+	if (!member) {
+		review.blocked =
+			"An earlier import mapped this person to a user who is no longer a member";
+		blocked.push({
+			kind: "person",
+			sourceKey: p.sourceKey,
+			message: `${review.name}: ${review.blocked}`,
+		});
+	}
+	const startDate = member && member.startDate === null ? p.firstDate : null;
+	const plan: HarvestPersonPlan = {
+		action: "match",
+		sourceKey: p.sourceKey,
+		localId,
+		startDate,
+	};
+	review.action = "match";
+	review.localId = localId;
+	review.email = member?.email ?? "";
+	review.role = memberRole(member);
+	review.archived = member?.archived ?? false;
+	review.invited = member?.invited ?? false;
+	return {
+		draft: { person: p, review, plan },
+		userId: localId,
+		active: !(member?.archived ?? false),
+	};
+}
+
+function memberRole(
+	member: SnapshotMember | undefined,
+): "admin" | "member" | null {
+	if (member?.role === "admin" || member?.role === "owner") return "admin";
+	return member ? "member" : null;
+}
+
+function draftCreated(
+	p: ParsedPerson,
+	review: HarvestPersonReview,
+	listedEmail: string | null,
+	choices: HarvestChoices,
+): DraftResult {
+	const cutoff = choices.cutoffDate;
+	const choice = choices.people[p.sourceKey];
+	const override = choice?.email?.trim().toLowerCase() || null;
+	const email = override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
+	const emailListed = listedEmail !== null && email === listedEmail;
+	// An address the admin typed is not a guess: they vouch for it, as the
+	// people list does (plan section 3.3 keeps only a GUESS unverified).
+	// Leaving it unverified made the person active but unable to sign in,
+	// with Restore on an archived row as the only way to confirm it.
+	const emailConfirmed = emailListed || override !== null;
+	const employee = p.listed ? p.listed.employee : (p.employeeInReport ?? true);
+	const role = choice?.role ?? (p.listed?.admin ? "admin" : "member");
+	const type: MemberTypeValue =
+		choice?.type ?? (employee ? "employee_billable" : "contractor_hourly");
+	const archivedOn = p.listed
+		? null
+		: p.lastDate
+			? addDays(p.lastDate, 1)
+			: cutoff;
+	const plan: HarvestPersonPlan = {
+		action: "create",
+		sourceKey: p.sourceKey,
+		name: review.name,
+		email,
+		emailListed,
+		emailConfirmed,
+		role,
+		type,
+		startDate: p.firstDate ?? cutoff,
+		archivedOn,
+	};
+	review.email = email;
+	review.emailGuessed = !emailConfirmed;
+	review.role = role;
+	review.type = type;
+	review.archived = archivedOn !== null;
+	return {
+		draft: { person: p, review, plan },
+		userId: null,
+		active: archivedOn === null,
+	};
+}
+
+// A second spelling takes its person's user. It needs a plan only when
+// no earlier run mapped it: `start` then maps it to that user.
+function planAliases(
+	parsed: ParsedHarvest,
+	aliasOf: ReadonlyMap<string, string>,
+	mappings: ReadonlyMap<string, string>,
+	people: PeopleDrafted,
+): HarvestPersonPlan[] {
+	const aliasPlans: HarvestPersonPlan[] = [];
+	for (const [alias, of] of aliasOf) {
+		const person = parsed.persons.find((p) => p.sourceKey === alias);
+		people.personName.set(alias, person ? displayName(person) : alias);
+		people.personUserId.set(alias, people.personUserId.get(of) ?? null);
+		people.personActive.set(alias, people.personActive.get(of) ?? false);
+		if (personMapped(mappings, alias) === undefined) {
+			aliasPlans.push({ action: "alias", sourceKey: alias, of });
+		}
+	}
+	return aliasPlans;
+}
+
+// Whose person-day a row lands on. A second spelling lands on its person,
+// and two source people that resolve to one member share that member's
+// day, as the server groups them (`importDays`). So the digest the plan
+// compares covers the same rows as the one stored.
+function buildOwners(
+	drafts: readonly PersonDraft[],
+	personUserId: ReadonlyMap<string, string | null>,
+	aliasOf: ReadonlyMap<string, string>,
+): Map<string, string> {
+	const ownerOf = new Map<string, string>();
+	const ownerByUser = new Map<string, string>();
+	for (const d of drafts) {
+		const sourceKey = d.person.sourceKey;
+		const userId = personUserId.get(sourceKey) ?? null;
+		const owner =
+			userId === null ? sourceKey : (ownerByUser.get(userId) ?? sourceKey);
+		if (userId !== null) ownerByUser.set(userId, owner);
+		ownerOf.set(sourceKey, owner);
+	}
+	for (const [alias, of] of aliasOf) ownerOf.set(alias, ownerOf.get(of) ?? of);
+	return ownerOf;
+}
+
+/** What an address of a created person is checked against. */
+interface EmailIndex {
+	memberByEmail: ReadonlyMap<string, SnapshotMember>;
+	taken: ReadonlySet<string>;
+	listedEmails: ReadonlySet<string>;
+	/** How many created persons get each guessed or typed address. */
+	emailUse: ReadonlyMap<string, number>;
+	/** How many created persons get each people-list address. */
+	listedUse: ReadonlyMap<string, number>;
+}
+
+/**
+ * Email collisions: every address a created person would get. Blocks each
+ * created person whose address collides, and returns the addresses the
+ * snapshot call did not check, in draft order.
+ *
+ * A people-list address belongs to its listed owner: a guess that equals
+ * it blocks the guesser only, so `listedUse` counts listed addresses apart.
+ */
+function checkEmails(
+	drafts: readonly PersonDraft[],
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	members: MemberIndex,
+	blocked: HarvestBlocked[],
+): string[] {
+	const taken = new Set(
+		snapshot.takenEmails.map((e) => e.trim().toLowerCase()),
+	);
+	const listedEmails = new Set<string>();
+	for (const p of parsed.persons) {
+		const email = p.listed?.email.trim().toLowerCase() ?? "";
+		if (email !== "") listedEmails.add(email);
+	}
+	const candidateEmails = new Set(parsed.candidateEmails);
+	const emailUse = new Map<string, number>();
+	const listedUse = new Map<string, number>();
+	for (const d of drafts) {
+		if (d.plan.action !== "create") continue;
+		const uses = d.plan.emailListed ? listedUse : emailUse;
+		uses.set(d.plan.email, (uses.get(d.plan.email) ?? 0) + 1);
+	}
+	const index: EmailIndex = {
+		memberByEmail: members.memberByEmail,
+		taken,
+		listedEmails,
+		emailUse,
+		listedUse,
+	};
+	const emailsToCheck: string[] = [];
+	for (const d of drafts) {
+		if (d.plan.action !== "create") continue;
+		const { email, emailListed } = d.plan;
+		if (!candidateEmails.has(email)) emailsToCheck.push(email);
+		const reason = emailCollisionReason(email, emailListed, index);
+		if (reason !== null) {
+			d.review.blocked = reason;
+			blocked.push({
+				kind: "person",
+				sourceKey: d.person.sourceKey,
+				message: `${d.review.name}: ${reason}`,
+			});
+		}
+	}
+	return emailsToCheck;
+}
+
+/** Why a created person cannot have `email`, or null when they can. */
+function emailCollisionReason(
+	email: string,
+	emailListed: boolean,
+	index: EmailIndex,
+): string | null {
+	const duplicate = `${email} is also the address of another imported person`;
+	if (!looksLikeEmail(email)) return `"${email}" is not an email address`;
+	if (emailListed) {
+		return (index.listedUse.get(email) ?? 0) > 1 ? duplicate : null;
+	}
+	const member = index.memberByEmail.get(email);
+	if (member) return `${email} belongs to the member ${member.name}`;
+	if (index.taken.has(email)) {
+		return `${email} belongs to a user outside this organization`;
+	}
+	if (index.listedEmails.has(email)) {
+		return `${email} is a people-list address of another person`;
+	}
+	if ((index.emailUse.get(email) ?? 0) > 1) return duplicate;
+	return null;
+}
+
 /**
  * Builds the whole import from the parsed files, what the org already holds
  * and the admin's choices. Synchronous and pure.
@@ -1803,299 +2287,15 @@ export function planHarvestImport(
 			blocked,
 		);
 
-	// People ------------------------------------------------------------------
-	const memberById = new Map(snapshot.members.map((m) => [m.userId, m]));
-	const memberByEmail = new Map(
-		snapshot.members.map((m) => [m.email.trim().toLowerCase(), m]),
-	);
-	const memberNameCount = new Map<string, number>();
-	for (const m of snapshot.members) {
-		const key = normName(m.name);
-		memberNameCount.set(key, (memberNameCount.get(key) ?? 0) + 1);
-	}
-	const memberByName = new Map(
-		snapshot.members
-			.filter((m) => memberNameCount.get(normName(m.name)) === 1)
-			.map((m) => [normName(m.name), m]),
-	);
-	const taken = new Set(
-		snapshot.takenEmails.map((e) => e.trim().toLowerCase()),
-	);
-	const listedEmails = new Set<string>();
-	for (const p of parsed.persons) {
-		const email = p.listed?.email.trim().toLowerCase() ?? "";
-		if (email !== "") listedEmails.add(email);
-	}
-	const candidateEmails = new Set(parsed.candidateEmails);
-
-	// Names that differ only in accents or punctuation ("Tin Primjerić" and
-	// "Tin Primjeric") are two source keys. The admin says whether they are
-	// one person. A group whose every member an earlier run mapped was
-	// answered then: one user is one person, two users are two.
-	const personMapped = (sourceKey: string) =>
-		mappings.get(mappingKey("person", sourceKey));
-	const byFold = new Map<string, ParsedPerson[]>();
-	for (const p of parsed.persons) {
-		const fold = asciiFold(`${p.firstName} ${p.lastName}`);
-		if (fold === "") continue;
-		const list = byFold.get(fold);
-		if (list) list.push(p);
-		else byFold.set(fold, [p]);
-	}
-	/** A second spelling's source key, to the person it is merged into. */
-	const aliasOf = new Map<string, string>();
-	const aliasesOf = new Map<string, ParsedPerson[]>();
-	const duplicateGroups: HarvestDuplicateGroup[] = [];
-	for (const [key, members] of byFold) {
-		if (members.length < 2) continue;
-		const names = members.map(displayName).join(" and ");
-		const localIds = new Set(
-			members.flatMap((m) => personMapped(m.sourceKey) ?? []),
-		);
-		let decision: HarvestDuplicateDecision | null;
-		if (members.every((m) => personMapped(m.sourceKey) !== undefined)) {
-			if (localIds.size > 1) continue;
-			decision = (members.find((m) => m.listed) ?? members[0])?.sourceKey ?? "";
-		} else {
-			const answer = choices.duplicates[key];
-			decision =
-				answer === "separate" || members.some((m) => m.sourceKey === answer)
-					? (answer ?? null)
-					: null;
-			duplicateGroups.push({
-				key,
-				people: members.map((m) => ({
-					sourceKey: m.sourceKey,
-					name: displayName(m),
-					listed: m.listed !== null,
-					rows: m.rows,
-					firstDate: m.firstDate,
-					lastDate: m.lastDate,
-				})),
-				decision,
-			});
-			if (decision === null) {
-				blocked.push({
-					kind: "person",
-					sourceKey: key,
-					message: `Decide whether ${names} are one person or different people`,
-				});
-				continue;
-			}
-			if (decision === "separate") continue;
-			if (localIds.size > 1) {
-				blocked.push({
-					kind: "person",
-					sourceKey: key,
-					message: `An earlier import made ${names} different people, so they cannot be one person now`,
-				});
-				continue;
-			}
-		}
-		const aliases = members.filter((m) => m.sourceKey !== decision);
-		for (const a of aliases) aliasOf.set(a.sourceKey, decision);
-		aliasesOf.set(decision, aliases);
-	}
-	const persons = parsed.persons.flatMap((p): ParsedPerson[] => {
-		if (aliasOf.has(p.sourceKey)) return [];
-		const aliases = aliasesOf.get(p.sourceKey);
-		return aliases ? [mergePersons(p, aliases)] : [p];
-	});
-
-	interface PersonDraft {
-		person: ParsedPerson;
-		review: HarvestPersonReview;
-		plan: HarvestPersonPlan;
-	}
-	const drafts: PersonDraft[] = [];
-	const personUserId = new Map<string, string | null>();
-	const personActive = new Map<string, boolean>();
-	const personName = new Map<string, string>();
-	for (const p of persons) {
-		const name = displayName(p);
-		personName.set(p.sourceKey, name);
-		const aliases = aliasesOf.get(p.sourceKey) ?? [];
-		const spellings = [p, ...aliases];
-		const listedEmail = p.listed?.email.trim().toLowerCase() || null;
-		const mapped = spellings
-			.map((s) => personMapped(s.sourceKey))
-			.find((id) => id !== undefined);
-		let member = mapped === undefined ? undefined : memberById.get(mapped);
-		let matchedBy: HarvestMatchSource | null =
-			mapped !== undefined ? "earlier_import" : null;
-		if (mapped === undefined && listedEmail !== null) {
-			member = memberByEmail.get(listedEmail);
-			if (member) matchedBy = "email";
-		}
-		for (const s of spellings) {
-			if (mapped !== undefined || member) break;
-			member = memberByName.get(s.sourceKey);
-			if (member) matchedBy = "name";
-		}
-		const review: HarvestPersonReview = {
-			sourceKey: p.sourceKey,
-			name,
-			action: "create",
-			matchedBy,
-			localId: null,
-			email: "",
-			emailGuessed: false,
-			role: null,
-			type: null,
-			archived: false,
-			firstDate: p.firstDate,
-			lastDate: p.lastDate,
-			rows: p.rows,
-			blocked: null,
-			aliases: aliases.map(displayName),
-			invited: false,
-		};
-		if (mapped !== undefined || member) {
-			const localId = mapped ?? member?.userId ?? "";
-			if (!member) {
-				review.blocked =
-					"An earlier import mapped this person to a user who is no longer a member";
-				blocked.push({
-					kind: "person",
-					sourceKey: p.sourceKey,
-					message: `${name}: ${review.blocked}`,
-				});
-			}
-			const startDate =
-				member && member.startDate === null ? p.firstDate : null;
-			const plan: HarvestPersonPlan = {
-				action: "match",
-				sourceKey: p.sourceKey,
-				localId,
-				startDate,
-			};
-			review.action = "match";
-			review.localId = localId;
-			review.email = member?.email ?? "";
-			review.role =
-				member?.role === "admin" || member?.role === "owner"
-					? "admin"
-					: member
-						? "member"
-						: null;
-			review.archived = member?.archived ?? false;
-			review.invited = member?.invited ?? false;
-			drafts.push({ person: p, review, plan });
-			personUserId.set(p.sourceKey, localId);
-			personActive.set(p.sourceKey, !(member?.archived ?? false));
-			continue;
-		}
-		const choice = choices.people[p.sourceKey];
-		const override = choice?.email?.trim().toLowerCase() || null;
-		const email =
-			override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
-		const emailListed = listedEmail !== null && email === listedEmail;
-		// An address the admin typed is not a guess: they vouch for it, as the
-		// people list does (plan section 3.3 keeps only a GUESS unverified).
-		// Leaving it unverified made the person active but unable to sign in,
-		// with Restore on an archived row as the only way to confirm it.
-		const emailConfirmed = emailListed || override !== null;
-		const employee = p.listed
-			? p.listed.employee
-			: (p.employeeInReport ?? true);
-		const role = choice?.role ?? (p.listed?.admin ? "admin" : "member");
-		const type: MemberTypeValue =
-			choice?.type ?? (employee ? "employee_billable" : "contractor_hourly");
-		const archivedOn = p.listed
-			? null
-			: p.lastDate
-				? addDays(p.lastDate, 1)
-				: cutoff;
-		const plan: HarvestPersonPlan = {
-			action: "create",
-			sourceKey: p.sourceKey,
-			name,
-			email,
-			emailListed,
-			emailConfirmed,
-			role,
-			type,
-			startDate: p.firstDate ?? cutoff,
-			archivedOn,
-		};
-		review.email = email;
-		review.emailGuessed = !emailConfirmed;
-		review.role = role;
-		review.type = type;
-		review.archived = archivedOn !== null;
-		drafts.push({ person: p, review, plan });
-		personUserId.set(p.sourceKey, null);
-		personActive.set(p.sourceKey, archivedOn === null);
-	}
-
-	// A second spelling takes its person's user. It needs a plan only when
-	// no earlier run mapped it: `start` then maps it to that user.
-	const aliasPlans: HarvestPersonPlan[] = [];
-	for (const [alias, of] of aliasOf) {
-		const person = parsed.persons.find((p) => p.sourceKey === alias);
-		personName.set(alias, person ? displayName(person) : alias);
-		personUserId.set(alias, personUserId.get(of) ?? null);
-		personActive.set(alias, personActive.get(of) ?? false);
-		if (personMapped(alias) === undefined) {
-			aliasPlans.push({ action: "alias", sourceKey: alias, of });
-		}
-	}
-
-	// Whose person-day a row lands on. A second spelling lands on its person,
-	// and two source people that resolve to one member share that member's
-	// day, as the server groups them (`importDays`). So the digest the plan
-	// compares covers the same rows as the one stored.
-	const ownerOf = new Map<string, string>();
-	const ownerByUser = new Map<string, string>();
-	for (const d of drafts) {
-		const sourceKey = d.person.sourceKey;
-		const userId = personUserId.get(sourceKey) ?? null;
-		const owner =
-			userId === null ? sourceKey : (ownerByUser.get(userId) ?? sourceKey);
-		if (userId !== null) ownerByUser.set(userId, owner);
-		ownerOf.set(sourceKey, owner);
-	}
-	for (const [alias, of] of aliasOf) ownerOf.set(alias, ownerOf.get(of) ?? of);
+	const members = indexMembers(snapshot);
+	const duplicates = resolveDuplicates(parsed, choices, mappings, blocked);
+	const { aliasOf, duplicateGroups } = duplicates;
+	const people = draftPeople(duplicates, choices, mappings, members, blocked);
+	const { drafts, personUserId, personActive, personName } = people;
+	const aliasPlans = planAliases(parsed, aliasOf, mappings, people);
+	const ownerOf = buildOwners(drafts, personUserId, aliasOf);
 	const ownerKey = (sourceKey: string) => ownerOf.get(sourceKey) ?? sourceKey;
-
-	// Email collisions: every address a created person would get.
-	// A people-list address belongs to its listed owner: a guess that equals
-	// it blocks the guesser only, so `listedUse` counts listed addresses apart.
-	const emailUse = new Map<string, number>();
-	const listedUse = new Map<string, number>();
-	for (const d of drafts) {
-		if (d.plan.action !== "create") continue;
-		const uses = d.plan.emailListed ? listedUse : emailUse;
-		uses.set(d.plan.email, (uses.get(d.plan.email) ?? 0) + 1);
-	}
-	const emailsToCheck: string[] = [];
-	for (const d of drafts) {
-		if (d.plan.action !== "create") continue;
-		const { email, emailListed } = d.plan;
-		if (!candidateEmails.has(email)) emailsToCheck.push(email);
-		const duplicate = `${email} is also the address of another imported person`;
-		let reason: string | null = null;
-		if (!looksLikeEmail(email)) reason = `"${email}" is not an email address`;
-		else if (emailListed) {
-			if ((listedUse.get(email) ?? 0) > 1) reason = duplicate;
-		} else {
-			const member = memberByEmail.get(email);
-			if (member) reason = `${email} belongs to the member ${member.name}`;
-			else if (taken.has(email))
-				reason = `${email} belongs to a user outside this organization`;
-			else if (listedEmails.has(email))
-				reason = `${email} is a people-list address of another person`;
-			else if ((emailUse.get(email) ?? 0) > 1) reason = duplicate;
-		}
-		if (reason !== null) {
-			d.review.blocked = reason;
-			blocked.push({
-				kind: "person",
-				sourceKey: d.person.sourceKey,
-				message: `${d.review.name}: ${reason}`,
-			});
-		}
-	}
+	const emailsToCheck = checkEmails(drafts, parsed, snapshot, members, blocked);
 
 	// Rows, dedupe and days ----------------------------------------------------
 	const appByDay = new Map<string, AppEntry[]>();
