@@ -31,6 +31,7 @@ import {
 	type PeopleRow,
 	type ProjectRow,
 	type TaskRow,
+	type TimeReportRow,
 	detectHarvestFile,
 	toClientRow,
 	toPeopleRow,
@@ -445,6 +446,33 @@ interface DayAcc {
 /** How many person-days are hashed per `Promise.all` batch. */
 const HASH_BATCH_DAYS = 2000;
 
+interface ListRecords {
+	people: PeopleRow[];
+	projects: ProjectRow[];
+	tasks: TaskRow[];
+	clients: ClientRow[];
+}
+
+interface ClassifiedFiles {
+	infos: HarvestFileInfo[];
+	/** The text of the first time report, or null with none. */
+	timeReport: string | null;
+	lists: ListRecords;
+}
+
+/** The time report, row by row, before the hashes. */
+interface TimeReportAcc {
+	rows: ParsedTimeRow[];
+	invalidRows: HarvestAttentionRow[];
+	persons: Map<string, PersonAcc>;
+	clients: Map<string, string>;
+	projects: Map<string, ProjectAcc>;
+	tasks: Map<string, TaskAcc>;
+	days: Map<string, DayAcc>;
+	from: string | null;
+	to: string | null;
+}
+
 /**
  * Detects and parses every dropped file, and hashes the time report's import
  * keys and day digests. Run it once per drop; `planHarvestImport` re-uses
@@ -453,237 +481,390 @@ const HASH_BATCH_DAYS = 2000;
 export async function parseHarvestFiles(
 	files: { name: string; text: string }[],
 ): Promise<ParsedHarvest> {
+	const { infos, timeReport, lists } = classifyFiles(files);
+	const acc: TimeReportAcc = {
+		rows: [],
+		invalidRows: [],
+		persons: new Map(),
+		clients: new Map(),
+		projects: new Map(),
+		tasks: new Map(),
+		days: new Map(),
+		from: null,
+		to: null,
+	};
+	if (timeReport !== null) {
+		const info = infos.find((i) => i.kind === "time_report" && i.used);
+		const records = parseTimeReport(timeReport, acc);
+		if (info) info.rows = records;
+	}
+
+	const parsedDays = await hashDays(acc.days, acc.rows);
+	const parsedPersons = buildPersons(lists.people, acc.persons);
+	const parsedProjects = buildProjects(lists.projects, acc.projects);
+	const parsedClients = buildClients(
+		lists.clients,
+		acc.clients,
+		parsedProjects,
+	);
+	const parsedTasks = buildTasks(lists.tasks, acc.tasks);
+	const { from, to } = acc;
+
+	return {
+		files: infos,
+		rows: acc.rows,
+		days: parsedDays,
+		invalidRows: acc.invalidRows,
+		persons: parsedPersons,
+		clients: parsedClients,
+		projects: parsedProjects,
+		tasks: parsedTasks,
+		range: from !== null && to !== null ? { from, to } : null,
+		candidateEmails: candidateEmailsOf(parsedPersons),
+	};
+}
+
+/** Detects each file. The first file of each kind is used: the time
+ *  report's text is kept, and the rows of a list are read. */
+function classifyFiles(
+	files: { name: string; text: string }[],
+): ClassifiedFiles {
 	const infos: HarvestFileInfo[] = [];
 	const seenKinds = new Set<HarvestFileKind>();
+	const lists: ListRecords = {
+		people: [],
+		projects: [],
+		tasks: [],
+		clients: [],
+	};
 	let timeReport: string | null = null;
-	const people: PeopleRow[] = [];
-	const projectList: ProjectRow[] = [];
-	const taskList: TaskRow[] = [];
-	const clientList: ClientRow[] = [];
-
 	for (const file of files) {
-		const header = readCsvHeader(file.text);
-		const detected =
-			header.length === 0
-				? { kind: "unknown" as const, reason: "the file is empty" }
-				: detectHarvestFile(header);
-		const info: HarvestFileInfo = {
-			name: file.name,
-			kind: detected.kind,
-			rows: 0,
-			used: false,
-			reason: detected.reason,
-		};
+		const info = detectFileInfo(file, seenKinds);
 		infos.push(info);
-		if (detected.kind === "unknown") {
-			info.reason = `Not used: ${detected.reason}`;
-			continue;
-		}
-		if (seenKinds.has(detected.kind)) {
-			info.reason = `Not used: an earlier file is already the ${detected.kind} export`;
-			for (const _ of iterateCsvRecords(file.text)) info.rows += 1;
-			continue;
-		}
-		seenKinds.add(detected.kind);
-		info.used = true;
-		info.reason = "Used";
-		if (detected.kind === "time_report") {
+		if (!info.used) continue;
+		if (info.kind === "time_report") {
 			timeReport = file.text;
 			continue;
 		}
-		for (const record of iterateCsvRecords(file.text)) {
-			info.rows += 1;
-			if (detected.kind === "people") people.push(toPeopleRow(record));
-			else if (detected.kind === "projects") {
-				projectList.push(toProjectRow(record));
-			} else if (detected.kind === "tasks") taskList.push(toTaskRow(record));
-			else clientList.push(toClientRow(record));
-		}
+		readListRecords(info.kind, file.text, lists, info);
 	}
+	return { infos, timeReport, lists };
+}
 
-	const rows: ParsedTimeRow[] = [];
-	const invalidRows: HarvestAttentionRow[] = [];
-	const persons = new Map<string, PersonAcc>();
-	const clients = new Map<string, string>();
-	const projects = new Map<string, ProjectAcc>();
-	const tasks = new Map<string, TaskAcc>();
-	const days = new Map<string, DayAcc>();
-	let from: string | null = null;
-	let to: string | null = null;
-
-	if (timeReport !== null) {
-		const info = infos.find((i) => i.kind === "time_report" && i.used);
-		let record = 0;
-		for (const rec of iterateCsvRecords(timeReport)) {
-			record += 1;
-			const t = toTimeReportRow(rec);
-			const person = `${t.firstName} ${t.lastName}`.trim();
-			const personSourceKey = normName(person);
-			const missing = !t.date
-				? "Date is not a date"
-				: personSourceKey === ""
-					? "No person"
-					: normName(t.client) === ""
-						? "No client"
-						: normName(t.project) === ""
-							? "No project"
-							: normName(t.task) === ""
-								? "No task"
-								: null;
-			if (missing !== null || !t.date) {
-				invalidRows.push({
-					record,
-					date: rec.get("Date") ?? "",
-					person,
-					client: t.client,
-					project: t.project,
-					task: t.task,
-					hours: t.hoursRaw,
-					reason: missing ?? "Date is not a date",
-				});
-				continue;
-			}
-			const date = t.date;
-			if (from === null || date < from) from = date;
-			if (to === null || date > to) to = date;
-
-			let p = persons.get(personSourceKey);
-			if (!p) {
-				p = {
-					firstName: t.firstName.trim(),
-					lastName: t.lastName.trim(),
-					firstDate: date,
-					lastDate: date,
-					employeeInReport: t.employee,
-					rows: 0,
-				};
-				persons.set(personSourceKey, p);
-			}
-			p.rows += 1;
-			if (p.firstDate === null || date < p.firstDate) p.firstDate = date;
-			if (p.lastDate === null || date >= p.lastDate) {
-				p.lastDate = date;
-				p.employeeInReport = t.employee;
-			}
-
-			const task = canonicalTask(t.task, t.projectCode);
-			const clientSourceKey = normName(t.client);
-			if (!clients.has(clientSourceKey)) {
-				clients.set(clientSourceKey, t.client.trim());
-			}
-			let projectSourceKey: string | null = null;
-			if (!task.absence) {
-				projectSourceKey = projectSourceKeyOf(
-					t.client,
-					t.project,
-					t.projectCode,
-				);
-				let acc = projects.get(projectSourceKey);
-				if (!acc) {
-					acc = {
-						clientSourceKey,
-						clientName: t.client.trim(),
-						name: t.project.trim(),
-						code: t.projectCode.trim(),
-						workRows: 0,
-						billableRows: 0,
-						workDates: new Set(),
-					};
-					projects.set(projectSourceKey, acc);
-				}
-				acc.workRows += 1;
-				acc.workDates.add(date);
-				if (t.billable) acc.billableRows += 1;
-			}
-			let taskAcc = tasks.get(task.key);
-			if (!taskAcc) {
-				taskAcc = { name: t.task.trim(), harvestNames: new Set(), rows: 0 };
-				tasks.set(task.key, taskAcc);
-			}
-			taskAcc.harvestNames.add(t.task.trim());
-			taskAcc.rows += 1;
-
-			const rawSeconds = t.hours === null ? null : hoursToSeconds(t.hours);
-			const seconds =
-				rawSeconds === null || rawSeconds < 0
-					? null
-					: roundToQuarterHour(rawSeconds);
-			const dayKey = personDayKey(date, p.firstName, p.lastName);
-			let day = days.get(dayKey);
-			if (!day) {
-				day = { personSourceKey, date, rows: [], fields: [] };
-				days.set(dayKey, day);
-			}
-			day.rows.push(rows.length);
-			day.fields.push({
-				date,
-				firstName: t.firstName,
-				lastName: t.lastName,
-				client: t.client,
-				project: t.project,
-				projectCode: t.projectCode,
-				task: t.task,
-				notes: t.notes,
-				hours: t.hoursRaw,
-			});
-			rows.push({
-				record,
-				date,
-				dayKey,
-				personSourceKey,
-				clientName: t.client.trim(),
-				projectName: t.project.trim(),
-				projectCode: t.projectCode.trim(),
-				taskName: t.task.trim(),
-				notes: t.notes,
-				hoursRaw: t.hoursRaw,
-				clientSourceKey,
-				projectSourceKey,
-				taskSourceKey: task.key,
-				absence: task.absence,
-				overtime: task.overtime,
-				rawSeconds,
-				seconds,
-				billable: t.billable,
-				problem: rowProblem(rawSeconds, seconds, t.notes),
-				key: "",
-			});
-		}
-		if (info) info.rows = record;
+function detectFileInfo(
+	file: { name: string; text: string },
+	seenKinds: Set<HarvestFileKind>,
+): HarvestFileInfo {
+	const header = readCsvHeader(file.text);
+	const detected =
+		header.length === 0
+			? { kind: "unknown" as const, reason: "the file is empty" }
+			: detectHarvestFile(header);
+	const info: HarvestFileInfo = {
+		name: file.name,
+		kind: detected.kind,
+		rows: 0,
+		used: false,
+		reason: detected.reason,
+	};
+	if (detected.kind === "unknown") {
+		info.reason = `Not used: ${detected.reason}`;
+		return info;
 	}
+	if (seenKinds.has(detected.kind)) {
+		info.reason = `Not used: an earlier file is already the ${detected.kind} export`;
+		for (const _ of iterateCsvRecords(file.text)) info.rows += 1;
+		return info;
+	}
+	seenKinds.add(detected.kind);
+	info.used = true;
+	info.reason = "Used";
+	return info;
+}
 
-	// Keys and digests, one person-day at a time and a batch of days per
-	// `Promise.all`, so 240k rows do not wait on 240k sequential awaits.
+function readListRecords(
+	kind: HarvestFileKind,
+	text: string,
+	lists: ListRecords,
+	info: HarvestFileInfo,
+): void {
+	for (const record of iterateCsvRecords(text)) {
+		info.rows += 1;
+		if (kind === "people") lists.people.push(toPeopleRow(record));
+		else if (kind === "projects") lists.projects.push(toProjectRow(record));
+		else if (kind === "tasks") lists.tasks.push(toTaskRow(record));
+		else lists.clients.push(toClientRow(record));
+	}
+}
+
+/** Reads every record of the time report into `acc`. Returns the count of
+ *  data records. */
+function parseTimeReport(text: string, acc: TimeReportAcc): number {
+	let record = 0;
+	for (const rec of iterateCsvRecords(text)) {
+		record += 1;
+		readTimeRow(rec, record, acc);
+	}
+	return record;
+}
+
+function readTimeRow(
+	rec: ReadonlyMap<string, string>,
+	record: number,
+	acc: TimeReportAcc,
+): void {
+	const t = toTimeReportRow(rec);
+	const person = `${t.firstName} ${t.lastName}`.trim();
+	const personSourceKey = normName(person);
+	const missing = missingField(t, personSourceKey);
+	if (missing !== null || !t.date) {
+		acc.invalidRows.push({
+			record,
+			date: rec.get("Date") ?? "",
+			person,
+			client: t.client,
+			project: t.project,
+			task: t.task,
+			hours: t.hoursRaw,
+			reason: missing ?? "Date is not a date",
+		});
+		return;
+	}
+	const date = t.date;
+	if (acc.from === null || date < acc.from) acc.from = date;
+	if (acc.to === null || date > acc.to) acc.to = date;
+
+	const p = accumulatePerson(acc.persons, personSourceKey, t, date);
+	const task = canonicalTask(t.task, t.projectCode);
+	const clientSourceKey = normName(t.client);
+	if (!acc.clients.has(clientSourceKey)) {
+		acc.clients.set(clientSourceKey, t.client.trim());
+	}
+	const projectSourceKey = task.absence
+		? null
+		: accumulateProject(acc.projects, t, clientSourceKey, date);
+	accumulateTask(acc.tasks, task.key, t);
+	const dayKey = personDayKey(date, p.firstName, p.lastName);
+	accumulateDay(acc.days, dayKey, personSourceKey, t, date, acc.rows.length);
+	acc.rows.push(
+		toParsedRow(t, {
+			record,
+			date,
+			dayKey,
+			personSourceKey,
+			clientSourceKey,
+			projectSourceKey,
+			task,
+		}),
+	);
+}
+
+/** Why a time-report row cannot be read, or null when it has every field. */
+function missingField(
+	t: TimeReportRow,
+	personSourceKey: string,
+): string | null {
+	if (!t.date) return "Date is not a date";
+	if (personSourceKey === "") return "No person";
+	if (normName(t.client) === "") return "No client";
+	if (normName(t.project) === "") return "No project";
+	if (normName(t.task) === "") return "No task";
+	return null;
+}
+
+function accumulatePerson(
+	persons: Map<string, PersonAcc>,
+	personSourceKey: string,
+	t: TimeReportRow,
+	date: string,
+): PersonAcc {
+	let p = persons.get(personSourceKey);
+	if (!p) {
+		p = {
+			firstName: t.firstName.trim(),
+			lastName: t.lastName.trim(),
+			firstDate: date,
+			lastDate: date,
+			employeeInReport: t.employee,
+			rows: 0,
+		};
+		persons.set(personSourceKey, p);
+	}
+	p.rows += 1;
+	if (p.firstDate === null || date < p.firstDate) p.firstDate = date;
+	// `>=`: of two rows on the last date, the later row in the file decides.
+	if (p.lastDate === null || date >= p.lastDate) {
+		p.lastDate = date;
+		p.employeeInReport = t.employee;
+	}
+	return p;
+}
+
+/** Counts a work row on its project. Returns the project source key. */
+function accumulateProject(
+	projects: Map<string, ProjectAcc>,
+	t: TimeReportRow,
+	clientSourceKey: string,
+	date: string,
+): string {
+	const projectSourceKey = projectSourceKeyOf(
+		t.client,
+		t.project,
+		t.projectCode,
+	);
+	let acc = projects.get(projectSourceKey);
+	if (!acc) {
+		acc = {
+			clientSourceKey,
+			clientName: t.client.trim(),
+			name: t.project.trim(),
+			code: t.projectCode.trim(),
+			workRows: 0,
+			billableRows: 0,
+			workDates: new Set(),
+		};
+		projects.set(projectSourceKey, acc);
+	}
+	acc.workRows += 1;
+	acc.workDates.add(date);
+	if (t.billable) acc.billableRows += 1;
+	return projectSourceKey;
+}
+
+function accumulateTask(
+	tasks: Map<string, TaskAcc>,
+	taskKey: string,
+	t: TimeReportRow,
+): void {
+	let taskAcc = tasks.get(taskKey);
+	if (!taskAcc) {
+		taskAcc = { name: t.task.trim(), harvestNames: new Set(), rows: 0 };
+		tasks.set(taskKey, taskAcc);
+	}
+	taskAcc.harvestNames.add(t.task.trim());
+	taskAcc.rows += 1;
+}
+
+/** Adds the row at `rowIndex` to its person-day. */
+function accumulateDay(
+	days: Map<string, DayAcc>,
+	dayKey: string,
+	personSourceKey: string,
+	t: TimeReportRow,
+	date: string,
+	rowIndex: number,
+): void {
+	let day = days.get(dayKey);
+	if (!day) {
+		day = { personSourceKey, date, rows: [], fields: [] };
+		days.set(dayKey, day);
+	}
+	day.rows.push(rowIndex);
+	day.fields.push({
+		date,
+		firstName: t.firstName,
+		lastName: t.lastName,
+		client: t.client,
+		project: t.project,
+		projectCode: t.projectCode,
+		task: t.task,
+		notes: t.notes,
+		hours: t.hoursRaw,
+	});
+}
+
+/** What `readTimeRow` already resolved for one row. */
+interface RowRefs {
+	record: number;
+	date: string;
+	dayKey: string;
+	personSourceKey: string;
+	clientSourceKey: string;
+	projectSourceKey: string | null;
+	task: CanonicalTask;
+}
+
+/** The parsed row. Its key is empty until `hashDays` sets it. */
+function toParsedRow(t: TimeReportRow, refs: RowRefs): ParsedTimeRow {
+	const rawSeconds = t.hours === null ? null : hoursToSeconds(t.hours);
+	const seconds =
+		rawSeconds === null || rawSeconds < 0
+			? null
+			: roundToQuarterHour(rawSeconds);
+	return {
+		record: refs.record,
+		date: refs.date,
+		dayKey: refs.dayKey,
+		personSourceKey: refs.personSourceKey,
+		clientName: t.client.trim(),
+		projectName: t.project.trim(),
+		projectCode: t.projectCode.trim(),
+		taskName: t.task.trim(),
+		notes: t.notes,
+		hoursRaw: t.hoursRaw,
+		clientSourceKey: refs.clientSourceKey,
+		projectSourceKey: refs.projectSourceKey,
+		taskSourceKey: refs.task.key,
+		absence: refs.task.absence,
+		overtime: refs.task.overtime,
+		rawSeconds,
+		seconds,
+		billable: t.billable,
+		problem: rowProblem(rawSeconds, seconds, t.notes),
+		key: "",
+	};
+}
+
+/**
+ * Keys and digests, one person-day at a time and a batch of days per
+ * `Promise.all`, so 240k rows do not wait on 240k sequential awaits. Sets
+ * the key of each row in `rows`.
+ */
+async function hashDays(
+	days: Map<string, DayAcc>,
+	rows: ParsedTimeRow[],
+): Promise<ParsedDay[]> {
 	const dayEntries = [...days.entries()];
 	const parsedDays: ParsedDay[] = [];
 	for (let start = 0; start < dayEntries.length; start += HASH_BATCH_DAYS) {
 		const batch = dayEntries.slice(start, start + HASH_BATCH_DAYS);
 		const hashed = await Promise.all(
-			batch.map(async ([dayKey, day]) => {
-				const keys = await keysForPersonDay(day.fields);
-				for (let i = 0; i < keys.length; i++) {
-					const row = rows[day.rows[i] ?? -1];
-					if (row) row.key = keys[i] ?? "";
-				}
-				const digest = await dayDigest(keys);
-				return {
-					dayKey,
-					personSourceKey: day.personSourceKey,
-					date: day.date,
-					rows: day.rows,
-					digest,
-				};
-			}),
+			batch.map(([dayKey, day]) => hashDay(dayKey, day, rows)),
 		);
 		parsedDays.push(...hashed);
 	}
-	parsedDays.sort((a, b) =>
+	return parsedDays.sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.personSourceKey, b.personSourceKey)
 			: compareStrings(a.date, b.date),
 	);
+}
 
-	// People: the people list, plus everyone only in the time report.
+async function hashDay(
+	dayKey: string,
+	day: DayAcc,
+	rows: ParsedTimeRow[],
+): Promise<ParsedDay> {
+	const keys = await keysForPersonDay(day.fields);
+	for (let i = 0; i < keys.length; i++) {
+		const row = rows[day.rows[i] ?? -1];
+		if (row) row.key = keys[i] ?? "";
+	}
+	const digest = await dayDigest(keys);
+	return {
+		dayKey,
+		personSourceKey: day.personSourceKey,
+		date: day.date,
+		rows: day.rows,
+		digest,
+	};
+}
+
+/** People: the people list, plus everyone only in the time report. */
+function buildPersons(
+	people: readonly PeopleRow[],
+	persons: ReadonlyMap<string, PersonAcc>,
+): ParsedPerson[] {
 	const parsedPersons: ParsedPerson[] = [];
 	const listedKeys = new Set<string>();
 	for (const listed of people) {
@@ -706,9 +887,15 @@ export async function parseHarvestFiles(
 		if (listedKeys.has(sourceKey)) continue;
 		parsedPersons.push({ sourceKey, listed: null, ...acc });
 	}
-	parsedPersons.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
+	return parsedPersons.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
+}
 
-	// Projects: the time report, plus any listed project with no rows yet.
+/** Projects: the time report, plus any listed project with no rows yet.
+ *  Adds the listed projects to `projects`. */
+function buildProjects(
+	projectList: readonly ProjectRow[],
+	projects: Map<string, ProjectAcc>,
+): ParsedProject[] {
 	const listedProjects = new Map<string, ProjectRow>();
 	for (const listed of projectList) {
 		const key = projectSourceKeyOf(listed.client, listed.name, listed.code);
@@ -729,7 +916,7 @@ export async function parseHarvestFiles(
 			});
 		}
 	}
-	const parsedProjects: ParsedProject[] = [...projects.entries()]
+	return [...projects.entries()]
 		.map(([sourceKey, acc]) => ({
 			sourceKey,
 			...acc,
@@ -738,8 +925,15 @@ export async function parseHarvestFiles(
 			listed: listedProjects.get(sourceKey) ?? null,
 		}))
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
+}
 
-	// Clients: the time report, the client list and the project list.
+/** Clients: the time report, the client list and the project list. The
+ *  first name seen for a key stays. */
+function buildClients(
+	clientList: readonly ClientRow[],
+	clients: Map<string, string>,
+	parsedProjects: readonly ParsedProject[],
+): ParsedClient[] {
 	for (const listed of clientList) {
 		const key = normName(listed.name);
 		if (key !== "" && !clients.has(key)) clients.set(key, listed.name.trim());
@@ -749,13 +943,18 @@ export async function parseHarvestFiles(
 			clients.set(project.clientSourceKey, project.clientName);
 		}
 	}
-	const parsedClients: ParsedClient[] = [...clients.entries()]
+	return [...clients.entries()]
 		.map(([sourceKey, name]) => ({ sourceKey, name }))
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
+}
 
-	// Tasks: every canonical task a row uses, plus every ACTIVE task-list task.
-	// An inactive task nobody used is left out, and the overtime and absence
-	// tasks canonicalize onto their base task and so are never created.
+/** Tasks: every canonical task a row uses, plus every ACTIVE task-list task.
+ *  An inactive task nobody used is left out, and the overtime and absence
+ *  tasks canonicalize onto their base task and so are never created. */
+function buildTasks(
+	taskList: readonly TaskRow[],
+	tasks: Map<string, TaskAcc>,
+): ParsedTask[] {
 	const listedTasks = new Map<string, TaskRow>();
 	for (const listed of taskList) {
 		const canonical = canonicalTask(listed.name, "");
@@ -771,7 +970,7 @@ export async function parseHarvestFiles(
 			});
 		}
 	}
-	const parsedTasks: ParsedTask[] = [...tasks.entries()]
+	return [...tasks.entries()]
 		.map(([sourceKey, acc]) => {
 			const listed = listedTasks.get(sourceKey) ?? null;
 			return {
@@ -785,26 +984,17 @@ export async function parseHarvestFiles(
 			};
 		})
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
+}
 
+/** The listed address of each person, or the guess when none is listed. */
+function candidateEmailsOf(persons: readonly ParsedPerson[]): string[] {
 	const candidateEmails = new Set<string>();
-	for (const person of parsedPersons) {
+	for (const person of persons) {
 		const listed = person.listed?.email.trim().toLowerCase() ?? "";
 		if (listed !== "") candidateEmails.add(listed);
 		else candidateEmails.add(guessEmail(person.firstName, person.lastName));
 	}
-
-	return {
-		files: infos,
-		rows,
-		days: parsedDays,
-		invalidRows,
-		persons: parsedPersons,
-		clients: parsedClients,
-		projects: parsedProjects,
-		tasks: parsedTasks,
-		range: from !== null && to !== null ? { from, to } : null,
-		candidateEmails: [...candidateEmails].sort(compareStrings),
-	};
+	return [...candidateEmails].sort(compareStrings);
 }
 
 function baseTaskName(sourceKey: string, acc: TaskAcc): string {
