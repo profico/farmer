@@ -3051,8 +3051,9 @@ describe("what an error that ends a turn may say", () => {
 //
 // The real client runs here over a fake `fetch`, with a stall limit of a few
 // milliseconds. In production a call stalled for 180 s with no tokens and the
-// person's turn died. The loop now retries that call once on the fallback
-// model, but only when nothing had streamed, and it never repeats a tool.
+// person's turn died. The loop now retries that call once, on the same model
+// unless ASSISTANT_FALLBACK_MODEL names another, but only when nothing had
+// streamed, and it never repeats a tool.
 
 describe("a stalled model call", () => {
 	const STALL_MS = 40;
@@ -3168,20 +3169,21 @@ describe("a stalled model call", () => {
 		});
 	};
 
-	test("a stall with no output is retried once on the fallback model", async () => {
+	test("a stall with no output is retried once on the same model", async () => {
 		fakeFetch([
 			{ kind: "stall" },
 			{
 				kind: "answer",
 				text: "March was fine.",
-				model: "z-ai/glm-5.3-flash-x",
+				model: "test/model-20261001",
 			},
 		]);
 		const events = await ask();
 
 		expect(events.at(-1)?.type).toBe("done");
 		expect(events.some((event) => event.type === "error")).toBe(false);
-		expect(requested).toEqual(["test/model", "z-ai/glm-5.3-flash"]);
+		// No admin chose another model, so the conversation goes to no other.
+		expect(requested).toEqual(["test/model", "test/model"]);
 		// Each attempt is its own billed call in telemetry.
 		expect(reported).toHaveLength(2);
 		const first = present(reported[0], "the first generation");
@@ -3194,8 +3196,8 @@ describe("a stalled model call", () => {
 		});
 		expect(first.error).toContain("stalled");
 		expect(second).toMatchObject({
-			model: "z-ai/glm-5.3-flash",
-			servedModel: "z-ai/glm-5.3-flash-x",
+			model: "test/model",
+			servedModel: "test/model-20261001",
 			provider: "TestProvider",
 			attempt: 2,
 			retryReason: "stall",
@@ -3236,7 +3238,7 @@ describe("a stalled model call", () => {
 		fakeFetch([{ kind: "reset" }, { kind: "answer", text: "Fine." }]);
 		const events = await ask();
 		expect(events.at(-1)?.type).toBe("done");
-		expect(requested).toEqual(["test/model", "z-ai/glm-5.3-flash"]);
+		expect(requested).toEqual(["test/model", "test/model"]);
 		expect(reported.map((event) => event.retryReason)).toEqual([
 			null,
 			"network",
@@ -3267,8 +3269,8 @@ describe("a stalled model call", () => {
 		expect(reported.map((event) => event.attempt)).toEqual([1, 2]);
 	});
 
-	test("a fallback equal to the primary asks the same model once more", async () => {
-		process.env.ASSISTANT_FALLBACK_MODEL = "test/model";
+	test("an empty ASSISTANT_FALLBACK_MODEL asks the same model once more", async () => {
+		process.env.ASSISTANT_FALLBACK_MODEL = "  ";
 		fakeFetch([{ kind: "stall" }, { kind: "answer", text: "Fine." }]);
 		const events = await ask();
 		expect(events.at(-1)?.type).toBe("done");

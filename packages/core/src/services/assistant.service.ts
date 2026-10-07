@@ -1007,13 +1007,13 @@ type TurnTrace = {
 
 /** The model for the one retry of a stalled or failed call.
  *
- *  `ASSISTANT_FALLBACK_MODEL` names it. The default is pinned, because a
- *  `~...-latest` id moves to new versions without notice. An empty value counts
- *  as unset. When it equals the primary model, the retry asks the same model. */
-const ASSISTANT_FALLBACK_MODEL_DEFAULT = "z-ai/glm-5.3-flash";
-const fallbackModel = (): string =>
-	process.env.ASSISTANT_FALLBACK_MODEL?.trim() ||
-	ASSISTANT_FALLBACK_MODEL_DEFAULT;
+ *  By default it is the conversation's own model: an admin chose that model,
+ *  and the retry must not send the conversation to a model that nobody chose.
+ *  OpenRouter can route the same model to another provider, so a retry on it
+ *  still has a chance. An operator who sets `ASSISTANT_FALLBACK_MODEL` chooses
+ *  another model for every organization. An empty value counts as unset. */
+const fallbackModel = (primary: string): string =>
+	process.env.ASSISTANT_FALLBACK_MODEL?.trim() || primary;
 
 /**
  * One billed model call, timed and reported.
@@ -1036,13 +1036,13 @@ const generate = async (
 		tools?: ChatTool[];
 		signal?: AbortSignal;
 		onDelta?: (text: string) => void;
-		/** Allow one retry on the fallback model. Defaults to true. */
+		/** Allow one retry (see `fallbackModel`). Defaults to true. */
 		retry?: boolean;
 	},
 ): Promise<ChatTurn> => {
 	let retryReason: string | null = null;
 	for (let attempt = 1; ; attempt += 1) {
-		const model = attempt === 1 ? trace.model : fallbackModel();
+		const model = attempt === 1 ? trace.model : fallbackModel(trace.model);
 		// A retry is its own billed call, so it has its own span. Telemetry
 		// reads `generationId` as the call whose tool calls any span came from.
 		const spanId = crypto.randomUUID();
