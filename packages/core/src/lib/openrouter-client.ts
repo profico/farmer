@@ -382,9 +382,6 @@ export const streamChatCompletion = async (opts: {
 				model: opts.model,
 				messages: opts.messages,
 				tools: opts.tools?.length ? opts.tools : undefined,
-				// With tools, use only providers that support every parameter
-				// sent. Else a provider may drop `tools` and answer in prose.
-				provider: opts.tools?.length ? { require_parameters: true } : undefined,
 				stream: true,
 				// Ask for the usage row on the final chunk; without this the stream
 				// ends with no token counts at all.

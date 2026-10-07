@@ -608,7 +608,9 @@ describe("the no-progress watchdog", () => {
 		expect(turn.firstProgressMs).toBeGreaterThanOrEqual(15);
 	});
 
-	test("tools are sent with require_parameters, and no tools are not", async () => {
+	// OpenRouter already routes a request with `tools` only to providers that
+	// support tools. `require_parameters` only turned that case into a 4xx.
+	test("a request with tools sends no provider preference", async () => {
 		const withTools = serveTimed([
 			{ at: 0, text: frame(finish("stop")), close: true },
 		]);
@@ -620,14 +622,9 @@ describe("the no-progress watchdog", () => {
 				},
 			],
 		});
-		expect(JSON.parse(at(withTools, 0)).provider).toEqual({
-			require_parameters: true,
-		});
-		const without = serveTimed([
-			{ at: 0, text: frame(finish("stop")), close: true },
-		]);
-		await watched();
-		expect(JSON.parse(at(without, 0)).provider).toBeUndefined();
+		const body = JSON.parse(at(withTools, 0));
+		expect(body.tools).toHaveLength(1);
+		expect(body.provider).toBeUndefined();
 	});
 });
 
