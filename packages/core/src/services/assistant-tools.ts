@@ -482,24 +482,46 @@ const capRows = <T>(rows: readonly T[], max = MAX_LIST_ROWS) => ({
 
 /** The stopwatch as the model reads it. Hours are decimal, and `willLogHours`
  *  is what stopping now would log: the elapsed time rounded to 15 minutes. */
-const timerSummary = (view: TimerView) => ({
-	state: view.droppedAt ? "dropped" : view.paused ? "paused" : "running",
-	// A person has one timer for all workspaces. False means the clock runs in
-	// another workspace and cannot be driven from this one.
-	thisOrganization: view.here,
-	organization: view.organizationName,
-	taskId: view.taskId,
-	task: view.taskName,
-	projectId: view.projectId,
-	project: view.projectName,
-	description: view.description,
-	// Stopping needs a note when the task requires one.
-	needsNote: view.taskNeedsDescription,
-	continuesEntryId: view.timeEntryId,
-	startedAt: view.startedAt.toISOString(),
-	elapsedHours: view.elapsedSeconds / 3600,
-	willLogHours: view.snappedSeconds / 3600,
-});
+const timerSummary = (view: TimerView) => {
+	const state = view.droppedAt ? "dropped" : view.paused ? "paused" : "running";
+	// A person has one timer for all workspaces. When it runs in another
+	// workspace, its project, task and note belong to that workspace, and this
+	// workspace's model provider must not read them. Only the state, the
+	// workspace name and the hours are left.
+	if (!view.here) {
+		return {
+			state,
+			thisOrganization: false,
+			organization: view.organizationName,
+			taskId: null,
+			task: null,
+			projectId: null,
+			project: null,
+			description: null,
+			needsNote: null,
+			continuesEntryId: null,
+			startedAt: view.startedAt.toISOString(),
+			elapsedHours: view.elapsedSeconds / 3600,
+			willLogHours: view.snappedSeconds / 3600,
+		};
+	}
+	return {
+		state,
+		thisOrganization: true,
+		organization: view.organizationName,
+		taskId: view.taskId,
+		task: view.taskName,
+		projectId: view.projectId,
+		project: view.projectName,
+		description: view.description,
+		// Stopping needs a note when the task requires one.
+		needsNote: view.taskNeedsDescription,
+		continuesEntryId: view.timeEntryId,
+		startedAt: view.startedAt.toISOString(),
+		elapsedHours: view.elapsedSeconds / 3600,
+		willLogHours: view.snappedSeconds / 3600,
+	};
+};
 
 /** What each integration switch is called on a card. */
 const SWITCH_LABELS = new Map([
@@ -2169,7 +2191,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "get_timer",
 		kind: "read",
 		description:
-			"The current user's OWN stopwatch, or timer: null when none is running. A person has ONE timer across every workspace; thisOrganization says whether it runs in this one, and a timer that does not can only be driven in its own workspace. state is running, paused or dropped (a dropped timer passed the person's time limit and logged nothing). elapsedHours is what the clock has measured, and willLogHours is what stopping now would log, rounded to the nearest 15 minutes. Call it before start_timer, stop_timer or discard_timer.",
+			"The current user's OWN stopwatch, or timer: null when none is running. A person has ONE timer across every workspace; thisOrganization says whether it runs in this one, and a timer that does not can only be driven in its own workspace, and its task, project and note are then null. state is running, paused or dropped (a dropped timer passed the person's time limit and logged nothing). elapsedHours is what the clock has measured, and willLogHours is what stopping now would log, rounded to the nearest 15 minutes. Call it before start_timer, stop_timer or discard_timer.",
 		schema: z.object({}),
 		run: async (ctx) => {
 			const view = await timersService.get(ctx);
@@ -2240,9 +2262,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		summarize: async (ctx) => {
 			const view = await timersService.get(ctx).catch(() => null);
-			return view
-				? `Discard the timer on ${view.taskName} (${(view.elapsedSeconds / 3600).toFixed(2)}h measured)`
-				: "Discard the timer";
+			if (!view) return "Discard the timer";
+			// Another workspace's task is not named here, as get_timer does not.
+			return `Discard the timer${view.here ? ` on ${view.taskName}` : ""} (${(view.elapsedSeconds / 3600).toFixed(2)}h measured)`;
 		},
 		run: async (ctx) => {
 			// The service deletes by person, with no workspace in the filter. A

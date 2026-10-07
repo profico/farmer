@@ -48,9 +48,12 @@ const timerResult = z.object({
 			state: z.enum(["running", "paused", "dropped"]),
 			thisOrganization: z.boolean(),
 			organization: z.string(),
-			task: z.string(),
+			task: z.string().nullable(),
 			project: z.string().nullable(),
-			needsNote: z.boolean(),
+			description: z.string().nullable(),
+			taskId: z.string().nullable(),
+			projectId: z.string().nullable(),
+			needsNote: z.boolean().nullable(),
 			continuesEntryId: z.string().nullable(),
 			elapsedHours: z.number(),
 			willLogHours: z.number(),
@@ -218,8 +221,17 @@ describe("get_timer", () => {
 			await tool("get_timer").run(mineElsewhere(), {}),
 		);
 		expect(elsewhere.timer).toMatchObject({
+			state: "running",
 			thisOrganization: false,
 			organization: "Timer tools",
+			// What the timer is about belongs to the other workspace.
+			task: null,
+			taskId: null,
+			project: null,
+			projectId: null,
+			description: null,
+			needsNote: null,
+			continuesEntryId: null,
 		});
 	});
 });
