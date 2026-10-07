@@ -902,11 +902,23 @@ const fileReviewBlocks = async (
 		),
 	);
 	if (rows.length > 0) {
-		await db
-			.insert(timeEntryGithubPrActivity)
-			.values(rows)
-			// tegpa_entry_event_unq: a re-run attaches the same reviews again.
-			.onConflictDoNothing();
+		await withCtxTx(ctx, async (txCtx) => {
+			// A detach can commit after the read at the start of the pass. Under
+			// the lock, the tombstones are read again, and the insert does not put
+			// back the review that the detach just took off.
+			await lockDetachTombstones(txCtx);
+			const refusedNow = await refusedEventIds(
+				txCtx,
+				rows.map((row) => row.eventId),
+			);
+			const kept = rows.filter((row) => !refusedNow.has(row.eventId));
+			if (kept.length === 0) return;
+			await ctxDb(txCtx)
+				.insert(timeEntryGithubPrActivity)
+				.values(kept)
+				// tegpa_entry_event_unq: a re-run attaches the same reviews again.
+				.onConflictDoNothing();
+		});
 	}
 	return { placed, created };
 };
