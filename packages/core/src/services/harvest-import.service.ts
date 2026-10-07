@@ -972,6 +972,221 @@ const startAssignments = async (
 	}
 };
 
+/** The rows a run created, by kind, and the invitations it relied on. */
+type RunMappings = {
+	userIds: string[];
+	projectIds: string[];
+	taskIds: string[];
+	clientIds: string[];
+	/** Every invitation the run relied on: they tell who it invited. */
+	runInvitationIds: string[];
+	/** Only the invitations the run wrote: the run's to cancel. */
+	ownInvitationIds: string[];
+};
+
+const loadRunMappings = async (
+	tx: DbClient,
+	runId: string,
+): Promise<RunMappings> => {
+	const mappings = await tx
+		.select({
+			kind: importMapping.kind,
+			localId: importMapping.localId,
+			created: importMapping.created,
+		})
+		.from(importMapping)
+		.where(eq(importMapping.runId, runId));
+	const created = mappings.filter((m) => m.created);
+	const of = (kind: HarvestMappingKind) =>
+		created.filter((m) => m.kind === kind).map((m) => m.localId);
+	return {
+		userIds: of("person"),
+		projectIds: of("project"),
+		taskIds: of("task"),
+		clientIds: of("client"),
+		runInvitationIds: mappings
+			.filter((m) => m.kind === "invitation")
+			.map((m) => m.localId),
+		ownInvitationIds: of("invitation"),
+	};
+};
+
+/** The time a run started, as a subquery. */
+const runCreatedAt = (runId: string) =>
+	sql`(select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${runId})`;
+
+// Made by this run, or only attached to it? Both rows took `now()`
+// from the one transaction in `start`, so an attached user is the
+// one whose row is older than the run. Compared in SQL: the user's
+// column has no time zone, and Postgres converts it the same way it
+// stored `now()` into it.
+const findMadeUsers = async (
+	tx: DbClient,
+	runId: string,
+	userIds: readonly string[],
+): Promise<Set<string>> => {
+	const madeUsers = new Set<string>();
+	const signedIn = await usersWithAccount(tx, userIds);
+	for (const batch of inBatches(userIds)) {
+		const rows = await tx
+			.select({ id: user.id, name: user.name })
+			.from(user)
+			.where(
+				and(
+					inArray(user.id, batch),
+					sql`${user.createdAt} >= ${runCreatedAt(runId)}`,
+				),
+			);
+		for (const r of rows) {
+			if (signedIn.has(r.id)) {
+				throw new Error(
+					`${r.name} has signed in since the import. Archive them instead.`,
+				);
+			}
+			madeUsers.add(r.id);
+		}
+	}
+	return madeUsers;
+};
+
+/** Refuses while an entry made here, not by this run, uses a created row. */
+const assertCreatedRowsUnused = async (
+	tx: DbClient,
+	org: string,
+	runId: string,
+	ids: RunMappings,
+) => {
+	const { projectIds, taskIds, userIds } = ids;
+	const refs = [
+		projectIds.length > 0 ? inArray(timeEntry.projectId, projectIds) : null,
+		taskIds.length > 0 ? inArray(timeEntry.taskId, taskIds) : null,
+		userIds.length > 0 ? inArray(timeEntry.userId, userIds) : null,
+	].filter((c) => c != null);
+	if (refs.length === 0) return;
+	const used = await tx
+		.select({ date: timeEntry.date })
+		.from(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, org),
+				or(isNull(timeEntry.importRunId), ne(timeEntry.importRunId, runId)),
+				or(...refs),
+			),
+		)
+		.limit(1);
+	if (used[0]) {
+		throw new Error(
+			`An entry made here on ${used[0].date} uses a row this import created`,
+		);
+	}
+};
+
+const deleteCreatedRows = async (tx: DbClient, ids: RunMappings) => {
+	for (const batch of inBatches(ids.projectIds)) {
+		await tx.delete(project).where(inArray(project.id, batch));
+	}
+	for (const batch of inBatches(ids.clientIds)) {
+		await tx.delete(client).where(inArray(client.id, batch));
+	}
+	for (const batch of inBatches(ids.taskIds)) {
+		await tx.delete(task).where(inArray(task.id, batch));
+	}
+};
+
+/**
+ * An invited user: cancel the invitation the run sent, unless the
+ * person has joined. Then they are a member who chose to join, and
+ * their membership, profile and assignments are theirs now; only
+ * the run's entries and mappings go. The run's invitations are the
+ * ones `start` recorded, by id: a pending one the People page sent
+ * the same address later is not the run's to cancel. A run from
+ * before those were recorded has none, and falls back to the
+ * address and the time of the run.
+ *
+ * "joined" tells the caller to keep the person's rows.
+ */
+const cancelRunInvitation = async (
+	tx: DbClient,
+	org: string,
+	runId: string,
+	userId: string,
+	ids: RunMappings,
+): Promise<"joined" | "done"> => {
+	const { runInvitationIds, ownInvitationIds } = ids;
+	const [person] = await tx
+		.select({ email: user.email })
+		.from(user)
+		.where(eq(user.id, userId));
+	if (!person) return "done";
+	const byAddress = and(
+		eq(invitation.organizationId, org),
+		sql`lower(${invitation.email}) = lower(${person.email})`,
+	);
+	const legacy = runInvitationIds.length === 0;
+	const invitedByRun = legacy
+		? and(byAddress, sql`${invitation.createdAt} >= ${runCreatedAt(runId)}`)
+		: and(byAddress, inArray(invitation.id, runInvitationIds));
+	const [invited] = await tx
+		.select({ id: invitation.id })
+		.from(invitation)
+		.where(invitedByRun)
+		.limit(1);
+	if (!invited) return "done";
+	// `start` refuses a person who is a member already, so for an
+	// invited person a `member` row can only come from a later
+	// acceptance: of this invitation, a reused one, or one the
+	// People page sent.
+	const [joined] = await tx
+		.select({ id: member.id })
+		.from(member)
+		.where(and(eq(member.organizationId, org), eq(member.userId, userId)))
+		.limit(1);
+	if (joined) return "joined";
+	const sentByRun = legacy
+		? invitedByRun
+		: ownInvitationIds.length > 0
+			? and(byAddress, inArray(invitation.id, ownInvitationIds))
+			: null;
+	if (sentByRun) {
+		await tx
+			.update(invitation)
+			.set({ status: "canceled" })
+			.where(and(sentByRun, eq(invitation.status, "pending")));
+	}
+	return "done";
+};
+
+// An attached user keeps their account; only this org's rows go.
+const removeOrgRowsFor = async (tx: DbClient, org: string, userId: string) => {
+	await tx
+		.delete(projectMember)
+		.where(
+			and(
+				eq(projectMember.organizationId, org),
+				eq(projectMember.userId, userId),
+			),
+		);
+	await tx
+		.delete(memberTypeHistory)
+		.where(
+			and(
+				eq(memberTypeHistory.organizationId, org),
+				eq(memberTypeHistory.userId, userId),
+			),
+		);
+	await tx
+		.delete(memberProfile)
+		.where(
+			and(
+				eq(memberProfile.organizationId, org),
+				eq(memberProfile.userId, userId),
+			),
+		);
+	await tx
+		.delete(member)
+		.where(and(eq(member.organizationId, org), eq(member.userId, userId)));
+};
+
 export const harvestImportService = {
 	/** What the org holds, for the browser to plan against. */
 	snapshot: async (
@@ -1677,184 +1892,22 @@ export const harvestImportService = {
 		}
 
 		const undone = await db.transaction(async (tx) => {
-			const mappings = await tx
-				.select({
-					kind: importMapping.kind,
-					localId: importMapping.localId,
-					created: importMapping.created,
-				})
-				.from(importMapping)
-				.where(eq(importMapping.runId, run.id));
-			const created = mappings.filter((m) => m.created);
-			const of = (kind: HarvestMappingKind) =>
-				created.filter((m) => m.kind === kind).map((m) => m.localId);
-			const userIds = of("person");
-			const projectIds = of("project");
-			const taskIds = of("task");
-			const clientIds = of("client");
-			// Every invitation the run relied on tells who it invited. Only the
-			// ones it wrote (`created`) are the run's to cancel.
-			const runInvitationIds = mappings
-				.filter((m) => m.kind === "invitation")
-				.map((m) => m.localId);
-			const ownInvitationIds = of("invitation");
-
-			// Made by this run, or only attached to it? Both rows took `now()`
-			// from the one transaction in `start`, so an attached user is the
-			// one whose row is older than the run. Compared in SQL: the user's
-			// column has no time zone, and Postgres converts it the same way it
-			// stored `now()` into it.
-			const madeUsers = new Set<string>();
-			const signedIn = await usersWithAccount(tx, userIds);
-			for (const batch of inBatches(userIds)) {
-				const rows = await tx
-					.select({ id: user.id, name: user.name })
-					.from(user)
-					.where(
-						and(
-							inArray(user.id, batch),
-							sql`${user.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
-						),
-					);
-				for (const r of rows) {
-					if (signedIn.has(r.id)) {
-						throw new Error(
-							`${r.name} has signed in since the import. Archive them instead.`,
-						);
-					}
-					madeUsers.add(r.id);
-				}
-			}
-
-			const refs = [
-				projectIds.length > 0 ? inArray(timeEntry.projectId, projectIds) : null,
-				taskIds.length > 0 ? inArray(timeEntry.taskId, taskIds) : null,
-				userIds.length > 0 ? inArray(timeEntry.userId, userIds) : null,
-			].filter((c) => c != null);
-			if (refs.length > 0) {
-				const used = await tx
-					.select({ date: timeEntry.date })
-					.from(timeEntry)
-					.where(
-						and(
-							eq(timeEntry.organizationId, org),
-							or(
-								isNull(timeEntry.importRunId),
-								ne(timeEntry.importRunId, run.id),
-							),
-							or(...refs),
-						),
-					)
-					.limit(1);
-				if (used[0]) {
-					throw new Error(
-						`An entry made here on ${used[0].date} uses a row this import created`,
-					);
-				}
-			}
+			const ids = await loadRunMappings(tx, run.id);
+			const madeUsers = await findMadeUsers(tx, run.id, ids.userIds);
+			await assertCreatedRowsUnused(tx, org, run.id, ids);
 			const deleted = await tx
 				.delete(timeEntry)
 				.where(eq(timeEntry.importRunId, run.id))
 				.returning({ id: timeEntry.id });
-			for (const batch of inBatches(projectIds)) {
-				await tx.delete(project).where(inArray(project.id, batch));
-			}
-			for (const batch of inBatches(clientIds)) {
-				await tx.delete(client).where(inArray(client.id, batch));
-			}
-			for (const batch of inBatches(taskIds)) {
-				await tx.delete(task).where(inArray(task.id, batch));
-			}
-			for (const userId of userIds) {
+			await deleteCreatedRows(tx, ids);
+			for (const userId of ids.userIds) {
 				if (madeUsers.has(userId)) {
 					await tx.delete(user).where(eq(user.id, userId));
 					continue;
 				}
-				// An invited user: cancel the invitation the run sent, unless the
-				// person has joined. Then they are a member who chose to join, and
-				// their membership, profile and assignments are theirs now; only
-				// the run's entries and mappings go. The run's invitations are the
-				// ones `start` recorded, by id: a pending one the People page sent
-				// the same address later is not the run's to cancel. A run from
-				// before those were recorded has none, and falls back to the
-				// address and the time of the run.
-				const [person] = await tx
-					.select({ email: user.email })
-					.from(user)
-					.where(eq(user.id, userId));
-				if (person) {
-					const byAddress = and(
-						eq(invitation.organizationId, org),
-						sql`lower(${invitation.email}) = lower(${person.email})`,
-					);
-					const legacy = runInvitationIds.length === 0;
-					const invitedByRun = legacy
-						? and(
-								byAddress,
-								sql`${invitation.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
-							)
-						: and(byAddress, inArray(invitation.id, runInvitationIds));
-					const [invited] = await tx
-						.select({ id: invitation.id })
-						.from(invitation)
-						.where(invitedByRun)
-						.limit(1);
-					if (invited) {
-						// `start` refuses a person who is a member already, so for an
-						// invited person a `member` row can only come from a later
-						// acceptance: of this invitation, a reused one, or one the
-						// People page sent.
-						const [joined] = await tx
-							.select({ id: member.id })
-							.from(member)
-							.where(
-								and(eq(member.organizationId, org), eq(member.userId, userId)),
-							)
-							.limit(1);
-						if (joined) continue;
-						const sentByRun = legacy
-							? invitedByRun
-							: ownInvitationIds.length > 0
-								? and(byAddress, inArray(invitation.id, ownInvitationIds))
-								: null;
-						if (sentByRun) {
-							await tx
-								.update(invitation)
-								.set({ status: "canceled" })
-								.where(and(sentByRun, eq(invitation.status, "pending")));
-						}
-					}
-				}
-				// An attached user keeps their account; only this org's rows go.
-				await tx
-					.delete(projectMember)
-					.where(
-						and(
-							eq(projectMember.organizationId, org),
-							eq(projectMember.userId, userId),
-						),
-					);
-				await tx
-					.delete(memberTypeHistory)
-					.where(
-						and(
-							eq(memberTypeHistory.organizationId, org),
-							eq(memberTypeHistory.userId, userId),
-						),
-					);
-				await tx
-					.delete(memberProfile)
-					.where(
-						and(
-							eq(memberProfile.organizationId, org),
-							eq(memberProfile.userId, userId),
-						),
-					);
-				await tx
-					.delete(member)
-					.where(
-						and(eq(member.organizationId, org), eq(member.userId, userId)),
-					);
+				const outcome = await cancelRunInvitation(tx, org, run.id, userId, ids);
+				if (outcome === "joined") continue;
+				await removeOrgRowsFor(tx, org, userId);
 			}
 			await tx.delete(importMapping).where(eq(importMapping.runId, run.id));
 			await tx
@@ -1864,10 +1917,10 @@ export const harvestImportService = {
 
 			return {
 				entriesDeleted: deleted.length,
-				projectsDeleted: projectIds.length,
-				clientsDeleted: clientIds.length,
-				tasksDeleted: taskIds.length,
-				peopleRemoved: userIds.length,
+				projectsDeleted: ids.projectIds.length,
+				clientsDeleted: ids.clientIds.length,
+				tasksDeleted: ids.taskIds.length,
+				peopleRemoved: ids.userIds.length,
 			};
 		});
 		// After the commit: this transaction is a raw `db.transaction`, and a
