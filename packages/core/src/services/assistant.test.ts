@@ -51,7 +51,6 @@ import {
 import type { JsonRecord } from "../lib/json";
 import {
 	ABORTED,
-	OpenRouterNetworkError,
 	OpenRouterStreamCutError,
 	streamChatCompletion,
 } from "../lib/openrouter-client";
@@ -3346,10 +3345,15 @@ describe("a stalled model call", () => {
 		expect(toolRows).toHaveLength(1);
 	});
 
-	test("a network error class is shown to the person with fixed words", () => {
-		const message = userFacingAssistantError(
-			new OpenRouterNetworkError(new TypeError("unknown certificate")),
+	test("a network fault on both attempts ends with the fixed line", async () => {
+		fakeFetch([{ kind: "reject" }, { kind: "reject" }]);
+		const events = await ask();
+		expect(requested).toHaveLength(2);
+		const failure = events.at(-1);
+		expect(failure?.type).toBe("error");
+		// The fixed words of `OpenRouterNetworkError`, never the TLS cause.
+		expect(failure?.type === "error" && failure.message).toBe(
+			"The connection to OpenRouter failed before an answer started.",
 		);
-		expect(message).not.toContain("certificate");
 	});
 });

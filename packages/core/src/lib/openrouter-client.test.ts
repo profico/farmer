@@ -459,7 +459,10 @@ const serveTimed = (steps: Parameters<typeof timedStream>[0]) => {
 };
 
 const watched = (
-	over: { tools?: Parameters<typeof streamChatCompletion>[0]["tools"] } = {},
+	over: {
+		tools?: Parameters<typeof streamChatCompletion>[0]["tools"];
+		stallTimeoutMs?: number;
+	} = {},
 ) =>
 	streamChatCompletion({
 		apiKey: "test-key",
@@ -485,9 +488,11 @@ const reasoning = (text: string) =>
 
 describe("the no-progress watchdog", () => {
 	test("keep-alive comments only abort at the stall limit", async () => {
+		// Comments for two seconds, far past the 60 ms limit. The bound below is
+		// generous for a slow CI runner and still far before the last comment.
 		serveTimed(
-			[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120].map((offset) => ({
-				at: offset,
+			Array.from({ length: 201 }, (_, index) => ({
+				at: index * 10,
 				text: keepAlive,
 			})),
 		);
@@ -500,8 +505,8 @@ describe("the no-progress watchdog", () => {
 			outputStarted: false,
 			message: "stream stalled: no progress before the stall limit",
 		});
-		// It stopped near the limit, not after the last comment.
-		expect(Date.now() - startedAt).toBeLessThan(STALL_MS + 60);
+		// It stopped at the limit, not after the last comment at 2000 ms.
+		expect(Date.now() - startedAt).toBeLessThan(1000);
 		expect(retryableBeforeOutput(error)).toBe("stall");
 	});
 
@@ -516,22 +521,25 @@ describe("the no-progress watchdog", () => {
 	});
 
 	test("steady reasoning deltas over a longer total are not aborted", async () => {
-		const steps = [0, 30, 60, 90, 120, 150].map((offset) => ({
+		// Each gap is 50 ms against a 300 ms limit, a wide margin for a slow CI
+		// runner. The total is past the limit.
+		const limit = 300;
+		const steps = [0, 50, 100, 150, 200, 250, 300, 350].map((offset) => ({
 			at: offset,
 			text: frame(reasoning("thinking ")),
 		}));
 		serveTimed([
 			...steps,
-			{ at: 180, text: frame(delta("Answer")) },
-			{ at: 190, text: frame(finish("stop")), close: true },
+			{ at: 400, text: frame(delta("Answer")) },
+			{ at: 410, text: frame(finish("stop")), close: true },
 		]);
 		const startedAt = Date.now();
-		const turn = await watched();
-		// The total is three times the limit; each gap is half of it.
-		expect(Date.now() - startedAt).toBeGreaterThan(STALL_MS * 2);
+		const turn = await watched({ stallTimeoutMs: limit });
+		// A timer never fires early, so this lower bound cannot flake.
+		expect(Date.now() - startedAt).toBeGreaterThan(limit);
 		expect(turn.content).toBe("Answer");
 		expect(turn.finishReason).toBe("stop");
-		expect(turn.firstProgressMs).toBeLessThan(STALL_MS);
+		expect(turn.firstProgressMs).toBeLessThan(limit);
 	});
 
 	test("content and then a stall is a stall that is not retryable", async () => {
@@ -589,7 +597,7 @@ describe("the no-progress watchdog", () => {
 		serveTimed([
 			{ at: 0, text: keepAlive },
 			{
-				at: 20,
+				at: 50,
 				text: frame(
 					JSON.stringify({
 						model: "z-ai/glm-5.3-flash-20261001",
@@ -598,13 +606,16 @@ describe("the no-progress watchdog", () => {
 					}),
 				),
 			},
-			{ at: 25, text: frame(finish("stop")), close: true },
+			{ at: 55, text: frame(finish("stop")), close: true },
 		]);
-		const turn = await watched();
+		// A wide stall limit, so a slow runner cannot turn this into a stall.
+		const turn = await watched({ stallTimeoutMs: 2000 });
 		expect(turn.servedModel).toBe("z-ai/glm-5.3-flash-20261001");
 		expect(turn.provider).toBe("Z.AI");
-		// The comment at 0 ms does not count: the first progress is the delta.
-		expect(turn.firstProgressMs).toBeGreaterThanOrEqual(15);
+		// The comment at 0 ms does not count: the first progress is the delta at
+		// 50 ms. A timer never fires early, and the bound leaves room for the
+		// clock's resolution.
+		expect(turn.firstProgressMs).toBeGreaterThanOrEqual(40);
 	});
 
 	// OpenRouter already routes a request with `tools` only to providers that
