@@ -17,6 +17,7 @@ import {
 	describePullRequestActivity,
 	type PullRequestActivityKind,
 } from "../lib/github-activity";
+import { loggableError } from "../lib/loggable-error";
 import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
 	loggedSeconds,
@@ -218,19 +219,28 @@ const loadDayInputs = async (ctx: Ctx, date: string) => {
 		calendarSource()
 			.listEventsForRange(ctx, { from: date, to: date })
 			.catch((error) => {
-				console.error("[day-assembly] calendar read failed", error);
+				console.error(
+					"[day-assembly] calendar read failed",
+					loggableError(error),
+				);
 				return null;
 			}),
 		commitSource()
 			.listUserCommitsForDay(ctx, date)
 			.catch((error) => {
-				console.error("[day-assembly] commit read failed", error);
+				console.error(
+					"[day-assembly] commit read failed",
+					loggableError(error),
+				);
 				return [];
 			}),
 		pullRequestSource()
 			.listUserPullRequestActivityForDay(ctx, date)
 			.catch((error) => {
-				console.error("[day-assembly] pull request read failed", error);
+				console.error(
+					"[day-assembly] pull request read failed",
+					loggableError(error),
+				);
 				return [];
 			}),
 		// "google-calendar", not "google": the plain Google provider is only a
@@ -975,7 +985,10 @@ export const dayAssemblyService = {
 							commits: entry.commits,
 						})
 						.catch((error) =>
-							console.error("[day-assembly] attachCommits failed", error),
+							console.error(
+								"[day-assembly] attachCommits failed",
+								loggableError(error),
+							),
 						);
 				}
 				if (entry.pullRequests && entry.pullRequests.length > 0) {
@@ -985,7 +998,10 @@ export const dayAssemblyService = {
 							pullRequests: entry.pullRequests,
 						})
 						.catch((error) =>
-							console.error("[day-assembly] attachPullRequests failed", error),
+							console.error(
+								"[day-assembly] attachPullRequests failed",
+								loggableError(error),
+							),
 						);
 				}
 			} catch (error) {
@@ -997,7 +1013,7 @@ export const dayAssemblyService = {
 					console.error("[day-assembly] could not create an entry", {
 						organizationId: ctx.organizationId,
 						taskId: entry.taskId,
-						error,
+						error: loggableError(error),
 					});
 				}
 				errors.push(message ?? "Failed to create entry");

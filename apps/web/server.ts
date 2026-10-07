@@ -75,6 +75,7 @@ import path from "node:path";
 // loaded by the deferred import inside startBackgroundSchedulers().
 import type { SchedulerHandle } from "@farmer/core/jobs";
 import { SOCKET_ADDRESS_HEADER } from "@farmer/core/lib/client-address";
+import { loggableErrorLine } from "@farmer/core/lib/loggable-error";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
 import { applySecurityHeaders } from "./src/lib/security-headers.ts";
@@ -743,7 +744,7 @@ async function initializeServer() {
 						headers,
 					});
 				} catch (error) {
-					log.error(`Server handler error: ${String(error)}`);
+					log.error(`Server handler error: ${loggableErrorLine(error)}`);
 					return new Response("Internal Server Error", { status: 500 });
 				}
 			},
@@ -751,9 +752,7 @@ async function initializeServer() {
 
 		// Global error handler
 		error(error) {
-			log.error(
-				`Uncaught server error: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			log.error(`Uncaught server error: ${loggableErrorLine(error)}`);
 			return new Response("Internal Server Error", { status: 500 });
 		},
 	});

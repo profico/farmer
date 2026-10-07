@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
+import { loggableError } from "../lib/loggable-error";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
 import {
@@ -202,7 +203,7 @@ const sendReminder = async (
 			organizationId: orgId,
 			userId: recipient.userId,
 			kind,
-			error,
+			error: loggableError(error),
 		});
 		return "failed";
 	}
@@ -229,7 +230,7 @@ const handleFailedSend = async (
 				organizationId: orgId,
 				userId: key.recipientUserId,
 				kind,
-				error,
+				error: loggableError(error),
 			});
 		}
 	}
@@ -326,7 +327,7 @@ const runOrgPass = async (
 		summary.failed++;
 		console.error("[slack-reminders] org run failed", {
 			organizationId: org.id,
-			error,
+			error: loggableError(error),
 		});
 	}
 };

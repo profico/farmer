@@ -7,6 +7,7 @@ import { db } from "../db";
 import { apiToken } from "../db/schema/api-tokens";
 import { organization, user } from "../db/schema/auth";
 import { isBanned } from "../lib/ban";
+import { loggableError } from "../lib/loggable-error";
 import { UserFacingError } from "../lib/user-facing-error";
 import type { CreateApiTokenInput } from "../schema/api-tokens";
 import { recordSecurityEvent } from "./audit";
@@ -282,7 +283,10 @@ export const apiTokensService = {
 						),
 					);
 			} catch (error) {
-				console.error("[api-tokens] could not record a token's use", error);
+				console.error(
+					"[api-tokens] could not record a token's use",
+					loggableError(error),
+				);
 			}
 		}
 

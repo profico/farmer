@@ -4,6 +4,7 @@ import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { withTimeout } from "../lib/http";
+import { loggableError } from "../lib/loggable-error";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import { notificationsService } from "../services/notifications.service";
 import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
@@ -138,7 +139,7 @@ export const runLogRemindersOnce = async (
 			console.error("[log-reminders] user reminder failed", {
 				organizationId: run.organizationId,
 				userId: recipient.userId,
-				error,
+				error: loggableError(error),
 			});
 		}
 	};
@@ -206,7 +207,7 @@ export const runLogRemindersOnce = async (
 			failed += run.userIds.length;
 			console.error("[log-reminders] org pass failed", {
 				organizationId: run.organizationId,
-				error,
+				error: loggableError(error),
 			});
 			continue;
 		}

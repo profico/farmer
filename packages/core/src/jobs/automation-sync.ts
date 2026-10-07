@@ -6,6 +6,7 @@ import { recurringBlockRule } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { integrationSettings } from "../db/schema/settings";
 import { withTimeout } from "../lib/http";
+import { loggableErrorLine } from "../lib/loggable-error";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
 import type { SchedulerLogger } from "./scheduler";
@@ -271,7 +272,7 @@ export const runAutomationSyncOnce = async (
 			// something outside them broke for this person, or the pass timed out.
 			failed++;
 			logger.error(
-				`[automation-sync] pass failed for ${target.organizationId}/${target.userId}: ${String(error)}`,
+				`[automation-sync] pass failed for ${target.organizationId}/${target.userId}: ${loggableErrorLine(error)}`,
 			);
 		}
 	};

@@ -53,6 +53,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
+import { loggableError } from "../lib/loggable-error";
 import { findSingleOrg, isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
@@ -1544,7 +1545,7 @@ export const harvestImportService = {
 				}).catch((error: unknown) => {
 					console.error("[harvest] could not send an invitation", {
 						invitationId: inv.invitationId,
-						error,
+						error: loggableError(error),
 					});
 				});
 			}

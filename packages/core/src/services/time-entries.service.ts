@@ -37,6 +37,7 @@ import {
 } from "../lib/automation-window";
 import { summarizeCommitMessages } from "../lib/day-plan";
 import { describePullRequestActivity } from "../lib/github-activity";
+import { loggableError } from "../lib/loggable-error";
 import {
 	addDaysToKey,
 	datesBetween,
@@ -686,7 +687,10 @@ const recomputeTouchedDays = async (
 		try {
 			await recomputeDayFill(ctx, date, tz);
 		} catch (error) {
-			console.error("[meetings] fill recompute failed", { date, error });
+			console.error("[meetings] fill recompute failed", {
+				date,
+				error: loggableError(error),
+			});
 		}
 	}
 };
@@ -1805,7 +1809,7 @@ export const timeEntriesService = {
 				console.error(`[automations] ${name} failed`, {
 					organizationId: ctx.organizationId,
 					userId: ctx.userId,
-					error,
+					error: loggableError(error),
 				});
 			}
 		};
@@ -1819,7 +1823,7 @@ export const timeEntriesService = {
 			lockedThrough = (await orgSettingsService.get(ctx))
 				.automationLockedThrough;
 		} catch (error) {
-			console.error("[automations] lock read failed", error);
+			console.error("[automations] lock read failed", loggableError(error));
 			return { ran, skipped, failed: [...failed, "org-settings"], off };
 		}
 
@@ -1842,7 +1846,7 @@ export const timeEntriesService = {
 		try {
 			settings = await integrationSettingsService.get(ctx);
 		} catch (error) {
-			console.error("[automations] settings read failed", error);
+			console.error("[automations] settings read failed", loggableError(error));
 			return { ran, skipped, failed: [...failed, "integration-settings"], off };
 		}
 
@@ -2342,7 +2346,7 @@ export const timeEntriesService = {
 					console.error("[time-entries] could not file an entry", {
 						organizationId: ctx.organizationId,
 						timeEntryId,
-						error,
+						error: loggableError(error),
 					});
 				}
 				reasons.push(message ?? "Could not file entry");
@@ -2364,7 +2368,10 @@ export const timeEntriesService = {
 					succeeded,
 				);
 			} catch (error) {
-				console.error("[time-entries] could not save filing rules", error);
+				console.error(
+					"[time-entries] could not save filing rules",
+					loggableError(error),
+				);
 			}
 		}
 
@@ -3215,7 +3222,7 @@ export const timeEntriesService = {
 					console.error("[time-entries] could not log an absence day", {
 						organizationId: ctx.organizationId,
 						date,
-						error,
+						error: loggableError(error),
 					});
 				}
 				skipped.push({ date, reason: message ?? "could not be logged" });

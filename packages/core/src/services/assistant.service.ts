@@ -11,6 +11,7 @@ import {
 } from "../db/schema/assistant";
 import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
+import { loggableError } from "../lib/loggable-error";
 import {
 	type ChatMessage,
 	type ChatTool,
@@ -843,7 +844,10 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 		// recover from it.
 		const message = error instanceof Error ? agentErrorMessage(error) : null;
 		if (message === null) {
-			console.error(`[assistant] tool "${call.name}" failed`, error);
+			console.error(
+				`[assistant] tool "${call.name}" failed`,
+				loggableError(error),
+			);
 		}
 		return {
 			ok: false,

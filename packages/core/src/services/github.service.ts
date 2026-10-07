@@ -22,6 +22,7 @@ import {
 	GithubRateLimitError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
+import { loggableError } from "../lib/loggable-error";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
 import {
@@ -240,7 +241,7 @@ const readAccessToken = async (ctx: Ctx): Promise<string | null> => {
 	} catch (error) {
 		console.error("[github] getAccessToken failed", {
 			userId: ctx.userId,
-			error,
+			error: loggableError(error),
 		});
 		return null;
 	}

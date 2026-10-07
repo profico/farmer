@@ -24,6 +24,7 @@ import {
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { automationWriteWindow } from "../lib/automation-window";
+import { loggableError } from "../lib/loggable-error";
 import {
 	datesBetween,
 	dayKeyInTz,
@@ -94,7 +95,10 @@ const materializeNow = async (ctx: Ctx) => {
 			window.to,
 		);
 	} catch (error) {
-		console.error("[recurring-blocks] immediate materialize failed", error);
+		console.error(
+			"[recurring-blocks] immediate materialize failed",
+			loggableError(error),
+		);
 	}
 };
 
@@ -459,7 +463,7 @@ const recomputeTouchedDays = async (
 		} catch (error) {
 			console.error("[recurring-blocks] fill recompute failed", {
 				date,
-				error,
+				error: loggableError(error),
 			});
 		}
 	}
