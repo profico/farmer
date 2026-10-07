@@ -160,7 +160,20 @@ const send = async (
 	const outcome = await sendToRelay(baseUrl, push);
 	if (outcome.kind === "device_gone") {
 		await forget(device).catch((error: unknown) => {
-			console.error("[native-push] could not delete a device", error);
+			// Never log `error` itself. A `DrizzleQueryError` lists the query's
+			// parameters, and the relay id in the WHERE clause is the
+			// credential for a push. The classes and the driver's code say
+			// what went wrong without it.
+			const cause = error instanceof Error ? error.cause : undefined;
+			console.error("[native-push] could not delete a device", {
+				deviceId: device.id,
+				error: error instanceof Error ? error.constructor.name : "unknown",
+				cause: cause instanceof Error ? cause.constructor.name : undefined,
+				code:
+					cause instanceof Error && "code" in cause
+						? String(cause.code)
+						: undefined,
+			});
 		});
 	} else if (outcome.kind === "failed") {
 		console.error("[native-push] the relay refused a push", {
