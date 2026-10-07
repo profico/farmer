@@ -387,6 +387,20 @@ const projectNameFor = (ctx: Ctx, projectId: JsonValue | undefined) =>
 const normalizedName = (name: string) =>
 	foldForSearch(name).replace(/\s+/g, " ");
 
+/** The email of a person, only where another person shares the name. Every tool
+ *  result goes to the model provider, and a list of addresses is a mailing list. */
+const emailWhereNameClashes = <T extends { name: string; email: string }>(
+	rows: readonly T[],
+) => {
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		const key = normalizedName(row.name);
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	return (row: T) =>
+		(counts.get(normalizedName(row.name)) ?? 0) > 1 ? row.email : null;
+};
+
 const adminOnly = (access: Access) => access.isAdmin;
 
 /** Every report is scoped by the service to what the caller may see — a
@@ -2420,6 +2434,57 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				ctx,
 				rememberFilingRuleInput.parse(args),
 			),
+	},
+	// ── Project overview ────────────────────────────────────────────────────
+	{
+		name: "project_overview",
+		kind: "read",
+		available: leadsSomething,
+		description:
+			"The all-time figures of ONE project, for EVERYONE who logged on it, not only the current user: total hours, entries, how many people ever logged on it, the first and last entry date, overtime hours, and this month's hours and people. This month is the organization's current month. Hours are decimal. Needs a projectId from list_projects and Team Lead rank or above on that project, so a Member is refused. For hours by person or by period, use time_report_summary with the project filter.",
+		schema: z.object({ projectId: projectIdInput }),
+		run: async (ctx, args) => {
+			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);
+			const overview = await projectsService.overview(ctx, projectId);
+			return {
+				projectId,
+				project: await nameOr(
+					() => projectsService.get(ctx, projectId),
+					"",
+				).then((name) => name || null),
+				allTimeHours: overview.allTimeSeconds / 3600,
+				entries: overview.entryCount,
+				people: overview.peopleCount,
+				firstEntry: overview.firstEntry,
+				lastEntry: overview.lastEntry,
+				overtimeHours: overview.overtimeSeconds / 3600,
+				thisMonthHours: overview.monthSeconds / 3600,
+				thisMonthPeople: overview.monthPeople,
+			};
+		},
+	},
+	{
+		name: "list_assignable_people",
+		kind: "read",
+		available: leadsSomething,
+		description:
+			"The people who can be put on a project: every active member of the organization, archived people left out, with the user ids that assign_project_member takes. It lists people who are not on the project yet, which list_project_members does not. The email is null, except on rows whose name another member shares. Returns at most 100 people and sets truncated when there are more; list_members finds one person by name. Needs the right to manage the project's team.",
+		schema: z.object({ projectId: projectIdInput }),
+		run: async (ctx, args) => {
+			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);
+			const people = await projectsService.listAssignable(ctx, projectId);
+			const emailOf = emailWhereNameClashes(people);
+			const { rows, truncated } = capRows(people);
+			return {
+				total: people.length,
+				truncated,
+				people: rows.map((person) => ({
+					userId: person.userId,
+					name: person.name,
+					email: emailOf(person),
+				})),
+			};
+		},
 	},
 ];
 
