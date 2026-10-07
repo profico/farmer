@@ -3003,6 +3003,21 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 		subtracted.add(neg);
 		result.push({ row: neg, against: order[0]?.[0] ?? null });
 	}
+	return {
+		negatives: result,
+		rows: nettedRows(rows, subtracted, remaining, takenBy),
+	};
+}
+
+/** The day's rows after the subtraction. A subtracted negative row goes,
+ *  and a negative row with too few hours to take from stays as a problem.
+ *  A row that lost hours gets its seconds again and a new key. */
+function nettedRows(
+	rows: readonly ParsedTimeRow[],
+	subtracted: ReadonlySet<ParsedTimeRow>,
+	remaining: ReadonlyMap<ParsedTimeRow, number>,
+	takenBy: ReadonlyMap<ParsedTimeRow, string[]>,
+): ParsedTimeRow[] {
 	const out: ParsedTimeRow[] = [];
 	for (const r of rows) {
 		if (subtracted.has(r)) continue;
@@ -3030,7 +3045,7 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 			key: `${sha256HexSync(JSON.stringify([r.key, ...keys]))}:net`,
 		});
 	}
-	return { negatives: result, rows: out };
+	return out;
 }
 
 /**
