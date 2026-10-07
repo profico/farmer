@@ -67,6 +67,17 @@ describe("number reading", () => {
 		expect(mentions("You logged 81h 15m", 81.25)).toBe(true);
 		expect(mentions("You logged 80 hours", 81, 0.5)).toBe(false);
 	});
+
+	test("a date or a day count is not a figure", () => {
+		const own = QUESTIONS.find((q) => q.id === "own-last-week");
+		const verdict = (answer: string) =>
+			own?.check(trace({ answer }), seeded).pass;
+		expect(verdict("From 15 Sep to 5 Oct you took 14 days.")).toBe(false);
+		expect(verdict("The week 2026-09-15 had no entries.")).toBe(false);
+		expect(verdict("You logged 15.25 hours.")).toBe(false);
+		expect(verdict("**15** hours, from 28 Sep to 4 Oct.")).toBe(true);
+		expect(verdict("| Total | 15.00 |")).toBe(true);
+	});
 });
 
 describe("report checks", () => {

@@ -38,22 +38,37 @@ export type Question = {
 const pass = (reason = "ok"): Verdict => ({ pass: true, reason });
 const fail = (reason: string): Verdict => ({ pass: false, reason });
 
-/** Every number in a text. "87h 45m" and "1,234.5" are read as one number. */
+const MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
+
+/** The text without dates, times and years. A date holds numbers that are not
+ *  a figure, and they move with the run date. */
+const withoutDates = (text: string): string =>
+	text
+		.replace(/\d{4}-\d{2}-\d{2}/g, " ")
+		.replace(new RegExp(`\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH}`, "gi"), " ")
+		.replace(new RegExp(`${MONTH}\\s+\\d{1,2}(?:st|nd|rd|th)?`, "gi"), " ")
+		.replace(/\d{1,2}:\d{2}/g, " ")
+		.replace(/\b(?:19|20)\d{2}\b/g, " ");
+
+/** The figures in a text. A figure with a unit (hours or days) is read first.
+ *  A text with no unit falls back to every number. "87h 45m" and "1,234.5"
+ *  are one number each. */
 export const numbersIn = (text: string): number[] => {
-	const cleaned = text
+	const cleaned = withoutDates(text)
 		.replace(/(\d),(\d{3})(?!\d)/g, "$1$2")
 		.replace(/(\d),(\d)/g, "$1.$2");
-	const found = [...cleaned.matchAll(/\d+(?:\.\d+)?/g)].map((m) =>
-		Number(m[0]),
-	);
+	const all = [...cleaned.matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+	const withUnit = [
+		...cleaned.matchAll(/(\d+(?:\.\d+)?)[\s*_`]*(?:h|hr|hrs|hours?|days?)\b/gi),
+	].map((m) => Number(m[1]));
 	for (const m of cleaned.matchAll(/(\d+)\s*h(?:ours?)?\s*(\d+)\s*m/gi)) {
-		found.push(Number(m[1]) + Number(m[2]) / 60);
+		withUnit.push(Number(m[1]) + Number(m[2]) / 60);
 	}
-	return found;
+	return withUnit.length > 0 ? withUnit : all;
 };
 
-/** A number that is within the tolerance. Half an hour covers a rounded figure. */
-export const mentions = (text: string, target: number, tolerance = 0.5) =>
+/** A number that is within the tolerance. The default is a tenth of an hour. */
+export const mentions = (text: string, target: number, tolerance = 0.1) =>
 	numbersIn(text).some((value) => Math.abs(value - target) <= tolerance);
 
 const includes = (text: string, needle: string) =>
@@ -74,10 +89,14 @@ const parseArguments = <T extends z.ZodType>(
 const figure = (value: number) => value.toFixed(2);
 
 const reportCheck =
-	(pick: (seeded: Seeded) => number, trap?: (seeded: Seeded) => number) =>
+	(
+		pick: (seeded: Seeded) => number,
+		trap?: (seeded: Seeded) => number,
+		tolerance = 0.1,
+	) =>
 	(trace: Trace, seeded: Seeded): Verdict => {
 		const expected = pick(seeded);
-		if (mentions(trace.answer, expected)) return pass();
+		if (mentions(trace.answer, expected, tolerance)) return pass();
 		if (trap && mentions(trace.answer, trap(seeded))) {
 			return fail(
 				`answered the company total ${figure(trap(seeded))}, the person's own is ${figure(expected)}`,
@@ -154,7 +173,11 @@ export const QUESTIONS: Question[] = [
 		caller: "reader",
 		ask: () =>
 			"How many hours did the whole team log on Delta Analytics last month?",
-		check: reportCheck((seeded) => seeded.truth.deltaLastMonthHours),
+		check: reportCheck(
+			(seeded) => seeded.truth.deltaLastMonthHours,
+			undefined,
+			0.5,
+		),
 	},
 	{
 		id: "overtime",
@@ -172,7 +195,7 @@ export const QUESTIONS: Question[] = [
 			`How many vacation days has ${seeded.truth.onLeaveName} taken in the last 60 days?`,
 		check: (trace, seeded) =>
 			mentions(trace.answer, seeded.truth.onLeaveDays, 0.01) ||
-			mentions(trace.answer, seeded.truth.onLeaveDays * 8, 0.5)
+			mentions(trace.answer, seeded.truth.onLeaveDays * 8, 0.1)
 				? pass()
 				: fail(`expected ${seeded.truth.onLeaveDays} days in the answer`),
 	},
