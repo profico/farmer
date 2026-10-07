@@ -23,6 +23,7 @@ import {
 	type SuggestedCommit,
 	type SuggestedPullRequest,
 	selectedCommitRefs,
+	savedMemory,
 	saveNotice,
 	selectedPullRequestRefs,
 	toEntryPayload,
@@ -97,23 +98,12 @@ async function attachSelection(saved: SavedContext): Promise<AttachKind[]> {
 	return failed.filter((kind) => kind !== null);
 }
 
-// Time off is never remembered: a day of leave is not what the next
-// entry is likely to be. An edit does not move the last pick either,
-// since correcting an old entry says nothing about the next one.
 function rememberSaved(saved: SavedContext): void {
 	const { values, entry, orgSlug } = saved;
-	if (!values.projectId) return;
-	if (!entry) {
-		rememberLastPick("entry", orgSlug, {
-			projectId: values.projectId,
-			taskId: values.taskId,
-		});
-	}
-	if (!values.repeatEnabled) {
-		rememberEntryOptions(orgSlug, values.projectId, values.taskId, {
-			fillsDay: values.fillsDay,
-			overtime: values.overtime,
-		});
+	const { lastPick, options } = savedMemory(values, !!entry);
+	if (lastPick) rememberLastPick("entry", orgSlug, lastPick);
+	if (options) {
+		rememberEntryOptions(orgSlug, values.projectId, values.taskId, options);
 	}
 }
 

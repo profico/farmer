@@ -10,7 +10,12 @@ import {
 import { dayKeySchema } from "@farmer/core/schema";
 import { z } from "zod";
 
-import { readEntryOptions, readLastPick } from "#/lib/entry-options.ts";
+import {
+	type EntryOptions,
+	type LastPick,
+	readEntryOptions,
+	readLastPick,
+} from "#/lib/entry-options.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import type {
@@ -622,4 +627,26 @@ export function saveNotice(
 		};
 	}
 	return moved ? { tone: "success", text: `Saved${where}` } : null;
+}
+
+export type SavedMemory = {
+	lastPick: LastPick | null;
+	options: EntryOptions | null;
+};
+
+/** What a save writes to the device's memory of picks (`lib/entry-options.ts`).
+ *  Only a real project is remembered. Time off is never remembered: a day of
+ *  leave is not what the next entry is likely to be. An entry with no project
+ *  yet is not a pick either. An edit does not move the last pick, since a fix
+ *  to an old entry says nothing about the next one. */
+export function savedMemory(values: FormValues, isEdit: boolean): SavedMemory {
+	if (!values.projectId || !isProjectPick(values.projectId)) {
+		return { lastPick: null, options: null };
+	}
+	const { projectId, taskId, fillsDay, overtime } = values;
+	return {
+		lastPick: isEdit ? null : { projectId, taskId },
+		// Repeat makes a standing rule, so its options are not remembered.
+		options: values.repeatEnabled ? null : { fillsDay, overtime },
+	};
 }

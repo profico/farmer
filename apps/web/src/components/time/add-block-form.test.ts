@@ -11,6 +11,7 @@ import {
 	groupAttachedPullRequests,
 	NO_PROJECT_YET,
 	saveLabel,
+	savedMemory,
 	saveNotice,
 	selectedCommitRefs,
 	selectedPullRequestRefs,
@@ -423,4 +424,34 @@ describe("saveNotice", () => {
 			saveNotice({ ...day, repeatEnabled: true }, "2026-09-14", []),
 		).toBeNull();
 	});
+});
+
+describe("savedMemory", () => {
+	test("a new entry remembers its pick and its options", () => {
+		expect(savedMemory(values({ overtime: true }), false)).toEqual({
+			lastPick: { projectId: "p1", taskId: "t1" },
+			options: { fillsDay: false, overtime: true },
+		});
+	});
+
+	test("an edit keeps its options but does not move the last pick", () => {
+		expect(savedMemory(values(), true).lastPick).toBeNull();
+		expect(savedMemory(values(), true).options).not.toBeNull();
+	});
+
+	test("a repeat rule does not remember its options", () => {
+		expect(
+			savedMemory(values({ repeatEnabled: true }), false).options,
+		).toBeNull();
+	});
+
+	test.each([TIME_OFF, NO_PROJECT_YET, ""])(
+		"remembers nothing for %p",
+		(projectId) => {
+			expect(savedMemory(values({ projectId }), false)).toEqual({
+				lastPick: null,
+				options: null,
+			});
+		},
+	);
 });
