@@ -270,8 +270,8 @@ link carries a one-time code, not the session (ADR 0005). The code is in
 ## Builds
 
 `.github/workflows/mobile-release.yml` builds the app on GitHub runners. It
-does not use EAS, and it needs no Apple Developer account and no Google Play
-account.
+does not use EAS. The build needs no Apple Developer account and no Google
+Play account. Only the store upload (see "Store upload") needs them.
 
 | Trigger | Result |
 |---|---|
@@ -292,6 +292,52 @@ The files of a release:
   has no push.
 - `farmer-<version>-simulator.zip` holds `Farmer.app` for the iOS Simulator.
 - `SHA256SUMS`.
+
+### Store upload
+
+The upload runs on a tag `mobile-v*`, and on a manual run with the input
+`publish_to_stores` on. A push to `main` or to `feat/mobile` never uploads.
+The jobs `play-upload` and `testflight` run beside the job `release`. It does
+not wait for them, so a failed upload cannot block the GitHub release. The
+AAB build is a step of the job `android`, so a failed AAB build does block it.
+When a secret is missing, a job prints a warning and skips the upload. It does
+not fail.
+
+Secrets:
+
+- `PLAY_SERVICE_ACCOUNT_JSON`: the JSON key of the Google Play service account.
+- `ASC_KEY_P8`: the text of the App Store Connect API key.
+- `ASC_KEY_ID`: the ID of that key.
+- `ASC_ISSUER_ID`: the issuer ID of the App Store Connect team.
+
+Repository variables:
+
+- `APPLE_TEAM_ID`: the Apple Developer team. The plugin `with-ios-push.js`
+  reads it at prebuild.
+- `PLAY_TRACK`: the Play track. The default is `internal`.
+- `PLAY_RELEASE_STATUS`: the Play release status. The default is `draft`.
+- `XCODE_VERSION`: optional, the Xcode version.
+
+This is test mode: Google Play gets the track `internal` with the status
+`draft`, and iOS goes to TestFlight only.
+
+Facts to know before the first run:
+
+- The Play API cannot make the app. A person must upload the first AAB by
+  hand in the Play Console.
+- A draft app accepts only the status `draft`.
+- Enroll the Play app signing key with the existing release keystore before
+  any open or production release. If not, the Play install and the GitHub APK
+  have different signatures, and a person must uninstall the app.
+- The AAB holds two ABIs: arm64-v8a and x86_64. The APK holds only arm64-v8a.
+- The iOS job signs with an API key and automatic signing. The key needs the
+  Admin role. The App IDs, the app group `group.com.profico.farmer` and the
+  App Store Connect app record must exist first.
+- The export compliance answer is open. The owner must decide it. Until then,
+  App Store Connect holds each build at "Missing Compliance".
+- The notification service extension has its own `PrivacyInfo.xcprivacy`.
+  The job `ios` fails when the archive has none.
+- Nothing here has run against a real Apple or Google account.
 
 ### The default server
 

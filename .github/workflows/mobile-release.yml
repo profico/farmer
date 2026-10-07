@@ -1,7 +1,8 @@
 name: Mobile release
 
 # Builds the Expo app (`apps/mobile`) for Android and iOS on GitHub runners,
-# with no EAS and with no Apple Developer account:
+# with no EAS. The build needs no Apple Developer account. Only the store
+# upload (see "Store upload" below) needs the accounts:
 #
 #   Android  an APK, signed with the release keystore from the secrets.
 #   iOS      an unsigned IPA for AltStore or SideStore, and a zip of the
@@ -25,7 +26,37 @@ name: Mobile release
 #
 # A fork runs this as is. Without the Android secrets the APK is signed with
 # the debug keystore (see "Check the signing secrets"), and the file name
-# says so. Nothing else here needs a secret.
+# says so. The build needs no other secret.
+#
+# Store upload (test mode):
+#
+#   A tag `mobile-v*`, or a manual run with `publish_to_stores` on, also
+#   uploads the app to the stores. A push to main or to feat/mobile never
+#   does. The upload is in test mode:
+#
+#   Android  the job `play-upload` sends an AAB to the Google Play track
+#            `internal`, as a draft.
+#   iOS      the job `testflight` signs the app and sends it to TestFlight.
+#
+#   Each upload job checks its secrets. When one is missing, the job prints a
+#   warning and skips the upload. It does not fail. The job `release` does
+#   not wait for the upload jobs, so a failed upload cannot block it. The
+#   AAB build is a step of the job `android`, so a failed AAB build does
+#   block the release.
+#
+#   Secrets for the store upload:
+#
+#   PLAY_SERVICE_ACCOUNT_JSON  the JSON key of a Google Play service account.
+#   ASC_KEY_P8                 the App Store Connect API key (`.p8` text).
+#   ASC_KEY_ID                 the ID of that key.
+#   ASC_ISSUER_ID              the issuer ID of the App Store Connect team.
+#
+#   Repository variables (Settings -> Secrets and variables -> Actions):
+#
+#   APPLE_TEAM_ID              the ID of the Apple Developer team.
+#   PLAY_TRACK                 the Play track. The default is `internal`.
+#   PLAY_RELEASE_STATUS        the Play release status. The default is `draft`.
+#   XCODE_VERSION              optional: the Xcode version (see "Select Xcode").
 #
 # Secrets (Settings -> Secrets and variables -> Actions):
 #
@@ -56,6 +87,11 @@ on:
       - "bun.lock"
       - ".github/workflows/mobile-release.yml"
   workflow_dispatch:
+    inputs:
+      publish_to_stores:
+        description: Also upload to Google Play (internal) and TestFlight
+        type: boolean
+        default: false
 
 # A newer push replaces an older run on the same ref. A tag is never
 # cancelled: a cancelled release run can leave a release with only some of
@@ -76,6 +112,10 @@ env:
   # no saved server. The person can still change it
   # (`apps/mobile/app.config.ts`). Remove the line for a build with no default.
   FARMER_DEFAULT_SERVER: https://farmer.profi.co
+  # "true" for a tag `mobile-v*`, and for a manual run with the input on. A
+  # push to a branch never uploads to a store. The two upload jobs repeat
+  # this test in their `if`, because a job `if` cannot read the workflow env.
+  PUBLISH_TO_STORES: ${{ startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores) }}
 
 jobs:
   version:
@@ -121,7 +161,8 @@ jobs:
     name: Build the Android APK
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The AAB build on a tag adds a second Gradle run with x86_64.
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -252,6 +293,37 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # The store build uses the two ABIs of `app.config.ts` (arm64-v8a and
+      # x86_64), so the flag `reactNativeArchitectures` is not set. Google
+      # Play sends each device the ABI that it needs. Only a release-signed
+      # build goes to the store: a debug-signed AAB is not accepted.
+      - name: Build the AAB for the store
+        if: env.PUBLISH_TO_STORES == 'true' && steps.signing.outputs.release == 'true'
+        working-directory: apps/mobile/android
+        env:
+          FARMER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FARMER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FARMER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Name the AAB
+        if: env.PUBLISH_TO_STORES == 'true' && steps.signing.outputs.release == 'true'
+        run: |
+          mkdir -p out-aab
+          cp apps/mobile/android/app/build/outputs/bundle/release/app-release.aab "out-aab/farmer-$VERSION-$FARMER_VERSION_CODE.aab"
+          ls -la out-aab
+
+      # The name does not start with `mobile-`: the job `release` downloads
+      # the pattern `mobile-*`, and the AAB must not be a release asset.
+      - name: Upload the AAB
+        if: env.PUBLISH_TO_STORES == 'true' && steps.signing.outputs.release == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-android-aab
+          path: out-aab/*
+          if-no-files-found: error
+          retention-days: 14
+
   ios:
     name: Build the iOS app
     needs: version
@@ -342,6 +414,25 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             | tee build-archive.log | tail -n 25
 
+      # The App Store refuses a bundle that uses a required-reason API and
+      # does not declare it. The notification service extension reads
+      # UserDefaults of the app group, so it needs a manifest. The widget uses
+      # no such API. Print the manifests of the app and fail when the
+      # notification service extension has none.
+      - name: Check the privacy manifests
+        run: |
+          device_app="apps/mobile/ios/build/Farmer.xcarchive/Products/Applications/Farmer.app"
+          find "$device_app" -name PrivacyInfo.xcprivacy
+          echo "== Farmer.app"
+          cat "$device_app/PrivacyInfo.xcprivacy" || echo "The app has no PrivacyInfo.xcprivacy."
+          manifest="$device_app/PlugIns/NotificationService.appex/PrivacyInfo.xcprivacy"
+          if [ ! -f "$manifest" ]; then
+            echo "::error::The notification service extension has no PrivacyInfo.xcprivacy"
+            exit 1
+          fi
+          echo "== NotificationService.appex"
+          cat "$manifest"
+
       # `ditto` keeps the layout of a bundle. The IPA must hold the widget
       # and the notification service extension, so a missing `PlugIns` folder
       # fails the job.
@@ -371,6 +462,244 @@ jobs:
           path: out/*
           if-no-files-found: error
           retention-days: 14
+
+  # Test mode: the job sends the AAB to the track `internal`, as a draft.
+  # The job `release` does not need it, so a failed upload cannot block the
+  # GitHub release. The job `android` makes the AAB only with release
+  # signing, so a missing artifact means a missing signing secret.
+  play-upload:
+    name: Upload to Google Play
+    needs: [version, android]
+    if: ${{ needs.android.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download the AAB
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: store-android-aab
+          path: aab
+
+      # A secret is not readable in an `if`, so this step reads it into an
+      # output, as "Check the signing secrets" does.
+      - name: Check the secret and the AAB
+        id: check
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          aab="$(find aab -name '*.aab' 2>/dev/null | head -n 1)"
+          if [ -z "$aab" ]; then
+            echo "::warning title=Google Play::No AAB artifact found. The Android signing secrets are probably missing, so the upload is skipped."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning title=Google Play::The secret PLAY_SERVICE_ACCOUNT_JSON is not set, so the upload is skipped."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "aab=$aab" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The Play API cannot make the app. Upload the first AAB by hand in the
+      # Play Console. A draft app accepts only the status `draft`.
+      - name: Upload to Google Play
+        if: steps.check.outputs.ready == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.profico.farmer
+          releaseFiles: ${{ steps.check.outputs.aab }}
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          releaseName: ${{ needs.version.outputs.version }} (${{ github.run_number }})
+
+  # Test mode: the job signs the app with an App Store Connect API key and
+  # sends it to TestFlight. It does not change the job `ios`. The job
+  # `release` does not need it.
+  testflight:
+    name: Upload to TestFlight
+    needs: version
+    if: ${{ needs.version.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores)) }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ vars.XCODE_VERSION || 'latest-stable' }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Cache the Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # A secret is not readable in an `if`, so this step reads the three
+      # secrets and the variable into an output. When one is missing, every
+      # later step is skipped and the job still passes.
+      - name: Check the App Store Connect secrets
+        id: check
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=""
+          [ -n "$ASC_KEY_P8" ] || missing="$missing ASC_KEY_P8"
+          [ -n "$ASC_KEY_ID" ] || missing="$missing ASC_KEY_ID"
+          [ -n "$ASC_ISSUER_ID" ] || missing="$missing ASC_ISSUER_ID"
+          [ -n "$APPLE_TEAM_ID" ] || missing="$missing APPLE_TEAM_ID(variable)"
+          if [ -n "$missing" ]; then
+            echo "::warning title=TestFlight::These items are missing, so the upload is skipped:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write the API key
+        if: steps.check.outputs.ready == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+
+      # `plugins/with-ios-push.js` reads APPLE_TEAM_ID at prebuild, so the
+      # variable must be in the env of this step.
+      - name: Prebuild the iOS project
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile
+        run: bunx expo prebuild -p ios
+
+      - name: Show the privacy manifests
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          find apps/mobile/ios -name PrivacyInfo.xcprivacy -not -path '*/Pods/*' | while read -r file; do
+            echo "== $file"
+            cat "$file"
+          done
+
+      # Automatic signing with an App Store Connect API key. The key needs
+      # the Admin role, so that Xcode can use cloud signing. Before the first
+      # run, these must exist: the App IDs, the app group
+      # `group.com.profico.farmer`, and the app record in App Store Connect.
+      # When automatic signing fails, the fallback is manual signing with a
+      # certificate and a profile in the secrets.
+      - name: Archive for the store
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -workspace Farmer.xcworkspace \
+            -scheme Farmer \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Farmer.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            | tee build-store-archive.log | tail -n 25
+
+      - name: Write ExportOptions.plist
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile/ios
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>destination</key>
+            <string>export</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Export the IPA
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/Farmer.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tee build-store-export.log | tail -n 25
+          ls -la build/export
+
+      # The store build must hold the widget and the notification service
+      # extension. A build without them fails here.
+      - name: Check the extensions in the IPA
+        if: steps.check.outputs.ready == 'true'
+        id: ipa
+        working-directory: apps/mobile/ios/build/export
+        run: |
+          ipa="$(find "$PWD" -maxdepth 1 -name '*.ipa' | head -n 1)"
+          if [ -z "$ipa" ]; then
+            echo "::error::The export made no IPA"
+            exit 1
+          fi
+          listing="$(unzip -l "$ipa")"
+          for appex in NotificationService TimerWidget; do
+            if ! echo "$listing" | grep -q "PlugIns/$appex.appex"; then
+              echo "::error::The IPA has no PlugIns/$appex.appex"
+              exit 1
+            fi
+          done
+          echo "path=$ipa" >> "$GITHUB_OUTPUT"
+
+      # The export compliance answer is a decision of the owner, so this
+      # step does not set `uses-non-exempt-encryption`. Until the owner sets
+      # it, App Store Connect holds the build at "Missing Compliance".
+      - name: Upload to TestFlight
+        if: steps.check.outputs.ready == 'true'
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: ${{ steps.ipa.outputs.path }}
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.ASC_KEY_ID }}
+          api-private-key: ${{ secrets.ASC_KEY_P8 }}
+
+      - name: Delete the API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
 
   release:
     name: Publish the release
