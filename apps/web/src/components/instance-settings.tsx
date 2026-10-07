@@ -200,159 +200,185 @@ function FieldLabel({
 	);
 }
 
-function SettingField({
-	setting,
-	value,
-	removed,
-	onChange,
-	onRemove,
-	disabled,
-}: {
+type FieldProps = {
 	setting: InstanceSettingView;
 	value: string;
 	removed: boolean;
 	onChange: (value: string) => void;
 	onRemove: (removed: boolean) => void;
 	disabled: boolean;
-}) {
+};
+
+function BooleanSettingField({
+	setting,
+	value,
+	onChange,
+	disabled,
+}: FieldProps) {
 	const id = useId();
 	const locked = setting.locked;
-	const hint = setting.hint && <SettingHint text={setting.hint} />;
-
-	if (setting.kind === "boolean") {
-		// The environment's value is still the state on show when it is locked:
-		// "on, and you cannot change it here" is the answer somebody came for.
-		const checked = locked ? setting.value === "true" : value === "true";
-		return (
-			<div className="flex max-w-xl items-start justify-between gap-6">
-				<div className="grid gap-1.5">
-					<FieldLabel htmlFor={id} setting={setting} />
-					{hint}
-				</div>
-				<Switch
-					id={id}
-					checked={checked}
-					disabled={locked || disabled}
-					onCheckedChange={(on) => onChange(on ? "true" : "false")}
-				/>
-			</div>
-		);
-	}
-
-	if (setting.kind === "select") {
-		const options = setting.options ?? [];
-		// An empty option in the registry means the server picks, which is a
-		// choice with a name; without one, empty is simply nothing stored.
-		const unsetLabel = options.includes("") ? "Automatic" : "Not set";
-		const items = [
-			{ value: UNSET, label: unsetLabel },
-			...options
-				.filter((option) => option !== "")
-				.map((option) => ({
-					value: option,
-					label: OPTION_LABEL.get(option) ?? option,
-				})),
-		];
-		const current = locked ? (setting.value ?? "") : value;
-		return (
-			<div className="grid max-w-xl gap-1.5">
+	// The environment's value is still the state on show when it is locked:
+	// "on, and you cannot change it here" is the answer somebody came for.
+	const checked = locked ? setting.value === "true" : value === "true";
+	return (
+		<div className="flex max-w-xl items-start justify-between gap-6">
+			<div className="grid gap-1.5">
 				<FieldLabel htmlFor={id} setting={setting} />
-				<Select
-					items={items}
-					value={current === "" ? UNSET : current}
-					disabled={locked || disabled}
-					onValueChange={(next: string | null) =>
-						onChange(next === null || next === UNSET ? "" : next)
-					}
-				>
-					<SelectTrigger id={id} className="w-full max-w-sm bg-card">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{items.map((item) => (
-							<SelectItem key={item.value} value={item.value}>
-								{item.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-				{hint}
+				{setting.hint && <SettingHint text={setting.hint} />}
 			</div>
-		);
-	}
+			<Switch
+				id={id}
+				checked={checked}
+				disabled={locked || disabled}
+				onCheckedChange={(on) => onChange(on ? "true" : "false")}
+			/>
+		</div>
+	);
+}
 
-	if (isSecretKind(setting)) {
-		// A locked secret cannot be replaced here, so its box shows only the
-		// hint of the environment's value. An unreadable one is stored under a
-		// key this server no longer has, and is not in use until entered again.
-		const placeholder = removed
-			? "Removed when you save"
-			: setting.secretHint
-				? locked
-					? setting.secretHint
-					: `${setting.secretHint} — type to replace`
-				: setting.unreadable
-					? "Stored under a retired key — enter it again"
-					: "Not set";
-		// Remove is offered only for a stored secret: one from the environment
-		// is locked, and one that is not set has nothing to remove.
-		const removable = !locked && setting.source === "db" && setting.secretHint;
-		const remove = removable && (
-			<Button
-				type="button"
-				variant="outline"
-				className={removed ? undefined : "hover:text-destructive"}
-				disabled={disabled}
-				onClick={() => onRemove(!removed)}
+function SelectSettingField({
+	setting,
+	value,
+	onChange,
+	disabled,
+}: FieldProps) {
+	const id = useId();
+	const locked = setting.locked;
+	const options = setting.options ?? [];
+	// An empty option in the registry means the server picks, which is a
+	// choice with a name; without one, empty is simply nothing stored.
+	const unsetLabel = options.includes("") ? "Automatic" : "Not set";
+	const items = [
+		{ value: UNSET, label: unsetLabel },
+		...options
+			.filter((option) => option !== "")
+			.map((option) => ({
+				value: option,
+				label: OPTION_LABEL.get(option) ?? option,
+			})),
+	];
+	const current = locked ? (setting.value ?? "") : value;
+	return (
+		<div className="grid max-w-xl gap-1.5">
+			<FieldLabel htmlFor={id} setting={setting} />
+			<Select
+				items={items}
+				value={current === "" ? UNSET : current}
+				disabled={locked || disabled}
+				onValueChange={(next: string | null) =>
+					onChange(next === null || next === UNSET ? "" : next)
+				}
 			>
-				{removed ? "Undo" : "Remove"}
-			</Button>
-		);
-		const box =
-			setting.kind === "multiline" ? (
-				<Textarea
-					id={id}
-					rows={5}
-					spellCheck={false}
-					autoComplete="off"
-					className="font-mono text-xs"
-					value={removed ? "" : value}
-					placeholder={placeholder}
-					disabled={locked || removed || disabled}
-					onChange={(event) => onChange(event.target.value)}
-				/>
-			) : (
-				<Input
-					id={id}
-					type="password"
-					// A browser that offers to save or fill this box would put a
-					// person's own password into an API key field.
-					autoComplete="new-password"
-					value={removed ? "" : value}
-					placeholder={placeholder}
-					disabled={locked || removed || disabled}
-					onChange={(event) => onChange(event.target.value)}
-				/>
-			);
-		return (
-			<div className="grid max-w-xl gap-1.5">
-				<FieldLabel htmlFor={id} setting={setting} />
-				{setting.kind === "multiline" ? (
-					<>
-						{box}
-						{remove && <div>{remove}</div>}
-					</>
-				) : (
-					<div className="flex items-center gap-2">
-						{box}
-						{remove}
-					</div>
-				)}
-				{hint}
-			</div>
-		);
-	}
+				<SelectTrigger id={id} className="w-full max-w-sm bg-card">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{items.map((item) => (
+						<SelectItem key={item.value} value={item.value}>
+							{item.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			{setting.hint && <SettingHint text={setting.hint} />}
+		</div>
+	);
+}
 
+/**
+ * What a secret box shows when it is empty. A locked secret cannot be
+ * replaced here, so its box shows only the hint of the environment's value.
+ * An unreadable one is stored under a key this server no longer has, and is
+ * not in use until entered again.
+ */
+function secretPlaceholder(
+	setting: InstanceSettingView,
+	removed: boolean,
+): string {
+	if (removed) return "Removed when you save";
+	if (setting.secretHint) {
+		return setting.locked
+			? setting.secretHint
+			: `${setting.secretHint} — type to replace`;
+	}
+	return setting.unreadable
+		? "Stored under a retired key — enter it again"
+		: "Not set";
+}
+
+function SecretSettingField({
+	setting,
+	value,
+	removed,
+	onChange,
+	onRemove,
+	disabled,
+}: FieldProps) {
+	const id = useId();
+	const locked = setting.locked;
+	const placeholder = secretPlaceholder(setting, removed);
+	// Remove is offered only for a stored secret: one from the environment
+	// is locked, and one that is not set has nothing to remove.
+	const removable = !locked && setting.source === "db" && setting.secretHint;
+	const remove = removable && (
+		<Button
+			type="button"
+			variant="outline"
+			className={removed ? undefined : "hover:text-destructive"}
+			disabled={disabled}
+			onClick={() => onRemove(!removed)}
+		>
+			{removed ? "Undo" : "Remove"}
+		</Button>
+	);
+	const multiline = setting.kind === "multiline";
+	const box = multiline ? (
+		<Textarea
+			id={id}
+			rows={5}
+			spellCheck={false}
+			autoComplete="off"
+			className="font-mono text-xs"
+			value={removed ? "" : value}
+			placeholder={placeholder}
+			disabled={locked || removed || disabled}
+			onChange={(event) => onChange(event.target.value)}
+		/>
+	) : (
+		<Input
+			id={id}
+			type="password"
+			// A browser that offers to save or fill this box would put a
+			// person's own password into an API key field.
+			autoComplete="new-password"
+			value={removed ? "" : value}
+			placeholder={placeholder}
+			disabled={locked || removed || disabled}
+			onChange={(event) => onChange(event.target.value)}
+		/>
+	);
+	return (
+		<div className="grid max-w-xl gap-1.5">
+			<FieldLabel htmlFor={id} setting={setting} />
+			{multiline ? (
+				<>
+					{box}
+					{remove && <div>{remove}</div>}
+				</>
+			) : (
+				<div className="flex items-center gap-2">
+					{box}
+					{remove}
+				</div>
+			)}
+			{setting.hint && <SettingHint text={setting.hint} />}
+		</div>
+	);
+}
+
+function TextSettingField({ setting, value, onChange, disabled }: FieldProps) {
+	const id = useId();
+	const locked = setting.locked;
 	return (
 		<div className="grid max-w-xl gap-1.5">
 			<FieldLabel htmlFor={id} setting={setting} />
@@ -368,9 +394,17 @@ function SettingField({
 				disabled={locked || disabled}
 				onChange={(event) => onChange(event.target.value)}
 			/>
-			{hint}
+			{setting.hint && <SettingHint text={setting.hint} />}
 		</div>
 	);
+}
+
+function SettingField(props: FieldProps) {
+	const { setting } = props;
+	if (setting.kind === "boolean") return <BooleanSettingField {...props} />;
+	if (setting.kind === "select") return <SelectSettingField {...props} />;
+	if (isSecretKind(setting)) return <SecretSettingField {...props} />;
+	return <TextSettingField {...props} />;
 }
 
 /**
