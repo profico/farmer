@@ -177,6 +177,29 @@ The app builds the ongoing notification itself. A phone without
 `notifications_allowed` gets nothing, because Android 13 and later shows no
 notification without the permission.
 
+The Pause and Resume buttons in the shade work without the app.
+`TimerActionReceiver` calls `POST /api/v1/orgs/{slug}/timer/{pause|resume}`
+with the stored credential and posts the new state at once. After an
+accepted call, it runs the `onChanged` listener of the running module. The
+module emits `onTimerAction` to the app. In `push-bridge.tsx`, the app then
+invalidates its timer queries, so it reads the timer again. A push for the
+same change can follow, and its read replaces the first one.
+
+### Relay id in logs
+
+The device registration path in `mobile-devices.service.ts` (`register`)
+uses the relay id as a query parameter. It is in the `where` of the
+`findFirst` and in the `where` of the `delete`. A `DrizzleQueryError` from
+this path carries the parameter list, so the error text holds the relay id.
+The relay id is a credential (see `apps/push-relay/README.md`).
+
+No log site in the service or in `lib/push-relay.ts` logs the raw error.
+`lib/push-relay.ts` logs only `error.message`. The generic handler in
+`server/api-route.ts` logs the whole error with `console.error`, so a
+database failure in `register` can write the relay id to the server log.
+This branch has no `loggableError` helper. Until a helper exists, do not
+log a raw error from this path, and treat the server log as sensitive.
+
 ## Tests
 
 `services/mobile-devices.test.ts` and `services/native-push.test.ts`. The
