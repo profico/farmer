@@ -606,7 +606,6 @@ const matchablePeople = async (
 			);
 		for (const r of rows) memberIds.add(r.userId);
 	}
-	// Invited by an earlier run and not joined yet: a match as well.
 	for (const r of await invitedPeople(st.tx, st.org)) memberIds.add(r.userId);
 	return memberIds;
 };
@@ -796,7 +795,6 @@ const writeProfileAndType = async (
 	}
 };
 
-/** Writes a created person and returns their user id. */
 const startCreatedPerson = async (
 	st: StartTx,
 	p: PersonCreatePlan,

@@ -1335,7 +1335,7 @@ function indexMappings(snapshot: HarvestSnapshot): MappingIndex {
 	return { mappings, personByLocalId };
 }
 
-// Clients -------------------------------------------------------------------
+// --- Clients ---------------------------------------------------------------
 
 interface ClientIndex {
 	choices: HarvestChoices;
@@ -1480,7 +1480,7 @@ function applyClientPlan(
 	}
 }
 
-// Tasks ---------------------------------------------------------------------
+// --- Tasks -----------------------------------------------------------------
 
 interface TaskIndex {
 	mappings: ReadonlyMap<string, string>;
@@ -1604,7 +1604,7 @@ function taskArchived(
 	return t.listed ? !t.listed.active : false;
 }
 
-// Projects ------------------------------------------------------------------
+// --- Projects --------------------------------------------------------------
 
 interface ProjectsPlanned {
 	projectPlans: HarvestProjectPlan[];
@@ -1748,7 +1748,7 @@ function projectBudgetSeconds(
 	return budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null;
 }
 
-// People --------------------------------------------------------------------
+// --- People ----------------------------------------------------------------
 
 type SnapshotMember = HarvestSnapshot["members"][number];
 
@@ -2352,7 +2352,7 @@ export function planHarvestImport(
 	};
 }
 
-// Rows, dedupe and days -------------------------------------------------------
+// --- Rows, dedupe and days -------------------------------------------------
 
 function ownerKey(ownerOf: ReadonlyMap<string, string>, sourceKey: string) {
 	return ownerOf.get(sourceKey) ?? sourceKey;
