@@ -2545,7 +2545,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		kind: "read",
 		available: leadsSomething,
 		description:
-			"The people who can be put on a project: every active member of the organization, archived people left out, with the user ids that assign_project_member takes. It lists people who are not on the project yet, which list_project_members does not. The email is null, except on rows whose name another member shares. Returns at most 100 people and sets truncated when there are more; list_members finds one person by name. Needs the right to manage the project's team.",
+			"The people who can be put on a project: every active member of the organization, archived people left out, with the user ids that assign_project_member takes. It also lists people who are on the project already, so it does not show who is not assigned: list_project_members shows who is on the project. The email is null, except on rows whose name another member shares. Returns at most 100 people and sets truncated when there are more; list_members finds one person by name. Needs the right to manage the project's team.",
 		schema: z.object({ projectId: projectIdInput }),
 		run: async (ctx, args) => {
 			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);

@@ -232,6 +232,9 @@ describe("list_assignable_people", () => {
 		expect(byId.has("user-ast-projects-gone")).toBe(false);
 		// People who are not on the project yet are.
 		expect(byId.has(ADMIN)).toBe(true);
+		// So is a person who is on the project already: the list is every
+		// active member, not the people who are left to assign.
+		expect(byId.has(PM)).toBe(true);
 		expect(byId.get(PLAIN)?.email).toBeNull();
 		expect(byId.get("user-ast-projects-twin-1")?.email).toBe(
 			"user-ast-projects-twin-1@example.com",
