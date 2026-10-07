@@ -63,6 +63,7 @@ import {
 	projectIdInput,
 	projectRoleEnum,
 	readHourFundInput,
+	rememberFilingRuleInput,
 	setMonthlyHourFundInput,
 	setTimeEntryOvertimeInput,
 	startTimerInput,
@@ -73,6 +74,7 @@ import {
 	timeReportDetailInput,
 	timeReportSummaryInput,
 	unlinkGithubRepoInput,
+	updateFilingRuleInput,
 	updateIntegrationSettingsInput,
 	updateProjectInput,
 	updateRecurringBlockRuleInput,
@@ -794,7 +796,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_filing_rules",
 		kind: "read",
 		description:
-			'The current user\'s standing filing rules: "always file a meeting called X under project Y". A rule is what makes a synced meeting land on a project instead of as unfiled time, so it explains an entry that already has a project nobody chose by hand. Rules are made by filing a meeting with remember set on file_time_entries, never created from nothing.',
+			'The current user\'s standing filing rules: "always file a meeting called X under project Y". A rule is what makes a synced meeting land on a project instead of as unfiled time, so it explains an entry that already has a project nobody chose by hand. Rules are made by filing a meeting with remember set on file_time_entries, or from entries that are already filed with remember_filing_rule, and changed with update_filing_rule.',
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await filingRulesService.list(ctx);
@@ -1876,7 +1878,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "delete_filing_rule",
 		kind: "destructive",
 		description:
-			"Remove one of the current user's standing filing rules, by id from list_filing_rules. The entries it already filed keep their project; only future meetings with that title stop being filed automatically. There is no way to create one back from here — a rule is made by filing a meeting with remember set.",
+			"Remove one of the current user's standing filing rules, by id from list_filing_rules. The entries it already filed keep their project; only future meetings with that title stop being filed automatically. To make one again, file a meeting with remember set on file_time_entries, or call remember_filing_rule with an entry that is already filed.",
 		schema: deleteFilingRuleInput,
 		summarize: async (ctx, args) => {
 			const id = String(args.id ?? "");
@@ -2370,6 +2372,54 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				wasHours: before / 3600,
 			};
 		},
+	},
+	// ── Filing rules ────────────────────────────────────────────────────────
+	{
+		name: "update_filing_rule",
+		kind: "write",
+		// The next sync files future meetings by itself, on this project.
+		confirm: true,
+		description:
+			"Change where one of the current user's OWN standing filing rules files its meetings: the project, and optionally the task (targetTaskId, null keeps the meeting's own task). The title the rule matches cannot change; a rule with another title is a new rule. Take the rule id from list_filing_rules, the project from list_projects and the task from list_tasks. The project must be one the person works on. Meetings that are already filed stay where they are.",
+		schema: updateFilingRuleInput,
+		summarize: async (ctx, args) => {
+			const [rules, projectName, taskName] = await Promise.all([
+				filingRulesService.list(ctx).catch(() => []),
+				projectNameFor(ctx, args.projectId),
+				args.targetTaskId
+					? nameOr(async () => {
+							const tasks = await tasksService.listSelectable(ctx);
+							return tasks.find((row) => row.id === args.targetTaskId);
+						}, "another task")
+					: Promise.resolve(null),
+			]);
+			const rule = rules.find((row) => row.id === args.id);
+			return `File "${rule?.title ?? "a meeting"}" to ${projectName}${taskName ? ` as ${taskName}` : ""} from now on`;
+		},
+		run: async (ctx, args) =>
+			filingRulesService.update(ctx, updateFilingRuleInput.parse(args)),
+	},
+	{
+		name: "remember_filing_rule",
+		kind: "write",
+		// The rule files future meetings by itself.
+		confirm: true,
+		description:
+			"Make standing filing rules from the current user's OWN entries that are already on a project: a meeting with the same task and the same title files itself to that project from now on. Pass the entry ids (up to 50, from time_report_detail). You do not choose the project, the task or the title: each comes from the entry, so name entries that are filed where the person wants the meetings to go. Entries with no project, entries with no note and entries that are not the person's add no rule. The result says how many rules were made. Use file_time_entries with remember to file unfiled meetings and remember them in one step.",
+		schema: rememberFilingRuleInput,
+		summarize: async (ctx, args) => {
+			const ids = entryIdList.parse(args.timeEntryIds);
+			const first = ids[0]
+				? await timeEntriesService.getOwn(ctx, ids[0]).catch(() => null)
+				: null;
+			const what = first?.description?.trim().slice(0, 60);
+			return `Remember where ${ids.length === 1 ? "1 entry is" : `${ids.length} entries are`} filed${what ? ` (${what}${ids.length > 1 ? ", ..." : ""})` : ""} as filing rules`;
+		},
+		run: async (ctx, args) =>
+			filingRulesService.rememberFromEntries(
+				ctx,
+				rememberFilingRuleInput.parse(args),
+			),
 	},
 ];
 

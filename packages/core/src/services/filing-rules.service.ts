@@ -2,10 +2,11 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "../db";
-import { project, task } from "../db/schema/domain";
+import { project, task, timeEntry } from "../db/schema/domain";
 import { filingRule } from "../db/schema/settings";
 import type {
 	DeleteFilingRuleInput,
+	RememberFilingRuleInput,
 	UpdateFilingRuleInput,
 } from "../schema/filing-rules";
 import { ctxAccess } from "./context";
@@ -160,6 +161,65 @@ export const filingRulesService = {
 				},
 			});
 		return rows.length;
+	},
+
+	/**
+	 * Make rules from entries the caller already filed, with no project or title
+	 * from the caller. The assistant uses it: `rememberFrom` trusts its target,
+	 * so this reads the caller's OWN entries and uses the project each one is on.
+	 * An entry with no project, and an id that is not the caller's, adds no
+	 * rule. The project must be live and the caller's to work on, because the
+	 * next sync files a meeting there.
+	 */
+	rememberFromEntries: async (ctx: Ctx, input: RememberFilingRuleInput) => {
+		const ids = [...new Set(input.timeEntryIds)];
+		const rows = await db
+			.select({
+				projectId: timeEntry.projectId,
+				taskId: timeEntry.taskId,
+				description: timeEntry.description,
+			})
+			.from(timeEntry)
+			.where(
+				and(
+					inArray(timeEntry.id, ids),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			);
+
+		const byProject = new Map<
+			string,
+			{ taskId: string; description: string }[]
+		>();
+		for (const row of rows) {
+			if (!row.projectId) continue;
+			const group = byProject.get(row.projectId) ?? [];
+			group.push({ taskId: row.taskId, description: row.description });
+			byProject.set(row.projectId, group);
+		}
+
+		const access = await ctxAccess(ctx);
+		// Every project is checked before any rule is written, so one refused
+		// project leaves the batch unwritten.
+		for (const projectId of byProject.keys()) {
+			await assertProjectInOrg(ctx, projectId);
+			access.assertCanTrackOn(projectId);
+		}
+		let remembered = 0;
+		for (const [projectId, entries] of byProject) {
+			remembered += await filingRulesService.rememberFrom(
+				ctx,
+				{ projectId },
+				entries,
+			);
+		}
+		return {
+			remembered,
+			// Own entries found, and how many of those had no project.
+			entriesFound: rows.length,
+			unfiled: rows.filter((row) => !row.projectId).length,
+		};
 	},
 
 	/**
