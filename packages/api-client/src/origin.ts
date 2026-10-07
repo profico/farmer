@@ -6,12 +6,14 @@ const AUTHORITY = /^(https?):\/\/([^/?#\s]+)(?:[/?#]|$)/i;
 const HOST =
 	/^(\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(?::(\d{1,5}))?$/i;
 
-/** A strict dotted IPv4 address: four numbers, each 0 to 255. Null for any
- *  other text, so `10.evil.example` is not an address in 10.0.0.0/8. */
+/** A strict dotted IPv4 address: four decimal numbers, each 0 to 255, with
+ *  no leading zero. Null for any other text, so `10.evil.example` is not an
+ *  address in 10.0.0.0/8. A resolver can read `010.0.0.1` as octal, which is
+ *  8.0.0.1, so a leading zero, hex and short forms are not local. */
 const ipv4Octets = (host: string): number[] | null => {
 	const parts = host.split(".");
 	if (parts.length !== 4) return null;
-	if (!parts.every((part) => /^\d{1,3}$/.test(part))) return null;
+	if (!parts.every((part) => /^(0|[1-9]\d{0,2})$/.test(part))) return null;
 	const octets = parts.map(Number);
 	return octets.every((octet) => octet <= 255) ? octets : null;
 };

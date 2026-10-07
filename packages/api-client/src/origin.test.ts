@@ -52,6 +52,13 @@ describe("plain http", () => {
 		"http://localhost.evil.example",
 		"http://[2001:db8::1]",
 		"http://[fe80::1]",
+		// A resolver can read these as 8.0.0.1, 127.0.0.1 or 192.168.8.1.
+		"http://010.0.0.1",
+		"http://0177.0.0.1",
+		"http://192.168.010.1",
+		"http://0x7f.0.0.1",
+		"http://127.1",
+		"http://2130706433",
 	])("refuses the remote host of %s", (input) => {
 		expect(() => normalizeOrigin(input)).toThrow("plain http");
 	});
@@ -78,5 +85,11 @@ describe("isLocalHost", () => {
 		expect(isLocalHost("10.0.0")).toBe(false);
 		expect(isLocalHost("10.0.0.256")).toBe(false);
 		expect(isLocalHost("192.168.1.1.example")).toBe(false);
+		expect(isLocalHost("010.0.0.1")).toBe(false);
+		expect(isLocalHost("0x0a.0.0.1")).toBe(false);
+	});
+
+	test("accepts a zero octet", () => {
+		expect(isLocalHost("10.0.0.1")).toBe(true);
 	});
 });

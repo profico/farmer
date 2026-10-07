@@ -90,7 +90,11 @@ object CredentialStore {
     val name = host.lowercase().removePrefix("[").removeSuffix("]")
     if (name == "localhost" || name.endsWith(".local")) return true
     val parts = name.split(".")
-    if (parts.size == 4 && parts.all { it.length in 1..3 && it.all(Char::isDigit) }) {
+    // No leading zero: a resolver can read `010.0.0.1` as octal, 8.0.0.1.
+    val decimal = { part: String ->
+      part.length in 1..3 && part.all(Char::isDigit) && (part.length == 1 || part[0] != '0')
+    }
+    if (parts.size == 4 && parts.all(decimal)) {
       val octets = parts.map { it.toInt() }
       if (octets.any { it > 255 }) return false
       val (a, b) = octets
