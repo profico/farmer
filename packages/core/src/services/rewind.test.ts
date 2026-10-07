@@ -9,6 +9,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { rewindService } from "./rewind.service";
 import type { Ctx } from "./types";
@@ -17,9 +21,11 @@ const H = 3600;
 const ORG = "rw-org";
 const ME = "u-rw-me";
 const OTHER = "u-rw-other";
+const BUSY = "u-rw-busy";
 const NOW = new Date("2025-12-10T12:00:00Z");
 
 const ctx: Ctx = { organizationId: ORG, userId: ME };
+const busyCtx: Ctx = { organizationId: ORG, userId: BUSY };
 
 let harness: TestDb;
 let devTaskId: string;
@@ -59,7 +65,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 	});
 	await db.insert(user).values(
-		[ME, OTHER].map((id) => ({
+		[ME, OTHER, BUSY].map((id) => ({
 			id,
 			name: id,
 			email: `${id}@example.com`,
@@ -69,7 +75,7 @@ beforeAll(async () => {
 		})),
 	);
 	await db.insert(member).values(
-		[ME, OTHER].map((id) => ({
+		[ME, OTHER, BUSY].map((id) => ({
 			id: `m-${id}`,
 			organizationId: ORG,
 			userId: id,
@@ -154,6 +160,82 @@ beforeAll(async () => {
 	// The year before, and somebody else's year.
 	await log(ME, "2024-06-03", devTaskId, 5, alphaId);
 	await log(OTHER, "2025-12-02", devTaskId, 8, alphaId);
+
+	// BUSY's year: a tie for the busiest day, a Sunday, review time, learning
+	// time, and GitHub evidence.
+	const [review, learning] = await db
+		.insert(task)
+		.values([
+			{
+				scope: "organization" as const,
+				organizationId: ORG,
+				name: "Code Review",
+				group: "engineering" as const,
+				systemKey: "code_review" as const,
+			},
+			{
+				scope: "organization" as const,
+				organizationId: ORG,
+				name: "Reading",
+				group: "learning" as const,
+			},
+		])
+		.returning();
+	const reviewId = present(review, "Code Review").id;
+	const learningId = present(learning, "Reading").id;
+	// Tuesday and Wednesday tie at 5h; the earlier date must win.
+	await log(BUSY, "2025-12-09", reviewId, 5, alphaId);
+	await log(BUSY, "2025-12-03", devTaskId, 5, alphaId);
+	await log(BUSY, "2025-12-04", devTaskId, 2, alphaId);
+	await log(BUSY, "2025-12-07", learningId, 1, alphaId);
+	const entries = await db
+		.select({ id: timeEntry.id, date: timeEntry.date })
+		.from(timeEntry)
+		.where(eq(timeEntry.userId, BUSY));
+	const entryOn = (date: string) =>
+		present(
+			entries.find((e) => e.date === date),
+			date,
+		).id;
+	const commit = (timeEntryId: string, sha: string) => ({
+		timeEntryId,
+		sha,
+		message: sha,
+		committedAt: new Date(),
+		url: `https://example.com/${sha}`,
+	});
+	// The same sha on two entries counts once.
+	await db
+		.insert(timeEntryGithubCommit)
+		.values([
+			commit(entryOn("2025-12-03"), "aaa"),
+			commit(entryOn("2025-12-04"), "aaa"),
+			commit(entryOn("2025-12-04"), "bbb"),
+		]);
+	const activity = (
+		timeEntryId: string,
+		kind: "opened" | "merged" | "reviewed",
+		eventId: string,
+	) => ({
+		timeEntryId,
+		kind,
+		eventId,
+		number: 1,
+		title: "PR",
+		pullRequestUrl: "https://example.com/pr/1",
+		url: "https://example.com/pr/1",
+		occurredAt: new Date(),
+	});
+	await db
+		.insert(timeEntryGithubPrActivity)
+		.values([
+			activity(entryOn("2025-12-03"), "opened", "e1"),
+			activity(entryOn("2025-12-04"), "opened", "e2"),
+			activity(entryOn("2025-12-04"), "merged", "e3"),
+			activity(entryOn("2025-12-09"), "reviewed", "e4"),
+			activity(entryOn("2025-12-09"), "reviewed", "e5"),
+			activity(entryOn("2025-12-09"), "reviewed", "e6"),
+		]);
 });
 
 afterAll(async () => {
@@ -219,5 +301,41 @@ describe("rewindService.mine", () => {
 		// The 15th is lived now.
 		expect(rewind.workedSeconds).toBe(67 * H);
 		expect(rewind.timeOff.aheadDays).toBe(0);
+	});
+
+	test("breaks down weekdays, groups and review time", async () => {
+		const rewind = await rewindService.mine(
+			busyCtx,
+			{ year: 2025 },
+			{ now: NOW },
+		);
+		// Sunday 1h, Tuesday 5h, Wednesday 5h, Thursday 2h.
+		expect(rewind.weekdays.map((s) => s / H)).toEqual([1, 0, 5, 5, 2, 0, 0]);
+		expect(rewind.groups.map((g) => [g.group, g.seconds / H])).toEqual([
+			["engineering", 12],
+			["learning", 1],
+		]);
+		expect(rewind.codeReviewSeconds).toBe(5 * H);
+		expect(rewind.meetingSeconds).toBe(0);
+		expect(rewind.weekendDaysWorked).toBe(1);
+	});
+
+	test("names the earlier day when two days tie for busiest", async () => {
+		const rewind = await rewindService.mine(
+			busyCtx,
+			{ year: 2025 },
+			{ now: NOW },
+		);
+		expect(rewind.busiestDay).toEqual({ date: "2025-12-03", seconds: 5 * H });
+	});
+
+	test("counts distinct commits and pull request events", async () => {
+		const rewind = await rewindService.mine(
+			busyCtx,
+			{ year: 2025 },
+			{ now: NOW },
+		);
+		expect(rewind.commits).toBe(2);
+		expect(rewind.pullRequests).toEqual({ opened: 2, merged: 1, reviewed: 3 });
 	});
 });
