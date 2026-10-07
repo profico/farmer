@@ -1176,6 +1176,9 @@ export const githubService = {
 				details: { projectId: row.projectId },
 			});
 		}
+		// The rows that went, so a caller can tell a real unlink from an id that
+		// matched nothing.
+		return removed;
 	},
 
 	/**
@@ -1621,6 +1624,7 @@ export const githubService = {
 					eq(timeEntry.userId, ctx.userId),
 					gte(timeEntry.date, input.from),
 					lte(timeEntry.date, input.to),
+					input.timeEntryId ? eq(timeEntry.id, input.timeEntryId) : undefined,
 					input.repository
 						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
 						: undefined,
@@ -1918,6 +1922,7 @@ export const githubService = {
 					eq(timeEntry.userId, ctx.userId),
 					gte(timeEntry.date, input.from),
 					lte(timeEntry.date, input.to),
+					input.timeEntryId ? eq(timeEntry.id, input.timeEntryId) : undefined,
 					input.repository
 						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
 						: undefined,

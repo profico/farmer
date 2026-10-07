@@ -51,17 +51,23 @@ import {
 	deleteRecurringBlockRuleInput,
 	deleteTimeEntryInput,
 	fileTimeEntriesInput,
+	linkProjectRepoInput,
 	listAbsenceForUserInput,
+	listAvailableReposInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
 	monthReportInput,
 	projectIdInput,
 	projectRoleEnum,
 	setTimeEntryOvertimeInput,
+	suggestCommitsInput,
 	suggestDayAssemblyInput,
+	suggestPullRequestsInput,
 	taskIdInput,
 	timeReportDetailInput,
 	timeReportSummaryInput,
+	unlinkGithubRepoInput,
+	updateIntegrationSettingsInput,
 	updateProjectInput,
 	updateRecurringBlockRuleInput,
 	updateTaskInput,
@@ -394,6 +400,29 @@ const attachmentIdList = (key: string, args: JsonRecord) => [
 ];
 
 const shortSha = (sha: string) => sha.slice(0, 7);
+
+/** The most rows a list tool returns. A model reads a long list badly and the
+ *  result goes to the model provider, so a longer list is cut and says so. */
+const MAX_LIST_ROWS = 100;
+
+/** A list cut to `max` rows, with a flag for the rows that were left out. */
+const capRows = <T>(rows: readonly T[], max = MAX_LIST_ROWS) => ({
+	rows: rows.slice(0, max),
+	truncated: rows.length > max,
+});
+
+/** What each integration switch is called on a card. */
+const SWITCH_LABELS = new Map([
+	["googleAutoSyncMeetings", "syncing Google Calendar meetings"],
+	["githubAutoLoadCommits", "loading commits into suggestions"],
+	["githubSyncCommitsAsWorkTime", "syncing commits as work time"],
+]);
+
+/** The switches that write entries by themselves once they are on. */
+const WRITING_SWITCHES = new Set<string>([
+	"googleAutoSyncMeetings",
+	"githubSyncCommitsAsWorkTime",
+]);
 
 export const ASSISTANT_TOOLS: AssistantTool[] = [
 	// ── reads: who, and what exists ─────────────────────────────────────────
@@ -767,7 +796,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_attached_commits",
 		kind: "read",
 		description:
-			"The commits that are attached to the current user's own time entries, for entries dated between two dates (inclusive, max 31 days apart). Optional repository (owner/name, for example profico/farmer) keeps one repo. Each row has an attachmentId. Call this first when the user asks to unlink or remove commits from entries, then pass the attachmentId values to unlink_commits. It is not list_commits: that one reads GitHub and has no attachmentId. Returns at most 200 rows and sets truncated when there are more.",
+			"The commits that are attached to the current user's own time entries, for entries dated between two dates (inclusive, max 31 days apart). Optional repository (owner/name, for example profico/farmer) keeps one repo. Optional timeEntryId keeps the commits of one entry (still pass the entry's date as from and to). Each row has an attachmentId. Call this first when the user asks to unlink or remove commits from entries, then pass the attachmentId values to unlink_commits. It is not list_commits: that one reads GitHub and has no attachmentId. Returns at most 200 rows and sets truncated when there are more.",
 		schema: attachedEvidenceRangeInput,
 		run: async (ctx, args) => {
 			const input = attachedEvidenceRangeInput.parse(args);
@@ -793,7 +822,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_attached_pull_requests",
 		kind: "read",
 		description:
-			"The pull request events (opened, merged, closed, reviewed) that are attached to the current user's own time entries, for entries dated between two dates (inclusive, max 31 days apart). Optional repository (owner/name) keeps one repo. Each row has an activityId. Call this first when the user asks to unlink pull requests from entries, then pass the activityId values to unlink_pull_requests. It is not list_pull_requests: that one reads GitHub and has no activityId. Returns at most 200 rows and sets truncated when there are more.",
+			"The pull request events (opened, merged, closed, reviewed) that are attached to the current user's own time entries, for entries dated between two dates (inclusive, max 31 days apart). Optional repository (owner/name) keeps one repo. Optional timeEntryId keeps the events of one entry (still pass the entry's date as from and to). Each row has an activityId. Call this first when the user asks to unlink pull requests from entries, then pass the activityId values to unlink_pull_requests. It is not list_pull_requests: that one reads GitHub and has no activityId. Returns at most 200 rows and sets truncated when there are more.",
 		schema: attachedEvidenceRangeInput,
 		run: async (ctx, args) => {
 			const input = attachedEvidenceRangeInput.parse(args);
@@ -1832,6 +1861,217 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const { taskId } = z.object({ taskId: taskIdInput }).parse(args);
 			return tasksService.archive(ctx, taskId);
+		},
+	},
+	// ── GitHub: repos, sync settings, suggestions ───────────────────────────
+	{
+		name: "list_linked_github_repos",
+		kind: "read",
+		description:
+			"The GitHub repositories linked to ONE project, with the projectGithubRepoId that attach_commits, unlink_github_repo and list_commits use. Needs a projectId from list_projects. A Member who is on the project only because it is open to the whole organization gets an empty list.",
+		schema: z.object({ projectId: projectIdInput }),
+		run: async (ctx, args) => {
+			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);
+			const rows = await githubService.listLinkedRepos(ctx, projectId);
+			return rows.map((row) => ({
+				projectGithubRepoId: row.id,
+				repository: row.fullName,
+				private: row.private,
+			}));
+		},
+	},
+	{
+		name: "list_available_github_repos",
+		kind: "read",
+		available: adminOnly,
+		description:
+			"The GitHub repositories that the organization's GitHub App can see, which an Admin may link to a project. This is the whole organization, not one person's data. Each row says which project already holds the repo (linkedTo), because one repo belongs to one project. Pass query to keep the names that contain some text, and onlyUnlinked to drop the repos that are taken. Returns at most 100 rows and sets truncated when there are more. The githubRepoId and installationId are what link_github_repo takes. Admin only.",
+		schema: listAvailableReposInput,
+		run: async (ctx, args) => {
+			const input = listAvailableReposInput.parse(args);
+			const { repos, fetchedAt } = await githubService.listAvailableRepos(ctx);
+			const needle = input.query?.toLowerCase();
+			const matching = repos.filter(
+				(repo) =>
+					(!needle || repo.fullName.toLowerCase().includes(needle)) &&
+					(!input.onlyUnlinked || !repo.linkedTo),
+			);
+			const { rows, truncated } = capRows(matching);
+			return {
+				total: matching.length,
+				truncated,
+				// How old the list is. GitHub is read at most every few minutes.
+				fetchedAt: fetchedAt?.toISOString() ?? null,
+				repos: rows.map((repo) => ({
+					githubRepoId: repo.githubRepoId,
+					installationId: repo.installationId,
+					repository: repo.fullName,
+					private: repo.private,
+					linkedTo: repo.linkedTo
+						? {
+								projectId: repo.linkedTo.projectId,
+								project: repo.linkedTo.projectName,
+							}
+						: null,
+				})),
+			};
+		},
+	},
+	{
+		name: "link_github_repo",
+		kind: "write",
+		available: adminOnly,
+		// Changes what every person on the project has commits read from, and the
+		// sync then reads that repo by itself.
+		confirm: true,
+		description:
+			"Link a GitHub repository to a project, so the commits and pull requests of the people on that project are read from it. Admin only. One repo belongs to one project: a repo that another project holds is refused, and the answer names that project. Take githubRepoId and installationId from list_available_github_repos and projectId from list_projects.",
+		schema: linkProjectRepoInput,
+		summarize: async (ctx, args) => {
+			const githubRepoId = Number(args.githubRepoId);
+			const [repo, projectName] = await Promise.all([
+				nameOr(async () => {
+					const { repos } = await githubService.listAvailableRepos(ctx);
+					const found = repos.find((row) => row.githubRepoId === githubRepoId);
+					return found ? { name: found.fullName } : null;
+				}, "a repository"),
+				projectNameFor(ctx, args.projectId),
+			]);
+			return `Link ${repo} to ${projectName}`;
+		},
+		run: async (ctx, args) => {
+			const row = await githubService.linkRepo(
+				ctx,
+				linkProjectRepoInput.parse(args),
+			);
+			return {
+				linked: true,
+				projectGithubRepoId: row.id,
+				repository: row.fullName,
+				projectId: row.projectId,
+			};
+		},
+	},
+	{
+		name: "unlink_github_repo",
+		kind: "destructive",
+		available: adminOnly,
+		description:
+			"Unlink a GitHub repository from a project. The project stops reading commits and pull requests from it, and the repo is then free to link to another project. Commits that are already attached to entries stay on those entries. Admin only. Pass the projectId and the projectGithubRepoId from list_linked_github_repos. A repo that is not on that project is refused and nothing is unlinked.",
+		schema: unlinkGithubRepoInput,
+		summarize: async (ctx, args) => {
+			const rows = await githubService
+				.listLinkedRepos(ctx, String(args.projectId ?? ""))
+				.catch(() => []);
+			const repo = rows.find((row) => row.id === args.projectGithubRepoId);
+			return `Unlink ${repo?.fullName ?? "a repository"} from ${await projectNameFor(ctx, args.projectId)}`;
+		},
+		run: async (ctx, args) => {
+			const input = unlinkGithubRepoInput.parse(args);
+			const rows = await githubService.listLinkedRepos(ctx, input.projectId);
+			const repo = rows.find((row) => row.id === input.projectGithubRepoId);
+			if (!repo) {
+				throw new Error(
+					"That repository is not linked to this project - nothing was unlinked",
+				);
+			}
+			const removed = await githubService.unlinkRepo(
+				ctx,
+				input.projectGithubRepoId,
+			);
+			if (removed.length === 0) {
+				throw new Error("Nothing was unlinked");
+			}
+			return { unlinked: true, repository: repo.fullName };
+		},
+	},
+	{
+		name: "update_integration_settings",
+		kind: "write",
+		// A switch that writes entries goes on writing by itself.
+		confirm: true,
+		description:
+			"Change the current user's OWN integration switches, one or more: googleAutoSyncMeetings (sync Google Calendar meetings as unfiled entries), githubAutoLoadCommits (load commits into the suggestions of the entry dialog) and githubSyncCommitsAsWorkTime (write work-time blocks from commits). Send only the switches to change. A switch that goes on starts from today: it never backfills the days before. Switching it off and on again moves that day forward. Read the current state with integration_status first. These are the person's own settings and no one else's.",
+		schema: updateIntegrationSettingsInput,
+		summarize: (_ctx, args) => {
+			const parsed = updateIntegrationSettingsInput.safeParse(args);
+			if (!parsed.success) return "Change the integration switches";
+			const lines = Object.entries(parsed.data).flatMap(([key, value]) => {
+				const label = SWITCH_LABELS.get(key);
+				return label && value !== undefined
+					? [
+							`${value ? "Switch on" : "Switch off"} ${label}${
+								value && WRITING_SWITCHES.has(key) ? " (from today on)" : ""
+							}`,
+						]
+					: [];
+			});
+			return lines.length > 0
+				? lines.join("; ")
+				: "Change the integration switches";
+		},
+		run: async (ctx, args) => {
+			const input = updateIntegrationSettingsInput.parse(args);
+			if (Object.values(input).every((value) => value === undefined)) {
+				throw new Error("Send at least one switch to change");
+			}
+			return integrationSettingsService.update(ctx, input);
+		},
+	},
+	{
+		name: "suggest_commits",
+		kind: "read",
+		// Reads the account through better-auth, which refreshes an expired token
+		// and writes it back. See `serial`.
+		serial: true,
+		description:
+			"The current user's OWN GitHub commits on ONE day (yyyy-MM-dd) in the repos linked to ONE project (projectId from list_projects). It is what the entry dialog offers for an entry on that project. For a span of days or every project, use list_commits. Each row has the projectGithubRepoId and sha that attach_commits takes. Returns at most 50 rows, newest first, and sets truncated when there are more. Fails with a clear message when GitHub is not connected.",
+		schema: suggestCommitsInput,
+		run: async (ctx, args) => {
+			const rows = await githubService.suggestCommits(
+				ctx,
+				suggestCommitsInput.parse(args),
+			);
+			const { rows: shown, truncated } = capRows(rows, 50);
+			return {
+				truncated,
+				commits: shown.map((commit) => ({
+					projectGithubRepoId: commit.projectGithubRepoId,
+					repository: commit.repoFullName,
+					sha: commit.sha,
+					message: commit.message.split("\n")[0],
+					committedAt: commit.committedAt.toISOString(),
+				})),
+			};
+		},
+	},
+	{
+		name: "suggest_pull_requests",
+		kind: "read",
+		serial: true,
+		description:
+			"The current user's OWN pull request activity (opened, merged, closed, reviewed) on ONE day (yyyy-MM-dd) in the repos linked to ONE project (projectId from list_projects), one row per pull request. For a span of days or every project, use list_pull_requests. Each row has the projectGithubRepoId and number that attach_pull_requests takes. Returns at most 50 rows and sets truncated when there are more. Fails with a clear message when GitHub is not connected.",
+		schema: suggestPullRequestsInput,
+		run: async (ctx, args) => {
+			const rows = await githubService.suggestPullRequests(
+				ctx,
+				suggestPullRequestsInput.parse(args),
+			);
+			const { rows: shown, truncated } = capRows(rows, 50);
+			return {
+				truncated,
+				pullRequests: shown.map((pr) => ({
+					projectGithubRepoId: pr.projectGithubRepoId,
+					repository: pr.repoFullName,
+					number: pr.number,
+					title: pr.title,
+					activity: pr.activity.map((event) => ({
+						kind: event.kind,
+						reviewState: event.reviewState,
+						occurredAt: event.occurredAt.toISOString(),
+					})),
+				})),
+			};
 		},
 	},
 ];

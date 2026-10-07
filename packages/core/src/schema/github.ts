@@ -128,6 +128,8 @@ export const attachedEvidenceRangeInput = z
 		from: dayKeySchema,
 		to: dayKeySchema,
 		repository: repositoryProjectsInput.shape.repository.optional(),
+		// One entry's evidence. The dates still bound the read.
+		timeEntryId: z.uuid().optional(),
 	})
 	.refine(fromNotAfterTo, {
 		message: "from must not be after to",
@@ -204,3 +206,20 @@ export const attachPullRequestsInput = z.object({
 	pullRequests: z.array(pullRequestRef).min(1).max(50),
 });
 export type AttachPullRequestsInput = z.infer<typeof attachPullRequestsInput>;
+
+// The repos the assistant lists to link. One installation can show hundreds of
+// repos, so the read takes a filter, and the tool caps what it returns.
+export const listAvailableReposInput = z.object({
+	query: z.string().trim().max(100).optional(),
+	onlyUnlinked: z.boolean().optional(),
+});
+export type ListAvailableReposInput = z.infer<typeof listAvailableReposInput>;
+
+// An unlink names the project as well as the repo row. The assistant shows
+// both on its approval card, and the tool refuses a row that is not on that
+// project, so a wrong id cannot unlink some other project's repo.
+export const unlinkGithubRepoInput = z.object({
+	projectId: z.uuid(),
+	projectGithubRepoId: unlinkProjectRepoInput,
+});
+export type UnlinkGithubRepoInput = z.infer<typeof unlinkGithubRepoInput>;
