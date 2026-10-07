@@ -419,13 +419,9 @@ const leadsSomething = (access: Access) =>
 
 const canCreateProjects = (access: Access) => access.canCreateProjects();
 
-/** Why one attachment was not removed, in words a person may read. */
-const unlinkFailure = (tool: string, error: Error) => {
-	const message = safeErrorMessage(error);
-	if (message) return message;
-	console.error(`[assistant] ${tool} failed`, error);
-	return "Could not unlink it";
-};
+/** The result line for an attachment that was not removed, when the error is
+ *  not one that a person may read. */
+const UNLINK_FAILED = "Could not unlink it";
 
 // Unique ids: a repeated id is one unlink, so a card must count it once.
 const attachmentIdList = (key: string, args: JsonRecord) => [
@@ -1568,13 +1564,18 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					await githubService.detachCommit(ctx, attachmentId);
 					results.push({ attachmentId, unlinked: true });
 				} catch (error) {
+					// Only a message written for a person may pass, as in the other
+					// modules. A thrown value that is not an Error is never one: made
+					// into a bare Error, it would read as a sentence a service wrote.
+					const message =
+						error instanceof Error ? safeErrorMessage(error) : null;
+					if (message === null) {
+						console.error("[assistant] unlink_commits failed", error);
+					}
 					results.push({
 						attachmentId,
 						unlinked: false,
-						error: unlinkFailure(
-							"unlink_commits",
-							error instanceof Error ? error : new Error(String(error)),
-						),
+						error: message ?? UNLINK_FAILED,
 					});
 				}
 			}
@@ -1644,13 +1645,18 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					await githubService.detachPullRequestActivity(ctx, activityId);
 					results.push({ activityId, unlinked: true });
 				} catch (error) {
+					// Only a message written for a person may pass, as in the other
+					// modules. A thrown value that is not an Error is never one: made
+					// into a bare Error, it would read as a sentence a service wrote.
+					const message =
+						error instanceof Error ? safeErrorMessage(error) : null;
+					if (message === null) {
+						console.error("[assistant] unlink_pull_requests failed", error);
+					}
 					results.push({
 						activityId,
 						unlinked: false,
-						error: unlinkFailure(
-							"unlink_pull_requests",
-							error instanceof Error ? error : new Error(String(error)),
-						),
+						error: message ?? UNLINK_FAILED,
 					});
 				}
 			}

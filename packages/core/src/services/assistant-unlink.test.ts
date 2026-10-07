@@ -5,7 +5,7 @@
 // the write needs, and tenancy that holds when the model sends an id it
 // should not have.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -26,6 +26,7 @@ import {
 } from "../db/schema/github";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { findTool } from "./assistant-tools";
+import { githubService } from "./github.service";
 import type { Ctx } from "./types";
 
 const ORG = "org-unlink";
@@ -440,6 +441,49 @@ describe("unlink_commits", () => {
 			).error,
 		).toBe("Commit attachment not found");
 		expect(await exists(good)).toBe(false);
+	});
+});
+
+// A thrown value that is not an Error carries no promise that a person may
+// read it. Made into a bare Error, it read as a sentence a service wrote, and
+// the raw text went to the model provider.
+describe("an unlink that throws something other than an Error", () => {
+	const RAW = 'relation "time_entry" does not exist';
+
+	test("reports the fixed line, not the thrown text", async () => {
+		const detachCommit = spyOn(
+			githubService,
+			"detachCommit",
+		).mockImplementation(async () => {
+			// oxlint-disable-next-line no-throw-literal -- the case under test is a thrown value that is not an Error
+			throw RAW;
+		});
+		const detachActivity = spyOn(
+			githubService,
+			"detachPullRequestActivity",
+		).mockImplementation(async () => {
+			// oxlint-disable-next-line no-throw-literal -- the case under test is a thrown value that is not an Error
+			throw RAW;
+		});
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const commits = unlinkResult.parse(
+				await tool("unlink_commits").run(ctx(), {
+					attachmentIds: [crypto.randomUUID()],
+				}),
+			);
+			const events = unlinkResult.parse(
+				await tool("unlink_pull_requests").run(ctx(), {
+					activityIds: [crypto.randomUUID()],
+				}),
+			);
+			expect(at(commits.results, 0).error).toBe("Could not unlink it");
+			expect(at(events.results, 0).error).toBe("Could not unlink it");
+		} finally {
+			detachCommit.mockRestore();
+			detachActivity.mockRestore();
+			logged.mockRestore();
+		}
 	});
 });
 
