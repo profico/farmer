@@ -11,6 +11,7 @@ import {
 	groupAttachedPullRequests,
 	NO_PROJECT_YET,
 	saveLabel,
+	saveNotice,
 	selectedCommitRefs,
 	selectedPullRequestRefs,
 	TIME_OFF,
@@ -385,5 +386,41 @@ describe("activeOptionLabels", () => {
 		expect(activeOptionLabels(false, false)).toEqual([]);
 		expect(activeOptionLabels(true, false)).toEqual(["Repeat"]);
 		expect(activeOptionLabels(true, true)).toEqual(["Repeat", "Overtime"]);
+	});
+});
+
+describe("saveNotice", () => {
+	const day = { date: "2026-09-15", repeatEnabled: false };
+
+	test("says nothing for a save on the day the dialog opened on", () => {
+		expect(saveNotice(day, "2026-09-15", [])).toBeNull();
+	});
+
+	test("names the day for a save to a different day", () => {
+		expect(saveNotice(day, "2026-09-14", [])).toEqual({
+			tone: "success",
+			text: "Saved to September 15, 2026",
+		});
+	});
+
+	test("says the entry is saved when an attach fails", () => {
+		expect(saveNotice(day, "2026-09-15", ["commits"])).toEqual({
+			tone: "error",
+			text: "Saved. The commits were not attached. Try again from the entry.",
+		});
+	});
+
+	test("names the day and each kind that did not attach", () => {
+		expect(
+			saveNotice(day, "2026-09-14", ["commits", "pull requests"])?.text,
+		).toBe(
+			"Saved to September 15, 2026. The commits and pull requests were not attached. Try again from the entry.",
+		);
+	});
+
+	test("a repeat rule has no day to name", () => {
+		expect(
+			saveNotice({ ...day, repeatEnabled: true }, "2026-09-14", []),
+		).toBeNull();
 	});
 });

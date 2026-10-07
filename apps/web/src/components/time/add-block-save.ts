@@ -2,7 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { rememberEntryOptions, rememberLastPick } from "#/lib/entry-options.ts";
-import { formatDateKeyLong } from "#/lib/format-date.ts";
 import {
 	attachedCommitsQuery,
 	attachedPullRequestsQuery,
@@ -18,11 +17,13 @@ import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
 import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 
 import {
+	type AttachKind,
 	type ExistingTimeEntry,
 	type FormValues,
 	type SuggestedCommit,
 	type SuggestedPullRequest,
 	selectedCommitRefs,
+	saveNotice,
 	selectedPullRequestRefs,
 	toEntryPayload,
 	toRulePayload,
@@ -56,27 +57,44 @@ export type SavedContext = {
 	selectedPullRequestKeys: Set<string>;
 };
 
-async function attachSelection(saved: SavedContext): Promise<void> {
+// Each kind attaches on its own, so a failure of one does not stop the other.
+// The entry is saved already: a kind that fails is a line in the toast.
+async function attachKind(
+	kind: AttachKind,
+	count: number,
+	send: () => Promise<void>,
+): Promise<AttachKind | null> {
+	if (count === 0) return null;
+	try {
+		await send();
+		return null;
+	} catch {
+		return kind;
+	}
+}
+
+/** Attaches the picked commits and pull requests; gives the kinds that failed. */
+async function attachSelection(saved: SavedContext): Promise<AttachKind[]> {
 	const { savedEntry, values } = saved;
-	if (values.repeatEnabled) return;
+	if (values.repeatEnabled) return [];
+	const timeEntryId = savedEntry.id;
 	const commits = selectedCommitRefs(
 		saved.suggestedCommits,
 		saved.selectedCommitKeys,
 	);
-	if (commits.length > 0) {
-		await attachCommitsToEntry({
-			data: { timeEntryId: savedEntry.id, commits },
-		});
-	}
 	const pullRequests = selectedPullRequestRefs(
 		saved.suggestedPullRequests,
 		saved.selectedPullRequestKeys,
 	);
-	if (pullRequests.length > 0) {
-		await attachPullRequestsToEntry({
-			data: { timeEntryId: savedEntry.id, pullRequests },
-		});
-	}
+	const failed = await Promise.all([
+		attachKind("commits", commits.length, async () => {
+			await attachCommitsToEntry({ data: { timeEntryId, commits } });
+		}),
+		attachKind("pull requests", pullRequests.length, async () => {
+			await attachPullRequestsToEntry({ data: { timeEntryId, pullRequests } });
+		}),
+	]);
+	return failed.filter((kind) => kind !== null);
 }
 
 // Time off is never remembered: a day of leave is not what the next
@@ -141,18 +159,20 @@ async function refreshBehindExit(saved: SavedContext): Promise<void> {
 	]);
 }
 
-/** Everything after a save: attach the picks, remember them, refresh, close. */
+/** Everything after a save: attach the picks, remember them, refresh, close.
+ *  Nothing here throws back to the mutation. The entry exists on the server
+ *  now, and an error there kept the dialog open with no entry id, so the next
+ *  Save created the entry a second time. */
 export async function finishSave(
 	saved: SavedContext,
 	close: () => void,
 ): Promise<void> {
-	await attachSelection(saved);
+	const failed = await attachSelection(saved);
 	rememberSaved(saved);
-	// Saved to a day other than the one the dialog opened on, which the page
-	// behind it may not show: say where the time went.
-	if (!saved.values.repeatEnabled && saved.values.date !== saved.defaultDate) {
-		toast.success(`Saved to ${formatDateKeyLong(saved.values.date)}`);
-	}
+	// A day other than the one the dialog opened on, which the page behind it
+	// may not show, or a pick that did not attach: say so.
+	const notice = saveNotice(saved.values, saved.defaultDate, failed);
+	if (notice) toast[notice.tone](notice.text);
 	await refreshEntryLists(saved);
 	close();
 	void refreshBehindExit(saved);

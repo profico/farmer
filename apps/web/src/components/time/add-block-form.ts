@@ -11,6 +11,7 @@ import { dayKeySchema } from "@farmer/core/schema";
 import { z } from "zod";
 
 import { readEntryOptions, readLastPick } from "#/lib/entry-options.ts";
+import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import type {
 	suggestCommitsForEntry,
@@ -598,4 +599,27 @@ export function activityLoadState(
 		commitsLoaded: mutations.commits.isSuccess,
 		pullRequestsLoaded: mutations.pullRequests.isSuccess,
 	};
+}
+
+/** A kind of activity that a save attaches to the entry after the write. */
+export type AttachKind = "commits" | "pull requests";
+
+/** The toast after a save, or null when the save needs no message. The entry
+ *  is saved before the attach, so an attach failure is not a save failure:
+ *  the message says what is missing and where to add it. */
+export function saveNotice(
+	values: Pick<FormValues, "date" | "repeatEnabled">,
+	defaultDate: string,
+	failed: ReadonlyArray<AttachKind>,
+): { tone: "success" | "error"; text: string } | null {
+	const moved = !values.repeatEnabled && values.date !== defaultDate;
+	const where = moved ? ` to ${formatDateKeyLong(values.date)}` : "";
+	if (failed.length > 0) {
+		const missing = failed.join(" and ");
+		return {
+			tone: "error",
+			text: `Saved${where}. The ${missing} were not attached. Try again from the entry.`,
+		};
+	}
+	return moved ? { tone: "success", text: `Saved${where}` } : null;
 }
