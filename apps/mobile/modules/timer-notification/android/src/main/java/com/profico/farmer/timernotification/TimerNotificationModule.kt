@@ -30,6 +30,16 @@ class TimerNotificationModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("TimerNotification")
 
+    Events("onTimerAction")
+
+    OnCreate {
+      TimerActionReceiver.onChanged = { sendEvent("onTimerAction") }
+    }
+
+    OnDestroy {
+      TimerActionReceiver.onChanged = null
+    }
+
     Function("canPost") {
       TimerNotifier.canPost(context)
     }

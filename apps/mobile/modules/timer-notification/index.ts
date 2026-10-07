@@ -1,5 +1,7 @@
 import { requireOptionalNativeModule } from "expo";
 
+type Subscription = { remove(): void };
+
 /** What the ongoing notification shows. The figure is `elapsedSeconds` at
  *  `anchorMs` (the phone's clock, Unix milliseconds). */
 export type TimerNotificationState = {
@@ -26,6 +28,8 @@ type NativeTimerNotification = {
 	 *  not local. */
 	setCredential(origin: string, token: string, userAgent: string): boolean;
 	clearCredential(): void;
+	/** Pause or Resume in the notification changed the timer on the server. */
+	addListener(event: "onTimerAction", listener: () => void): Subscription;
 };
 
 /** The native module, or null where it does not exist: iOS, the web, and an

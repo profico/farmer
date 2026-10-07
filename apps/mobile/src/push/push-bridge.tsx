@@ -12,6 +12,7 @@ import { AppState, Platform } from "react-native";
 import { z } from "zod";
 
 import { LiveActivity } from "../../modules/live-activity";
+import { TimerNotification } from "../../modules/timer-notification";
 import { START_TIMER_KEY } from "../api/queries";
 import { useSession } from "../session/session";
 import { appTargetOf, isSurfaceStop, localAlertData } from "./payload";
@@ -202,17 +203,27 @@ export function PushBridge() {
 		});
 	}, [queryClient]);
 
-	// A timer push (Android) in the foreground: read the timer again, so the
-	// Time tab shows the change that the web or the CLI made.
-	useEffect(
-		() =>
-			onTimerPush(() => {
-				void queryClient.invalidateQueries({
-					predicate: (query) => isTimerKey(query.queryKey),
-				});
-			}),
-		[queryClient],
-	);
+	// Android: read the timer again after a change that the app did not make.
+	// - A timer push in the foreground: the web or the CLI changed the timer.
+	// - Pause or Resume in the notification: the app can stay in the
+	//   foreground under the shade, so no AppState change says that the
+	//   timer moved.
+	// One shade action can send both. The second event cancels the first
+	// read and starts a new one, because the first read can be older than
+	// the change.
+	useEffect(() => {
+		const reread = () => {
+			void queryClient.invalidateQueries({
+				predicate: (query) => isTimerKey(query.queryKey),
+			});
+		};
+		const action = TimerNotification?.addListener("onTimerAction", reread);
+		const stopPush = onTimerPush(reread);
+		return () => {
+			action?.remove();
+			stopPush();
+		};
+	}, [queryClient]);
 
 	// A tap on a notification. On a cold start the tap that opened the app
 	// is read once the session is ready, and only once.

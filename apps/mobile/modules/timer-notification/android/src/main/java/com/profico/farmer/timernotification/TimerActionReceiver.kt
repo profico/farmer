@@ -22,7 +22,9 @@ import java.util.concurrent.TimeoutException
  *
  * The answer of the server is the new timer state, and the notification
  * shows it at once. The server also sends a data push for the change, which
- * the app then shows again with the same figure.
+ * the app then shows again with the same figure. A running app gets the
+ * `onChanged` callback, because a pulled-down shade does not take the app
+ * out of the foreground.
  */
 class TimerActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
@@ -62,8 +64,16 @@ class TimerActionReceiver : BroadcastReceiver() {
     )
   }
 
-  private companion object {
-    const val DEADLINE_MS = 8_000L
+  companion object {
+    private const val DEADLINE_MS = 8_000L
+
+    /**
+     * Set by `TimerNotificationModule` while the app runs, so that a visible
+     * app learns of a change that the server accepted. Without a listener,
+     * the app reads the timer again when it comes to the front.
+     */
+    @Volatile
+    internal var onChanged: (() -> Unit)? = null
   }
 
   private fun run(context: Context, path: String) {
@@ -94,6 +104,7 @@ class TimerActionReceiver : BroadcastReceiver() {
         )
       )
     }
+    if (result != null) onChanged?.invoke()
   }
 
   private sealed class Outcome {
