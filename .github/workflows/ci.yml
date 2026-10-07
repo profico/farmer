@@ -50,8 +50,10 @@ jobs:
       # The action only installs cccc (no `path`). The step after it runs the
       # same script as a developer, so CI and a local run use one command.
       # Keep `version` the same as the binary in the AGENTS.md instructions.
+      # The action ref is a commit sha, not a tag. A tag can move, and this
+      # third-party action runs with the job token.
       - name: Install cccc
-        uses: moznion/cccc-action@v1
+        uses: moznion/cccc-action@f766d74cf323cd9085c2c9263cebdf1ec1ebfb19 # v1.1.1
         with:
           version: v1.7.0
 
