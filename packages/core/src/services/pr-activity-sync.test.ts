@@ -14,6 +14,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -55,6 +56,7 @@ import {
 	setCommitSourceForTests,
 	setPullRequestSourceForTests,
 } from "./ports";
+import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -933,5 +935,44 @@ describe("a detached review", () => {
 		expect(await db.query.pullRequestReviewTombstone.findMany()).toHaveLength(
 			1,
 		);
+	});
+	test("is not put back by a pass that read before the detach", async () => {
+		// The review is on an entry of another day, so the pass does not count it
+		// as held on its own day, and it reads no tombstone for it.
+		const earlier = await addEntry({
+			date: "2026-08-10",
+			projectId,
+			durationSeconds: 60 * 60,
+		});
+		const reviewed: FakeEvent = { day: YESTERDAY, number: 7, kind: "reviewed" };
+		const [attached] = await db
+			.insert(timeEntryGithubPrActivity)
+			.values(pullRequestActivityRow(earlier.id, repoId, event(reviewed)))
+			.returning();
+		setPullRequestSourceForTests(pullRequestsFor([reviewed]));
+		// The detach commits while the pass runs: after the pass read the
+		// tombstones, before it files the review. The task lookup sits between.
+		const lookup = tasksService.findBySystemKey;
+		let detached = false;
+		const spy = spyOn(tasksService, "findBySystemKey").mockImplementation(
+			async (...args) => {
+				if (!detached) {
+					detached = true;
+					await githubService.detachPullRequestActivity(
+						ctx,
+						present(attached, "the seeded review").id,
+					);
+				}
+				return lookup(...args);
+			},
+		);
+		try {
+			await runAutomations();
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect(detached).toBe(true);
+		expect(await db.query.timeEntryGithubPrActivity.findMany()).toEqual([]);
 	});
 });
