@@ -39,9 +39,14 @@ export function stallTimeoutFromEnv(raw: string | undefined): number {
  *  Progress is a content delta, a reasoning delta, a tool-call delta, a finish
  *  reason or a usage row. An SSE comment line (`: OPENROUTER PROCESSING`) is
  *  not progress: OpenRouter keeps sending it while an upstream is stuck, so
- *  counting it would hide the stall. The default is above the slowest
- *  successful call seen in production (47 s). A value of 0 or less turns the
- *  watchdog off, and the total deadline above still applies. */
+ *  counting it would hide the stall.
+ *
+ *  The limit is on a GAP with no progress, not on the total. The slowest
+ *  successful calls in production took 80.3 s, 54.3 s and 49.8 s in total, and
+ *  their output streamed for part of that time. Their time to the first
+ *  progress was not recorded, so the 60 s default is a guess, not a
+ *  measurement. A value of 0 or less turns the watchdog off, and the total
+ *  deadline above still applies. */
 export const OPENROUTER_STALL_TIMEOUT_MS = stallTimeoutFromEnv(
 	process.env.OPENROUTER_STALL_TIMEOUT_MS,
 );
