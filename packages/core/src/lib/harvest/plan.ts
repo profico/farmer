@@ -2269,35 +2269,150 @@ export function planHarvestImport(
 		projectWindow,
 		blocked,
 	);
-	const { clientPlans, clientReview } = clients;
-	const { taskPlans, taskReview, taskLocal, taskById } = planTasks(
+	const tasks = planTasks(parsed, snapshot, mappings, blocked);
+	const projects = planProjects(
 		parsed,
 		snapshot,
+		choices,
 		mappings,
+		clients,
+		projectWindow,
 		blocked,
 	);
-	const { projectPlans, projectReviewByKey, projectLocal, projectActive } =
-		planProjects(
-			parsed,
-			snapshot,
-			choices,
-			mappings,
-			clients,
-			projectWindow,
-			blocked,
-		);
 
 	const members = indexMembers(snapshot);
 	const duplicates = resolveDuplicates(parsed, choices, mappings, blocked);
-	const { aliasOf, duplicateGroups } = duplicates;
 	const people = draftPeople(duplicates, choices, mappings, members, blocked);
-	const { drafts, personUserId, personActive, personName } = people;
-	const aliasPlans = planAliases(parsed, aliasOf, mappings, people);
-	const ownerOf = buildOwners(drafts, personUserId, aliasOf);
-	const ownerKey = (sourceKey: string) => ownerOf.get(sourceKey) ?? sourceKey;
-	const emailsToCheck = checkEmails(drafts, parsed, snapshot, members, blocked);
+	const aliasPlans = planAliases(parsed, duplicates.aliasOf, mappings, people);
+	const ownerOf = buildOwners(
+		people.drafts,
+		people.personUserId,
+		duplicates.aliasOf,
+	);
+	const emailsToCheck = checkEmails(
+		people.drafts,
+		parsed,
+		snapshot,
+		members,
+		blocked,
+	);
 
-	// Rows, dedupe and days ----------------------------------------------------
+	const planned = planDays(
+		{ parsed, snapshot, choices, people, tasks, projects, ownerOf },
+		blocked,
+	);
+	const removed = removedDays(
+		parsed,
+		snapshot,
+		ownerOf,
+		people.personUserId,
+		personByLocalId,
+	);
+	const projectMembers = projectMembersOf(
+		planned.memberPairs,
+		projects.projectActive,
+		people.personActive,
+		windowStart(cutoff, HARVEST_ACTIVE_WINDOW_DAYS),
+	);
+	const summary = buildSummary(parsed, planned, removed.length);
+
+	return {
+		ready: blocked.length === 0,
+		blocked,
+		start: {
+			source: "harvest",
+			cutoffDate: cutoff,
+			clients: clients.clientPlans,
+			tasks: tasks.taskPlans,
+			projects: projects.projectPlans,
+			people: [...people.drafts.map((d) => d.plan), ...aliasPlans],
+			projectMembers,
+		},
+		days: planned.days,
+		removedDays: choices.confirmFullExport ? removed : [],
+		emailsToCheck: [...new Set(emailsToCheck)].sort(compareStrings),
+		review: {
+			files: parsed.files,
+			summary,
+			people: people.drafts.map((d) => d.review),
+			projects: [...projects.projectReviewByKey.values()],
+			clients: clients.clientReview,
+			tasks: tasks.taskReview,
+			attention: planned.attention.sort((a, b) => a.record - b.record),
+			duplicates: duplicates.duplicateGroups,
+			negativeRows: planned.negativeRows.sort((a, b) => a.record - b.record),
+			overlapDays: planned.overlapDays,
+			absenceConflicts: planned.absenceConflicts,
+			secondImport: {
+				changedDays: planned.changedDays,
+				keptDays: planned.keptDays,
+				removedDays: removed,
+			},
+		},
+	};
+}
+
+// Rows, dedupe and days -------------------------------------------------------
+
+function ownerKey(ownerOf: ReadonlyMap<string, string>, sourceKey: string) {
+	return ownerOf.get(sourceKey) ?? sourceKey;
+}
+
+/** What the earlier sections planned, for the day plan. */
+interface DayPlanInputs {
+	parsed: ParsedHarvest;
+	snapshot: HarvestSnapshot;
+	choices: HarvestChoices;
+	people: PeopleDrafted;
+	tasks: TasksPlanned;
+	/** The day plan adds the seconds of the kept rows to its reviews. */
+	projects: ProjectsPlanned;
+	ownerOf: ReadonlyMap<string, string>;
+}
+
+/** What one day group reads, besides its plan inputs. */
+interface DayIndex {
+	inputs: DayPlanInputs;
+	appByDay: ReadonlyMap<string, AppEntry[]>;
+	importedByUser: ReadonlyMap<string, Map<string, [string, 0 | 1]>>;
+}
+
+interface MemberPair {
+	project: string;
+	person: string;
+	/** The date of the pair's last row. */
+	last: string;
+}
+
+/** The counters of the summary that the day plan fills. */
+interface DayTally {
+	skippedDuplicate: number;
+	skippedOverlap: number;
+	skippedByCutoff: number;
+	rowsAlreadyImported: number;
+	newDays: number;
+	unchangedDays: number;
+	roundingDelta: number;
+	secondsPerYear: Map<string, number>;
+}
+
+interface DaysPlanned {
+	attention: HarvestAttentionRow[];
+	overlapDays: HarvestOverlapDay[];
+	absenceConflicts: HarvestAbsenceConflict[];
+	changedDays: HarvestDayRef[];
+	keptDays: HarvestDayRef[];
+	days: HarvestImportDay[];
+	negativeRows: HarvestNegativeRow[];
+	memberPairs: Map<string, MemberPair>;
+	tally: DayTally;
+}
+
+function planDays(
+	inputs: DayPlanInputs,
+	blocked: HarvestBlocked[],
+): DaysPlanned {
+	const { parsed, snapshot } = inputs;
 	const appByDay = new Map<string, AppEntry[]>();
 	for (const e of snapshot.appEntries) {
 		const key = pairKey(e.userId, e.date);
@@ -2312,32 +2427,41 @@ export function planHarvestImport(
 			byDate.set(date, [digest, edited]);
 		importedByUser.set(u.userId, byDate);
 	}
-	const activeFrom = isValidDayKey(cutoff)
-		? addDays(cutoff, -HARVEST_ACTIVE_WINDOW_DAYS)
-		: cutoff;
+	const index: DayIndex = { inputs, appByDay, importedByUser };
+	const out: DaysPlanned = {
+		attention: [...parsed.invalidRows],
+		overlapDays: [],
+		absenceConflicts: [],
+		changedDays: [],
+		keptDays: [],
+		days: [],
+		negativeRows: [],
+		memberPairs: new Map(),
+		tally: {
+			skippedDuplicate: 0,
+			skippedOverlap: 0,
+			skippedByCutoff: 0,
+			rowsAlreadyImported: 0,
+			newDays: 0,
+			unchangedDays: 0,
+			roundingDelta: 0,
+			secondsPerYear: new Map(),
+		},
+	};
+	for (const group of groupDays(parsed.days, inputs.ownerOf)) {
+		planDayGroup(group, index, out, blocked);
+	}
+	return out;
+}
 
-	const attention: HarvestAttentionRow[] = [...parsed.invalidRows];
-	const overlapDays: HarvestOverlapDay[] = [];
-	const absenceConflicts: HarvestAbsenceConflict[] = [];
-	const changedDays: HarvestDayRef[] = [];
-	const keptDays: HarvestDayRef[] = [];
-	const days: HarvestImportDay[] = [];
-	const memberPairs = new Map<
-		string,
-		{ project: string; person: string; last: string }
-	>();
-	const secondsPerYear = new Map<string, number>();
-	let roundingDelta = 0;
-	let skippedDuplicate = 0;
-	let skippedOverlap = 0;
-	let skippedByCutoff = 0;
-	let rowsAlreadyImported = 0;
-	let newDays = 0;
-	let unchangedDays = 0;
-
+/** The file days by owner and date, sorted by date, then owner. */
+function groupDays(
+	days: readonly ParsedDay[],
+	ownerOf: ReadonlyMap<string, string>,
+): DayGroup[] {
 	const groupByKey = new Map<string, DayGroup>();
-	for (const day of parsed.days) {
-		const owner = ownerKey(day.personSourceKey);
+	for (const day of days) {
+		const owner = ownerKey(ownerOf, day.personSourceKey);
 		const key = pairKey(owner, day.date);
 		const group = groupByKey.get(key);
 		if (group) group.days.push(day);
@@ -2350,193 +2474,323 @@ export function planHarvestImport(
 			});
 		}
 	}
-	const dayGroups = [...groupByKey.values()].sort((a, b) =>
+	return [...groupByKey.values()].sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.owner, b.owner)
 			: compareStrings(a.date, b.date),
 	);
-	const negativeRows: HarvestNegativeRow[] = [];
+}
 
-	for (const group of dayGroups) {
-		const { owner, date } = group;
-		const userId = personUserId.get(owner) ?? null;
-		const app =
-			userId === null ? [] : (appByDay.get(pairKey(userId, date)) ?? []);
-		const appAbsence = app.filter((e) => e.absence);
-		const appWork = app.filter((e) => !e.absence);
-		const multiset = new Map<string, number>();
-		for (const e of appWork) {
-			if (e.projectId === null) continue;
-			const k = `${e.projectId}|${e.taskId}|${e.durationSeconds}`;
-			multiset.set(k, (multiset.get(k) ?? 0) + 1);
-		}
-		let consumed = 0;
-		const kept: ParsedTimeRow[] = [];
-		const work: ParsedTimeRow[] = [];
+function planDayGroup(
+	group: DayGroup,
+	index: DayIndex,
+	out: DaysPlanned,
+	blocked: HarvestBlocked[],
+): void {
+	const { inputs } = index;
+	const { owner, date } = group;
+	const userId = inputs.people.personUserId.get(owner) ?? null;
+	const app =
+		userId === null ? [] : (index.appByDay.get(pairKey(userId, date)) ?? []);
+	const appWork = app.filter((e) => !e.absence);
 
-		const source: ParsedTimeRow[] = [];
-		for (const day of group.days) {
-			for (const index of day.rows) {
-				const row = parsed.rows[index];
-				if (row) source.push(row);
-			}
-		}
-		// Assignments come from every row, whatever the choices drop below.
-		for (const row of source) {
-			if (row.projectSourceKey === null) continue;
-			const mk = pairKey(row.projectSourceKey, owner);
-			const pair = memberPairs.get(mk);
-			if (!pair)
-				memberPairs.set(mk, {
-					project: row.projectSourceKey,
-					person: owner,
-					last: row.date,
-				});
-			else if (row.date > pair.last) pair.last = row.date;
-		}
-		const netting = subtractNegativeRows(source);
-		for (const n of netting.negatives) {
-			negativeRows.push({
-				...attentionOf(n.row, personName, "Hours is negative"),
-				against: n.against?.hoursRaw ?? null,
-			});
-		}
-		const rows = choices.negativeRows === "subtract" ? netting.rows : source;
-
-		for (const row of rows) {
-			if (row.problem !== null || row.seconds === null) {
-				attention.push(
-					attentionOf(row, personName, row.problem ?? "Hours is not a number"),
-				);
-				continue;
-			}
-			if (row.absence) {
-				if (appAbsence.length > 0) {
-					skippedDuplicate += 1;
-					const harvestTaskId = taskLocal.get(row.taskSourceKey) ?? null;
-					const other = appAbsence.find((e) => e.taskId !== harvestTaskId);
-					if (other) {
-						absenceConflicts.push({
-							personSourceKey: owner,
-							person: personName.get(owner) ?? owner,
-							date: row.date,
-							harvestTask: row.taskName,
-							appTask: taskById.get(other.taskId)?.name ?? other.taskId,
-						});
-					}
-					continue;
-				}
-				kept.push(row);
-				continue;
-			}
-			if (row.date >= cutoff) {
-				skippedByCutoff += 1;
-				continue;
-			}
-			const projectId = projectLocal.get(row.projectSourceKey ?? "") ?? null;
-			const taskId = taskLocal.get(row.taskSourceKey) ?? null;
-			if (projectId !== null && taskId !== null) {
-				const k = `${projectId}|${taskId}|${row.seconds}`;
-				const n = multiset.get(k) ?? 0;
-				if (n > 0) {
-					multiset.set(k, n - 1);
-					consumed += 1;
-					skippedDuplicate += 1;
-					continue;
-				}
-			}
-			work.push(row);
-		}
-
-		// An overlap day: Harvest work rows left AND app work entries that the
-		// exact match did not already account for. Counting the matched ones
-		// too would make "two Harvest rows, one here" import nothing under the
-		// default, when 5.2 says it imports one.
-		if (work.length > 0 && appWork.length - consumed > 0) {
-			const decision =
-				choices.overlap.days[group.dayKey] ?? choices.overlap.default;
-			overlapDays.push({
-				dayKey: group.dayKey,
-				personSourceKey: owner,
-				person: personName.get(owner) ?? owner,
-				date,
-				harvestSeconds: work.reduce((n, r) => n + (r.seconds ?? 0), 0),
-				appSeconds: appWork.reduce((n, e) => n + e.durationSeconds, 0),
-				automationOnly: appWork.every((e) => e.automation),
-				decision,
-			});
-			if (decision === "keep_app") skippedOverlap += work.length;
-			else kept.push(...work);
-		} else {
-			kept.push(...work);
-		}
-		if (kept.length === 0) continue;
-		// File order within the day, whatever the branches above did.
-		kept.sort((a, b) => a.record - b.record);
-
-		for (const row of kept) {
-			const seconds = row.seconds ?? 0;
-			const year = row.date.slice(0, 4);
-			secondsPerYear.set(year, (secondsPerYear.get(year) ?? 0) + seconds);
-			roundingDelta += seconds - (row.rawSeconds ?? 0);
-			if (row.projectSourceKey === null) continue;
-			const review = projectReviewByKey.get(row.projectSourceKey);
-			if (review) {
-				review.seconds += seconds;
-				if (row.billable) review.billableSeconds += seconds;
-				else review.nonBillableSeconds += seconds;
-			}
-		}
-
-		const stored =
-			userId === null ? undefined : importedByUser.get(userId)?.get(date);
-		const ref = { personSourceKey: owner, date };
-		if (stored) {
-			// Every row of one file day, as the file has it: the parse's digest.
-			// A negative row is never sent, so a subtracted day hashes here.
-			const single = group.days.length === 1 ? group.days[0] : undefined;
-			const digest =
-				single && kept.length === single.rows.length
-					? single.digest
-					: dayDigestSync(kept.map((r) => r.key));
-			if (digest === stored[0]) {
-				unchangedDays += 1;
-				rowsAlreadyImported += kept.length;
-				continue;
-			}
-			if (stored[1] === 1) {
-				keptDays.push(ref);
-				rowsAlreadyImported += kept.length;
-				continue;
-			}
-			changedDays.push(ref);
-		} else {
-			newDays += 1;
-		}
-		if (kept.length > MAX_ROWS_PER_DAY) {
-			blocked.push({
-				kind: "day",
-				sourceKey: group.dayKey,
-				message: `${ref.personSourceKey} has ${kept.length} rows on ${date}; a day carries at most ${MAX_ROWS_PER_DAY}`,
-			});
-		}
-		days.push({
-			personSourceKey: owner,
-			date,
-			rows: kept.map((r): HarvestImportRow => ({
-				key: r.key,
-				projectSourceKey: r.projectSourceKey,
-				taskSourceKey: r.taskSourceKey,
-				description: r.notes,
-				durationSeconds: r.seconds ?? 0,
-				overtime: r.overtime,
-			})),
+	const source = collectSourceRows(group, inputs.parsed.rows);
+	// Assignments come from every row, whatever the choices drop below.
+	trackMemberPairs(source, owner, out.memberPairs);
+	const netting = subtractNegativeRows(source);
+	for (const n of netting.negatives) {
+		out.negativeRows.push({
+			...attentionOf(n.row, inputs.people.personName, "Hours is negative"),
+			against: n.against?.hoursRaw ?? null,
 		});
 	}
+	const rows =
+		inputs.choices.negativeRows === "subtract" ? netting.rows : source;
 
-	// Removed days: imported earlier, inside the file's range, not in the file.
+	const { kept, work, consumed } = classifyRows(rows, owner, app, inputs, out);
+	resolveOverlap(group, work, appWork, consumed, kept, inputs, out);
+	if (kept.length === 0) return;
+	// File order within the day, whatever the branches above did.
+	kept.sort((a, b) => a.record - b.record);
+	tallyKept(kept, inputs.projects.projectReviewByKey, out.tally);
+
+	const stored =
+		userId === null ? undefined : index.importedByUser.get(userId)?.get(date);
+	const ref = { personSourceKey: owner, date };
+	const state = compareWithStored(group, kept, stored);
+	if (state === "unchanged") {
+		out.tally.unchangedDays += 1;
+		out.tally.rowsAlreadyImported += kept.length;
+		return;
+	}
+	if (state === "kept") {
+		out.keptDays.push(ref);
+		out.tally.rowsAlreadyImported += kept.length;
+		return;
+	}
+	if (state === "changed") out.changedDays.push(ref);
+	else out.tally.newDays += 1;
+	if (kept.length > MAX_ROWS_PER_DAY) {
+		blocked.push({
+			kind: "day",
+			sourceKey: group.dayKey,
+			message: `${ref.personSourceKey} has ${kept.length} rows on ${date}; a day carries at most ${MAX_ROWS_PER_DAY}`,
+		});
+	}
+	out.days.push({
+		personSourceKey: owner,
+		date,
+		rows: kept.map((r): HarvestImportRow => ({
+			key: r.key,
+			projectSourceKey: r.projectSourceKey,
+			taskSourceKey: r.taskSourceKey,
+			description: r.notes,
+			durationSeconds: r.seconds ?? 0,
+			overtime: r.overtime,
+		})),
+	});
+}
+
+/** The rows of every file day in the group, in group order. */
+function collectSourceRows(
+	group: DayGroup,
+	rows: readonly ParsedTimeRow[],
+): ParsedTimeRow[] {
+	const source: ParsedTimeRow[] = [];
+	for (const day of group.days) {
+		for (const index of day.rows) {
+			const row = rows[index];
+			if (row) source.push(row);
+		}
+	}
+	return source;
+}
+
+/** Records each project the owner has a row on, and the last such date. */
+function trackMemberPairs(
+	source: readonly ParsedTimeRow[],
+	owner: string,
+	memberPairs: Map<string, MemberPair>,
+): void {
+	for (const row of source) {
+		if (row.projectSourceKey === null) continue;
+		const mk = pairKey(row.projectSourceKey, owner);
+		const pair = memberPairs.get(mk);
+		if (!pair)
+			memberPairs.set(mk, {
+				project: row.projectSourceKey,
+				person: owner,
+				last: row.date,
+			});
+		else if (row.date > pair.last) pair.last = row.date;
+	}
+}
+
+interface ClassifiedRows {
+	/** Absence rows to import. */
+	kept: ParsedTimeRow[];
+	/** Work rows before the cutoff that no entry here matches exactly. */
+	work: ParsedTimeRow[];
+	/** How many entries here an exact match used. */
+	consumed: number;
+}
+
+/** Sorts the rows of one day group into attention, skips, kept absence and
+ *  work (5.1 and 5.2). */
+function classifyRows(
+	rows: readonly ParsedTimeRow[],
+	owner: string,
+	app: readonly AppEntry[],
+	inputs: DayPlanInputs,
+	out: DaysPlanned,
+): ClassifiedRows {
+	const appAbsence = app.filter((e) => e.absence);
+	const multiset = exactMultiset(app.filter((e) => !e.absence));
+	const result: ClassifiedRows = { kept: [], work: [], consumed: 0 };
+	for (const row of rows) {
+		if (row.problem !== null || row.seconds === null) {
+			out.attention.push(
+				attentionOf(
+					row,
+					inputs.people.personName,
+					row.problem ?? "Hours is not a number",
+				),
+			);
+			continue;
+		}
+		if (row.absence) {
+			classifyAbsenceRow(row, owner, appAbsence, inputs, out, result.kept);
+			continue;
+		}
+		if (row.date >= inputs.choices.cutoffDate) {
+			out.tally.skippedByCutoff += 1;
+			continue;
+		}
+		if (takeExactMatch(row, multiset, inputs)) {
+			result.consumed += 1;
+			out.tally.skippedDuplicate += 1;
+			continue;
+		}
+		result.work.push(row);
+	}
+	return result;
+}
+
+/** The count of each project, task and duration among the work entries
+ *  here that carry a project. */
+function exactMultiset(appWork: readonly AppEntry[]): Map<string, number> {
+	const multiset = new Map<string, number>();
+	for (const e of appWork) {
+		if (e.projectId === null) continue;
+		const k = `${e.projectId}|${e.taskId}|${e.durationSeconds}`;
+		multiset.set(k, (multiset.get(k) ?? 0) + 1);
+	}
+	return multiset;
+}
+
+/** Absence already booked here skips the row, and a different absence task
+ *  is listed as a conflict. Else the row is kept. */
+function classifyAbsenceRow(
+	row: ParsedTimeRow,
+	owner: string,
+	appAbsence: readonly AppEntry[],
+	inputs: DayPlanInputs,
+	out: DaysPlanned,
+	kept: ParsedTimeRow[],
+): void {
+	if (appAbsence.length === 0) {
+		kept.push(row);
+		return;
+	}
+	out.tally.skippedDuplicate += 1;
+	const harvestTaskId = inputs.tasks.taskLocal.get(row.taskSourceKey) ?? null;
+	const other = appAbsence.find((e) => e.taskId !== harvestTaskId);
+	if (other) {
+		out.absenceConflicts.push({
+			personSourceKey: owner,
+			person: inputs.people.personName.get(owner) ?? owner,
+			date: row.date,
+			harvestTask: row.taskName,
+			appTask: inputs.tasks.taskById.get(other.taskId)?.name ?? other.taskId,
+		});
+	}
+}
+
+/** Uses one entry here with the row's project, task and duration. Returns
+ *  false when there is none left. */
+function takeExactMatch(
+	row: ParsedTimeRow,
+	multiset: Map<string, number>,
+	inputs: DayPlanInputs,
+): boolean {
+	const projectId =
+		inputs.projects.projectLocal.get(row.projectSourceKey ?? "") ?? null;
+	const taskId = inputs.tasks.taskLocal.get(row.taskSourceKey) ?? null;
+	if (projectId === null || taskId === null) return false;
+	const k = `${projectId}|${taskId}|${row.seconds}`;
+	const n = multiset.get(k) ?? 0;
+	if (n <= 0) return false;
+	multiset.set(k, n - 1);
+	return true;
+}
+
+/**
+ * Adds the work rows to `kept`, unless the day overlaps and the decision
+ * keeps this app's entries.
+ *
+ * An overlap day: Harvest work rows left AND app work entries that the
+ * exact match did not already account for. Counting the matched ones
+ * too would make "two Harvest rows, one here" import nothing under the
+ * default, when 5.2 says it imports one.
+ */
+function resolveOverlap(
+	group: DayGroup,
+	work: readonly ParsedTimeRow[],
+	appWork: readonly AppEntry[],
+	consumed: number,
+	kept: ParsedTimeRow[],
+	inputs: DayPlanInputs,
+	out: DaysPlanned,
+): void {
+	if (work.length === 0 || appWork.length - consumed <= 0) {
+		kept.push(...work);
+		return;
+	}
+	const { owner, date } = group;
+	const overlap = inputs.choices.overlap;
+	const decision = overlap.days[group.dayKey] ?? overlap.default;
+	out.overlapDays.push({
+		dayKey: group.dayKey,
+		personSourceKey: owner,
+		person: inputs.people.personName.get(owner) ?? owner,
+		date,
+		harvestSeconds: work.reduce((n, r) => n + (r.seconds ?? 0), 0),
+		appSeconds: appWork.reduce((n, e) => n + e.durationSeconds, 0),
+		automationOnly: appWork.every((e) => e.automation),
+		decision,
+	});
+	if (decision === "keep_app") out.tally.skippedOverlap += work.length;
+	else kept.push(...work);
+}
+
+/** Adds the kept rows to the seconds per year, the rounding delta and the
+ *  project reviews. */
+function tallyKept(
+	kept: readonly ParsedTimeRow[],
+	projectReviewByKey: ReadonlyMap<string, HarvestProjectReview>,
+	tally: DayTally,
+): void {
+	for (const row of kept) {
+		const seconds = row.seconds ?? 0;
+		const year = row.date.slice(0, 4);
+		tally.secondsPerYear.set(
+			year,
+			(tally.secondsPerYear.get(year) ?? 0) + seconds,
+		);
+		tally.roundingDelta += seconds - (row.rawSeconds ?? 0);
+		if (row.projectSourceKey === null) continue;
+		const review = projectReviewByKey.get(row.projectSourceKey);
+		if (review) {
+			review.seconds += seconds;
+			if (row.billable) review.billableSeconds += seconds;
+			else review.nonBillableSeconds += seconds;
+		}
+	}
+}
+
+/** A day an earlier run imported is unchanged when the digest of the rows
+ *  sent now equals the stored one, and kept when somebody edited it here. */
+function compareWithStored(
+	group: DayGroup,
+	kept: readonly ParsedTimeRow[],
+	stored: [string, 0 | 1] | undefined,
+): "unchanged" | "kept" | "changed" | "new" {
+	if (!stored) return "new";
+	// Every row of one file day, as the file has it: the parse's digest.
+	// A negative row is never sent, so a subtracted day hashes here.
+	const single = group.days.length === 1 ? group.days[0] : undefined;
+	const digest =
+		single && kept.length === single.rows.length
+			? single.digest
+			: dayDigestSync(kept.map((r) => r.key));
+	if (digest === stored[0]) return "unchanged";
+	if (stored[1] === 1) return "kept";
+	return "changed";
+}
+
+/** Imported earlier, inside the file's range, not in the file. Adds the
+ *  users of this run to `personByLocalId`. */
+function removedDays(
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	ownerOf: ReadonlyMap<string, string>,
+	personUserId: ReadonlyMap<string, string | null>,
+	personByLocalId: Map<string, string>,
+): HarvestDayRef[] {
 	const fileDays = new Set(
-		parsed.days.map((d) => pairKey(ownerKey(d.personSourceKey), d.date)),
+		parsed.days.map((d) =>
+			pairKey(ownerKey(ownerOf, d.personSourceKey), d.date),
+		),
 	);
 	for (const [sourceKey, userId] of personUserId) {
 		if (userId !== null && !personByLocalId.has(userId))
@@ -2548,7 +2802,7 @@ export function planHarvestImport(
 		for (const u of snapshot.importedDays) {
 			const mappedKey = personByLocalId.get(u.userId);
 			if (mappedKey === undefined) continue;
-			const sourceKey = ownerKey(mappedKey);
+			const sourceKey = ownerKey(ownerOf, mappedKey);
 			for (const [date] of u.days) {
 				if (date < from || date > to) continue;
 				if (!fileDays.has(pairKey(sourceKey, date)))
@@ -2556,13 +2810,22 @@ export function planHarvestImport(
 			}
 		}
 	}
-	removed.sort((a, b) =>
+	return removed.sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.personSourceKey, b.personSourceKey)
 			: compareStrings(a.date, b.date),
 	);
+}
 
-	const projectMembers = [...memberPairs.values()]
+/** Every project-person pair with a row. Active for an active project and
+ *  person with a row on or after `activeFrom`. */
+function projectMembersOf(
+	memberPairs: ReadonlyMap<string, MemberPair>,
+	projectActive: ReadonlyMap<string, boolean>,
+	personActive: ReadonlyMap<string, boolean>,
+	activeFrom: string,
+) {
+	return [...memberPairs.values()]
 		.map((p) => ({
 			projectSourceKey: p.project,
 			personSourceKey: p.person,
@@ -2577,57 +2840,32 @@ export function planHarvestImport(
 				pairKey(b.projectSourceKey, b.personSourceKey),
 			),
 		);
+}
 
-	const rowsImported = days.reduce((n, d) => n + d.rows.length, 0);
-	const summary: HarvestPlanSummary = {
+function buildSummary(
+	parsed: ParsedHarvest,
+	planned: DaysPlanned,
+	removedCount: number,
+): HarvestPlanSummary {
+	const { tally } = planned;
+	return {
 		rowsInFile: parsed.rows.length + parsed.invalidRows.length,
-		rowsImported,
-		rowsAlreadyImported,
-		skippedDuplicate,
-		skippedOverlap,
-		skippedByCutoff,
-		attentionRows: attention.length,
-		overlapDays: overlapDays.length,
-		newDays,
-		unchangedDays,
-		changedDays: changedDays.length,
-		keptDays: keptDays.length,
-		removedDays: removed.length,
-		secondsPerYear: [...secondsPerYear.entries()]
+		rowsImported: planned.days.reduce((n, d) => n + d.rows.length, 0),
+		rowsAlreadyImported: tally.rowsAlreadyImported,
+		skippedDuplicate: tally.skippedDuplicate,
+		skippedOverlap: tally.skippedOverlap,
+		skippedByCutoff: tally.skippedByCutoff,
+		attentionRows: planned.attention.length,
+		overlapDays: planned.overlapDays.length,
+		newDays: tally.newDays,
+		unchangedDays: tally.unchangedDays,
+		changedDays: planned.changedDays.length,
+		keptDays: planned.keptDays.length,
+		removedDays: removedCount,
+		secondsPerYear: [...tally.secondsPerYear.entries()]
 			.sort(([a], [b]) => compareStrings(a, b))
 			.map(([year, seconds]) => ({ year, seconds })),
-		roundingDeltaSeconds: roundingDelta,
-	};
-
-	return {
-		ready: blocked.length === 0,
-		blocked,
-		start: {
-			source: "harvest",
-			cutoffDate: cutoff,
-			clients: clientPlans,
-			tasks: taskPlans,
-			projects: projectPlans,
-			people: [...drafts.map((d) => d.plan), ...aliasPlans],
-			projectMembers,
-		},
-		days,
-		removedDays: choices.confirmFullExport ? removed : [],
-		emailsToCheck: [...new Set(emailsToCheck)].sort(compareStrings),
-		review: {
-			files: parsed.files,
-			summary,
-			people: drafts.map((d) => d.review),
-			projects: [...projectReviewByKey.values()],
-			clients: clientReview,
-			tasks: taskReview,
-			attention: attention.sort((a, b) => a.record - b.record),
-			duplicates: duplicateGroups,
-			negativeRows: negativeRows.sort((a, b) => a.record - b.record),
-			overlapDays,
-			absenceConflicts,
-			secondImport: { changedDays, keptDays, removedDays: removed },
-		},
+		roundingDeltaSeconds: tally.roundingDelta,
 	};
 }
 
