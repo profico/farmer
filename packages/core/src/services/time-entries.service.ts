@@ -940,13 +940,26 @@ const syncCommitWorkTimeForRange = async (
 			day.activity.map((activity) => activity.eventId),
 		),
 	);
+	// Evidence that is already on one of the person's entries of its day stays
+	// where it is. The person or an earlier pass put it there, and it has found
+	// its home: it neither goes on a second entry nor asks for a rest-of-day
+	// block.
+	const held = await evidenceHeldIn(ctx, range.from, range.to);
 	const days = new Map<string, DayEvidence>();
 	for (const { dayKey, commits } of commitDays) {
-		const kept = commits.filter((commit) => !refusedShas.has(commit.sha));
+		const kept = commits.filter(
+			(commit) =>
+				!refusedShas.has(commit.sha) &&
+				!held.commits.has(heldKey(dayKey, commit.sha)),
+		);
 		if (kept.length > 0) days.set(dayKey, { commits: kept, pullRequests: [] });
 	}
 	for (const { dayKey, activity } of pullRequestDays) {
-		const kept = activity.filter((event) => !refusedEvents.has(event.eventId));
+		const kept = activity.filter(
+			(event) =>
+				!refusedEvents.has(event.eventId) &&
+				!held.events.has(heldKey(dayKey, event.eventId)),
+		);
 		if (kept.length === 0) continue;
 		const day = days.get(dayKey) ?? emptyEvidence();
 		day.pullRequests.push(...kept);
@@ -1179,15 +1192,15 @@ const syncCommitWorkTimeForRange = async (
 					),
 				),
 			]);
-			// Evidence that is already on one of the person's entries of the day
-			// stays where it is. The person or an earlier pass put it there, and a
-			// second copy on another entry counts the same work twice.
-			const held = await evidenceHeldOn(txCtx, dayKey);
+			// Read again under the lock too: a hand attach can land during the
+			// pass, and a second copy on another entry counts the same work twice.
+			const heldNow = await evidenceHeldIn(txCtx, dayKey, dayKey);
 			const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
 				group.commits
 					.filter(
 						(commit) =>
-							!held.shas.has(commit.sha) && !refusedNow.has(commit.sha),
+							!heldNow.commits.has(heldKey(dayKey, commit.sha)) &&
+							!refusedNow.has(commit.sha),
 					)
 					.map((commit) => ({
 						timeEntryId,
@@ -1210,7 +1223,7 @@ const syncCommitWorkTimeForRange = async (
 				group.pullRequests
 					.filter(
 						(event) =>
-							!held.eventIds.has(event.eventId) &&
+							!heldNow.events.has(heldKey(dayKey, event.eventId)) &&
 							!refusedEventsNow.has(event.eventId),
 					)
 					.map((event) =>
@@ -1232,32 +1245,40 @@ const syncCommitWorkTimeForRange = async (
 	}
 };
 
-/** The commits and pull request events already on the person's entries of one
- *  day. The engine does not attach a second copy of them to another entry. */
-const evidenceHeldOn = async (ctx: Ctx, dayKey: string) => {
-	const onDay = and(
+/** The key of one piece of evidence on one day, for `evidenceHeldIn`. */
+const heldKey = (dayKey: string, id: string) => `${dayKey} ${id}`;
+
+/** The commits and pull request events already on the person's entries dated
+ *  in the span, keyed by `heldKey(entry date, sha or event id)`. The engine
+ *  does not attach them again, to that entry or to another one. */
+const evidenceHeldIn = async (ctx: Ctx, from: string, to: string) => {
+	const inSpan = and(
 		eq(timeEntry.organizationId, ctx.organizationId),
 		eq(timeEntry.userId, ctx.userId),
-		eq(timeEntry.date, dayKey),
+		gte(timeEntry.date, from),
+		lte(timeEntry.date, to),
 	);
 	const [commits, events] = await Promise.all([
 		ctxDb(ctx)
-			.select({ sha: timeEntryGithubCommit.sha })
+			.select({ date: timeEntry.date, sha: timeEntryGithubCommit.sha })
 			.from(timeEntryGithubCommit)
 			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
-			.where(onDay),
+			.where(inSpan),
 		ctxDb(ctx)
-			.select({ eventId: timeEntryGithubPrActivity.eventId })
+			.select({
+				date: timeEntry.date,
+				eventId: timeEntryGithubPrActivity.eventId,
+			})
 			.from(timeEntryGithubPrActivity)
 			.innerJoin(
 				timeEntry,
 				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
 			)
-			.where(onDay),
+			.where(inSpan),
 	]);
 	return {
-		shas: new Set(commits.map((row) => row.sha)),
-		eventIds: new Set(events.map((row) => row.eventId)),
+		commits: new Set(commits.map((row) => heldKey(row.date, row.sha))),
+		events: new Set(events.map((row) => heldKey(row.date, row.eventId))),
 	};
 };
 

@@ -813,7 +813,20 @@ describe("a detached commit", () => {
 	});
 
 	test("is not put back by a pass that read before the detach", async () => {
-		const { attached } = await syncedEntry();
+		// The commit is on an entry of another day, so the pass does not count
+		// it as held on its own day, and it reads no tombstone for it.
+		const earlier = await addEntry({
+			date: "2026-08-10",
+			projectId,
+			durationSeconds: 60 * 60,
+		});
+		const [attached] = await attachNow(earlier.id);
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(mainCommit());
 		// The detach commits while the pass runs: after the pass read the
 		// tombstones, before it inserts. The task lookup sits between the two.
 		const lookup = tasksService.findBySystemKey;
@@ -822,7 +835,10 @@ describe("a detached commit", () => {
 			async (...args) => {
 				if (!detached) {
 					detached = true;
-					await githubService.detachCommit(ctx, attached.id);
+					await githubService.detachCommit(
+						ctx,
+						present(attached, "the hand attach").id,
+					);
 				}
 				return lookup(...args);
 			},
@@ -835,6 +851,22 @@ describe("a detached commit", () => {
 
 		expect(detached).toBe(true);
 		expect(await attachedRows(SHA)).toEqual([]);
+	});
+
+	test("held by hand on another project, files no empty rest-of-day block", async () => {
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+		await attachNow(other.id);
+		setCommitSourceForTests(mainCommit());
+
+		await runAutomations();
+
+		expect((await entriesOn(YESTERDAY)).map((entry) => entry.id)).toEqual([
+			other.id,
+		]);
 	});
 
 	test("does not touch the same commit of another person", async () => {
