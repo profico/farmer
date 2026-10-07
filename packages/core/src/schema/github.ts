@@ -143,9 +143,10 @@ export type AttachedEvidenceRangeInput = z.infer<
 	typeof attachedEvidenceRangeInput
 >;
 
-// How many attachments one unlink call may name. A session is a few dozen
-// commits. A larger batch is more than a person reads on one approval card.
-export const MAX_UNLINK_PER_CALL = 100;
+// How many attachments one unlink call may name. It is the number of rows the
+// approval card shows (`MAX_PREVIEW_ROWS` in services/assistant-tools.ts). A
+// row past the card is never shown, so the person cannot untick it.
+export const MAX_UNLINK_PER_CALL = 25;
 
 // Any string, not a uuid: a model can send one malformed id among good ones,
 // and the tool reports that id as not found and unlinks the rest. A uuid

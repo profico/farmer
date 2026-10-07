@@ -339,9 +339,21 @@ describe("unlink_commits", () => {
 		expect(
 			tool("unlink_commits").schema.safeParse({ attachmentIds: [] }).success,
 		).toBe(false);
-		const many = Array.from({ length: 101 }, () => crypto.randomUUID());
+		// The cap is the 25 rows the approval card shows: a row past the card
+		// could not be unticked.
+		const ids = (count: number) =>
+			Array.from({ length: count }, () => crypto.randomUUID());
 		expect(
-			tool("unlink_commits").schema.safeParse({ attachmentIds: many }).success,
+			tool("unlink_commits").schema.safeParse({ attachmentIds: ids(25) })
+				.success,
+		).toBe(true);
+		expect(
+			tool("unlink_commits").schema.safeParse({ attachmentIds: ids(26) })
+				.success,
+		).toBe(false);
+		expect(
+			tool("unlink_pull_requests").schema.safeParse({ activityIds: ids(26) })
+				.success,
 		).toBe(false);
 	});
 
