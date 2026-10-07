@@ -8,10 +8,7 @@ import {
 
 import { Button } from "#/components/ui/button.tsx";
 import { cn } from "#/lib/utils.ts";
-import type {
-	listAttachedCommits,
-	listAttachedPullRequests,
-} from "#/server/github.ts";
+import type { listAttachedCommits } from "#/server/github.ts";
 
 import {
 	activitySummary,
@@ -24,9 +21,6 @@ import {
 } from "./add-block-form.ts";
 
 type AttachedCommit = Awaited<ReturnType<typeof listAttachedCommits>>[number];
-export type AttachedPullRequest = Awaited<
-	ReturnType<typeof listAttachedPullRequests>
->[number];
 
 function CalendarEventRow({
 	event,

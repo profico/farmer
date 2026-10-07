@@ -502,7 +502,7 @@ export function Answer({
 					// placeholder out BEFORE the chart arrives, so the two are never on
 					// screen together claiming to be the same figure. The key is the
 					// block's position and does not change when the fence closes — that
-					// is what makes this a swap rather than a remount (see `Block`).
+					// is what makes this a swap rather than a remount (see `Block` in `answer-parse.ts`).
 					return (
 						<div key={key} className="answer-wide" style={blockIn}>
 							<FadeSwap activeKey={block.spec ? "chart" : "loading"}>

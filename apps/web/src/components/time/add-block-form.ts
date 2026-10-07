@@ -58,8 +58,6 @@ export const MAX_ENTRY_SECONDS = 24 * 3600;
  *  came out of More options, where nobody found it. */
 export const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00"] as const;
 
-// The duration rule, apart from the form rule below. It returns the message
-// of the first problem, or null when the text is a valid length.
 function durationProblem(duration: string): string | null {
 	if (!duration.trim()) return "Required";
 	const parsed = parseDuration(duration);

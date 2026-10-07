@@ -284,7 +284,6 @@ function SignInFailureView({
 		config.signInProviders.length > 1 ||
 		config.devAuth ||
 		passwordSignIn !== null;
-	// Only the known codes have an icon of their own.
 	const icon =
 		(search.error ? ERROR_ICONS.get(search.error) : undefined) ??
 		WarningCircleIcon;

@@ -662,131 +662,124 @@ function AddBlockDialogBody({
 		}
 	};
 
-	// A fragment only to keep the body at the indentation it had inside the
-	// <Dialog> the wrapper now owns, so this split reads as the split it is.
 	return (
-		<>
-			<DialogContent className="sm:max-w-xl">
-				<DialogHeader>
-					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
-					{/* The timesheet's ‹ date › stepper, so the day can change without
-					    closing the dialog: yesterday's work logged today, or an entry
-					    moved to the day it belongs to. */}
-					<DateStepper
-						targetDate={targetDate}
-						dayLocked={dayLocked}
-						onSetDate={setDate}
-						onStep={(days) => setDate(addDaysToKey(targetDate, days))}
+		<DialogContent className="sm:max-w-xl">
+			<DialogHeader>
+				<DialogTitle>{isEdit ? "Edit entry" : "Log time"}</DialogTitle>
+				<DateStepper
+					targetDate={targetDate}
+					dayLocked={dayLocked}
+					onSetDate={setDate}
+					onStep={(days) => setDate(addDaysToKey(targetDate, days))}
+				/>
+			</DialogHeader>
+			<Form {...form}>
+				<form
+					onSubmit={form.handleSubmit(submit)}
+					// `grid-cols-[minmax(0,1fr)]` for the same reason dialog-body
+					// carries it: an implicit grid column is `auto`-sized, so its
+					// items get `min-width: auto` and one long unbroken commit subject
+					// widens the column past the dialog, taking every sibling field
+					// with it. Pinning the column is what lets the `truncate` on the
+					// commit rows actually bite.
+					className="grid grid-cols-[minmax(0,1fr)] gap-4"
+				>
+					<ProjectTaskFields
+						form={form}
+						projects={projects}
+						unfiledEdit={unfiledEdit}
+						isTimeOff={isTimeOff}
+						tasks={tasks}
+						pickableTasks={pickableTasks}
+						recentIds={recentIds}
 					/>
-				</DialogHeader>
-				<Form {...form}>
-					<form
-						onSubmit={form.handleSubmit(submit)}
-						// `grid-cols-[minmax(0,1fr)]` for the same reason dialog-body
-						// carries it: an implicit grid column is `auto`-sized, so its
-						// items get `min-width: auto` and one long unbroken commit subject
-						// widens the column past the dialog, taking every sibling field
-						// with it. Pinning the column is what lets the `truncate` on the
-						// commit rows actually bite.
-						className="grid grid-cols-[minmax(0,1fr)] gap-4"
-					>
-						<ProjectTaskFields
+					<div className="grid gap-3">
+						<NoteAndDuration
 							form={form}
-							projects={projects}
-							unfiledEdit={unfiledEdit}
-							isTimeOff={isTimeOff}
-							tasks={tasks}
-							pickableTasks={pickableTasks}
-							recentIds={recentIds}
+							askForNote={needsDescription && !fillsDay}
+							fillsDay={fillsDay}
 						/>
-						<div className="grid gap-3">
-							<NoteAndDuration
-								form={form}
-								askForNote={needsDescription && !fillsDay}
-								fillsDay={fillsDay}
-							/>
-							<DurationPresets
-								form={form}
-								fillsDay={fillsDay}
-								durationValue={durationValue}
-								showFillPreset={showFillPreset}
-								dayHasFill={dayHasFill}
-								heightTransition={heightTransition}
-							/>
-						</div>
-						{showCalendarPicker && calendarOpen && (
-							<CalendarEventList
-								events={calendarEvents}
-								isFetching={calendarEventsQ.isFetching}
-								isError={calendarEventsQ.isError}
-								isSuccess={calendarEventsQ.isSuccess}
-								selectedEventId={calendarEventId}
-								timezone={timezone}
-								onPick={pickCalendarEvent}
-							/>
-						)}
-						{meetingUrl && <MeetingLink url={meetingUrl} />}
-						{githubPanelShown(visibility, activityOpen) && (
-							<GithubActivityPanel
-								showCommitPicker={showCommitPicker}
-								autoLoadCommits={autoLoadCommits}
-								busy={activity.busy}
-								onReload={reloadActivity}
-								commits={{
-									show: showCommitPicker,
-									showAttached: showAttachedCommits,
-									attached: attachedCommits,
-									pickable: pickableCommits,
-									selectedKeys: selectedCommitKeys,
-									loaded: activity.commitsLoaded,
-									detaching: detachCommitMutation.isPending,
-									onToggle: toggleCommitSelection,
-									onDetach: detachCommitMutation.mutate,
-								}}
-								pullRequests={{
-									show: showCommitPicker,
-									showAttached: showAttachedPullRequests,
-									groups: attachedPullRequestGroups,
-									pickable: pickablePullRequests,
-									selectedKeys: selectedPullRequestKeys,
-									loaded: activity.pullRequestsLoaded,
-									detaching: detachPullRequestMutation.isPending,
-									onToggle: togglePullRequestSelection,
-									onDetach: detachPullRequestMutation.mutate,
-								}}
-							/>
-						)}
-						{!isTimeOff && (
-							<MoreOptions
-								form={form}
-								moreOpen={moreOpen}
-								onToggleMore={() => setMoreOpen((current) => !current)}
-								activeOptions={activeOptions}
-								showRepeatSection={showRepeatSection}
-								repeatEnabled={repeatEnabled}
-								daysOfWeek={daysOfWeek}
-								daysError={form.formState.errors.daysOfWeek?.message}
-								weekdays={weekdays}
-								onToggleDay={toggleDay}
-								heightTransition={heightTransition}
-							/>
-						)}
-						<FooterActions
-							showCalendarPicker={showCalendarPicker}
+						<DurationPresets
+							form={form}
+							fillsDay={fillsDay}
+							durationValue={durationValue}
+							showFillPreset={showFillPreset}
+							dayHasFill={dayHasFill}
+							heightTransition={heightTransition}
+						/>
+					</div>
+					{showCalendarPicker && calendarOpen && (
+						<CalendarEventList
+							events={calendarEvents}
+							isFetching={calendarEventsQ.isFetching}
+							isError={calendarEventsQ.isError}
+							isSuccess={calendarEventsQ.isSuccess}
+							selectedEventId={calendarEventId}
+							timezone={timezone}
+							onPick={pickCalendarEvent}
+						/>
+					)}
+					{meetingUrl && <MeetingLink url={meetingUrl} />}
+					{githubPanelShown(visibility, activityOpen) && (
+						<GithubActivityPanel
 							showCommitPicker={showCommitPicker}
-							onToggleCalendar={() => setCalendarOpen((current) => !current)}
-							onToggleActivity={toggleActivity}
-							saveText={saveLabel({
-								pending: mutation.isPending,
-								isEdit,
-								repeatEnabled,
-							})}
-							saving={mutation.isPending}
-							modKey={modKey}
+							autoLoadCommits={autoLoadCommits}
+							busy={activity.busy}
+							onReload={reloadActivity}
+							commits={{
+								show: showCommitPicker,
+								showAttached: showAttachedCommits,
+								attached: attachedCommits,
+								pickable: pickableCommits,
+								selectedKeys: selectedCommitKeys,
+								loaded: activity.commitsLoaded,
+								detaching: detachCommitMutation.isPending,
+								onToggle: toggleCommitSelection,
+								onDetach: detachCommitMutation.mutate,
+							}}
+							pullRequests={{
+								show: showCommitPicker,
+								showAttached: showAttachedPullRequests,
+								groups: attachedPullRequestGroups,
+								pickable: pickablePullRequests,
+								selectedKeys: selectedPullRequestKeys,
+								loaded: activity.pullRequestsLoaded,
+								detaching: detachPullRequestMutation.isPending,
+								onToggle: togglePullRequestSelection,
+								onDetach: detachPullRequestMutation.mutate,
+							}}
 						/>
-					</form>
-				</Form>
-			</DialogContent>
-		</>
+					)}
+					{!isTimeOff && (
+						<MoreOptions
+							form={form}
+							moreOpen={moreOpen}
+							onToggleMore={() => setMoreOpen((current) => !current)}
+							activeOptions={activeOptions}
+							showRepeatSection={showRepeatSection}
+							repeatEnabled={repeatEnabled}
+							daysOfWeek={daysOfWeek}
+							daysError={form.formState.errors.daysOfWeek?.message}
+							weekdays={weekdays}
+							onToggleDay={toggleDay}
+							heightTransition={heightTransition}
+						/>
+					)}
+					<FooterActions
+						showCalendarPicker={showCalendarPicker}
+						showCommitPicker={showCommitPicker}
+						onToggleCalendar={() => setCalendarOpen((current) => !current)}
+						onToggleActivity={toggleActivity}
+						saveText={saveLabel({
+							pending: mutation.isPending,
+							isEdit,
+							repeatEnabled,
+						})}
+						saving={mutation.isPending}
+						modKey={modKey}
+					/>
+				</form>
+			</Form>
+		</DialogContent>
 	);
 }

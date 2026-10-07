@@ -6,7 +6,7 @@ import {
 	CaretRightIcon,
 	GitPullRequestIcon,
 } from "@phosphor-icons/react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, type Transition } from "motion/react";
 import type { ControllerRenderProps, UseFormReturn } from "react-hook-form";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
@@ -39,7 +39,6 @@ import {
 } from "./add-block-form.ts";
 
 type Form = UseFormReturn<FormValues>;
-type HeightTransition = React.ComponentProps<typeof motion.div>["transition"];
 
 // The timesheet's ‹ date › stepper, so the day can change without closing the
 // dialog: yesterday's work logged today, or an entry moved to the day it
@@ -402,7 +401,7 @@ function RestOfDayHint({
 	heightTransition,
 }: {
 	fillsDay: boolean;
-	heightTransition: HeightTransition;
+	heightTransition: Transition;
 }) {
 	return (
 		<AnimatePresence initial={false}>
@@ -449,7 +448,7 @@ export function DurationPresets({
 	durationValue: string;
 	showFillPreset: boolean;
 	dayHasFill: boolean;
-	heightTransition: HeightTransition;
+	heightTransition: Transition;
 }) {
 	const pickLength = (value: string) => {
 		form.setValue("fillsDay", false, { shouldDirty: true });
@@ -496,7 +495,7 @@ type RepeatOptionsProps = {
 	daysError: string | undefined;
 	weekdays: ReadonlyArray<{ day: number; initial: string }>;
 	onToggleDay: (day: number) => void;
-	heightTransition: HeightTransition;
+	heightTransition: Transition;
 };
 
 function RepeatDays({
