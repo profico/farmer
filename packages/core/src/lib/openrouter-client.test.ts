@@ -399,3 +399,49 @@ describe("a stream that ends without a finish reason", () => {
 		expect(turn.finishReason).toBe("stop");
 	});
 });
+
+describe("a rejected request", () => {
+	const reject = (status: number, body: string) => {
+		// SAFETY: a test stub for `fetch` that answers one shape.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(body, { status })) as typeof globalThis.fetch;
+	};
+
+	const failure = async () => {
+		try {
+			await call(new AbortController().signal);
+		} catch (error) {
+			if (error instanceof OpenRouterError) return error;
+			throw error;
+		}
+		throw new Error("the call did not fail");
+	};
+
+	test("a JSON error body gives its message", async () => {
+		reject(401, JSON.stringify({ error: { message: "No auth credentials" } }));
+		const error = await failure();
+		expect(error.message).toBe("No auth credentials");
+		expect(error.status).toBe(401);
+	});
+
+	test("an HTML error body gives its first 300 characters", async () => {
+		reject(502, `<html>${"x".repeat(400)}</html>`);
+		const error = await failure();
+		expect(error.message).toBe(`<html>${"x".repeat(400)}</html>`.slice(0, 300));
+		expect(error.status).toBe(502);
+	});
+
+	test("a JSON body with no message keeps the raw text", async () => {
+		reject(500, '{"error":{}}');
+		await expect(call(new AbortController().signal)).rejects.toThrow(
+			'{"error":{}}',
+		);
+	});
+
+	test("an empty body names the status", async () => {
+		reject(503, "");
+		await expect(call(new AbortController().signal)).rejects.toThrow(
+			"OpenRouter returned 503",
+		);
+	});
+});
