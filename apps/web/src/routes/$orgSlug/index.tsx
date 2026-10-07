@@ -1,45 +1,37 @@
-import { type DayMark, weekDayMarks } from "@farmer/core/lib/day-marks";
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import {
-	addDaysToKey,
-	dayKeyInTz,
 	formatDayKey,
 	startOfWeekKey,
+	addDaysToKey,
+	dayKeyInTz,
 } from "@farmer/core/lib/time";
-import {
-	ArrowRightIcon,
-	CalendarBlankIcon,
-	GitCommitIcon,
-	PlusIcon,
-	SparkleIcon,
-} from "@phosphor-icons/react";
+import { ArrowRightIcon, PlusIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useDeferredValue, useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { GithubReconnectBanner } from "#/components/github-reconnect-banner.tsx";
+import { AutoTrackedList } from "#/components/org-home/auto-tracked.tsx";
+import { SelectedDayEntries } from "#/components/org-home/day-entries.tsx";
+import { OrgHomeStatBand } from "#/components/org-home/stat-band.tsx";
+import { WeekChart } from "#/components/org-home/week-chart.tsx";
 import { RewindBanner } from "#/components/rewind/rewind-banner.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
-import { StatusPill } from "#/components/status-pill.tsx";
-import {
-	TARGET_STATUS,
-	TARGET_TONE,
-	TargetGap,
-} from "#/components/targets.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
-import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
-import { Of, StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
 import { useToday } from "#/hooks/use-today.ts";
-import { formatHoursShort } from "#/lib/format-hours.ts";
-import { cn } from "#/lib/utils.ts";
-import { orderedWeekdays } from "#/lib/weekdays.ts";
+import {
+	buildWeekChart,
+	greetingForHour,
+	resolveSelectedDay,
+	sumSeconds,
+	summarizeAutoTracked,
+} from "#/lib/org-home.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
@@ -86,134 +78,6 @@ export const Route = createFileRoute("/$orgSlug/")({
 	component: OrgHome,
 });
 
-/** The week chart's plot height in px. The columns, the target rule and the
- *  maximum are all measured against it, so the chart is one number to re-tune. */
-const PLOT_H = 76;
-
-type WeekDay = {
-	label: string;
-	key: string;
-	seconds: number;
-	isToday: boolean;
-	isWeekend: boolean;
-	holiday: string | undefined;
-	mark: DayMark | undefined;
-};
-
-type DayVerdict = "none" | "ok" | "covered" | "bad" | "warn";
-
-/** A covered day is grey, not amber: the week has made up for it, and a bar
- *  still in the week's colours would be the alarm the timesheet strip no
- *  longer raises. A holiday is "warn" and is drawn on its own. */
-function dayVerdict(d: WeekDay): DayVerdict {
-	if (d.holiday) return "warn";
-	if (d.mark == null) return "none";
-	if (d.mark === "done") return "ok";
-	if (d.mark === "covered") return "covered";
-	return d.seconds === 0 ? "bad" : "warn";
-}
-
-const BAR_CLASS = {
-	none: "bg-line",
-	covered: "bg-line-strong",
-	bad: "bg-bad",
-	ok: "bg-ok",
-	warn: "bg-warn",
-} satisfies Record<DayVerdict, string>;
-
-const FIGURE_CLASS = {
-	none: "text-faint",
-	covered: "text-muted-foreground",
-	bad: "text-bad",
-	ok: "text-ok",
-	warn: "text-warn",
-} satisfies Record<DayVerdict, string>;
-
-/** The small figure under a bar: "hol.", the hours, a dash or nothing. */
-function dayFigure(d: WeekDay): string {
-	if (d.holiday) return "hol.";
-	if (d.seconds > 0) return formatReportHours(d.seconds);
-	return d.mark != null ? "—" : " ";
-}
-
-/** One weekday of the week chart. The whole column is the button. */
-function WeekDayColumn({
-	d,
-	i,
-	selected,
-	maxDaySeconds,
-	onSelect,
-}: {
-	d: WeekDay;
-	i: number;
-	selected: boolean;
-	maxDaySeconds: number;
-	onSelect: (key: string) => void;
-}) {
-	const px =
-		d.seconds > 0
-			? Math.max(Math.round((d.seconds / maxDaySeconds) * PLOT_H), 3)
-			: 2;
-	const verdict = dayVerdict(d);
-	return (
-		<button
-			type="button"
-			onClick={() => onSelect(d.key)}
-			aria-pressed={selected}
-			aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
-			// `min-w-0` because a grid item will not shrink below its
-			// content by default, and the content here is a three-letter
-			// label with tracking on it. Without it a narrow chart did
-			// not compress — it overflowed, and seven weekday labels
-			// were drawn across each other. The spans truncate for the
-			// same reason: past a point the honest answer is "WE…".
-			className={cn(
-				"flex min-w-0 flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
-				d.isWeekend && !selected && "opacity-45",
-			)}
-		>
-			<span
-				className="flex w-full items-end justify-center"
-				style={{ height: `${PLOT_H}px` }}
-			>
-				<span
-					className={cn(
-						"rise block w-5 rounded-t-[2px]",
-						d.holiday ? "bg-warn/40" : BAR_CLASS[verdict],
-					)}
-					style={{
-						height: `${px}px`,
-						animationDelay: `${i * 40}ms`,
-					}}
-				/>
-			</span>
-			<span
-				className={cn(
-					"eyebrow mt-2.5 w-full truncate",
-					d.isToday && "text-foreground",
-					selected && "text-primary",
-				)}
-			>
-				{d.label}
-			</span>
-			<span
-				className={cn(
-					"mono mt-1.5 w-full truncate text-2xs",
-					FIGURE_CLASS[verdict],
-				)}
-			>
-				{dayFigure(d)}
-			</span>
-		</button>
-	);
-}
-
-function greetingForHour(hour: number): string {
-	if (hour < 12) return "Good morning";
-	if (hour < 18) return "Good afternoon";
-	return "Good evening";
-}
-
 function OrgHome() {
 	const orgSlug = useOrgSlug();
 	const { organization, session } = Route.useRouteContext();
@@ -242,101 +106,30 @@ function OrgHome() {
 	// list beside them. Null means today, so a pick-less page follows the day. A
 	// pick outside the week on screen (the week moved on at midnight) is dropped.
 	const [pickedDay, setSelectedDay] = useState<string | null>(null);
-	const selectedDay =
-		pickedDay && pickedDay >= weekStart && pickedDay <= weekEnd
-			? pickedDay
-			: today;
+	const selectedDay = resolveSelectedDay(pickedDay, weekStart, weekEnd, today);
 
 	const todayEntries = weekEntries.filter((entry) => entry.date === today);
-	const todayTotal = todayEntries.reduce(
-		(sum, e) => sum + e.durationSeconds,
-		0,
-	);
+	const todayTotal = sumSeconds(todayEntries);
 
 	const selectedEntries = weekEntries.filter(
 		(entry) => entry.date === selectedDay,
 	);
-	const selectedTotal = selectedEntries.reduce(
-		(sum, e) => sum + e.durationSeconds,
-		0,
-	);
-	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
+	const selectedTotal = sumSeconds(selectedEntries);
+	const weekTotal = sumSeconds(weekEntries);
 
 	// Per-weekday totals, in the org's week order, for the bars — derived from
 	// the same week query, so it costs no extra fetch.
-	const secondsByDay = new Map<string, number>();
-	for (const entry of weekEntries) {
-		secondsByDay.set(
-			entry.date,
-			(secondsByDay.get(entry.date) ?? 0) + entry.durationSeconds,
-		);
-	}
-	const weekDays = orderedWeekdays(organization.weekStartsOn).map(
-		({ day: weekday, label }, i) => ({
-			weekday,
-			label,
-			key: addDaysToKey(weekStart, i),
-		}),
-	);
-	// The same marks the timesheet's week strip draws, so a day the week has
-	// made up for is never amber here and quiet there. A day with no mark is
-	// not judged: a future day, a weekend and a public holiday are simply not
-	// asked.
-	const marks =
-		targets.daySeconds > 0
-			? weekDayMarks({
-					dates: weekDays.map((d) => d.key),
-					secondsByDay,
-					holidays,
-					today,
-					daySeconds: targets.daySeconds,
-				})
-			: null;
-	const perDay = weekDays.map(({ weekday, label, key }) => ({
-		label,
-		key,
-		seconds: secondsByDay.get(key) ?? 0,
-		isToday: key === today,
-		isWeekend: weekday === 0 || weekday === 6,
-		holiday: holidays.get(key),
-		mark: marks?.get(key),
-	}));
-	const maxDaySeconds = Math.max(
-		...perDay.map((d) => d.seconds),
-		targets.daySeconds,
-		1,
-	);
-	// Where the dashed "a day's worth" rule sits, in the plot's own pixels.
-	const targetPx = Math.round((targets.daySeconds / maxDaySeconds) * PLOT_H);
+	const { perDay, maxDaySeconds, targetPx } = buildWeekChart({
+		entries: weekEntries,
+		weekStart,
+		weekStartsOn: organization.weekStartsOn,
+		today,
+		daySeconds: targets.daySeconds,
+		holidays,
+	});
 
-	// "Auto-tracked today": the blocks Farmer filled in for you rather than by
-	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
-	// work (commitCount, pullRequestCount). Both read straight off today's entries.
-	const meetingEntries = todayEntries.filter((e) => e.calendarEventId);
-	const meetingSeconds = meetingEntries.reduce(
-		(s, e) => s + e.durationSeconds,
-		0,
-	);
-	const githubEntries = todayEntries.filter(
-		(e) => (e.commitCount ?? 0) > 0 || (e.pullRequestCount ?? 0) > 0,
-	);
-	const commitTotal = githubEntries.reduce(
-		(s, e) => s + (e.commitCount ?? 0),
-		0,
-	);
-	const pullRequestTotal = githubEntries.reduce(
-		(s, e) => s + (e.pullRequestCount ?? 0),
-		0,
-	);
-	const githubSeconds = githubEntries.reduce(
-		(s, e) => s + e.durationSeconds,
-		0,
-	);
-	const hasAutoTracked = meetingEntries.length > 0 || githubEntries.length > 0;
-
+	const autoTracked = summarizeAutoTracked(todayEntries);
 	const firstName = session.user.name.split(" ")[0];
-	const weekStatus = targets.week.status;
-	const monthStatus = targets.month.status;
 
 	// `flex flex-col` on the page: it is what lets the body grid below claim the
 	// height the header and the band leave, and so what lets the rule between
@@ -385,86 +178,14 @@ function OrgHome() {
 			    said in the eyebrow, again at 30px and again inside a rail — the
 			    screen answered "how am I doing" four times and never once at a
 			    glance. */}
-			<StatTiles columns={3}>
-				<StatTile
-					label="Today"
-					percent={
-						targets.daySeconds > 0
-							? (todayTotal / targets.daySeconds) * 100
-							: null
-					}
-					tone={todayTotal >= targets.daySeconds ? "ok" : "neutral"}
-					value={
-						<>
-							{formatReportHours(todayTotal)}
-							{targets.daySeconds > 0 && (
-								<Of>/ {formatReportHours(targets.daySeconds)}</Of>
-							)}
-						</>
-					}
-					caption={
-						targets.daySeconds > todayTotal
-							? `${formatReportHours(targets.daySeconds - todayTotal)} to go`
-							: `${todayEntries.length} ${todayEntries.length === 1 ? "entry" : "entries"}`
-					}
-				/>
-				<StatTile
-					label="This week"
-					aside={
-						weekStatus && (
-							<StatusPill tone={TARGET_STATUS[weekStatus].tone}>
-								{TARGET_STATUS[weekStatus].label}
-							</StatusPill>
-						)
-					}
-					percent={
-						targets.week.targetSeconds
-							? (weekTotal / targets.week.targetSeconds) * 100
-							: null
-					}
-					tone={weekStatus ? TARGET_TONE[weekStatus] : "neutral"}
-					value={
-						<>
-							{formatReportHours(weekTotal)}
-							{targets.week.targetSeconds != null && (
-								<Of>/ {formatReportHours(targets.week.targetSeconds)}</Of>
-							)}
-						</>
-					}
-					caption={<TargetGap period={targets.week} />}
-				/>
-				<StatTile
-					label="This month"
-					aside={
-						monthStatus && (
-							<StatusPill tone={TARGET_STATUS[monthStatus].tone}>
-								{TARGET_STATUS[monthStatus].label}
-							</StatusPill>
-						)
-					}
-					percent={
-						targets.month.targetSeconds
-							? (targets.month.totalSeconds / targets.month.targetSeconds) * 100
-							: null
-					}
-					tone={monthStatus ? TARGET_TONE[monthStatus] : "neutral"}
-					value={
-						<>
-							{formatReportHours(targets.month.totalSeconds)}
-							{targets.month.targetSeconds != null && (
-								<Of>/ {formatReportHours(targets.month.targetSeconds)}</Of>
-							)}
-						</>
-					}
-					caption={
-						<>
-							<TargetGap period={targets.month} /> ·{" "}
-							{targets.month.workingDaysElapsed} of {targets.month.workingDays}{" "}
-							working days done
-						</>
-					}
-				/>
-			</StatTiles>
+			<OrgHomeStatBand
+				daySeconds={targets.daySeconds}
+				week={targets.week}
+				month={targets.month}
+				todayTotal={todayTotal}
+				todayEntryCount={todayEntries.length}
+				weekTotal={weekTotal}
+			/>
 
 			{/* What you logged, and how the week is shaped. Side by side once the
 			    PAGE is wide enough (`@4xl/page`, the container declared on
@@ -504,62 +225,13 @@ function OrgHome() {
 			    baseline and its target rule are axes, not page furniture. */}
 			<div className="mt-7 grid gap-x-16 gap-y-8 @4xl/page:flex-1 @4xl/page:grid-cols-3">
 				<div className="min-w-0 @4xl/page:col-span-2 @4xl/page:-mt-7 @4xl/page:-mr-8 @4xl/page:-mb-7 @4xl/page:border-r @4xl/page:border-line2 @4xl/page:pt-7 @4xl/page:pr-8 @4xl/page:pb-7">
-					<div className="section-head">
-						<h2 className="eyebrow">
-							{selectedDay === today
-								? "Today's entries"
-								: formatDayKey(selectedDay, { year: false })}
-						</h2>
-						<span className="text-sm text-muted-foreground">
-							{formatReportHours(selectedTotal)} logged
-						</span>
-					</div>
-					{/* No AnimatePresence — see the note in EntryBlockRow. It matters
-					    most here: picking another day in "This week by day" swaps every
-					    row at once, so the whole list collapsed as if each entry had
-					    been deleted. Switching days is navigation, not removal.
-
-					    The rows keep the island's own padding and take a negative
-					    margin of the same size, so the text stays on the column's
-					    text edge while the hover fill and the rules between rows run
-					    edge to edge — the island's left edge, and the vertical rule
-					    on the right. A row highlighted only as far as its text is a
-					    row that looks narrower than the list it is in. */}
-					<div className="@container/entries mt-3 flex flex-col divide-y divide-line2">
-						{selectedEntries.map((entry) => (
-							<EntryBlockRow
-								key={entry.id}
-								entry={entry}
-								timezone={organization.timezone}
-								timing={entry.id === timedEntryId}
-								className="-mx-4 sm:-mx-8"
-							/>
-						))}
-					</div>
-					{/* The list ends on the way to add to it, whether or not it has
-					    rows: an empty day is a sentence and this same row, rather than
-					    a centred placeholder with no action on it. */}
-					<AddBlockDialog
+					<SelectedDayEntries
+						entries={selectedEntries}
+						total={selectedTotal}
+						selectedDay={selectedDay}
+						today={today}
 						timezone={organization.timezone}
-						defaultDate={selectedDay}
-						trigger={
-							<GhostRow
-								className={cn(
-									// The same bleed the rows take, so its rule ends where
-									// theirs do. The width is spelled out because the row is
-									// `w-full`: a negative margin alone moves it left without
-									// widening it, and the rule would stop short on the right.
-									"-ml-4 w-[calc(100%+2rem)] px-4 sm:-ml-8 sm:w-[calc(100%+4rem)] sm:px-8",
-									selectedEntries.length > 0 ? "border-t border-line2" : "mt-1",
-								)}
-							>
-								{selectedEntries.length === 0
-									? selectedDay === today
-										? "Nothing logged yet. Log your first block of the day"
-										: "Nothing logged. Add an entry to this day"
-									: `Add another entry to ${selectedDay === today ? "today" : formatDayKey(selectedDay, { year: false })}`}
-							</GhostRow>
-						}
+						timedEntryId={timedEntryId}
 					/>
 				</div>
 
@@ -581,79 +253,15 @@ function OrgHome() {
 					    target did nothing. The two rules are one absolutely-positioned
 					    layer over the grid, and `pointer-events-none` is what keeps
 					    them out of the way of the buttons underneath. */}
-					<div className="relative mt-4">
-						<span
-							aria-hidden
-							className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/25"
-							style={{ top: `${PLOT_H - targetPx}px` }}
-						/>
-						<span
-							aria-hidden
-							className="pointer-events-none absolute inset-x-0 z-10 border-t border-line"
-							style={{ top: `${PLOT_H}px` }}
-						/>
-						<div className="grid grid-cols-7">
-							{perDay.map((d, i) => (
-								<WeekDayColumn
-									key={d.key}
-									d={d}
-									i={i}
-									selected={d.key === selectedDay}
-									maxDaySeconds={maxDaySeconds}
-									onSelect={setSelectedDay}
-								/>
-							))}
-						</div>
-					</div>
+					<WeekChart
+						perDay={perDay}
+						selectedDay={selectedDay}
+						maxDaySeconds={maxDaySeconds}
+						targetPx={targetPx}
+						onSelect={setSelectedDay}
+					/>
 
-					{hasAutoTracked && (
-						<div className="mt-7">
-							<h2 className="eyebrow flex items-center gap-1.5">
-								<SparkleIcon className="size-3" />
-								Auto-tracked today
-							</h2>
-							<div className="mt-3 flex flex-col gap-2.5">
-								{meetingEntries.length > 0 && (
-									<div className="flex items-center gap-2.5 text-sm">
-										<CalendarBlankIcon className="size-4 shrink-0 text-muted-foreground" />
-										<span className="min-w-0 flex-1 truncate text-muted-foreground">
-											<span className="font-medium text-foreground">
-												{meetingEntries.length} meeting
-												{meetingEntries.length === 1 ? "" : "s"}
-											</span>{" "}
-											from your calendar
-										</span>
-										<span className="mono shrink-0 text-muted-foreground">
-											{formatHoursShort(meetingSeconds)}
-										</span>
-									</div>
-								)}
-								{githubEntries.length > 0 && (
-									<div className="flex items-center gap-2.5 text-sm">
-										<GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
-										<span className="min-w-0 flex-1 truncate text-muted-foreground">
-											<span className="font-medium text-foreground">
-												{[
-													commitTotal > 0
-														? `${commitTotal} commit${commitTotal === 1 ? "" : "s"}`
-														: null,
-													pullRequestTotal > 0
-														? `${pullRequestTotal} PR event${pullRequestTotal === 1 ? "" : "s"}`
-														: null,
-												]
-													.filter(Boolean)
-													.join(" and ")}
-											</span>{" "}
-											linked
-										</span>
-										<span className="mono shrink-0 text-muted-foreground">
-											{formatHoursShort(githubSeconds)}
-										</span>
-									</div>
-								)}
-							</div>
-						</div>
-					)}
+					<AutoTrackedList summary={autoTracked} />
 
 					<Link
 						to="/$orgSlug/time"
