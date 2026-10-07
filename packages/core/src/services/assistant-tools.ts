@@ -1520,7 +1520,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "unlink_commits",
 		kind: "destructive",
 		description:
-			"Unlink GitHub commits from the current user's time entries. This removes the commit evidence from the entry. It does not delete the entry and it does not delete the commit on GitHub. The unlink is permanent for the automatic sync: the sync does not attach that commit again, to any entry of the user. The user undoes it only by attaching the commit again by hand (attach_commits). Takes attachmentIds from list_attached_commits (up to 100 in one call, so pass every commit of a session together). For a request such as \"unlink yesterday's commits on profico/farmer\", call list_attached_commits with that date and repository, then pass all the attachmentId values. A bad id is reported in results and does not stop the other ids.",
+			"Unlink GitHub commits from the current user's time entries. This removes the commit evidence from the entry. It does not delete the entry and it does not delete the commit on GitHub. The unlink is permanent for the automatic sync: the sync does not attach that commit again, to any entry of the user. To put the commit back on an entry, attach it by hand (attach_commits). The sync still keeps it off every other entry. Takes attachmentIds from list_attached_commits (up to 100 in one call, so pass every commit of a session together). For a request such as \"unlink yesterday's commits on profico/farmer\", call list_attached_commits with that date and repository, then pass all the attachmentId values. A bad id is reported in results and does not stop the other ids.",
 		schema: unlinkCommitsInput,
 		summarize: async (ctx, args) => {
 			const ids = attachmentIdList("attachmentIds", args);
@@ -1584,7 +1584,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				// The sync reads the unlink as a standing "no". Say so, so nobody
 				// promises the user that a later sync will bring it back.
 				note: results.some((result) => result.unlinked)
-					? "The sync will not attach these commits again. Attaching by hand with attach_commits undoes this."
+					? "The sync will not attach these commits again. attach_commits puts a commit back on the entry that the user names, and only on that entry."
 					: undefined,
 				results,
 			};
@@ -1594,7 +1594,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "unlink_pull_requests",
 		kind: "destructive",
 		description:
-			"Unlink pull request events from the current user's time entries. This removes the pull request evidence from the entry. It does not delete the entry and it does not change the pull request on GitHub. The unlink is permanent for the automatic sync: the sync does not attach that event again, to any entry of the user. The user undoes it only by attaching the pull request again by hand (attach_pull_requests). Taking the last review of a pull request off a Code Review entry also stops the sync from filing a review block for that pull request on that day. Takes activityIds from list_attached_pull_requests (up to 100 in one call). A bad id is reported in results and does not stop the other ids.",
+			"Unlink pull request events from the current user's time entries. This removes the pull request evidence from the entry. It does not delete the entry and it does not change the pull request on GitHub. The unlink is permanent for the automatic sync: the sync does not attach that event again, to any entry of the user. To put the event back on an entry, attach the pull request by hand (attach_pull_requests). The sync still keeps it off every other entry. Taking the last review of a pull request off a Code Review entry also stops the sync from filing a review block for that pull request on that day. Takes activityIds from list_attached_pull_requests (up to 100 in one call). A bad id is reported in results and does not stop the other ids.",
 		schema: unlinkPullRequestsInput,
 		summarize: async (ctx, args) => {
 			const ids = attachmentIdList("activityIds", args);
@@ -1660,7 +1660,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				// The sync reads the unlink as a standing "no". Say so, so nobody
 				// promises the user that a later sync will bring it back.
 				note: results.some((result) => result.unlinked)
-					? "The sync will not attach these pull request events again. Attaching by hand with attach_pull_requests undoes this."
+					? "The sync will not attach these pull request events again. attach_pull_requests puts an event back on the entry that the user names, and only on that entry."
 					: undefined,
 				results,
 			};

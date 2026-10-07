@@ -755,19 +755,57 @@ describe("a detached commit", () => {
 		]);
 	});
 
-	test("is attached again by a manual attach, which clears the tombstone", async () => {
+	test("moved by hand to another entry, stays off the first", async () => {
+		const { entry, attached } = await syncedEntry();
+		await githubService.detachCommit(ctx, attached.id);
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+
+		await attachNow(other.id);
+		await runAutomations();
+
+		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+		expect(await commitsAttachedTo(entry.id)).toEqual([]);
+		// The hand attach does not take the "no" back.
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
+	});
+
+	test("attached by hand to its old entry, is not added twice", async () => {
 		const { entry, attached } = await syncedEntry();
 		await githubService.detachCommit(ctx, attached.id);
 
 		await attachNow(entry.id);
+		await runAutomations();
 
 		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
 			entry.id,
 		]);
-		expect(await db.query.commitDetachTombstone.findMany()).toEqual([]);
-		// With the tombstone gone, a re-run finds the row and adds nothing twice.
+	});
+
+	test("already attached by hand to one entry, is not copied to another", async () => {
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+		await attachNow(other.id);
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(mainCommit());
+
 		await runAutomations();
-		expect(await attachedRows(SHA)).toHaveLength(1);
+
+		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
 	});
 
 	test("does not touch the same commit of another person", async () => {

@@ -44,12 +44,7 @@ import {
 	requireAdmin,
 	withCtxTx,
 } from "./context";
-import {
-	allowCommits,
-	allowEvents,
-	refuseCommits,
-	refuseEvents,
-} from "./detach-tombstones";
+import { refuseCommits, refuseEvents } from "./detach-tombstones";
 import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
@@ -1540,18 +1535,13 @@ export const githubService = {
 			}));
 
 		if (rows.length > 0) {
-			await withCtxTx(ctx, async (txCtx) => {
-				await ctxDb(txCtx)
-					.insert(timeEntryGithubCommit)
-					.values(rows)
-					.onConflictDoNothing();
-				// A hand attach takes back an earlier detach: the engine may file
-				// this commit again.
-				await allowCommits(
-					txCtx,
-					rows.map((row) => row.sha),
-				);
-			});
+			// The detach tombstone stays. A hand attach puts the commit on this
+			// entry only. If it cleared the tombstone, the engine would also put the
+			// commit back on the entry that the person took it off.
+			await ctxDb(ctx)
+				.insert(timeEntryGithubCommit)
+				.values(rows)
+				.onConflictDoNothing();
 		}
 
 		return githubService.listAttachedCommits(ctx, input.timeEntryId);
@@ -1825,18 +1815,12 @@ export const githubService = {
 
 		const flat = rows.flat();
 		if (flat.length > 0) {
-			await withCtxTx(ctx, async (txCtx) => {
-				await ctxDb(txCtx)
-					.insert(timeEntryGithubPrActivity)
-					.values(flat)
-					// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
-					.onConflictDoNothing();
-				// A hand attach takes back an earlier detach of these events.
-				await allowEvents(
-					txCtx,
-					flat.map((row) => row.eventId),
-				);
-			});
+			await ctxDb(ctx)
+				.insert(timeEntryGithubPrActivity)
+				.values(flat)
+				// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
+				// The detach tombstone stays, for the reason `attachCommits` gives.
+				.onConflictDoNothing();
 		}
 		return githubService.listAttachedPullRequestActivity(ctx, entry.id);
 	},

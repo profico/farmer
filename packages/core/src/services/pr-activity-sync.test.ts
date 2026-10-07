@@ -817,14 +817,8 @@ describe("a detached pull request event", () => {
 		expect(left.map((row) => row.eventId)).toEqual(["PR_2:opened"]);
 	});
 
-	test("is attached again by a manual attach, which clears the tombstone", async () => {
-		const entry = await syncedEntry([
-			{ day: YESTERDAY, number: 7, kind: "opened" },
-		]);
-		await githubService.detachPullRequestActivity(
-			ctx,
-			at(await activityOn(entry.id), 0).id,
-		);
+	/** Attach pull request 7 by hand, as the entry dialog does. */
+	const attachNow = (timeEntryId: string) => {
 		setGithubClientForTests({
 			getInstallationToken: async () => "installation-token",
 			getAuthenticatedUser: async () => ({ id: 1, login: "tester" }),
@@ -843,21 +837,60 @@ describe("a detached pull request event", () => {
 			}),
 			listInstallationRepos: async () => [],
 		});
-
-		await githubService.attachPullRequests(ctx, {
-			timeEntryId: entry.id,
+		return githubService.attachPullRequests(ctx, {
+			timeEntryId,
 			pullRequests: [{ projectGithubRepoId: repoId, number: 7 }],
 		});
+	};
 
-		expect((await activityOn(entry.id)).map((row) => row.eventId)).toEqual([
-			"PR_7:opened",
+	test("moved by hand to another entry, stays off the first", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
 		]);
-		expect(await db.query.pullRequestEventDetachTombstone.findMany()).toEqual(
-			[],
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
 		);
-		// With the tombstone gone, a re-run finds the row and adds nothing twice.
+		const other = await addEntry({ date: YESTERDAY, durationSeconds: 60 * 60 });
+
+		await attachNow(other.id);
 		await runAutomations();
-		expect(await allActivity()).toHaveLength(1);
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+		// The hand attach does not take the "no" back.
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
+	});
+
+	test("attached by hand to its old entry, is not added twice", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
+		);
+
+		await attachNow(entry.id);
+		await runAutomations();
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			entry.id,
+		]);
+	});
+
+	test("already attached by hand to one entry, is not copied to another", async () => {
+		const other = await addEntry({ date: YESTERDAY, durationSeconds: 60 * 60 });
+		await attachNow(other.id);
+
+		await syncedEntry([{ day: YESTERDAY, number: 7, kind: "opened" }]);
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
 	});
 });
 

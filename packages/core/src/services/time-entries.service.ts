@@ -927,7 +927,8 @@ const syncCommitWorkTimeForRange = async (
 	await pruneDetachTombstones(ctx, range.to);
 	// What the person took off an entry is not evidence any more. It is cut here,
 	// before any day is built, so a day with nothing else left is not a worked
-	// day. A manual attach clears the tombstone (see `githubService.attachCommits`).
+	// day. A manual attach keeps the tombstone (see `githubService.attachCommits`),
+	// so a commit that the person moved to another entry stays off the first.
 	const refusedShas = await refusedCommitShas(
 		ctx,
 		commitDays.flatMap((day) => day.commits.map((commit) => commit.sha)),
@@ -1158,16 +1159,22 @@ const syncCommitWorkTimeForRange = async (
 				.where(eq(timeEntry.id, entry.id));
 		}
 
+		// Evidence that is already on one of the person's entries of the day stays
+		// where it is. The person or an earlier pass put it there, and a second
+		// copy on another entry counts the same work twice.
+		const held = await evidenceHeldOn(ctx, dayKey);
 		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.commits.map((commit) => ({
-				timeEntryId,
-				projectGithubRepoId: commit.projectGithubRepoId,
-				sha: commit.sha,
-				message: commit.message,
-				authorLogin: commit.authorLogin,
-				committedAt: commit.committedAt,
-				url: commit.url,
-			})),
+			group.commits
+				.filter((commit) => !held.shas.has(commit.sha))
+				.map((commit) => ({
+					timeEntryId,
+					projectGithubRepoId: commit.projectGithubRepoId,
+					sha: commit.sha,
+					message: commit.message,
+					authorLogin: commit.authorLogin,
+					committedAt: commit.committedAt,
+					url: commit.url,
+				})),
 		);
 		if (commitRows.length > 0) {
 			await db
@@ -1177,9 +1184,11 @@ const syncCommitWorkTimeForRange = async (
 				.onConflictDoNothing();
 		}
 		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.pullRequests.map((event) =>
-				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
-			),
+			group.pullRequests
+				.filter((event) => !held.eventIds.has(event.eventId))
+				.map((event) =>
+					pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+				),
 		);
 		if (activityRows.length > 0) {
 			await db
@@ -1189,6 +1198,35 @@ const syncCommitWorkTimeForRange = async (
 				.onConflictDoNothing();
 		}
 	}
+};
+
+/** The commits and pull request events already on the person's entries of one
+ *  day. The engine does not attach a second copy of them to another entry. */
+const evidenceHeldOn = async (ctx: Ctx, dayKey: string) => {
+	const onDay = and(
+		eq(timeEntry.organizationId, ctx.organizationId),
+		eq(timeEntry.userId, ctx.userId),
+		eq(timeEntry.date, dayKey),
+	);
+	const [commits, events] = await Promise.all([
+		db
+			.select({ sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.where(onDay),
+		db
+			.select({ eventId: timeEntryGithubPrActivity.eventId })
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.where(onDay),
+	]);
+	return {
+		shas: new Set(commits.map((row) => row.sha)),
+		eventIds: new Set(events.map((row) => row.eventId)),
+	};
 };
 
 /** Did this person delete the day's rest-of-day block? See the table comment in
