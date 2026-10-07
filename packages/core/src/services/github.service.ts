@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { auth } from "../auth";
 import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
@@ -26,6 +26,7 @@ import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
 import {
 	type AttachCommitsInput,
+	type AttachedEvidenceRangeInput,
 	type AttachPullRequestsInput,
 	type ConnectInstallationInput,
 	type DisconnectInstallationInput,
@@ -175,6 +176,32 @@ const readRepoList = async (
 /** Test-only: wait for every refresh the cache started in the background. */
 export const settleRepoListRefreshesForTests = async (): Promise<void> => {
 	await Promise.allSettled(repoListFetches.values());
+};
+
+/** The most attachments one range read returns. A person reads a session, not
+ *  a month of history, and every row costs the model context. */
+const MAX_ATTACHED_ROWS = 200;
+
+const attachedCommitColumns = {
+	id: timeEntryGithubCommit.id,
+	timeEntryId: timeEntryGithubCommit.timeEntryId,
+	date: timeEntry.date,
+	sha: timeEntryGithubCommit.sha,
+	message: timeEntryGithubCommit.message,
+	committedAt: timeEntryGithubCommit.committedAt,
+	repository: projectGithubRepo.fullName,
+};
+
+const attachedActivityColumns = {
+	id: timeEntryGithubPrActivity.id,
+	timeEntryId: timeEntryGithubPrActivity.timeEntryId,
+	date: timeEntry.date,
+	number: timeEntryGithubPrActivity.number,
+	title: timeEntryGithubPrActivity.title,
+	kind: timeEntryGithubPrActivity.kind,
+	reviewState: timeEntryGithubPrActivity.reviewState,
+	occurredAt: timeEntryGithubPrActivity.occurredAt,
+	repository: projectGithubRepo.fullName,
 };
 
 // A commit as it comes back from a repo scan, already carrying every field
@@ -1542,6 +1569,63 @@ export const githubService = {
 			.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
 	},
 
+	/** The caller's own commit attachments on entries dated in the span, oldest
+	 *  commit first, with the attachment id `detachCommit` takes. `truncated`
+	 *  says the span held more than `MAX_ATTACHED_ROWS`. Tenancy comes from the
+	 *  join to the entry, as it does in `detachCommit`. */
+	listAttachedCommitsInRange: async (
+		ctx: Ctx,
+		input: AttachedEvidenceRangeInput,
+	) => {
+		const rows = await db
+			.select(attachedCommitColumns)
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
+			)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					gte(timeEntry.date, input.from),
+					lte(timeEntry.date, input.to),
+					input.repository
+						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
+						: undefined,
+				),
+			)
+			.orderBy(asc(timeEntryGithubCommit.committedAt))
+			.limit(MAX_ATTACHED_ROWS + 1);
+		return {
+			rows: rows.slice(0, MAX_ATTACHED_ROWS),
+			truncated: rows.length > MAX_ATTACHED_ROWS,
+		};
+	},
+
+	/** The caller's own attachments among these ids. An id that is missing or
+	 *  belongs to somebody else is left out, with no way to tell which. */
+	listAttachedCommitsByIds: async (ctx: Ctx, ids: string[]) => {
+		if (ids.length === 0) return [];
+		return db
+			.select(attachedCommitColumns)
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
+			)
+			.where(
+				and(
+					inArray(timeEntryGithubCommit.id, ids),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.orderBy(asc(timeEntryGithubCommit.committedAt));
+	},
+
 	// ── Pull requests (installation token for access, user login for who) ────
 
 	/** The caller's PR events between two days, bucketed by org-tz day — the
@@ -1763,5 +1847,66 @@ export const githubService = {
 				heldBefore.filter((pullRequestUrl) => !heldAfter.has(pullRequestUrl)),
 			);
 		});
+	},
+
+	/** The caller's own pull request events on entries dated in the span, with
+	 *  the id `detachPullRequestActivity` takes. Same shape as
+	 *  `listAttachedCommitsInRange`. */
+	listAttachedPullRequestActivityInRange: async (
+		ctx: Ctx,
+		input: AttachedEvidenceRangeInput,
+	) => {
+		const rows = await db
+			.select(attachedActivityColumns)
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
+			)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					gte(timeEntry.date, input.from),
+					lte(timeEntry.date, input.to),
+					input.repository
+						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
+						: undefined,
+				),
+			)
+			.orderBy(asc(timeEntryGithubPrActivity.occurredAt))
+			.limit(MAX_ATTACHED_ROWS + 1);
+		return {
+			rows: rows.slice(0, MAX_ATTACHED_ROWS),
+			truncated: rows.length > MAX_ATTACHED_ROWS,
+		};
+	},
+
+	/** The caller's own events among these ids, as `listAttachedCommitsByIds`. */
+	listAttachedPullRequestActivityByIds: async (ctx: Ctx, ids: string[]) => {
+		if (ids.length === 0) return [];
+		return db
+			.select(attachedActivityColumns)
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
+			)
+			.where(
+				and(
+					inArray(timeEntryGithubPrActivity.id, ids),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.orderBy(asc(timeEntryGithubPrActivity.occurredAt));
 	},
 };
