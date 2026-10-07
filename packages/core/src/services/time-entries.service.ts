@@ -905,14 +905,40 @@ const fileReviewBlocks = async (
 	return { placed, created };
 };
 
-const syncCommitWorkTimeForRange = async (
+/** The columns of a Development entry that the commit engine reads. */
+const dayEntryColumns = {
+	id: true,
+	description: true,
+	projectId: true,
+	fillsDay: true,
+} as const;
+
+type DayEntry = Pick<
+	typeof timeEntry.$inferSelect,
+	"id" | "description" | "projectId" | "fillsDay"
+>;
+
+/** What the commit engine needs to know, once, before it walks the days. */
+type CommitEngine = {
+	workTaskId: string;
+	reviewTaskId: string | null;
+	day: { workingHours: WorkingHoursDay[]; holidays: HolidayLookup };
+};
+
+/** What the engine has found on one day: where each project's evidence goes. */
+type DayIndex = {
+	byProject: Map<string, DayEntry>;
+	fill: DayEntry | null;
+	generalEntry: DayEntry | null;
+};
+
+// Commits and pull request events are one body of evidence, read together:
+// a rate limit on either fails the pass, because half the evidence read as
+// all of it would file a day on what was missing.
+const readEvidenceByDay = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
-	tz: string,
-) => {
-	// Commits and pull request events are one body of evidence, read together:
-	// a rate limit on either fails the pass, because half the evidence read as
-	// all of it would file a day on what was missing.
+): Promise<Map<string, DayEvidence>> => {
 	const [commitDays, pullRequestDays] = await Promise.all([
 		commitSource().listUserCommitsByDay(ctx, range),
 		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
@@ -926,6 +952,306 @@ const syncCommitWorkTimeForRange = async (
 		day.pullRequests.push(...activity);
 		days.set(dayKey, day);
 	}
+	return days;
+};
+
+// Review blocks first. Each takes its time from the day's free time, so it
+// has to exist before the rest-of-day block is sized, or resized.
+const placeReviews = async (
+	ctx: Ctx,
+	dayKey: string,
+	tz: string,
+	pullRequests: ScannedPullRequestActivity[],
+	engine: CommitEngine,
+): Promise<Set<string>> => {
+	if (!engine.reviewTaskId) return new Set();
+	const filed = await fileReviewBlocks(
+		ctx,
+		dayKey,
+		tz,
+		engine.reviewTaskId,
+		pullRequests.filter((event) => event.kind === "reviewed"),
+		engine.day,
+	);
+	if (filed.created) await recomputeDayFill(ctx, dayKey, tz);
+	return filed.placed;
+};
+
+// Every work entry already on the day, so each project's commits can go to
+// the entry that describes that project's work.
+const loadDayWorkEntries = (
+	ctx: Ctx,
+	dayKey: string,
+	workTaskId: string,
+): Promise<DayEntry[]> =>
+	db.query.timeEntry.findMany({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			eq(timeEntry.date, dayKey),
+			eq(timeEntry.taskId, workTaskId),
+		),
+		columns: dayEntryColumns,
+	});
+
+const indexDayEntries = (entries: DayEntry[]): DayIndex => {
+	// A loop, not `filter().map()`: only this way does the null check actually
+	// narrow `projectId` into the key type.
+	const byProject = new Map<string, DayEntry>();
+	for (const entry of entries) {
+		if (entry.projectId === null || entry.fillsDay) continue;
+		byProject.set(entry.projectId, entry);
+	}
+	// A project-less Development entry someone logged by hand. Not a fill block,
+	// but it is unmistakably "the work I did that day", so commits with no
+	// better home belong on it rather than on a new block competing with it.
+	return {
+		byProject,
+		fill: entries.find((e) => e.fillsDay) ?? null,
+		generalEntry:
+			entries.find((e) => e.projectId === null && !e.fillsDay) ?? null,
+	};
+};
+
+const dayEvidenceFor = (
+	evidenceByProject: Map<string, DayEvidence>,
+	projectId: string,
+): DayEvidence => {
+	const existing = evidenceByProject.get(projectId);
+	if (existing) return existing;
+	const created = emptyEvidence();
+	evidenceByProject.set(projectId, created);
+	return created;
+};
+
+// Group by project so evidence lands on the entry for the project it
+// belongs to. A project with no entry falls through to the fill.
+const groupDayEvidence = (
+	commits: ScannedCommit[],
+	pullRequests: ScannedPullRequestActivity[],
+	placed: Set<string>,
+) => {
+	const evidenceByProject = new Map<string, DayEvidence>();
+	for (const commit of commits) {
+		dayEvidenceFor(evidenceByProject, commit.projectId).commits.push(commit);
+	}
+	// A placed review sits on its own block, so it is not evidence for a work
+	// entry. It still says the day was worked, so its project still counts
+	// towards the rest-of-day block.
+	const reviewedProjectIds = new Set<string>();
+	for (const event of pullRequests) {
+		if (placed.has(event.eventId)) reviewedProjectIds.add(event.projectId);
+		else {
+			dayEvidenceFor(evidenceByProject, event.projectId).pullRequests.push(
+				event,
+			);
+		}
+	}
+	return { evidenceByProject, reviewedProjectIds };
+};
+
+/** The fill block that another run filed on the day, if any. */
+const findFillBlock = async (
+	ctx: Ctx,
+	dayKey: string,
+): Promise<DayEntry | null> =>
+	(await db.query.timeEntry.findFirst({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			eq(timeEntry.date, dayKey),
+			eq(timeEntry.fillsDay, true),
+		),
+		columns: dayEntryColumns,
+	})) ?? null;
+
+// The fill block is created only for evidence that found no home — a day
+// of reviews is a worked day as surely as a day of commits — and only if
+// the day still has room and nobody has said no.
+const ensureFillBlock = async (
+	ctx: Ctx,
+	dayKey: string,
+	tz: string,
+	engine: CommitEngine,
+	homelessProjectIds: string[],
+	homeless: DayEvidence,
+): Promise<DayEntry | null> => {
+	const durationSeconds = await computeDayFillSeconds(
+		ctx,
+		dayKey,
+		tz,
+		engine.day,
+	);
+	const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
+	// A day already accounted for in full gets no block. Inserting a
+	// 0-second one would just park an empty second "Development" row next to
+	// the entries that already filled the day. Note this no longer skips the
+	// day: the attach pass still runs, which is the fix described above.
+	if (durationSeconds <= 0 || (await hasCommitFillTombstone(ctx, dayKey))) {
+		return null;
+	}
+	const [created] = await db
+		.insert(timeEntry)
+		.values({
+			organizationId: ctx.organizationId,
+			userId: ctx.userId,
+			taskId: engine.workTaskId,
+			projectId: fillProjectId,
+			// Blank evidence: every review went to a block of its own.
+			description: describeEvidence(homeless) || "Rest of day",
+			date: dayKey,
+			durationSeconds,
+			fillsDay: true,
+		})
+		// te_fill_day_uidx is the real guard against a second fill block on
+		// the day; silently skip rather than raise, since this is a
+		// best-effort background sync, not a user-initiated write. It also
+		// covers the race with a concurrent "Sync now".
+		.onConflictDoNothing({
+			target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
+			where: sql`${timeEntry.fillsDay} = true`,
+		})
+		.returning({
+			id: timeEntry.id,
+			description: timeEntry.description,
+			projectId: timeEntry.projectId,
+			fillsDay: timeEntry.fillsDay,
+		});
+	// Nothing returned => something else filed the day's fill block
+	// between the read above and this insert. Attach to theirs.
+	return created ?? (await findFillBlock(ctx, dayKey));
+};
+
+// Where each project's evidence goes, best home first. Null means the day
+// has nothing to attach to — a full day with no work entry on it — and the
+// evidence is simply left for a later run, once there is.
+const planAttachments = (
+	evidenceByProject: Map<string, DayEvidence>,
+	byProject: Map<string, DayEntry>,
+	fallback: DayEntry | null,
+): Map<string, DayEvidence> => {
+	const attachments = new Map<string, DayEvidence>();
+	for (const [projectId, group] of evidenceByProject) {
+		const target = byProject.get(projectId) ?? fallback;
+		if (!target) continue;
+		attachments.set(
+			target.id,
+			mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
+		);
+	}
+	return attachments;
+};
+
+// Only ever fill a BLANK description. A person's own wording outranks
+// generated commit subjects — and now that this can write to an entry the
+// person made themselves, that rule is doing real work rather than guarding
+// against the engine overwriting its own output.
+const backfillBlankDescriptions = async (
+	dayEntries: DayEntry[],
+	fill: DayEntry | null,
+	attachments: Map<string, DayEvidence>,
+) => {
+	const blankDescribable = dayEntries
+		.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
+		.filter((e) => e.description.trim() === "" && attachments.has(e.id));
+	for (const entry of blankDescribable) {
+		const description = describeEvidence(
+			attachments.get(entry.id) ?? emptyEvidence(),
+		);
+		if (!description) continue;
+		await db
+			.update(timeEntry)
+			.set({ description, updatedAt: new Date() })
+			.where(eq(timeEntry.id, entry.id));
+	}
+};
+
+const insertEvidenceRows = async (attachments: Map<string, DayEvidence>) => {
+	const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
+		group.commits.map((commit) => ({
+			timeEntryId,
+			projectGithubRepoId: commit.projectGithubRepoId,
+			sha: commit.sha,
+			message: commit.message,
+			authorLogin: commit.authorLogin,
+			committedAt: commit.committedAt,
+			url: commit.url,
+		})),
+	);
+	if (commitRows.length > 0) {
+		await db
+			.insert(timeEntryGithubCommit)
+			.values(commitRows)
+			// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+			.onConflictDoNothing();
+	}
+	const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
+		group.pullRequests.map((event) =>
+			pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+		),
+	);
+	if (activityRows.length > 0) {
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(activityRows)
+			// tegpa_entry_event_unq: the same, for pull request events.
+			.onConflictDoNothing();
+	}
+};
+
+const syncCommitDay = async (
+	ctx: Ctx,
+	dayKey: string,
+	tz: string,
+	{ commits, pullRequests }: DayEvidence,
+	engine: CommitEngine,
+) => {
+	const placed = await placeReviews(ctx, dayKey, tz, pullRequests, engine);
+	const dayEntries = await loadDayWorkEntries(ctx, dayKey, engine.workTaskId);
+	const { byProject, generalEntry, ...indexed } = indexDayEntries(dayEntries);
+	let { fill } = indexed;
+
+	const { evidenceByProject, reviewedProjectIds } = groupDayEvidence(
+		commits,
+		pullRequests,
+		placed,
+	);
+	const homelessProjectIds = [
+		...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
+	].filter((projectId) => !byProject.has(projectId));
+	const homeless = mergeEvidence(
+		homelessProjectIds.flatMap(
+			(projectId) => evidenceByProject.get(projectId) ?? [],
+		),
+	);
+
+	if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
+		fill = await ensureFillBlock(
+			ctx,
+			dayKey,
+			tz,
+			engine,
+			homelessProjectIds,
+			homeless,
+		);
+	}
+
+	const attachments = planAttachments(
+		evidenceByProject,
+		byProject,
+		fill ?? generalEntry,
+	);
+	if (attachments.size === 0) return;
+	await backfillBlankDescriptions(dayEntries, fill, attachments);
+	await insertEvidenceRows(attachments);
+};
+
+const syncCommitWorkTimeForRange = async (
+	ctx: Ctx,
+	range: { from: string; to: string },
+	tz: string,
+) => {
+	const days = await readEvidenceByDay(ctx, range);
 	if (days.size === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
@@ -945,7 +1271,12 @@ const syncCommitWorkTimeForRange = async (
 		// none, via that day being disabled in the person's working hours.
 		holidaysService.holidaySetForRange(ctx, range.from, range.to),
 	]);
-	for (const [dayKey, { commits, pullRequests }] of days) {
+	const engine: CommitEngine = {
+		workTaskId: workTask.id,
+		reviewTaskId: reviewTask?.id ?? null,
+		day: { workingHours, holidays },
+	};
+	for (const [dayKey, evidence] of days) {
 		// GitHub filters `since`/`until` on the COMMITTER date, and the source
 		// buckets by AUTHOR date. A rebase rewrites the one and keeps the other, so
 		// a branch rebased today returns commits written weeks ago, bucketed on the
@@ -953,217 +1284,7 @@ const syncCommitWorkTimeForRange = async (
 		// The window is this engine's whole licence to write; a day outside it is
 		// dropped, not filed.
 		if (dayKey < range.from || dayKey > range.to) continue;
-
-		// Review blocks first. Each takes its time from the day's free time, so it
-		// has to exist before the rest-of-day block is sized, or resized.
-		let placed = new Set<string>();
-		if (reviewTask) {
-			const filed = await fileReviewBlocks(
-				ctx,
-				dayKey,
-				tz,
-				reviewTask.id,
-				pullRequests.filter((event) => event.kind === "reviewed"),
-				{ workingHours, holidays },
-			);
-			placed = filed.placed;
-			if (filed.created) await recomputeDayFill(ctx, dayKey, tz);
-		}
-
-		// Every work entry already on the day, so the loop below can hand each
-		// project's commits to the entry that describes that project's work.
-		const dayEntries = await db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.date, dayKey),
-				eq(timeEntry.taskId, workTask.id),
-			),
-			columns: {
-				id: true,
-				description: true,
-				projectId: true,
-				fillsDay: true,
-			},
-		});
-
-		// A loop, not `filter().map()`: only this way does the null check actually
-		// narrow `projectId` into the key type.
-		const byProject = new Map<string, (typeof dayEntries)[number]>();
-		for (const entry of dayEntries) {
-			if (entry.projectId === null || entry.fillsDay) continue;
-			byProject.set(entry.projectId, entry);
-		}
-		let fill = dayEntries.find((e) => e.fillsDay) ?? null;
-		// A project-less Development entry someone logged by hand. Not a fill block,
-		// but it is unmistakably "the work I did that day", so commits with no
-		// better home belong on it rather than on a new block competing with it.
-		const generalEntry =
-			dayEntries.find((e) => e.projectId === null && !e.fillsDay) ?? null;
-
-		// Group by project so evidence lands on the entry for the project it
-		// belongs to. A project with no entry falls through to the fill.
-		const evidenceByProject = new Map<string, DayEvidence>();
-		const evidenceFor = (projectId: string): DayEvidence => {
-			const existing = evidenceByProject.get(projectId);
-			if (existing) return existing;
-			const created = emptyEvidence();
-			evidenceByProject.set(projectId, created);
-			return created;
-		};
-		for (const commit of commits) {
-			evidenceFor(commit.projectId).commits.push(commit);
-		}
-		// A placed review sits on its own block, so it is not evidence for a work
-		// entry. It still says the day was worked, so its project still counts
-		// towards the rest-of-day block below.
-		const reviewedProjectIds = new Set<string>();
-		for (const event of pullRequests) {
-			if (placed.has(event.eventId)) reviewedProjectIds.add(event.projectId);
-			else evidenceFor(event.projectId).pullRequests.push(event);
-		}
-
-		const homelessProjectIds = [
-			...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
-		].filter((projectId) => !byProject.has(projectId));
-		const homeless = mergeEvidence(
-			homelessProjectIds.flatMap(
-				(projectId) => evidenceByProject.get(projectId) ?? [],
-			),
-		);
-
-		// The fill block is created only for evidence that found no home — a day
-		// of reviews is a worked day as surely as a day of commits — and only if
-		// the day still has room and nobody has said no.
-		if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
-			const durationSeconds = await computeDayFillSeconds(ctx, dayKey, tz, {
-				workingHours,
-				holidays,
-			});
-			const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
-			// A day already accounted for in full gets no block. Inserting a
-			// 0-second one would just park an empty second "Development" row next to
-			// the entries that already filled the day. Note this no longer skips the
-			// day: the attach pass below still runs, which is the fix described
-			// above.
-			if (durationSeconds > 0 && !(await hasCommitFillTombstone(ctx, dayKey))) {
-				const [created] = await db
-					.insert(timeEntry)
-					.values({
-						organizationId: ctx.organizationId,
-						userId: ctx.userId,
-						taskId: workTask.id,
-						projectId: fillProjectId,
-						// Blank evidence: every review went to a block of its own.
-						description: describeEvidence(homeless) || "Rest of day",
-						date: dayKey,
-						durationSeconds,
-						fillsDay: true,
-					})
-					// te_fill_day_uidx is the real guard against a second fill block on
-					// the day; silently skip rather than raise, since this is a
-					// best-effort background sync, not a user-initiated write. It also
-					// covers the race with a concurrent "Sync now".
-					.onConflictDoNothing({
-						target: [
-							timeEntry.organizationId,
-							timeEntry.userId,
-							timeEntry.date,
-						],
-						where: sql`${timeEntry.fillsDay} = true`,
-					})
-					.returning({
-						id: timeEntry.id,
-						description: timeEntry.description,
-						projectId: timeEntry.projectId,
-						fillsDay: timeEntry.fillsDay,
-					});
-
-				fill =
-					created ??
-					// Nothing returned => something else filed the day's fill block
-					// between the read above and this insert. Attach to theirs.
-					(await db.query.timeEntry.findFirst({
-						where: and(
-							eq(timeEntry.organizationId, ctx.organizationId),
-							eq(timeEntry.userId, ctx.userId),
-							eq(timeEntry.date, dayKey),
-							eq(timeEntry.fillsDay, true),
-						),
-						columns: {
-							id: true,
-							description: true,
-							projectId: true,
-							fillsDay: true,
-						},
-					})) ??
-					null;
-			}
-		}
-
-		// Where each project's evidence goes, best home first. Null means the day
-		// has nothing to attach to — a full day with no work entry on it — and the
-		// evidence is simply left for a later run, once there is.
-		const fallback = fill ?? generalEntry;
-		const attachments = new Map<string, DayEvidence>();
-		for (const [projectId, group] of evidenceByProject) {
-			const target = byProject.get(projectId) ?? fallback;
-			if (!target) continue;
-			attachments.set(
-				target.id,
-				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
-			);
-		}
-		if (attachments.size === 0) continue;
-
-		// Only ever fill a BLANK description. A person's own wording outranks
-		// generated commit subjects — and now that this can write to an entry the
-		// person made themselves, that rule is doing real work rather than guarding
-		// against the engine overwriting its own output.
-		const blankDescribable = dayEntries
-			.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
-			.filter((e) => e.description.trim() === "" && attachments.has(e.id));
-		for (const entry of blankDescribable) {
-			const description = describeEvidence(
-				attachments.get(entry.id) ?? emptyEvidence(),
-			);
-			if (!description) continue;
-			await db
-				.update(timeEntry)
-				.set({ description, updatedAt: new Date() })
-				.where(eq(timeEntry.id, entry.id));
-		}
-
-		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.commits.map((commit) => ({
-				timeEntryId,
-				projectGithubRepoId: commit.projectGithubRepoId,
-				sha: commit.sha,
-				message: commit.message,
-				authorLogin: commit.authorLogin,
-				committedAt: commit.committedAt,
-				url: commit.url,
-			})),
-		);
-		if (commitRows.length > 0) {
-			await db
-				.insert(timeEntryGithubCommit)
-				.values(commitRows)
-				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
-				.onConflictDoNothing();
-		}
-		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.pullRequests.map((event) =>
-				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
-			),
-		);
-		if (activityRows.length > 0) {
-			await db
-				.insert(timeEntryGithubPrActivity)
-				.values(activityRows)
-				// tegpa_entry_event_unq: the same, for pull request events.
-				.onConflictDoNothing();
-		}
+		await syncCommitDay(ctx, dayKey, tz, evidence, engine);
 	}
 };
 
