@@ -80,6 +80,11 @@ import {
 	recomputeDayFill,
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
+import {
+	pruneDetachTombstones,
+	refusedCommitShas,
+	refusedEventIds,
+} from "./detach-tombstones";
 import { safeErrorMessage } from "./error-message";
 import {
 	emitEvent,
@@ -917,13 +922,32 @@ const syncCommitWorkTimeForRange = async (
 		commitSource().listUserCommitsByDay(ctx, range),
 		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
 	]);
+	// Tombstones for days the window no longer reaches are dead rows: drop them
+	// before the read below, so the table stays small.
+	await pruneDetachTombstones(ctx, range.to);
+	// What the person took off an entry is not evidence any more. It is cut here,
+	// before any day is built, so a day with nothing else left is not a worked
+	// day. A manual attach clears the tombstone (see `githubService.attachCommits`).
+	const refusedShas = await refusedCommitShas(
+		ctx,
+		commitDays.flatMap((day) => day.commits.map((commit) => commit.sha)),
+	);
+	const refusedEvents = await refusedEventIds(
+		ctx,
+		pullRequestDays.flatMap((day) =>
+			day.activity.map((activity) => activity.eventId),
+		),
+	);
 	const days = new Map<string, DayEvidence>();
 	for (const { dayKey, commits } of commitDays) {
-		days.set(dayKey, { commits, pullRequests: [] });
+		const kept = commits.filter((commit) => !refusedShas.has(commit.sha));
+		if (kept.length > 0) days.set(dayKey, { commits: kept, pullRequests: [] });
 	}
 	for (const { dayKey, activity } of pullRequestDays) {
+		const kept = activity.filter((event) => !refusedEvents.has(event.eventId));
+		if (kept.length === 0) continue;
 		const day = days.get(dayKey) ?? emptyEvidence();
-		day.pullRequests.push(...activity);
+		day.pullRequests.push(...kept);
 		days.set(dayKey, day);
 	}
 	if (days.size === 0) return;

@@ -44,6 +44,12 @@ import {
 	requireAdmin,
 	withCtxTx,
 } from "./context";
+import {
+	allowCommits,
+	allowEvents,
+	refuseCommits,
+	refuseEvents,
+} from "./detach-tombstones";
 import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
@@ -1531,7 +1537,18 @@ export const githubService = {
 			}));
 
 		if (rows.length > 0) {
-			await db.insert(timeEntryGithubCommit).values(rows).onConflictDoNothing();
+			await withCtxTx(ctx, async (txCtx) => {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubCommit)
+					.values(rows)
+					.onConflictDoNothing();
+				// A hand attach takes back an earlier detach: the engine may file
+				// this commit again.
+				await allowCommits(
+					txCtx,
+					rows.map((row) => row.sha),
+				);
+			});
 		}
 
 		return githubService.listAttachedCommits(ctx, input.timeEntryId);
@@ -1549,7 +1566,11 @@ export const githubService = {
 
 	detachCommit: async (ctx: Ctx, timeEntryGithubCommitId: string) => {
 		const [row] = await db
-			.select({ id: timeEntryGithubCommit.id })
+			.select({
+				id: timeEntryGithubCommit.id,
+				sha: timeEntryGithubCommit.sha,
+				committedAt: timeEntryGithubCommit.committedAt,
+			})
 			.from(timeEntryGithubCommit)
 			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
 			.where(
@@ -1564,9 +1585,18 @@ export const githubService = {
 			throw new Error("Commit attachment not found");
 		}
 
-		await db
-			.delete(timeEntryGithubCommit)
-			.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
+		const tz = await ctxTimezone(ctx);
+		await withCtxTx(ctx, async (txCtx) => {
+			await ctxDb(txCtx)
+				.delete(timeEntryGithubCommit)
+				.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
+			// The attachment row alone is not enough: the engine would attach the
+			// commit again on its next pass. The tombstone is per person and commit,
+			// so it holds whichever entry the engine would choose.
+			await refuseCommits(txCtx, [
+				{ sha: row.sha, date: dayKeyInTz(row.committedAt, tz) },
+			]);
+		});
 	},
 
 	/** The caller's own commit attachments on entries dated in the span, oldest
@@ -1791,11 +1821,18 @@ export const githubService = {
 
 		const flat = rows.flat();
 		if (flat.length > 0) {
-			await db
-				.insert(timeEntryGithubPrActivity)
-				.values(flat)
-				// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
-				.onConflictDoNothing();
+			await withCtxTx(ctx, async (txCtx) => {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubPrActivity)
+					.values(flat)
+					// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
+					.onConflictDoNothing();
+				// A hand attach takes back an earlier detach of these events.
+				await allowEvents(
+					txCtx,
+					flat.map((row) => row.eventId),
+				);
+			});
 		}
 		return githubService.listAttachedPullRequestActivity(ctx, entry.id);
 	},
@@ -1815,6 +1852,8 @@ export const githubService = {
 				id: timeEntryGithubPrActivity.id,
 				timeEntryId: timeEntry.id,
 				date: timeEntry.date,
+				eventId: timeEntryGithubPrActivity.eventId,
+				occurredAt: timeEntryGithubPrActivity.occurredAt,
 			})
 			.from(timeEntryGithubPrActivity)
 			.innerJoin(
@@ -1832,6 +1871,7 @@ export const githubService = {
 		if (!row) {
 			throw new Error("Pull request activity not found");
 		}
+		const tz = await ctxTimezone(ctx);
 		await withCtxTx(ctx, async (txCtx) => {
 			const heldBefore = await reviewsHeldBy(txCtx, row.timeEntryId);
 			await ctxDb(txCtx)
@@ -1846,6 +1886,11 @@ export const githubService = {
 				row.date,
 				heldBefore.filter((pullRequestUrl) => !heldAfter.has(pullRequestUrl)),
 			);
+			// The block tombstone above says no to a block. This one says no to the
+			// event, which the engine would otherwise attach again to the day's work.
+			await refuseEvents(txCtx, [
+				{ eventId: row.eventId, date: dayKeyInTz(row.occurredAt, tz) },
+			]);
 		});
 	},
 

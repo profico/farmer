@@ -167,6 +167,65 @@ export const pullRequestReviewTombstone = pgTable(
 	],
 );
 
+// A commit the person took off an entry: "this commit is not mine to attach".
+//
+// `githubService.detachCommit` used to delete only the attachment row. The
+// commit engine re-reads every day in the automation window and inserts what it
+// finds with `onConflictDoNothing`, so the commit came back on the next sweep,
+// possibly on a different entry. This row is what the engine reads to say no.
+//
+// Keyed by (person, sha), not by entry: the entry is the row the person just
+// edited, and the engine may choose another one. Another person's copy of the
+// same commit is their own decision. A manual attach (`attachCommits`) deletes
+// the row, so the person can change their mind.
+//
+// `date` is the day the engine buckets the commit on (the author date, in the
+// org timezone). Only a day inside the automation window is read by the
+// engine, so a row older than the window is dead. The engine deletes such rows
+// at the start of each pass, which keeps the table small.
+export const commitDetachTombstone = pgTable(
+	"commit_detach_tombstone",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		sha: text("sha").notNull(),
+		/** yyyy-MM-dd, in the org timezone — the day the engine files it on. */
+		date: text("date").notNull(),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [unique("cdt_org_user_sha_unq").on(t.organizationId, t.userId, t.sha)],
+);
+
+// The same for a pull request event (`timeEntryGithubPrActivity.eventId`):
+// opened, merged, closed or reviewed. It is separate from
+// `pullRequestReviewTombstone`, which refuses a review BLOCK for a PR and day
+// and still lets the review stay evidence. This row refuses the event itself.
+// It has the same key, life and way back as `commitDetachTombstone`.
+export const pullRequestEventDetachTombstone = pgTable(
+	"pull_request_event_detach_tombstone",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		eventId: text("event_id").notNull(),
+		/** yyyy-MM-dd, in the org timezone — the day the event happened. */
+		date: text("date").notNull(),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		unique("predt_org_user_event_unq").on(
+			t.organizationId,
+			t.userId,
+			t.eventId,
+		),
+	],
+);
+
 // "Always file this meeting to that project." A per-(org, user) standing answer
 // to the question the File-your-time dialog asks, so the recurring one — the
 // weekly stand-up, the daily — is answered once instead of every month.
