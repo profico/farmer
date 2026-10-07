@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 
-import { externalFetch } from "./http";
+import { durationFromEnv, externalFetch } from "./http";
 import type { JsonRecord } from "./json";
 
 const BASE = "https://openrouter.ai/api/v1";
@@ -20,19 +20,10 @@ const BASE = "https://openrouter.ai/api/v1";
  *  on the whole request, and a streaming response is not "complete" until the
  *  last token lands. At 15s it does not fail to connect — it guillotines a
  *  working answer mid-sentence, which reads as the model trailing off. */
-export const OPENROUTER_STREAM_TIMEOUT_MS = Number(
-	process.env.OPENROUTER_STREAM_TIMEOUT_MS ?? 180_000,
+export const OPENROUTER_STREAM_TIMEOUT_MS = durationFromEnv(
+	process.env.OPENROUTER_STREAM_TIMEOUT_MS,
+	180_000,
 );
-
-/** Read the stall limit from the environment. An unset, empty or invalid value
- *  gives the default: an empty variable in a compose file must not turn the
- *  watchdog off. Only an explicit number, such as 0, is used. */
-export function stallTimeoutFromEnv(raw: string | undefined): number {
-	const trimmed = raw?.trim();
-	if (!trimmed) return 60_000;
-	const value = Number(trimmed);
-	return Number.isFinite(value) ? value : 60_000;
-}
 
 /** How long a call may go with no progress before it is aborted as a stall.
  *
@@ -45,10 +36,13 @@ export function stallTimeoutFromEnv(raw: string | undefined): number {
  *  successful calls in production took 80.3 s, 54.3 s and 49.8 s in total, and
  *  their output streamed for part of that time. Their time to the first
  *  progress was not recorded, so the 60 s default is a guess, not a
- *  measurement. A value of 0 or less turns the watchdog off, and the total
- *  deadline above still applies. */
-export const OPENROUTER_STALL_TIMEOUT_MS = stallTimeoutFromEnv(
+ *  measurement. An explicit 0 turns the watchdog off, and the total deadline
+ *  above still applies. An unset, empty, negative or invalid value gives the
+ *  default (`durationFromEnv`). */
+export const OPENROUTER_STALL_TIMEOUT_MS = durationFromEnv(
 	process.env.OPENROUTER_STALL_TIMEOUT_MS,
+	60_000,
+	"off",
 );
 
 /** Short: this one really is just a page fetch. */

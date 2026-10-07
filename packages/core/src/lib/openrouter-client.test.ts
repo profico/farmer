@@ -18,7 +18,6 @@ import {
 	OpenRouterNetworkError,
 	OpenRouterStreamCutError,
 	retryableBeforeOutput,
-	stallTimeoutFromEnv,
 	streamChatCompletion,
 } from "./openrouter-client";
 
@@ -780,19 +779,5 @@ describe("a body-read fault in the middle of a stream", () => {
 			}),
 		);
 		expect(error).toBe(bug);
-	});
-});
-
-describe("the stall limit from the environment", () => {
-	test("unset, empty or invalid gives the default", () => {
-		expect(stallTimeoutFromEnv(undefined)).toBe(60_000);
-		expect(stallTimeoutFromEnv("")).toBe(60_000);
-		expect(stallTimeoutFromEnv("  ")).toBe(60_000);
-		expect(stallTimeoutFromEnv("abc")).toBe(60_000);
-	});
-
-	test("an explicit number is used, and 0 stays 0", () => {
-		expect(stallTimeoutFromEnv("90000")).toBe(90_000);
-		expect(stallTimeoutFromEnv("0")).toBe(0);
 	});
 });
