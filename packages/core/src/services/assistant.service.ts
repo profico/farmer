@@ -995,12 +995,10 @@ type TurnTrace = {
  *  `ASSISTANT_FALLBACK_MODEL` names it. The default is pinned, because a
  *  `~...-latest` id moves to new versions without notice. An empty value counts
  *  as unset. When it equals the primary model, the retry asks the same model. */
-export const ASSISTANT_FALLBACK_MODEL_DEFAULT = "z-ai/glm-5.3-flash";
-const fallbackModel = (primary: string): string => {
-	const configured = process.env.ASSISTANT_FALLBACK_MODEL?.trim();
-	const fallback = configured || ASSISTANT_FALLBACK_MODEL_DEFAULT;
-	return fallback === primary ? primary : fallback;
-};
+const ASSISTANT_FALLBACK_MODEL_DEFAULT = "z-ai/glm-5.3-flash";
+const fallbackModel = (): string =>
+	process.env.ASSISTANT_FALLBACK_MODEL?.trim() ||
+	ASSISTANT_FALLBACK_MODEL_DEFAULT;
 
 /**
  * One billed model call, timed and reported.
@@ -1027,22 +1025,19 @@ const generate = async (
 		retry?: boolean;
 	},
 ): Promise<ChatTurn> => {
-	const spanId = crypto.randomUUID();
 	let retryReason: string | null = null;
 	for (let attempt = 1; ; attempt += 1) {
-		// The retry goes to the fallback model. When it is the same model, the
-		// same model is asked once more.
-		const model = attempt === 1 ? trace.model : fallbackModel(trace.model);
+		const model = attempt === 1 ? trace.model : fallbackModel();
 		// A retry is its own billed call, so it has its own span. Telemetry
 		// reads `generationId` as the call whose tool calls any span came from.
-		const attemptSpanId = attempt === 1 ? spanId : crypto.randomUUID();
-		trace.generationId = attemptSpanId;
+		const spanId = crypto.randomUUID();
+		trace.generationId = spanId;
 		const startedAt = Date.now();
 		const common = {
 			organizationId: ctx.organizationId,
 			userId: ctx.userId,
 			traceId: trace.id,
-			spanId: attemptSpanId,
+			spanId,
 			conversationId: trace.conversationId,
 			model,
 			step,
