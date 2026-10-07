@@ -86,7 +86,8 @@ const framesOf = (stack: string): string =>
 		.filter((line) => /^\s+at /.test(line))
 		.join("\n");
 
-/** The first value of each place field along the chain. */
+/** The first value of each place field along the chain, as `[name, value]`
+ *  pairs. A field that no link has is not in the list. */
 const placesOf = (chain: readonly Error[]) => {
 	const places: Pick<
 		LoggableError,
@@ -101,7 +102,9 @@ const placesOf = (chain: readonly Error[]) => {
 		places.table ??= found.table ?? found.table_name;
 		places.column ??= found.column ?? found.column_name;
 	}
-	return places;
+	return Object.entries(places).filter(
+		(entry): entry is [string, string] => entry[1] !== undefined,
+	);
 };
 
 /**
@@ -124,10 +127,7 @@ export const loggableError = (cause: unknown): LoggableError => {
 			database ? classOf(link) : `${classOf(link)}: ${link.message}`,
 		);
 	}
-	const places = Object.entries(placesOf(chain)).filter(
-		([, value]) => value !== undefined,
-	);
-	Object.assign(result, Object.fromEntries(places));
+	Object.assign(result, Object.fromEntries(placesOf(chain)));
 	if (first.stack) {
 		result.stack = database ? framesOf(first.stack) : first.stack;
 	}
@@ -152,4 +152,29 @@ export const loggableErrorLine = (cause: unknown): string => {
 	return named.length > 0
 		? `${parts.join("; ")} (${named.join(", ")})`
 		: parts.join("; ");
+};
+
+/**
+ * The error, or a copy without the values of its query when the error or a
+ * link of its `cause` chain is a database error.
+ *
+ * Use it before an error goes out of this process, for example to PostHog
+ * error tracking. The copy keeps the class in `name` and the frames of the
+ * stack, so the tool still groups it by class and by location. Its message
+ * has only the code and the names of the constraint, the table and the
+ * column. It has no `cause`, because the driver's error holds the values too.
+ * A different error comes back unchanged.
+ */
+export const withoutQueryValues = (error: Error): Error => {
+	const chain = chainOf(error);
+	if (!chain.some(isDatabaseError)) return error;
+	const places = placesOf(chain).map(([key, value]) => `${key} ${value}`);
+	const copy = new Error(
+		places.length > 0
+			? `Database error (${places.join(", ")})`
+			: "Database error",
+	);
+	copy.name = classOf(error);
+	copy.stack = `${copy.name}: ${copy.message}\n${framesOf(error.stack ?? "")}`;
+	return copy;
 };
