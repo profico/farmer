@@ -397,8 +397,8 @@ const meetingRowsFor = (
 		// minutes on purpose, so a 3-minute meeting is still a real block — which
 		// also means it turns a zero-length event (and an inverted one) into a
 		// 15-minute block rather than dropping it. A check on the snapped
-		// duration could therefore never be false. The day
-		// assembler has always checked `raw <= 0`; this is the engine that writes.
+		// duration could therefore never be false. The day assembler has always
+		// checked `raw <= 0`; this is the engine that writes.
 		if (rawSeconds <= 0) return [];
 		const rule = rules.get(ruleKeyFor(meetingTask.id, event.title));
 		const row = meetingRowFor(

@@ -1728,7 +1728,6 @@ const runStep = async (
 		});
 	} catch (error) {
 		if (error instanceof OpenRouterStreamCutError) {
-			// Cut by the provider.
 			await reportCut(ctx, conversation, error, signal, onEvent);
 			return "ended";
 		}

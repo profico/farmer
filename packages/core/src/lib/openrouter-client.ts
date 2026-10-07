@@ -317,9 +317,8 @@ const parseDataLine = (line: string): Chunk | null => {
 	const payload = trimmed.slice(5).trim();
 	if (payload === "[DONE]") return null;
 	try {
-		// SAFETY: the wire shape is not trusted; every field of `Chunk` is
-		// optional and the readers below look at each one before they use it.
-		return JSON.parse(payload) as Chunk;
+		const chunk: Chunk = JSON.parse(payload);
+		return chunk;
 	} catch {
 		// A frame split across two network reads is the normal case here and
 		// is already handled by the `buffer` carry-over in the read loop; anything
