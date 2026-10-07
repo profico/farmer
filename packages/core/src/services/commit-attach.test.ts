@@ -23,6 +23,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -50,6 +51,7 @@ import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { githubService, setGithubClientForTests } from "./github.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { setCommitSourceForTests } from "./ports";
+import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -808,6 +810,31 @@ describe("a detached commit", () => {
 		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
 			other.id,
 		]);
+	});
+
+	test("is not put back by a pass that read before the detach", async () => {
+		const { attached } = await syncedEntry();
+		// The detach commits while the pass runs: after the pass read the
+		// tombstones, before it inserts. The task lookup sits between the two.
+		const lookup = tasksService.findBySystemKey;
+		let detached = false;
+		const spy = spyOn(tasksService, "findBySystemKey").mockImplementation(
+			async (...args) => {
+				if (!detached) {
+					detached = true;
+					await githubService.detachCommit(ctx, attached.id);
+				}
+				return lookup(...args);
+			},
+		);
+		try {
+			await runAutomations();
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect(detached).toBe(true);
+		expect(await attachedRows(SHA)).toEqual([]);
 	});
 
 	test("does not touch the same commit of another person", async () => {

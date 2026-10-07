@@ -12,7 +12,7 @@
 // than the automation window is dead, because the engine never reads that day,
 // so the engine prunes it.
 
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 
 import {
 	commitDetachTombstone,
@@ -22,6 +22,22 @@ import { AUTOMATION_GRACE_DAYS } from "../lib/automation-window";
 import { addDaysToKey } from "../lib/time";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
+
+/**
+ * Serialize a detach and the engine's attach for one person, until the
+ * transaction ends. Call it first inside `withCtxTx`.
+ *
+ * The engine reads the tombstones, builds the day, then inserts. A detach
+ * that commits between the read and the insert would see its row put back.
+ * Under this lock, the engine reads the tombstones again just before the
+ * insert, and a detach waits for the insert to commit.
+ */
+export const lockDetachTombstones = async (ctx: Ctx): Promise<void> => {
+	const key = `detach-tombstone:${ctx.organizationId}:${ctx.userId}`;
+	await ctxDb(ctx).execute(
+		sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
+	);
+};
 
 /** Record that the person said no to these commits. */
 export const refuseCommits = async (

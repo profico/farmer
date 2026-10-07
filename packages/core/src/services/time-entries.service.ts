@@ -81,6 +81,7 @@ import {
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
 import {
+	lockDetachTombstones,
 	pruneDetachTombstones,
 	refusedCommitShas,
 	refusedEventIds,
@@ -1159,44 +1160,75 @@ const syncCommitWorkTimeForRange = async (
 				.where(eq(timeEntry.id, entry.id));
 		}
 
-		// Evidence that is already on one of the person's entries of the day stays
-		// where it is. The person or an earlier pass put it there, and a second
-		// copy on another entry counts the same work twice.
-		const held = await evidenceHeldOn(ctx, dayKey);
-		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.commits
-				.filter((commit) => !held.shas.has(commit.sha))
-				.map((commit) => ({
-					timeEntryId,
-					projectGithubRepoId: commit.projectGithubRepoId,
-					sha: commit.sha,
-					message: commit.message,
-					authorLogin: commit.authorLogin,
-					committedAt: commit.committedAt,
-					url: commit.url,
-				})),
-		);
-		if (commitRows.length > 0) {
-			await db
-				.insert(timeEntryGithubCommit)
-				.values(commitRows)
-				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
-				.onConflictDoNothing();
-		}
-		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.pullRequests
-				.filter((event) => !held.eventIds.has(event.eventId))
-				.map((event) =>
-					pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+		await withCtxTx(ctx, async (txCtx) => {
+			// A detach can commit after the read at the top of this pass. Under the
+			// lock, the tombstones are read again, and the insert does not put back
+			// what the detach just took off.
+			await lockDetachTombstones(txCtx);
+			const [refusedNow, refusedEventsNow] = await Promise.all([
+				refusedCommitShas(
+					txCtx,
+					[...attachments.values()].flatMap((group) =>
+						group.commits.map((commit) => commit.sha),
+					),
 				),
-		);
-		if (activityRows.length > 0) {
-			await db
-				.insert(timeEntryGithubPrActivity)
-				.values(activityRows)
-				// tegpa_entry_event_unq: the same, for pull request events.
-				.onConflictDoNothing();
-		}
+				refusedEventIds(
+					txCtx,
+					[...attachments.values()].flatMap((group) =>
+						group.pullRequests.map((event) => event.eventId),
+					),
+				),
+			]);
+			// Evidence that is already on one of the person's entries of the day
+			// stays where it is. The person or an earlier pass put it there, and a
+			// second copy on another entry counts the same work twice.
+			const held = await evidenceHeldOn(txCtx, dayKey);
+			const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
+				group.commits
+					.filter(
+						(commit) =>
+							!held.shas.has(commit.sha) && !refusedNow.has(commit.sha),
+					)
+					.map((commit) => ({
+						timeEntryId,
+						projectGithubRepoId: commit.projectGithubRepoId,
+						sha: commit.sha,
+						message: commit.message,
+						authorLogin: commit.authorLogin,
+						committedAt: commit.committedAt,
+						url: commit.url,
+					})),
+			);
+			if (commitRows.length > 0) {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubCommit)
+					.values(commitRows)
+					// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+					.onConflictDoNothing();
+			}
+			const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
+				group.pullRequests
+					.filter(
+						(event) =>
+							!held.eventIds.has(event.eventId) &&
+							!refusedEventsNow.has(event.eventId),
+					)
+					.map((event) =>
+						pullRequestActivityRow(
+							timeEntryId,
+							event.projectGithubRepoId,
+							event,
+						),
+					),
+			);
+			if (activityRows.length > 0) {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubPrActivity)
+					.values(activityRows)
+					// tegpa_entry_event_unq: the same, for pull request events.
+					.onConflictDoNothing();
+			}
+		});
 	}
 };
 
@@ -1209,12 +1241,12 @@ const evidenceHeldOn = async (ctx: Ctx, dayKey: string) => {
 		eq(timeEntry.date, dayKey),
 	);
 	const [commits, events] = await Promise.all([
-		db
+		ctxDb(ctx)
 			.select({ sha: timeEntryGithubCommit.sha })
 			.from(timeEntryGithubCommit)
 			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
 			.where(onDay),
-		db
+		ctxDb(ctx)
 			.select({ eventId: timeEntryGithubPrActivity.eventId })
 			.from(timeEntryGithubPrActivity)
 			.innerJoin(

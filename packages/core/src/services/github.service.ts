@@ -45,7 +45,11 @@ import {
 	requireAdmin,
 	withCtxTx,
 } from "./context";
-import { refuseCommits, refuseEvents } from "./detach-tombstones";
+import {
+	lockDetachTombstones,
+	refuseCommits,
+	refuseEvents,
+} from "./detach-tombstones";
 import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
@@ -1591,6 +1595,7 @@ export const githubService = {
 
 		const tz = await ctxTimezone(ctx);
 		await withCtxTx(ctx, async (txCtx) => {
+			await lockDetachTombstones(txCtx);
 			await ctxDb(txCtx)
 				.delete(timeEntryGithubCommit)
 				.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
@@ -1876,6 +1881,7 @@ export const githubService = {
 		}
 		const tz = await ctxTimezone(ctx);
 		await withCtxTx(ctx, async (txCtx) => {
+			await lockDetachTombstones(txCtx);
 			const heldBefore = await reviewsHeldBy(txCtx, row.timeEntryId);
 			await ctxDb(txCtx)
 				.delete(timeEntryGithubPrActivity)
