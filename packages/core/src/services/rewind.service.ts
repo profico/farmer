@@ -242,7 +242,7 @@ const tallyWorked = (tally: RewindTally, row: RewindRow) => {
 };
 
 /** Sums the year's rows into the maps and totals the Rewind is built from. */
-export const tallyRewindRows = (
+const tallyRewindRows = (
 	rows: readonly RewindRow[],
 	asOf: string,
 ): RewindTally => {
@@ -299,7 +299,7 @@ type BusiestAndWeekends = {
 
 /** The day with most worked time (the earlier day on a tie) and how many
  *  weekend days had work. */
-export const busiestAndWeekends = (
+const busiestAndWeekends = (
 	workedByDay: ReadonlyMap<string, number>,
 ): BusiestAndWeekends => {
 	let busiestDay: Rewind["busiestDay"] = null;

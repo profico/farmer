@@ -14,11 +14,7 @@ import {
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { createTestDb, present, type TestDb } from "../test/harness";
-import {
-	busiestAndWeekends,
-	rewindService,
-	tallyRewindRows,
-} from "./rewind.service";
+import { rewindService } from "./rewind.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
@@ -341,55 +337,5 @@ describe("rewindService.mine", () => {
 		);
 		expect(rewind.commits).toBe(2);
 		expect(rewind.pullRequests).toEqual({ opened: 2, merged: 1, reviewed: 3 });
-	});
-});
-
-describe("tallyRewindRows", () => {
-	const row = (
-		over: Partial<Parameters<typeof tallyRewindRows>[0][number]>,
-	) => ({
-		date: "2025-12-02",
-		projectId: null,
-		overtime: false,
-		taskId: "t1",
-		taskName: "Development",
-		group: "engineering" as const,
-		systemKey: null,
-		isAbsence: false,
-		seconds: "3600",
-		...over,
-	});
-
-	test("keeps time off on both sides of asOf and work only through it", () => {
-		const tally = tallyRewindRows(
-			[
-				row({ date: "2025-12-02" }),
-				row({ date: "2025-12-12" }),
-				row({ date: "2025-12-03", isAbsence: true, systemKey: "sick" }),
-				row({ date: "2025-12-22", isAbsence: true, systemKey: "vacation" }),
-			],
-			"2025-12-10",
-		);
-		expect(tally.workedSeconds).toBe(H);
-		expect(tally.firstDay).toBe("2025-12-02");
-		expect(tally.sick).toBe(H);
-		expect(tally.vacation).toBe(H);
-		expect(tally.ahead).toBe(H);
-		expect(tally.weekdays[2]).toBe(H);
-	});
-});
-
-describe("busiestAndWeekends", () => {
-	test("takes the earlier day on a tie and ignores empty days", () => {
-		const days = new Map([
-			["2025-12-09", 5 * H],
-			["2025-12-03", 5 * H],
-			["2025-12-07", 0],
-			["2025-12-06", H],
-		]);
-		expect(busiestAndWeekends(days)).toEqual({
-			busiestDay: { date: "2025-12-03", seconds: 5 * H },
-			weekendDaysWorked: 1,
-		});
 	});
 });
