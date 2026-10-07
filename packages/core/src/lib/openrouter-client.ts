@@ -212,11 +212,11 @@ export const retryableBeforeOutput = (error: Error): string | null => {
 	if (error instanceof OpenRouterNetworkError) return "network";
 	if (error instanceof OpenRouterError && error.status !== undefined) {
 		const { status } = error;
-		// Not 429. An HTTP 429 from OpenRouter is usually the rate limit of the
-		// organization's key, and a retry at once hits the same limit and bills
-		// nothing but a second refusal. A 429 in an error frame is different: the
-		// provider refused after the stream started, and the retry can go to
-		// another provider.
+		// Not 429. An HTTP 429 can come from the limits of OpenRouter or from the
+		// provider. OpenRouter fallback routing already tried the other providers
+		// of the same model. A retry at once by the app adds load and rarely
+		// helps. A 429 in an error frame is different: the provider refused
+		// after the stream started, and the retry can go to another provider.
 		if (status === 408 || status >= 500) return `http_${String(status)}`;
 	}
 	return null;
