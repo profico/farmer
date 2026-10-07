@@ -276,9 +276,9 @@ Play account. Only the store upload (see "Store upload") needs them.
 | Trigger | Result |
 |---|---|
 | Push to `main` that changes `apps/mobile`, `packages/api-client`, `packages/push-crypto`, `bun.lock` or the workflow | Builds both platforms. Replaces the prerelease `mobile-latest` (the old release and its tag are deleted, and made again on the new commit). |
-| Tag `mobile-v<version>` | Builds both platforms. Publishes a normal release. The job fails when the tag is not the `version` of `app.config.ts`. |
+| Tag `mobile-v<version>` | Builds both platforms. Publishes a normal release. The job fails when the tag is not the `version` of `app.config.ts`. Also uploads to the stores (see "Store upload"). |
 | Push to `feat/mobile` | Builds both platforms. Keeps the files as workflow artifacts. No release. Remove this trigger after the mobile pull request merges. |
-| `workflow_dispatch` | Builds. Releases only on `main`. |
+| `workflow_dispatch` | Builds. Releases only on `main`. Uploads to the stores only when the input `publish_to_stores` is on. |
 
 The files of a release:
 
@@ -297,8 +297,9 @@ The files of a release:
 
 The upload runs on a tag `mobile-v*`, and on a manual run with the input
 `publish_to_stores` on. A push to `main` or to `feat/mobile` never uploads.
-The jobs `play-upload` and `testflight` run beside the job `release`. It does
-not wait for them, so a failed upload cannot block the GitHub release. The
+The jobs `play-upload` and `testflight` run beside the job `release`. The job
+`release` does not wait for them, so a failed upload cannot block the GitHub
+release. The
 AAB build is a step of the job `android`, so a failed AAB build does block it.
 When a secret is missing, a job prints a warning and skips the upload. It does
 not fail.
