@@ -147,8 +147,11 @@ export type AttachedEvidenceRangeInput = z.infer<
 // commits. A larger batch is more than a person reads on one approval card.
 export const MAX_UNLINK_PER_CALL = 100;
 
+// Any string, not a uuid: a model can send one malformed id among good ones,
+// and the tool reports that id as not found and unlinks the rest. A uuid
+// check here refused the whole call.
 export const unlinkCommitsInput = z.object({
-	attachmentIds: z.array(detachCommitInput).min(1).max(MAX_UNLINK_PER_CALL),
+	attachmentIds: z.array(z.string()).min(1).max(MAX_UNLINK_PER_CALL),
 });
 export type UnlinkCommitsInput = z.infer<typeof unlinkCommitsInput>;
 
@@ -184,11 +187,9 @@ export type DetachPullRequestActivityInput = z.infer<
 	typeof detachPullRequestActivityInput
 >;
 
+// Any string, for the reason `unlinkCommitsInput` gives.
 export const unlinkPullRequestsInput = z.object({
-	activityIds: z
-		.array(detachPullRequestActivityInput)
-		.min(1)
-		.max(MAX_UNLINK_PER_CALL),
+	activityIds: z.array(z.string()).min(1).max(MAX_UNLINK_PER_CALL),
 });
 export type UnlinkPullRequestsInput = z.infer<typeof unlinkPullRequestsInput>;
 

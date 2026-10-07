@@ -403,6 +403,32 @@ describe("unlink_commits", () => {
 		);
 		expect(kept).toEqual({ attachmentIds: [at(ids, 1)] });
 	});
+
+	test("reports a malformed id as not found and unlinks the rest", async () => {
+		// The last test of this block: it unlinks the one commit left that is not
+		// on profico/farmer.
+		const good = at(myCommitIds, 3);
+		const args = { attachmentIds: ["not-a-uuid", good] };
+		expect(tool("unlink_commits").schema.safeParse(args).success).toBe(true);
+
+		const preview = present(
+			await tool("unlink_commits").preview?.(ctx(), args),
+			"preview",
+		);
+		expect(preview.rows.map((row) => row.id)).toEqual([good]);
+
+		const result = unlinkResult.parse(
+			await tool("unlink_commits").run(ctx(), args),
+		);
+		expect(result.unlinked).toBe(1);
+		expect(
+			present(
+				result.results.find((row) => row.attachmentId === "not-a-uuid"),
+				"the malformed id's result",
+			).error,
+		).toBe("Commit attachment not found");
+		expect(await exists(good)).toBe(false);
+	});
 });
 
 describe("the pull request pair", () => {
@@ -432,5 +458,27 @@ describe("the pull request pair", () => {
 		const left = await db.select().from(timeEntryGithubPrActivity);
 		expect(left.map((row) => row.id)).toContain(strangerActivityId);
 		expect(left.map((row) => row.id)).not.toContain(at(prActivityIds, 0));
+	});
+
+	test("unlink_pull_requests reports a malformed id as not found", async () => {
+		const good = at(prActivityIds, 1);
+		const args = { activityIds: ["not-a-uuid", good] };
+
+		const preview = present(
+			await tool("unlink_pull_requests").preview?.(ctx(), args),
+			"preview",
+		);
+		expect(preview.rows.map((row) => row.id)).toEqual([good]);
+
+		const result = unlinkResult.parse(
+			await tool("unlink_pull_requests").run(ctx(), args),
+		);
+		expect(result.unlinked).toBe(1);
+		expect(
+			present(
+				result.results.find((row) => row.activityId === "not-a-uuid"),
+				"the malformed id's result",
+			).error,
+		).toBe("Pull request activity not found");
 	});
 });

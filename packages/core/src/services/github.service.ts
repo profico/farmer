@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { auth } from "../auth";
 import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
@@ -49,6 +50,12 @@ import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
+
+/** The ids among these that can name a row. An assistant tool takes any string,
+ *  so that one bad id does not refuse the whole call. A string that is not a
+ *  uuid fails the cast in Postgres, so it must not reach a query. */
+const rowIds = (ids: string[]) =>
+	ids.filter((id) => z.uuid().safeParse(id).success);
 
 /** The GitHub HTTP calls this service makes. */
 export type GithubClient = Pick<
@@ -1558,6 +1565,10 @@ export const githubService = {
 	},
 
 	detachCommit: async (ctx: Ctx, timeEntryGithubCommitId: string) => {
+		// A string that is not a uuid names no row, and is the same "not found".
+		if (rowIds([timeEntryGithubCommitId]).length === 0) {
+			throw new Error("Commit attachment not found");
+		}
 		const [row] = await db
 			.select({
 				id: timeEntryGithubCommit.id,
@@ -1631,7 +1642,8 @@ export const githubService = {
 	/** The caller's own attachments among these ids. An id that is missing or
 	 *  belongs to somebody else is left out, with no way to tell which. */
 	listAttachedCommitsByIds: async (ctx: Ctx, ids: string[]) => {
-		if (ids.length === 0) return [];
+		const valid = rowIds(ids);
+		if (valid.length === 0) return [];
 		return db
 			.select(attachedCommitColumns)
 			.from(timeEntryGithubCommit)
@@ -1642,7 +1654,7 @@ export const githubService = {
 			)
 			.where(
 				and(
-					inArray(timeEntryGithubCommit.id, ids),
+					inArray(timeEntryGithubCommit.id, valid),
 					eq(timeEntry.organizationId, ctx.organizationId),
 					eq(timeEntry.userId, ctx.userId),
 				),
@@ -1835,6 +1847,9 @@ export const githubService = {
 	},
 
 	detachPullRequestActivity: async (ctx: Ctx, activityId: string) => {
+		if (rowIds([activityId]).length === 0) {
+			throw new Error("Pull request activity not found");
+		}
 		const [row] = await db
 			.select({
 				id: timeEntryGithubPrActivity.id,
@@ -1922,7 +1937,8 @@ export const githubService = {
 
 	/** The caller's own events among these ids, as `listAttachedCommitsByIds`. */
 	listAttachedPullRequestActivityByIds: async (ctx: Ctx, ids: string[]) => {
-		if (ids.length === 0) return [];
+		const valid = rowIds(ids);
+		if (valid.length === 0) return [];
 		return db
 			.select(attachedActivityColumns)
 			.from(timeEntryGithubPrActivity)
@@ -1936,7 +1952,7 @@ export const githubService = {
 			)
 			.where(
 				and(
-					inArray(timeEntryGithubPrActivity.id, ids),
+					inArray(timeEntryGithubPrActivity.id, valid),
 					eq(timeEntry.organizationId, ctx.organizationId),
 					eq(timeEntry.userId, ctx.userId),
 				),
