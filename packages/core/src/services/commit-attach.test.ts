@@ -758,6 +758,7 @@ describe("a detached commit", () => {
 	test("moved by hand to another entry, stays off the first", async () => {
 		const { entry, attached } = await syncedEntry();
 		await githubService.detachCommit(ctx, attached.id);
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
 		const other = await addEntry({
 			date: YESTERDAY,
 			projectId: otherProjectId,
@@ -778,6 +779,7 @@ describe("a detached commit", () => {
 	test("attached by hand to its old entry, is not added twice", async () => {
 		const { entry, attached } = await syncedEntry();
 		await githubService.detachCommit(ctx, attached.id);
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
 
 		await attachNow(entry.id);
 		await runAutomations();
@@ -824,6 +826,8 @@ describe("a detached commit", () => {
 		await timeEntriesService.runAutomationsForUser(otherCtx, {
 			now: new Date(`${TODAY}T12:00:00.000Z`),
 		});
+		// The caller's own pass after the colleague's still keeps it off.
+		await runAutomations();
 
 		const rows = await attachedRows(SHA);
 		expect(rows).toHaveLength(1);

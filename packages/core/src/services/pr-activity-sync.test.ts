@@ -785,6 +785,8 @@ describe("a detached pull request event", () => {
 		await timeEntriesService.runAutomationsForUser(otherCtx, {
 			now: new Date(`${TODAY}T12:00:00.000Z`),
 		});
+		// The caller's own pass after the colleague's still keeps it off.
+		await runAutomations();
 
 		const rows = await allActivity();
 		expect(rows.map((row) => row.eventId)).toEqual(["PR_7:opened"]);
@@ -851,6 +853,9 @@ describe("a detached pull request event", () => {
 			ctx,
 			at(await activityOn(entry.id), 0).id,
 		);
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
 		const other = await addEntry({ date: YESTERDAY, durationSeconds: 60 * 60 });
 
 		await attachNow(other.id);
@@ -873,6 +878,9 @@ describe("a detached pull request event", () => {
 			ctx,
 			at(await activityOn(entry.id), 0).id,
 		);
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
 
 		await attachNow(entry.id);
 		await runAutomations();
