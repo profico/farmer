@@ -40,6 +40,7 @@ import {
 	attachedEvidenceRangeInput,
 	attachPullRequestsInput,
 	clientIdInput,
+	confirmTimerInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
 	createClientInput,
@@ -60,6 +61,7 @@ import {
 	projectIdInput,
 	projectRoleEnum,
 	setTimeEntryOvertimeInput,
+	startTimerInput,
 	suggestCommitsInput,
 	suggestDayAssemblyInput,
 	suggestPullRequestsInput,
@@ -97,6 +99,7 @@ import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { reportsService } from "./reports.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
+import { type TimerView, timersService } from "./timers.service";
 import type { Ctx } from "./types";
 import { listUnfiledForUser, unfiledTotals } from "./unfiled";
 import { workingHoursService } from "./working-hours.service";
@@ -409,6 +412,27 @@ const MAX_LIST_ROWS = 100;
 const capRows = <T>(rows: readonly T[], max = MAX_LIST_ROWS) => ({
 	rows: rows.slice(0, max),
 	truncated: rows.length > max,
+});
+
+/** The stopwatch as the model reads it. Hours are decimal, and `willLogHours`
+ *  is what stopping now would log: the elapsed time rounded to 15 minutes. */
+const timerSummary = (view: TimerView) => ({
+	state: view.droppedAt ? "dropped" : view.paused ? "paused" : "running",
+	// A person has one timer for all workspaces. False means the clock runs in
+	// another workspace and cannot be driven from this one.
+	thisOrganization: view.here,
+	organization: view.organizationName,
+	taskId: view.taskId,
+	task: view.taskName,
+	projectId: view.projectId,
+	project: view.projectName,
+	description: view.description,
+	// Stopping needs a note when the task requires one.
+	needsNote: view.taskNeedsDescription,
+	continuesEntryId: view.timeEntryId,
+	startedAt: view.startedAt.toISOString(),
+	elapsedHours: view.elapsedSeconds / 3600,
+	willLogHours: view.snappedSeconds / 3600,
 });
 
 /** What each integration switch is called on a card. */
@@ -2071,6 +2095,104 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 						occurredAt: event.occurredAt.toISOString(),
 					})),
 				})),
+			};
+		},
+	},
+	// ── Timer ───────────────────────────────────────────────────────────────
+	{
+		name: "get_timer",
+		kind: "read",
+		description:
+			"The current user's OWN stopwatch, or timer: null when none is running. A person has ONE timer across every workspace; thisOrganization says whether it runs in this one, and a timer that does not can only be driven in its own workspace. state is running, paused or dropped (a dropped timer passed the person's time limit and logged nothing). elapsedHours is what the clock has measured, and willLogHours is what stopping now would log, rounded to the nearest 15 minutes. Call it before start_timer, stop_timer or discard_timer.",
+		schema: z.object({}),
+		run: async (ctx) => {
+			const view = await timersService.get(ctx);
+			return { timer: view ? timerSummary(view) : null };
+		},
+	},
+	{
+		name: "start_timer",
+		kind: "write",
+		description:
+			"Start the current user's stopwatch on a task (taskId from list_tasks, optional projectId from list_projects), or continue one of their entries (timeEntryId, which takes the entry's project, task and note). headStartSeconds banks time that was worked before the start. Nothing is logged until stop_timer. A person has one timer: this is refused when one exists. A timer that nobody stops is dropped at the person's time limit (12 hours by default) and logs nothing, so tell the person that the clock is running. Start a timer only when the person asks for one.",
+		schema: startTimerInput,
+		run: async (ctx, args) => ({
+			timer: timerSummary(
+				await timersService.start(ctx, startTimerInput.parse(args)),
+			),
+		}),
+	},
+	{
+		name: "pause_timer",
+		kind: "write",
+		description:
+			"Hold the current user's running timer. A held timer measures nothing and stays held for as long as the person wants. Pausing a held timer changes nothing.",
+		schema: z.object({}),
+		run: async (ctx) => ({
+			timer: timerSummary(await timersService.pause(ctx)),
+		}),
+	},
+	{
+		name: "resume_timer",
+		kind: "write",
+		description:
+			"Start the clock again on the current user's held timer. Resuming a running timer changes nothing.",
+		schema: z.object({}),
+		run: async (ctx) => ({
+			timer: timerSummary(await timersService.resume(ctx)),
+		}),
+	},
+	{
+		name: "stop_timer",
+		kind: "write",
+		description:
+			"Stop the current user's timer and log it as ONE time entry, in one step. Leave durationSeconds out unless the person gave a figure: the entry then holds the measured time rounded to the nearest 15 minutes (get_timer shows it as willLogHours). Pass description when the task needs a note (needsNote in get_timer). date, projectId and taskId default to what the timer holds. When the entry is refused (a full day, a missing note, an archived task) the timer stays and keeps its time. Durations are seconds in steps of 900.",
+		schema: confirmTimerInput,
+		run: async (ctx, args) => {
+			const entry = await timersService.confirm(
+				ctx,
+				confirmTimerInput.parse(args),
+			);
+			return {
+				logged: {
+					id: entry.id,
+					date: entry.date,
+					hours: entry.durationSeconds / 3600,
+					description: entry.description,
+					projectId: entry.projectId,
+					taskId: entry.taskId,
+					overtime: entry.overtime,
+				},
+			};
+		},
+	},
+	{
+		name: "discard_timer",
+		kind: "destructive",
+		description:
+			"Throw away the current user's timer. The time it measured is lost and nothing is logged. A timer that continues an entry leaves that entry as it was. It also clears the notice of a dropped timer. A timer that runs in another workspace is refused. Look at get_timer first.",
+		schema: z.object({}),
+		summarize: async (ctx) => {
+			const view = await timersService.get(ctx).catch(() => null);
+			return view
+				? `Discard the timer on ${view.taskName} (${(view.elapsedSeconds / 3600).toFixed(2)}h measured)`
+				: "Discard the timer";
+		},
+		run: async (ctx) => {
+			// The service deletes by person, with no workspace in the filter. A
+			// timer that runs in another workspace is refused here, as stop and
+			// pause refuse it. A dropped notice may be cleared from anywhere.
+			const view = await timersService.get(ctx);
+			if (!view) throw new Error("No timer is running");
+			if (!view.here && !view.droppedAt) {
+				throw new Error(
+					`This timer belongs to ${view.organizationName}. Discard it there.`,
+				);
+			}
+			await timersService.discard(ctx);
+			return {
+				discarded: true,
+				discardedHours: view.elapsedSeconds / 3600,
 			};
 		},
 	},
