@@ -1,4 +1,4 @@
-import { weekDayMarks } from "@farmer/core/lib/day-marks";
+import { type DayMark, weekDayMarks } from "@farmer/core/lib/day-marks";
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import {
 	addDaysToKey,
@@ -89,6 +89,124 @@ export const Route = createFileRoute("/$orgSlug/")({
 /** The week chart's plot height in px. The columns, the target rule and the
  *  maximum are all measured against it, so the chart is one number to re-tune. */
 const PLOT_H = 76;
+
+type WeekDay = {
+	label: string;
+	key: string;
+	seconds: number;
+	isToday: boolean;
+	isWeekend: boolean;
+	holiday: string | undefined;
+	mark: DayMark | undefined;
+};
+
+type DayVerdict = "none" | "ok" | "covered" | "bad" | "warn";
+
+/** A covered day is grey, not amber: the week has made up for it, and a bar
+ *  still in the week's colours would be the alarm the timesheet strip no
+ *  longer raises. A holiday is "warn" and is drawn on its own. */
+function dayVerdict(d: WeekDay): DayVerdict {
+	if (d.holiday) return "warn";
+	if (d.mark == null) return "none";
+	if (d.mark === "done") return "ok";
+	if (d.mark === "covered") return "covered";
+	return d.seconds === 0 ? "bad" : "warn";
+}
+
+const BAR_CLASS = {
+	none: "bg-line",
+	covered: "bg-line-strong",
+	bad: "bg-bad",
+	ok: "bg-ok",
+	warn: "bg-warn",
+} satisfies Record<DayVerdict, string>;
+
+const FIGURE_CLASS = {
+	none: "text-faint",
+	covered: "text-muted-foreground",
+	bad: "text-bad",
+	ok: "text-ok",
+	warn: "text-warn",
+} satisfies Record<DayVerdict, string>;
+
+/** The small figure under a bar: "hol.", the hours, a dash or nothing. */
+function dayFigure(d: WeekDay): string {
+	if (d.holiday) return "hol.";
+	if (d.seconds > 0) return formatReportHours(d.seconds);
+	return d.mark != null ? "—" : " ";
+}
+
+/** One weekday of the week chart. The whole column is the button. */
+function WeekDayColumn({
+	d,
+	i,
+	selected,
+	maxDaySeconds,
+	onSelect,
+}: {
+	d: WeekDay;
+	i: number;
+	selected: boolean;
+	maxDaySeconds: number;
+	onSelect: (key: string) => void;
+}) {
+	const px =
+		d.seconds > 0
+			? Math.max(Math.round((d.seconds / maxDaySeconds) * PLOT_H), 3)
+			: 2;
+	const verdict = dayVerdict(d);
+	return (
+		<button
+			type="button"
+			onClick={() => onSelect(d.key)}
+			aria-pressed={selected}
+			aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
+			// `min-w-0` because a grid item will not shrink below its
+			// content by default, and the content here is a three-letter
+			// label with tracking on it. Without it a narrow chart did
+			// not compress — it overflowed, and seven weekday labels
+			// were drawn across each other. The spans truncate for the
+			// same reason: past a point the honest answer is "WE…".
+			className={cn(
+				"flex min-w-0 flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
+				d.isWeekend && !selected && "opacity-45",
+			)}
+		>
+			<span
+				className="flex w-full items-end justify-center"
+				style={{ height: `${PLOT_H}px` }}
+			>
+				<span
+					className={cn(
+						"rise block w-5 rounded-t-[2px]",
+						d.holiday ? "bg-warn/40" : BAR_CLASS[verdict],
+					)}
+					style={{
+						height: `${px}px`,
+						animationDelay: `${i * 40}ms`,
+					}}
+				/>
+			</span>
+			<span
+				className={cn(
+					"eyebrow mt-2.5 w-full truncate",
+					d.isToday && "text-foreground",
+					selected && "text-primary",
+				)}
+			>
+				{d.label}
+			</span>
+			<span
+				className={cn(
+					"mono mt-1.5 w-full truncate text-2xs",
+					FIGURE_CLASS[verdict],
+				)}
+			>
+				{dayFigure(d)}
+			</span>
+		</button>
+	);
+}
 
 function greetingForHour(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -475,108 +593,16 @@ function OrgHome() {
 							style={{ top: `${PLOT_H}px` }}
 						/>
 						<div className="grid grid-cols-7">
-							{perDay.map((d, i) => {
-								const px =
-									d.seconds > 0
-										? Math.max(
-												Math.round((d.seconds / maxDaySeconds) * PLOT_H),
-												3,
-											)
-										: 2;
-								const isSelected = d.key === selectedDay;
-								// A covered day is grey, not amber: the week has made up for
-								// it, and a bar still in the week's colours would be the
-								// alarm the timesheet strip no longer raises.
-								const verdict = d.holiday
-									? "warn"
-									: d.mark == null
-										? "none"
-										: d.mark === "done"
-											? "ok"
-											: d.mark === "covered"
-												? "covered"
-												: d.seconds === 0
-													? "bad"
-													: "warn";
-								return (
-									<button
-										type="button"
-										key={d.key}
-										onClick={() => setSelectedDay(d.key)}
-										aria-pressed={isSelected}
-										aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
-										// `min-w-0` because a grid item will not shrink below its
-										// content by default, and the content here is a three-letter
-										// label with tracking on it. Without it a narrow chart did
-										// not compress — it overflowed, and seven weekday labels
-										// were drawn across each other. The spans truncate for the
-										// same reason: past a point the honest answer is "WE…".
-										className={cn(
-											"flex min-w-0 flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
-											d.isWeekend && !isSelected && "opacity-45",
-										)}
-									>
-										<span
-											className="flex w-full items-end justify-center"
-											style={{ height: `${PLOT_H}px` }}
-										>
-											<span
-												className={cn(
-													"rise block w-5 rounded-t-[2px]",
-													verdict === "warn" && d.holiday
-														? "bg-warn/40"
-														: verdict === "none"
-															? "bg-line"
-															: verdict === "covered"
-																? "bg-line-strong"
-																: verdict === "bad"
-																	? "bg-bad"
-																	: verdict === "ok"
-																		? "bg-ok"
-																		: "bg-warn",
-												)}
-												style={{
-													height: `${px}px`,
-													animationDelay: `${i * 40}ms`,
-												}}
-											/>
-										</span>
-										<span
-											className={cn(
-												"eyebrow mt-2.5 w-full truncate",
-												d.isToday && "text-foreground",
-												isSelected && "text-primary",
-											)}
-										>
-											{d.label}
-										</span>
-										<span
-											className={cn(
-												"mono mt-1.5 w-full truncate text-2xs",
-												d.holiday
-													? "text-warn"
-													: verdict === "none"
-														? "text-faint"
-														: verdict === "covered"
-															? "text-muted-foreground"
-															: verdict === "bad"
-																? "text-bad"
-																: verdict === "ok"
-																	? "text-ok"
-																	: "text-warn",
-											)}
-										>
-											{d.holiday
-												? "hol."
-												: d.seconds > 0
-													? formatReportHours(d.seconds)
-													: d.mark != null
-														? "—"
-														: " "}
-										</span>
-									</button>
-								);
-							})}
+							{perDay.map((d, i) => (
+								<WeekDayColumn
+									key={d.key}
+									d={d}
+									i={i}
+									selected={d.key === selectedDay}
+									maxDaySeconds={maxDaySeconds}
+									onSelect={setSelectedDay}
+								/>
+							))}
 						</div>
 					</div>
 
