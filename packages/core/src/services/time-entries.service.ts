@@ -233,63 +233,36 @@ const calendarOwnedWhere = and(
 	sql`${timeEntry.description} is not distinct from ${timeEntry.syncedDescription}`,
 );
 
-// Reconcile a range against Google Calendar so the user's meeting entries mirror
-// their calendar, FIELD BY FIELD. Google owns a meeting's day, length and title
-// until the person changes that field in Farmer; project, task and existence-
-// after-a-hand-edit are the person's. The `synced*` columns on the row hold what
-// the calendar last said, so "has the person changed this?" is one comparison
-// per field, made in the upsert itself, and no writer in this file has to know
-// which field it is changing. Tombstones keep a user-deleted meeting from
-// returning.
-//
-// This used to be all-or-nothing on `syncLocked`: filing a meeting — the routine
-// act, the thing the banner asks for — froze its day and length for good, and a
-// meeting moved on the calendar afterwards stayed put with no message (#60).
-//
-// Under the duration-only entry model a meeting contributes its LENGTH, not its
-// slot — an event's start/end are read purely to derive a duration, which is
-// then snapped to the 15-minute grid every entry must sit on.
-//
-// `range` is the window the caller has already decided this engine may touch —
-// see lib/automation-window, and note that the delete pass at the bottom reads
-// the same `range`, so narrowing the window narrows what can be un-written as
-// well as what can be written.
-const syncMeetingsForRange = async (
+type MeetingEvents = NonNullable<
+	Awaited<ReturnType<ReturnType<typeof calendarSource>["listEventsForRange"]>>
+>;
+type MeetingLookups = Awaited<
+	ReturnType<ReturnType<typeof calendarSource>["lookupEvents"]>
+>;
+type FilingRules = Awaited<ReturnType<typeof filingRulesService.resolve>>;
+type MeetingRange = { from: string; to: string };
+
+/** The rows `syncMeetingsForRange` writes, one per calendar event. */
+type MeetingRow = ReturnType<typeof meetingRowFor>;
+
+/** What the stale rows came to, once Google was asked about each by id. */
+type StaleRows = {
+	confirmedLive: MeetingEvents;
+	removable: SyncedRow[];
+	// Row id → event id, for the rows whose event Google says is GONE, as
+	// against merely outside the window. The two retire a row alike and part
+	// company at the tombstone.
+	vanished: Map<string, string>;
+};
+
+// Every calendar-linked row on a day this engine may write to, whoever owns
+// it. Read once, before anything moves: the day a meeting LEAVES has to be
+// recomputed too, and after the upsert that date is gone from every row.
+const loadSyncedRows = async (
 	ctx: Ctx,
-	range: { from: string; to: string },
-	tz: string,
-) => {
-	const calendar = calendarSource();
-	const events = await calendar.listEventsForRange(ctx, range);
-	// null => couldn't read the calendar (disconnected / revoked token). Bail
-	// without deleting, or we'd wipe synced entries we merely failed to fetch.
-	if (events === null) return;
-
-	// Resolved by system key, not by name: "Meeting" is a site built-in that an
-	// org may have relabelled, and the old name match meant a relabel silently
-	// switched this whole engine off.
-	const meetingTask = await tasksService.findBySystemKey(ctx, "meeting");
-	if (!meetingTask) return;
-
-	// Standing "always file this one to that project" answers, keyed on the
-	// normalized title. Resolved once for the whole range rather than per event,
-	// and already filtered to projects the person may still write to — see
-	// filingRulesService.resolve.
-	const filingRules = await filingRulesService.resolve(ctx, [meetingTask.id]);
-
-	const tombstones = await db.query.syncedMeetingTombstone.findMany({
-		where: and(
-			eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
-			eq(syncedMeetingTombstone.userId, ctx.userId),
-		),
-		columns: { calendarEventId: true },
-	});
-	const tombstoned = new Set(tombstones.map((t) => t.calendarEventId));
-
-	// Every calendar-linked row on a day this engine may write to, whoever owns
-	// it. Read once, before anything moves: the day a meeting LEAVES has to be
-	// recomputed too, and after the upsert that date is gone from every row.
-	const existing: SyncedRow[] = (
+	range: MeetingRange,
+): Promise<SyncedRow[]> =>
+	(
 		await db.query.timeEntry.findMany({
 			where: and(
 				eq(timeEntry.organizationId, ctx.organizationId),
@@ -316,29 +289,33 @@ const syncMeetingsForRange = async (
 			: [],
 	);
 
-	const liveIds = new Set(events.map((event) => event.id));
+const loadTombstonedEventIds = async (ctx: Ctx): Promise<Set<string>> => {
+	const tombstones = await db.query.syncedMeetingTombstone.findMany({
+		where: and(
+			eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
+			eq(syncedMeetingTombstone.userId, ctx.userId),
+		),
+		columns: { calendarEventId: true },
+	});
+	return new Set(tombstones.map((t) => t.calendarEventId));
+};
 
-	// Rows whose event is not in the list. "Not in the list" is not yet "gone":
-	// Google returns an empty page on a throttled request, the list is capped,
-	// and a meeting moved to next week is simply outside `range`. Each is asked
-	// about by id, and only a definite answer is acted on. A row that turns out
-	// to still be live inside the window joins the write below as if the list
-	// had carried it; one that is gone, or now sits on a day outside the window,
-	// is removed below — unless the person has edited it, in which case it is
-	// their record of a meeting and not the calendar's to take back.
-	//
-	// Asked in one batch: the case this pass exists for is the empty or
-	// throttled list, where EVERY synced row in the window is stale at once.
-	const stale = existing.filter((row) => !liveIds.has(row.calendarEventId));
-	const lookups = await calendar.lookupEvents(
-		ctx,
-		stale.map((row) => row.calendarEventId),
-	);
-	const confirmedLive: typeof events = [];
+// Rows whose event is not in the list. "Not in the list" is not yet "gone":
+// Google returns an empty page on a throttled request, the list is capped,
+// and a meeting moved to next week is simply outside `range`. Each is asked
+// about by id, and only a definite answer is acted on. A row that turns out
+// to still be live inside the window joins the write as if the list had
+// carried it; one that is gone, or now sits on a day outside the window, is
+// removed — unless the person has edited it, in which case it is their record
+// of a meeting and not the calendar's to take back.
+const classifyStaleRows = (
+	stale: SyncedRow[],
+	lookups: MeetingLookups,
+	range: MeetingRange,
+	tz: string,
+): StaleRows => {
+	const confirmedLive: MeetingEvents = [];
 	const removable: SyncedRow[] = [];
-	// Row id → event id, for the rows whose event Google says is GONE, as
-	// against merely outside the window. The two retire a row alike and part
-	// company at the tombstone below.
 	const vanished = new Map<string, string>();
 	for (const row of stale) {
 		const lookup = lookups.get(row.calendarEventId);
@@ -354,112 +331,146 @@ const syncMeetingsForRange = async (
 		}
 		removable.push(row);
 	}
+	return { confirmedLive, removable, vanished };
+};
 
-	const rows = [...events, ...confirmedLive]
-		.filter((event) => !tombstoned.has(event.id))
-		.map((event) => {
-			const startedAt = new Date(event.start);
-			const stoppedAt = new Date(event.end);
-			return {
-				event,
-				startedAt,
-				rawSeconds: Math.floor(
-					(stoppedAt.getTime() - startedAt.getTime()) / 1000,
-				),
-			};
-		})
+const meetingRowFor = (
+	ctx: Ctx,
+	event: MeetingEvents[number],
+	startedAt: Date,
+	rawSeconds: number,
+	meetingTask: { id: string },
+	rule: ReturnType<FilingRules["get"]>,
+	tz: string,
+) => {
+	const date = dayKeyInTz(startedAt, tz);
+	const durationSeconds = snapToQuarterHour(rawSeconds);
+	return {
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		// A synced meeting has no project by default: it's the user's job to
+		// file it against one, and it lands as a project-less draft they can
+		// complete. A filing rule is the person having already answered that
+		// question for this meeting, so the occurrence arrives filed.
+		//
+		// The row stays syncLocked = false either way. The rule decides where
+		// the time goes, not who owns the row. Taking ownership is what filing
+		// BY HAND means (see `file`), and that is a different act from having
+		// pre-answered where it goes.
+		//
+		// A rule may also name the task (a design review is not a Meeting to
+		// the person billing it). The upsert never rewrites the task or
+		// the project of a row that exists, so this lands on the first write.
+		projectId: rule?.projectId ?? null,
+		taskId: rule?.taskId ?? meetingTask.id,
+		description: event.title,
+		date,
+		durationSeconds,
+		meetingUrl: event.meetingUrl,
+		calendarEventId: event.id,
+		meetingStartsAt: startedAt,
+		// What the calendar says now, so the next pass can tell the person's
+		// edits from the calendar's.
+		syncedDate: date,
+		syncedDurationSeconds: durationSeconds,
+		syncedDescription: event.title,
+	};
+};
+
+const meetingRowsFor = (
+	ctx: Ctx,
+	events: MeetingEvents,
+	tombstoned: Set<string>,
+	rules: FilingRules,
+	meetingTask: { id: string },
+	range: MeetingRange,
+	tz: string,
+): MeetingRow[] =>
+	events.flatMap((event) => {
+		if (tombstoned.has(event.id)) return [];
+		const startedAt = new Date(event.start);
+		const stoppedAt = new Date(event.end);
+		const rawSeconds = Math.floor(
+			(stoppedAt.getTime() - startedAt.getTime()) / 1000,
+		);
 		// On the RAW duration, before the snap. `snapToQuarterHour` floors at 15
 		// minutes on purpose, so a 3-minute meeting is still a real block — which
 		// also means it turns a zero-length event (and an inverted one) into a
-		// 15-minute block rather than dropping it. The `durationSeconds > 0` filter
-		// that used to sit below the snap could therefore never be false. The day
+		// 15-minute block rather than dropping it. A check on the snapped
+		// duration could therefore never be false. The day
 		// assembler has always checked `raw <= 0`; this is the engine that writes.
-		.filter(({ rawSeconds }) => rawSeconds > 0)
-		.map(({ event, startedAt, rawSeconds }) => {
-			const rule = filingRules.get(ruleKeyFor(meetingTask.id, event.title));
-			const date = dayKeyInTz(startedAt, tz);
-			const durationSeconds = snapToQuarterHour(rawSeconds);
-			return {
-				organizationId: ctx.organizationId,
-				userId: ctx.userId,
-				// A synced meeting has no project by default: it's the user's job to
-				// file it against one, and it lands as a project-less draft they can
-				// complete. A filing rule is the person having already answered that
-				// question for this meeting, so the occurrence arrives filed.
-				//
-				// The row stays syncLocked = false either way. The rule decides where
-				// the time goes, not who owns the row. Taking ownership is what filing
-				// BY HAND means (see `file`), and that is a different act from having
-				// pre-answered where it goes.
-				//
-				// A rule may also name the task (a design review is not a Meeting to
-				// the person billing it). The upsert below never rewrites the task or
-				// the project of a row that exists, so this lands on the first write.
-				projectId: rule?.projectId ?? null,
-				taskId: rule?.taskId ?? meetingTask.id,
-				description: event.title,
-				date,
-				durationSeconds,
-				meetingUrl: event.meetingUrl,
-				calendarEventId: event.id,
-				meetingStartsAt: startedAt,
-				// What the calendar says now, so the next pass can tell the person's
-				// edits from the calendar's.
-				syncedDate: date,
-				syncedDurationSeconds: durationSeconds,
-				syncedDescription: event.title,
-			};
-		})
+		if (rawSeconds <= 0) return [];
+		const rule = rules.get(ruleKeyFor(meetingTask.id, event.title));
+		const row = meetingRowFor(
+			ctx,
+			event,
+			startedAt,
+			rawSeconds,
+			meetingTask,
+			rule,
+			tz,
+		);
 		// Only days this engine may write to. `range` is the automation window, and
 		// Google's `timeMin` matches on overlap, not on start: an event that began
 		// the evening before `range.from` comes back too, dated by its start — a
 		// day the lock or the grace window has already closed.
-		.filter((row) => row.date >= range.from && row.date <= range.to);
+		return row.date >= range.from && row.date <= range.to ? [row] : [];
+	});
 
-	// REISSUED event ids. Google mints new instance ids when a recurring series
-	// is edited with "this and following", and a cancelled-and-recreated meeting
-	// is a new event outright. The old id is then gone from the calendar and a
-	// new one sits on the same day with the same face. Rather than importing the
-	// new id next to the old row and retiring the old row — which throws away
-	// the project the person filed it to and anything they typed — the old row
-	// is pointed at the new id, and the write below then treats it as that
-	// event's row.
-	//
-	// Only a row whose own event has VANISHED is a candidate. Two different
-	// half-hour "1:1"s on the same day both stay in the list, so neither can
-	// claim the other's row — the old rule matched on the face alone and let a
-	// filed meeting swallow its same-shaped neighbour.
+// An incoming id that some row ALREADY holds is not free to point anything
+// at. `existing` stops at the window, so a row on a day this engine may not
+// write to is invisible to it — and repointing an orphan at that row's
+// event id hits `te_calendar_event_uidx` and takes the whole meeting pass
+// down with it. It is the wrong answer on its own terms too: the event has
+// a row, it just sits on a day nothing here may move.
+const claimedEventIds = async (
+	ctx: Ctx,
+	rows: MeetingRow[],
+): Promise<Set<string>> => {
+	const claimed = new Set<string>();
+	if (rows.length === 0) return claimed;
+	const held = await db.query.timeEntry.findMany({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			inArray(
+				timeEntry.calendarEventId,
+				rows.map((row) => row.calendarEventId),
+			),
+		),
+		columns: { calendarEventId: true },
+	});
+	for (const row of held) {
+		if (row.calendarEventId) claimed.add(row.calendarEventId);
+	}
+	return claimed;
+};
+
+// REISSUED event ids. Google mints new instance ids when a recurring series
+// is edited with "this and following", and a cancelled-and-recreated meeting
+// is a new event outright. The old id is then gone from the calendar and a
+// new one sits on the same day with the same face. Rather than importing the
+// new id next to the old row and retiring the old row — which throws away
+// the project the person filed it to and anything they typed — the old row
+// is pointed at the new id, and the write then treats it as that
+// event's row.
+//
+// Only a row whose own event has VANISHED is a candidate. Two different
+// half-hour "1:1"s on the same day both stay in the list, so neither can
+// claim the other's row — the old rule matched on the face alone and let a
+// filed meeting swallow its same-shaped neighbour.
+const repointReissuedEvents = async (
+	ctx: Ctx,
+	rows: MeetingRow[],
+	removable: SyncedRow[],
+): Promise<Set<string>> => {
 	const orphans = new Map<string, SyncedRow>();
 	for (const row of removable) {
 		for (const key of meetingIdentityKeys(calendarFaceOf(row))) {
 			if (!orphans.has(key)) orphans.set(key, row);
 		}
 	}
-
-	// An incoming id that some row ALREADY holds is not free to point anything
-	// at. `existing` stops at the window, so a row on a day this engine may not
-	// write to is invisible to it — and repointing an orphan at that row's
-	// event id hits `te_calendar_event_uidx` and takes the whole meeting pass
-	// down with it. It is the wrong answer on its own terms too: the event has
-	// a row, it just sits on a day nothing here may move.
-	const claimed = new Set<string>();
-	if (rows.length > 0) {
-		const held = await db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				inArray(
-					timeEntry.calendarEventId,
-					rows.map((row) => row.calendarEventId),
-				),
-			),
-			columns: { calendarEventId: true },
-		});
-		for (const row of held) {
-			if (row.calendarEventId) claimed.add(row.calendarEventId);
-		}
-	}
-
+	const claimed = await claimedEventIds(ctx, rows);
 	const repointed = new Set<string>();
 	for (const row of rows) {
 		if (claimed.has(row.calendarEventId)) continue;
@@ -479,165 +490,198 @@ const syncMeetingsForRange = async (
 			date: row.date,
 		});
 	}
+	return repointed;
+};
 
-	// Days whose fill block may now be the wrong length. Collected rather than
-	// derived at the end, because by then the moves have already happened and the
-	// day a meeting LEFT is no longer nameable from anything in hand.
+// Returns the days whose fill block may now be the wrong length. Collected
+// rather than derived at the end, because by then the moves have already
+// happened and the day a meeting LEFT is no longer nameable from anything in
+// hand.
+const upsertMeetings = async (
+	rows: MeetingRow[],
+	existing: SyncedRow[],
+	repointed: Set<string>,
+	range: MeetingRange,
+): Promise<Set<string>> => {
 	const touched = new Set<string>();
+	if (rows.length === 0) return touched;
 
-	if (rows.length > 0) {
-		// Where these events sit BEFORE the write moves them. A meeting dragged
-		// from Monday to Tuesday gives Monday its quarter-hour back, and the block
-		// that has to absorb it is on the day the meeting is leaving.
-		const incoming = new Set(rows.map((row) => row.calendarEventId));
-		for (const row of existing) {
-			if (incoming.has(row.calendarEventId) || repointed.has(row.id)) {
-				touched.add(row.date);
-			}
+	// Where these events sit BEFORE the write moves them. A meeting dragged
+	// from Monday to Tuesday gives Monday its quarter-hour back, and the block
+	// that has to absorb it is on the day the meeting is leaving.
+	const incoming = new Set(rows.map((row) => row.calendarEventId));
+	for (const row of existing) {
+		if (incoming.has(row.calendarEventId) || repointed.has(row.id)) {
+			touched.add(row.date);
 		}
-
-		// The three-way merge, per field: the row keeps the person's value where
-		// it no longer equals what the calendar last said, and takes the
-		// calendar's new value where it does. `is not distinct from` so a null
-		// baseline compares as "different", i.e. the person's. The baseline itself
-		// always advances to what the calendar says now. Project and task are
-		// never in the SET: they are the person's from the first write.
-		const written = await db
-			.insert(timeEntry)
-			.values(rows)
-			.onConflictDoUpdate({
-				target: [
-					timeEntry.organizationId,
-					timeEntry.userId,
-					timeEntry.calendarEventId,
-				],
-				targetWhere: sql`${timeEntry.calendarEventId} is not null`,
-				set: {
-					date: sql`case when ${timeEntry.date} is not distinct from ${timeEntry.syncedDate} then excluded.date else ${timeEntry.date} end`,
-					durationSeconds: sql`case when ${timeEntry.durationSeconds} is not distinct from ${timeEntry.syncedDurationSeconds} then excluded.duration_seconds else ${timeEntry.durationSeconds} end`,
-					description: sql`case when ${timeEntry.description} is not distinct from ${timeEntry.syncedDescription} then excluded.description else ${timeEntry.description} end`,
-					// The join link is the calendar's outright: nothing in the app edits
-					// it on a synced row, and a stale link is worse than none.
-					meetingUrl: sql`excluded.meeting_url`,
-					meetingStartsAt: sql`excluded.meeting_starts_at`,
-					// Stamp the change and keep what the row said, when a field the
-					// calendar still owns is about to take a different value. A field the
-					// person owns is not changing, so it is not a change to report.
-					calendarChangedAt: sql`case when ${calendarWillChange} then now() else ${timeEntry.calendarChangedAt} end`,
-					calendarChangeFrom: sql`case when ${calendarWillChange} then ${calendarChangeRecord} else ${timeEntry.calendarChangeFrom} end`,
-					syncedDate: sql`excluded.synced_date`,
-					syncedDurationSeconds: sql`excluded.synced_duration_seconds`,
-					syncedDescription: sql`excluded.synced_description`,
-				},
-				// The existing row's date, not the incoming one: a meeting already
-				// synced onto a locked or out-of-window day is history, and moving it
-				// out is a write to that day as surely as adding to it. Without this, a
-				// stand-up on the 28th that was moved to the 2nd left August, and the
-				// fill recompute then grew August's rest-of-day block back by its
-				// length — hours added to a month already closed.
-				setWhere: and(
-					gte(timeEntry.date, range.from),
-					lte(timeEntry.date, range.to),
-				),
-			})
-			// What actually landed. A conflict the `setWhere` declined returns
-			// nothing, so its day is not touched either.
-			.returning({ date: timeEntry.date });
-		for (const row of written) touched.add(row.date);
 	}
 
-	// What Google has confirmed is gone from this window — cancelled, or moved
-	// to a day the engine may not write to. A filed meeting with nothing typed
-	// into it is still the calendar's record of the day, and comes off the sheet
-	// as it would have before it was filed. One with a hand-set day, length or
-	// note is the person's record that a meeting happened, and stays — as their
-	// own entry from here on, no longer linked to an event that no longer says
-	// what the entry says. Left linked, the row would pin the event id, so a
-	// meeting moved to next week could never be written on next week's day
-	// (its row would sit on a closed day the upsert may not move), and every
-	// pass would ask Google about it again.
+	// The three-way merge, per field: the row keeps the person's value where
+	// it no longer equals what the calendar last said, and takes the
+	// calendar's new value where it does. `is not distinct from` so a null
+	// baseline compares as "different", i.e. the person's. The baseline itself
+	// always advances to what the calendar says now. Project and task are
+	// never in the SET: they are the person's from the first write.
+	const written = await db
+		.insert(timeEntry)
+		.values(rows)
+		.onConflictDoUpdate({
+			target: [
+				timeEntry.organizationId,
+				timeEntry.userId,
+				timeEntry.calendarEventId,
+			],
+			targetWhere: sql`${timeEntry.calendarEventId} is not null`,
+			set: {
+				date: sql`case when ${timeEntry.date} is not distinct from ${timeEntry.syncedDate} then excluded.date else ${timeEntry.date} end`,
+				durationSeconds: sql`case when ${timeEntry.durationSeconds} is not distinct from ${timeEntry.syncedDurationSeconds} then excluded.duration_seconds else ${timeEntry.durationSeconds} end`,
+				description: sql`case when ${timeEntry.description} is not distinct from ${timeEntry.syncedDescription} then excluded.description else ${timeEntry.description} end`,
+				// The join link is the calendar's outright: nothing in the app edits
+				// it on a synced row, and a stale link is worse than none.
+				meetingUrl: sql`excluded.meeting_url`,
+				meetingStartsAt: sql`excluded.meeting_starts_at`,
+				// Stamp the change and keep what the row said, when a field the
+				// calendar still owns is about to take a different value. A field the
+				// person owns is not changing, so it is not a change to report.
+				calendarChangedAt: sql`case when ${calendarWillChange} then now() else ${timeEntry.calendarChangedAt} end`,
+				calendarChangeFrom: sql`case when ${calendarWillChange} then ${calendarChangeRecord} else ${timeEntry.calendarChangeFrom} end`,
+				syncedDate: sql`excluded.synced_date`,
+				syncedDurationSeconds: sql`excluded.synced_duration_seconds`,
+				syncedDescription: sql`excluded.synced_description`,
+			},
+			// The existing row's date, not the incoming one: a meeting already
+			// synced onto a locked or out-of-window day is history, and moving it
+			// out is a write to that day as surely as adding to it. Without this, a
+			// stand-up on the 28th that was moved to the 2nd left August, and the
+			// fill recompute then grew August's rest-of-day block back by its
+			// length — hours added to a month already closed.
+			setWhere: and(
+				gte(timeEntry.date, range.from),
+				lte(timeEntry.date, range.to),
+			),
+		})
+		// What actually landed. A conflict the `setWhere` declined returns
+		// nothing, so its day is not touched either.
+		.returning({ date: timeEntry.date });
+	for (const row of written) touched.add(row.date);
+	return touched;
+};
+
+// A kept row is no longer linked, so nothing ties it to the event any
+// more — and that is the whole difference between the two reasons a row
+// is retired. A meeting merely moved OUT OF THE WINDOW is meant to be
+// written again on its new day, which is why the link had to go. One
+// Google calls gone can only come back as the same event restored on the
+// same day, and that would import a second entry beside the person's own
+// record of the same meeting. The tombstone is what "nothing touches it
+// again" means; deliberately re-creating an entry for the event lifts it,
+// the same as for a meeting deleted by hand (see `create`).
+const tombstoneVanished = async (
+	ctx: Ctx,
+	unlinkedIds: string[],
+	vanished: Map<string, string>,
+) => {
+	const staysGone = unlinkedIds.flatMap((id) => {
+		const calendarEventId = vanished.get(id);
+		return calendarEventId
+			? [
+					{
+						organizationId: ctx.organizationId,
+						userId: ctx.userId,
+						calendarEventId,
+					},
+				]
+			: [];
+	});
+	if (staysGone.length === 0) return;
+	await db
+		.insert(syncedMeetingTombstone)
+		.values(staysGone)
+		.onConflictDoNothing();
+};
+
+// What Google has confirmed is gone from this window — cancelled, or moved
+// to a day the engine may not write to. A filed meeting with nothing typed
+// into it is still the calendar's record of the day, and comes off the sheet
+// as it would have before it was filed. One with a hand-set day, length or
+// note is the person's record that a meeting happened, and stays — as their
+// own entry from here on, no longer linked to an event that no longer says
+// what the entry says. Left linked, the row would pin the event id, so a
+// meeting moved to next week could never be written on next week's day
+// (its row would sit on a closed day the upsert may not move), and every
+// pass would ask Google about it again.
+const retireGoneRows = async (
+	ctx: Ctx,
+	removable: SyncedRow[],
+	repointed: Set<string>,
+	vanished: Map<string, string>,
+): Promise<Set<string>> => {
+	const touched = new Set<string>();
 	const gone = removable
 		.filter((row) => !repointed.has(row.id))
 		.map((row) => row.id);
-	if (gone.length > 0) {
-		const removed = await db
-			.delete(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					inArray(timeEntry.id, gone),
-					calendarOwnedWhere,
-				),
-			)
-			.returning({ date: timeEntry.date });
-		for (const row of removed) touched.add(row.date);
-		const unlinked = await db
-			.update(timeEntry)
-			.set({
-				calendarEventId: null,
-				meetingStartsAt: null,
-				calendarChangedAt: null,
-				calendarChangeFrom: null,
-				syncedDate: null,
-				syncedDurationSeconds: null,
-				syncedDescription: null,
-			})
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					inArray(timeEntry.id, gone),
-				),
-			)
-			.returning({ id: timeEntry.id });
+	if (gone.length === 0) return touched;
+	const removed = await db
+		.delete(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				inArray(timeEntry.id, gone),
+				calendarOwnedWhere,
+			),
+		)
+		.returning({ date: timeEntry.date });
+	for (const row of removed) touched.add(row.date);
+	const unlinked = await db
+		.update(timeEntry)
+		.set({
+			calendarEventId: null,
+			meetingStartsAt: null,
+			calendarChangedAt: null,
+			calendarChangeFrom: null,
+			syncedDate: null,
+			syncedDurationSeconds: null,
+			syncedDescription: null,
+		})
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				inArray(timeEntry.id, gone),
+			),
+		)
+		.returning({ id: timeEntry.id });
+	await tombstoneVanished(
+		ctx,
+		unlinked.map(({ id }) => id),
+		vanished,
+	);
+	return touched;
+};
 
-		// A kept row is no longer linked, so nothing ties it to the event any
-		// more — and that is the whole difference between the two reasons a row
-		// is retired. A meeting merely moved OUT OF THE WINDOW is meant to be
-		// written again on its new day, which is why the link had to go. One
-		// Google calls gone can only come back as the same event restored on the
-		// same day, and that would import a second entry beside the person's own
-		// record of the same meeting. The tombstone is what "nothing touches it
-		// again" means; deliberately re-creating an entry for the event lifts it,
-		// the same as for a meeting deleted by hand (see `create`).
-		const staysGone = unlinked.flatMap(({ id }) => {
-			const calendarEventId = vanished.get(id);
-			return calendarEventId
-				? [
-						{
-							organizationId: ctx.organizationId,
-							userId: ctx.userId,
-							calendarEventId,
-						},
-					]
-				: [];
-		});
-		if (staysGone.length > 0) {
-			await db
-				.insert(syncedMeetingTombstone)
-				.values(staysGone)
-				.onConflictDoNothing();
-		}
-	}
-
-	// A meeting is a claim on the day, so the day's fill block — which describes
-	// "the rest of the working day" — is one meeting shorter than it was. Nothing
-	// else was resizing it: the commit engine guards its own insert with
-	// `onConflictDoNothing` and so never revisits a block it already wrote, and
-	// `listRange`'s read-path recompute only reaches back AUTOMATION_GRACE_DAYS.
-	// A meeting that synced after the block existed therefore left the day
-	// over-allocated for good — an 8h block plus a 0:15 stand-up against an 8h
-	// day, which then reported as 8:45. `materializeRange` in
-	// recurring-block-rules already ends this way, for exactly the same reason;
-	// this engine was the one write path that did not.
-	//
-	// Unwindowed, like every other `recomputeDayFill` call, and safe because every
-	// date here came out of `range` — which the caller has already narrowed to
-	// what this automation may write to.
-	//
-	// Best-effort and outside the writes above: failing to resize a fill block
-	// must not cost the person the meetings that were just imported.
+// A meeting is a claim on the day, so the day's fill block — which describes
+// "the rest of the working day" — is one meeting shorter than it was. Nothing
+// else was resizing it: the commit engine guards its own insert with
+// `onConflictDoNothing` and so never revisits a block it already wrote, and
+// `listRange`'s read-path recompute only reaches back AUTOMATION_GRACE_DAYS.
+// A meeting that synced after the block existed therefore left the day
+// over-allocated for good — an 8h block plus a 0:15 stand-up against an 8h
+// day, which then reported as 8:45. `materializeRange` in
+// recurring-block-rules already ends this way, for exactly the same reason;
+// this engine was the one write path that did not.
+//
+// Unwindowed, like every other `recomputeDayFill` call, and safe because every
+// date here came out of `range` — which the caller has already narrowed to
+// what this automation may write to.
+//
+// Best-effort and outside the writes: failing to resize a fill block
+// must not cost the person the meetings that were just imported.
+const recomputeTouchedDays = async (
+	ctx: Ctx,
+	touched: Set<string>,
+	tz: string,
+) => {
 	for (const date of touched) {
 		try {
 			await recomputeDayFill(ctx, date, tz);
@@ -645,6 +689,89 @@ const syncMeetingsForRange = async (
 			console.error("[meetings] fill recompute failed", { date, error });
 		}
 	}
+};
+
+// Reconcile a range against Google Calendar so the user's meeting entries mirror
+// their calendar, FIELD BY FIELD. Google owns a meeting's day, length and title
+// until the person changes that field in Farmer; project, task and existence-
+// after-a-hand-edit are the person's. The `synced*` columns on the row hold what
+// the calendar last said, so "has the person changed this?" is one comparison
+// per field, made in the upsert itself, and no writer in this file has to know
+// which field it is changing. Tombstones keep a user-deleted meeting from
+// returning.
+//
+// This used to be all-or-nothing on `syncLocked`: filing a meeting — the routine
+// act, the thing the banner asks for — froze its day and length for good, and a
+// meeting moved on the calendar afterwards stayed put with no message (#60).
+//
+// Under the duration-only entry model a meeting contributes its LENGTH, not its
+// slot — an event's start/end are read purely to derive a duration, which is
+// then snapped to the 15-minute grid every entry must sit on.
+//
+// `range` is the window the caller has already decided this engine may touch —
+// see lib/automation-window, and note that the delete pass at the bottom reads
+// the same `range`, so narrowing the window narrows what can be un-written as
+// well as what can be written.
+const syncMeetingsForRange = async (
+	ctx: Ctx,
+	range: MeetingRange,
+	tz: string,
+) => {
+	const calendar = calendarSource();
+	const events = await calendar.listEventsForRange(ctx, range);
+	// null => couldn't read the calendar (disconnected / revoked token). Bail
+	// without deleting, or we'd wipe synced entries we merely failed to fetch.
+	if (events === null) return;
+
+	// Resolved by system key, not by name: "Meeting" is a site built-in that an
+	// org may have relabelled, and the old name match meant a relabel silently
+	// switched this whole engine off.
+	const meetingTask = await tasksService.findBySystemKey(ctx, "meeting");
+	if (!meetingTask) return;
+
+	// Standing "always file this one to that project" answers, keyed on the
+	// normalized title. Resolved once for the whole range rather than per event,
+	// and already filtered to projects the person may still write to — see
+	// filingRulesService.resolve.
+	const filingRules = await filingRulesService.resolve(ctx, [meetingTask.id]);
+	const tombstoned = await loadTombstonedEventIds(ctx);
+	const existing = await loadSyncedRows(ctx, range);
+
+	// Asked in one batch: the case this pass exists for is the empty or
+	// throttled list, where EVERY synced row in the window is stale at once.
+	const liveIds = new Set(events.map((event) => event.id));
+	const stale = existing.filter((row) => !liveIds.has(row.calendarEventId));
+	const lookups = await calendar.lookupEvents(
+		ctx,
+		stale.map((row) => row.calendarEventId),
+	);
+	const { confirmedLive, removable, vanished } = classifyStaleRows(
+		stale,
+		lookups,
+		range,
+		tz,
+	);
+
+	const rows = meetingRowsFor(
+		ctx,
+		[...events, ...confirmedLive],
+		tombstoned,
+		filingRules,
+		meetingTask,
+		range,
+		tz,
+	);
+	const repointed = await repointReissuedEvents(ctx, rows, removable);
+	const touched = await upsertMeetings(rows, existing, repointed, range);
+	for (const date of await retireGoneRows(
+		ctx,
+		removable,
+		repointed,
+		vanished,
+	)) {
+		touched.add(date);
+	}
+	await recomputeTouchedDays(ctx, touched, tz);
 };
 
 // For every day the user pushed commits: attach those commits to the work entry
