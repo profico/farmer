@@ -10,6 +10,7 @@ import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Pause and Resume from the ongoing notification.
@@ -38,15 +39,18 @@ class TimerActionReceiver : BroadcastReceiver() {
     val pending = goAsync()
     // The system gives `goAsync()` about 10 seconds. The Keystore decrypt and
     // the request together stop at DEADLINE_MS, so `finish()` always runs
-    // before the system ends the broadcast.
+    // before the system ends the broadcast. `cancel(true)` does not stop
+    // socket I/O, so the first of `run` and the timeout to set `settled`
+    // writes the notification, and the other one does not.
+    val settled = AtomicBoolean(false)
     val worker = Executors.newSingleThreadExecutor()
-    val job = worker.submit { run(appContext, path) }
+    val job = worker.submit { run(appContext, path, settled) }
     Thread {
       try {
         job.get(DEADLINE_MS, TimeUnit.MILLISECONDS)
       } catch (_: TimeoutException) {
         job.cancel(true)
-        notifyFailure(appContext, path)
+        if (settled.compareAndSet(false, true)) notifyFailure(appContext, path)
       } catch (_: Exception) {
         // `run` handles its own failures.
       } finally {
@@ -76,10 +80,11 @@ class TimerActionReceiver : BroadcastReceiver() {
     internal var onChanged: (() -> Unit)? = null
   }
 
-  private fun run(context: Context, path: String) {
+  private fun run(context: Context, path: String, settled: AtomicBoolean) {
     val snapshot = TimerNotifier.lastSnapshot(context) ?: return
     val credential = CredentialStore.read(context)
     if (credential == null) {
+      if (!settled.compareAndSet(false, true)) return
       TimerNotifier.post(context, snapshot.copy(notice = "Open Farmer to $path the timer."))
       return
     }
@@ -88,6 +93,9 @@ class TimerActionReceiver : BroadcastReceiver() {
     } catch (_: Exception) {
       null
     }
+    // A late answer still tells a running app to read the timer again.
+    if (result != null) onChanged?.invoke()
+    if (!settled.compareAndSet(false, true)) return
     when (result) {
       null -> TimerNotifier.post(
         context,
@@ -104,7 +112,6 @@ class TimerActionReceiver : BroadcastReceiver() {
         )
       )
     }
-    if (result != null) onChanged?.invoke()
   }
 
   private sealed class Outcome {
@@ -120,8 +127,9 @@ class TimerActionReceiver : BroadcastReceiver() {
     val connection = url.openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "POST"
-      connection.connectTimeout = 4_000
-      connection.readTimeout = 5_000
+      // 3 s + 4 s, inside DEADLINE_MS with time for the Keystore decrypt.
+      connection.connectTimeout = 3_000
+      connection.readTimeout = 4_000
       connection.doOutput = true
       connection.setRequestProperty("authorization", "Bearer ${credential.token}")
       connection.setRequestProperty("accept", "application/json")
