@@ -64,6 +64,7 @@ import {
 	userFacingAssistantError,
 } from "./assistant.service";
 import { clientsService } from "./clients.service";
+import { hourFundService } from "./hour-fund.service";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
 
@@ -1037,6 +1038,50 @@ describe("approval, on the tier that asks for it", () => {
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
 		// The model was not asked to continue — the queue is untouched.
 		expect(script).toHaveLength(0);
+	});
+
+	test("a tool that the caller is not offered gets a plain card", async () => {
+		// The card is built by the tool's `summarize`, and the hour fund read has
+		// no role check of its own. A model can name a tool that was never
+		// offered (a stale thread, or text in a tool result). The card still asks
+		// and the approval is still refused, but the card shows no figure.
+		const chat = await startChat(ctxFor(ADMIN));
+		await hourFundService.set(ctxFor(ADMIN), {
+			year: 2031,
+			month: 3,
+			fundSeconds: 168 * 3600,
+		});
+		const fundCall = {
+			id: "call-fund",
+			name: "clear_hour_fund",
+			arguments: JSON.stringify({ year: 2031, month: 3 }),
+		};
+		script = [turn({ toolCalls: [fundCall] })];
+		const adminCard = (
+			await collect(ctxFor(ADMIN), {
+				conversationId: chat.id,
+				message: "clear the March fund",
+			})
+		).find((e) => e.type === "approval_required");
+		expect(adminCard?.summary).toMatch(/168/);
+
+		const memberChat = await startChat(ctxFor(WORKER));
+		script = [turn({ toolCalls: [fundCall] })];
+		const memberCard = (
+			await collect(ctxFor(WORKER), {
+				conversationId: memberChat.id,
+				message: "clear the March fund",
+			})
+		).find((e) => e.type === "approval_required");
+		expect(memberCard?.summary).toBe("clear hour fund");
+		expect(memberCard?.summary).not.toMatch(/168/);
+
+		script = [turn({ content: "That is for Admins." })];
+		await collect(ctxFor(WORKER), {
+			conversationId: memberChat.id,
+			resolve: { toolCallId: "call-fund", decision: "approved" },
+		});
+		expect(await hourFundService.get(ctxFor(ADMIN), 2031, 3)).toBe(168 * 3600);
 	});
 
 	test("approving executes exactly once and the loop continues", async () => {

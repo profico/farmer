@@ -35,6 +35,7 @@ import type {
 import { reportGeneration, reportSpan } from "./ai-telemetry";
 import {
 	type ApprovalPreview,
+	type AssistantTool,
 	findTool,
 	systemPrompt,
 	toolDefinitions,
@@ -852,6 +853,15 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	}
 };
 
+/** Whether the caller is offered the tool. See `AssistantTool.available`. */
+const isOffered = async (ctx: Ctx, tool: AssistantTool) => {
+	try {
+		return !tool.available || tool.available(await ctxAccess(ctx));
+	} catch {
+		return false;
+	}
+};
+
 /** The wording on the approval card.
  *
  *  Async because a summary that names an id nobody can read is not a summary —
@@ -863,6 +873,10 @@ const describeCall = async (ctx: Ctx, call: AssistantToolCall) => {
 	const tool = findTool(call.name);
 	const fallback = call.name.replaceAll("_", " ");
 	if (!tool?.summarize) return fallback;
+	// A tool the caller is not offered still asks first, and is refused when it
+	// runs. Its summary reads with the service's own checks only, and an
+	// admin-only read has none, so the card would show an Admin's figures.
+	if (!(await isOffered(ctx, tool))) return fallback;
 	try {
 		return await tool.summarize(ctx, JSON.parse(call.arguments || "{}"));
 	} catch {
@@ -879,6 +893,7 @@ const previewCall = async (
 ): Promise<ApprovalPreview | null> => {
 	const tool = findTool(call.name);
 	if (!tool?.preview) return null;
+	if (!(await isOffered(ctx, tool))) return null;
 	try {
 		return await tool.preview(ctx, JSON.parse(call.arguments || "{}"));
 	} catch {
