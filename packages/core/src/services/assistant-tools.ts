@@ -55,6 +55,7 @@ import {
 	linkProjectRepoInput,
 	listAbsenceForUserInput,
 	listAvailableReposInput,
+	listCalendarEventsRangeInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
 	monthReportInput,
@@ -94,6 +95,7 @@ import { holidaysService } from "./holidays.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { membersService } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
+import { calendarSource } from "./ports";
 import { projectsService } from "./projects.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { reportsService } from "./reports.service";
@@ -2193,6 +2195,43 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			return {
 				discarded: true,
 				discardedHours: view.elapsedSeconds / 3600,
+			};
+		},
+	},
+	// ── Calendar ────────────────────────────────────────────────────────────
+	{
+		name: "list_calendar_events",
+		kind: "read",
+		// Reads the Google account through better-auth, which refreshes an expired
+		// token and writes it back. See `serial`.
+		serial: true,
+		description:
+			"The current user's OWN Google Calendar events with a time (all-day events are left out) between two dates, inclusive, yyyy-MM-dd, at most 31 days apart. Use it as evidence for meetings that are not on the timesheet yet, or to check what a synced meeting was. start and end are UTC instants; the organization's timezone is in the system prompt. Returns at most 100 events, in order, and sets truncated when there are more. When Google Calendar is not connected for this user the answer is connected: false with no events, which is not an error: say that the calendar is not connected (integration_status shows why). calendarEventId is what apply_day_assembly takes.",
+		schema: listCalendarEventsRangeInput,
+		run: async (ctx, args) => {
+			const input = listCalendarEventsRangeInput.parse(args);
+			// Through the port, so a test can stand in for Google. It answers null,
+			// not an empty list, for an account that is not connected.
+			const events = await calendarSource().listEventsForRange(ctx, input);
+			if (events === null) {
+				return {
+					connected: false,
+					truncated: false,
+					events: [],
+					note: "Google Calendar is not connected for this user, or its token was refused.",
+				};
+			}
+			const { rows, truncated } = capRows(events);
+			return {
+				connected: true,
+				truncated,
+				events: rows.map((event) => ({
+					calendarEventId: event.id,
+					title: event.title,
+					start: event.start,
+					end: event.end,
+					meetingUrl: event.meetingUrl,
+				})),
 			};
 		},
 	},
