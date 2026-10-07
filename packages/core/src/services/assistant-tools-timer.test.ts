@@ -343,15 +343,25 @@ describe("stop_timer", () => {
 });
 
 describe("discard_timer", () => {
+	/** The id that get_timer gives for the one timer of the person. */
+	const timerIdOf = async () => {
+		const result = z
+			.object({ timer: z.object({ timerId: z.string() }) })
+			.parse(await tool("get_timer").run(mine(), {}));
+		return result.timer.timerId;
+	};
+
 	test("names the timer on the approval card", async () => {
 		await tool("start_timer").run(mine(), {
 			taskId: devTaskId,
 			description: "Card",
 			headStartSeconds: 3600,
 		});
-		expect(await tool("discard_timer").summarize?.(mine(), {})).toBe(
-			"Discard the timer on Development (1.00h measured)",
-		);
+		expect(
+			await tool("discard_timer").summarize?.(mine(), {
+				timerId: await timerIdOf(),
+			}),
+		).toBe("Discard the timer on Development (1.00h measured)");
 	});
 
 	test("throws the timer away and logs nothing", async () => {
@@ -359,16 +369,57 @@ describe("discard_timer", () => {
 			taskId: devTaskId,
 			description: "Gone",
 		});
-		const result = await tool("discard_timer").run(mine(), {});
+		const result = await tool("discard_timer").run(mine(), {
+			timerId: await timerIdOf(),
+		});
 		expect(result).toMatchObject({ discarded: true });
 		expect(await timers()).toHaveLength(0);
 		expect(await db.select().from(timeEntry)).toHaveLength(0);
 	});
 
 	test("says so when nothing runs", async () => {
+		await expect(
+			tool("discard_timer").run(mine(), { timerId: crypto.randomUUID() }),
+		).rejects.toThrow("No timer is running");
+	});
+
+	test("leaves a new timer alone when the approval was for an old one", async () => {
+		await tool("start_timer").run(mine(), {
+			taskId: devTaskId,
+			description: "Old",
+		});
+		const approved = await timerIdOf();
+		const card = await tool("discard_timer").summarize?.(mine(), {
+			timerId: approved,
+		});
+		expect(card).toContain("Development");
+
+		// The person stops the old timer by hand and starts another one before
+		// they answer the card.
+		await db.delete(runningTimer).where(eq(runningTimer.userId, ME));
+		await tool("start_timer").run(mine(), {
+			taskId: devTaskId,
+			description: "New",
+		});
+
+		await expect(
+			tool("discard_timer").run(mine(), { timerId: approved }),
+		).rejects.toThrow("not the one that was approved");
+		expect(await timers()).toHaveLength(1);
+		expect(
+			await tool("discard_timer").summarize?.(mine(), { timerId: approved }),
+		).toBe("Discard a timer that has changed");
+	});
+
+	test("needs the id of the timer", async () => {
+		await tool("start_timer").run(mine(), {
+			taskId: devTaskId,
+			description: "Stays",
+		});
 		await expect(tool("discard_timer").run(mine(), {})).rejects.toThrow(
-			"No timer is running",
+			/timerId/,
 		);
+		expect(await timers()).toHaveLength(1);
 	});
 
 	test("does not delete a timer that runs in another workspace", async () => {
@@ -377,7 +428,9 @@ describe("discard_timer", () => {
 			description: "Stays",
 		});
 		await expect(
-			tool("discard_timer").run(mineElsewhere(), {}),
+			tool("discard_timer").run(mineElsewhere(), {
+				timerId: await timerIdOf(),
+			}),
 		).rejects.toThrow("belongs to Timer tools");
 		expect(await timers()).toHaveLength(1);
 	});
@@ -387,9 +440,9 @@ describe("discard_timer", () => {
 			taskId: devTaskId,
 			description: "Stays",
 		});
-		await expect(tool("discard_timer").run(colleague(), {})).rejects.toThrow(
-			"No timer is running",
-		);
+		await expect(
+			tool("discard_timer").run(colleague(), { timerId: await timerIdOf() }),
+		).rejects.toThrow("No timer is running");
 		expect(await timers()).toHaveLength(1);
 	});
 
@@ -398,8 +451,9 @@ describe("discard_timer", () => {
 			taskId: devTaskId,
 			description: "Dropped",
 		});
+		const timerId = await timerIdOf();
 		await db.update(runningTimer).set({ droppedAt: new Date() });
-		await tool("discard_timer").run(mineElsewhere(), {});
+		await tool("discard_timer").run(mineElsewhere(), { timerId });
 		expect(
 			await db.select().from(runningTimer).where(eq(runningTimer.userId, ME)),
 		).toHaveLength(0);

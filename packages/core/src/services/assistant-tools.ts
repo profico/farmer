@@ -480,7 +480,8 @@ const capRows = <T>(rows: readonly T[], max = MAX_LIST_ROWS) => ({
 	truncated: rows.length > max,
 });
 
-/** The stopwatch as the model reads it. Hours are decimal, and `willLogHours`
+/** The stopwatch as the model reads it. `timerId` names the row, so a card
+ *  that asks to discard one timer cannot discard another. Hours are decimal, and `willLogHours`
  *  is what stopping now would log: the elapsed time rounded to 15 minutes. */
 const timerSummary = (view: TimerView) => {
 	const state = view.droppedAt ? "dropped" : view.paused ? "paused" : "running";
@@ -490,6 +491,7 @@ const timerSummary = (view: TimerView) => {
 	// workspace name and the hours are left.
 	if (!view.here) {
 		return {
+			timerId: view.id,
 			state,
 			thisOrganization: false,
 			organization: view.organizationName,
@@ -506,6 +508,7 @@ const timerSummary = (view: TimerView) => {
 		};
 	}
 	return {
+		timerId: view.id,
 		state,
 		thisOrganization: true,
 		organization: view.organizationName,
@@ -522,6 +525,8 @@ const timerSummary = (view: TimerView) => {
 		willLogHours: view.snappedSeconds / 3600,
 	};
 };
+
+const discardTimerInput = z.object({ timerId: z.uuid() });
 
 /** What each integration switch is called on a card. */
 const SWITCH_LABELS = new Map([
@@ -2191,7 +2196,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "get_timer",
 		kind: "read",
 		description:
-			"The current user's OWN stopwatch, or timer: null when none is running. A person has ONE timer across every workspace; thisOrganization says whether it runs in this one, and a timer that does not can only be driven in its own workspace, and its task, project and note are then null. state is running, paused or dropped (a dropped timer passed the person's time limit and logged nothing). elapsedHours is what the clock has measured, and willLogHours is what stopping now would log, rounded to the nearest 15 minutes. Call it before start_timer, stop_timer or discard_timer.",
+			"The current user's OWN stopwatch, or timer: null when none is running. A person has ONE timer across every workspace; thisOrganization says whether it runs in this one, and a timer that does not can only be driven in its own workspace, and its task, project and note are then null. state is running, paused or dropped (a dropped timer passed the person's time limit and logged nothing). elapsedHours is what the clock has measured, and willLogHours is what stopping now would log, rounded to the nearest 15 minutes. timerId names the timer, and discard_timer takes it. Call it before start_timer, stop_timer or discard_timer.",
 		schema: z.object({}),
 		run: async (ctx) => {
 			const view = await timersService.get(ctx);
@@ -2258,20 +2263,31 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "discard_timer",
 		kind: "destructive",
 		description:
-			"Throw away the current user's timer. The time it measured is lost and nothing is logged. A timer that continues an entry leaves that entry as it was. It also clears the notice of a dropped timer. A timer that runs in another workspace is refused. Look at get_timer first.",
-		schema: z.object({}),
-		summarize: async (ctx) => {
+			"Throw away the current user's timer. The time it measured is lost and nothing is logged. A timer that continues an entry leaves that entry as it was. It also clears the notice of a dropped timer. A timer that runs in another workspace is refused. Pass the timerId from get_timer: when the timer is not that one any more, nothing is discarded.",
+		schema: discardTimerInput,
+		summarize: async (ctx, args) => {
 			const view = await timersService.get(ctx).catch(() => null);
 			if (!view) return "Discard the timer";
+			// The card names the timer that the call names. A call for another
+			// timer is refused when it runs, so the card does not describe this one.
+			if (view.id !== args.timerId) return "Discard a timer that has changed";
 			// Another workspace's task is not named here, as get_timer does not.
 			return `Discard the timer${view.here ? ` on ${view.taskName}` : ""} (${(view.elapsedSeconds / 3600).toFixed(2)}h measured)`;
 		},
-		run: async (ctx) => {
+		run: async (ctx, args) => {
+			const input = discardTimerInput.parse(args);
 			// The service deletes by person, with no workspace in the filter. A
 			// timer that runs in another workspace is refused here, as stop and
 			// pause refuse it. A dropped notice may be cleared from anywhere.
 			const view = await timersService.get(ctx);
 			if (!view) throw new Error("No timer is running");
+			// An approval may come long after the card. The person may have stopped
+			// that timer and started another, and the approval is for the first.
+			if (view.id !== input.timerId) {
+				throw new Error(
+					"The timer is not the one that was approved - nothing was discarded. Call get_timer again.",
+				);
+			}
 			if (!view.here && !view.droppedAt) {
 				throw new Error(
 					`This timer belongs to ${view.organizationName}. Discard it there.`,
