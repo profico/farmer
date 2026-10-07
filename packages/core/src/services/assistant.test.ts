@@ -3067,6 +3067,7 @@ describe("a stalled model call", () => {
 	type Behavior =
 		| { kind: "stall"; before?: string }
 		| { kind: "reject" }
+		| { kind: "status"; status: number }
 		| { kind: "reset"; before?: string }
 		| { kind: "answer"; text: string; model?: string };
 
@@ -3087,6 +3088,11 @@ describe("a stalled model call", () => {
 			if (!behavior) throw new Error("fake fetch ran out of behaviors");
 			if (behavior.kind === "reject")
 				throw new TypeError("unknown certificate verification error");
+			if (behavior.kind === "status")
+				return Response.json(
+					{ error: { code: behavior.status, message: "Rate limited" } },
+					{ status: behavior.status },
+				);
 			let resetNext = false;
 			return new Response(
 				new ReadableStream<Uint8Array>({
@@ -3259,6 +3265,27 @@ describe("a stalled model call", () => {
 		expect(failure?.type === "error" && failure.message).not.toContain(
 			"terminated",
 		);
+	});
+
+	// An HTTP 429 is usually the rate limit of the organization's key, and an
+	// immediate retry hits the same limit.
+	test("an HTTP 429 is not retried, and a 503 is", async () => {
+		fakeFetch([
+			{ kind: "status", status: 429 },
+			{ kind: "answer", text: "never asked" },
+		]);
+		const limited = await ask();
+		expect(requested).toEqual(["test/model"]);
+		expect(limited.at(-1)?.type).toBe("error");
+
+		requested = [];
+		fakeFetch([
+			{ kind: "status", status: 503 },
+			{ kind: "answer", text: "Fine." },
+		]);
+		const unavailable = await ask();
+		expect(requested).toEqual(["test/model", "test/model"]);
+		expect(unavailable.at(-1)?.type).toBe("done");
 	});
 
 	test("two stalls fail the turn after one retry", async () => {

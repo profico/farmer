@@ -189,8 +189,8 @@ export class OpenRouterStreamCutError extends OpenRouterError {
 /** Why a failed call may be tried once more, or null when it may not.
  *
  *  Only a failure with no output is safe to repeat: a stall, a network fault
- *  before the headers, an HTTP 408, 429 or 5xx, an error frame, or a stream
- *  that closed empty. The 180 s total deadline is not retried, because it
+ *  before the headers, an HTTP 408 or 5xx, an error frame, or a stream that
+ *  closed empty. An HTTP 429 is not retried. The 180 s total deadline is not retried, because it
  *  already cost three minutes. The return value is a short code for the log
  *  and for telemetry. */
 export const retryableBeforeOutput = (error: Error): string | null => {
@@ -212,8 +212,12 @@ export const retryableBeforeOutput = (error: Error): string | null => {
 	if (error instanceof OpenRouterNetworkError) return "network";
 	if (error instanceof OpenRouterError && error.status !== undefined) {
 		const { status } = error;
-		if (status === 408 || status === 429 || status >= 500)
-			return `http_${String(status)}`;
+		// Not 429. An HTTP 429 from OpenRouter is usually the rate limit of the
+		// organization's key, and a retry at once hits the same limit and bills
+		// nothing but a second refusal. A 429 in an error frame is different: the
+		// provider refused after the stream started, and the retry can go to
+		// another provider.
+		if (status === 408 || status >= 500) return `http_${String(status)}`;
 	}
 	return null;
 };

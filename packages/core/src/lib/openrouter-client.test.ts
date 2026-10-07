@@ -646,7 +646,8 @@ describe("which failures may be retried", () => {
 		const retryable = (status: number) =>
 			retryableBeforeOutput(new OpenRouterError("x", status));
 		expect(retryable(503)).toBe("http_503");
-		expect(retryable(429)).toBe("http_429");
+		// The key's rate limit: a retry at once hits the same limit.
+		expect(retryable(429)).toBeNull();
 		expect(retryable(408)).toBe("http_408");
 		expect(retryable(401)).toBeNull();
 		expect(retryable(402)).toBeNull();
