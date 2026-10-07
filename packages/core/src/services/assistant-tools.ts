@@ -64,6 +64,7 @@ import {
 	projectIdInput,
 	projectRoleEnum,
 	readHourFundInput,
+	MAX_REMEMBER_ENTRIES,
 	rememberFilingRuleInput,
 	setMonthlyHourFundInput,
 	setTimeEntryOvertimeInput,
@@ -2481,11 +2482,29 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: rememberFilingRuleInput,
 		summarize: async (ctx, args) => {
 			const ids = entryIdList.parse(args.timeEntryIds);
-			const first = ids[0]
-				? await timeEntriesService.getOwn(ctx, ids[0]).catch(() => null)
-				: null;
+			const entries = (
+				await Promise.all(
+					ids
+						.slice(0, MAX_REMEMBER_ENTRIES)
+						.map((id) => timeEntriesService.getOwn(ctx, id).catch(() => null)),
+				)
+			).filter((entry) => entry !== null && entry !== undefined);
+			const first = entries[0];
 			const what = first?.description?.trim().slice(0, 60);
-			return `Remember where ${ids.length === 1 ? "1 entry is" : `${ids.length} entries are`} filed${what ? ` (${what}${ids.length > 1 ? ", ..." : ""})` : ""} as filing rules`;
+			// The project of each entry is where its rule files future meetings.
+			// The card has to say it, as the model does not choose it.
+			const projectIds = [
+				...new Set(entries.flatMap((entry) => entry.projectId ?? [])),
+			];
+			const names = await Promise.all(
+				projectIds.slice(0, 3).map((id) => projectNameFor(ctx, id)),
+			);
+			const more = projectIds.length - names.length;
+			const where =
+				names.length > 0
+					? ` under ${names.join(", ")}${more > 0 ? ` and ${more} more` : ""}`
+					: "";
+			return `Remember where ${ids.length === 1 ? "1 entry is" : `${ids.length} entries are`} filed${what ? ` (${what}${ids.length > 1 ? ", ..." : ""})` : ""} as filing rules${where}`;
 		},
 		run: async (ctx, args) =>
 			filingRulesService.rememberFromEntries(

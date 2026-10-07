@@ -311,6 +311,14 @@ describe("remember_filing_rule", () => {
 		expect(await rulesOf(ME)).toHaveLength(2);
 	});
 
+	test("the card names no project for an entry that is not the person's", async () => {
+		expect(
+			await tool("remember_filing_rule").summarize?.(ctxOf(ME), {
+				timeEntryIds: [entry("colleague"), entry("stranger"), entry("loose")],
+			}),
+		).not.toMatch(/ under /);
+	});
+
 	test("an entry on a project the person may not work on is refused, and nothing is written", async () => {
 		await expect(
 			tool("remember_filing_rule").run(ctxOf(ME), {
@@ -320,13 +328,13 @@ describe("remember_filing_rule", () => {
 		expect(await rulesOf(ME)).toHaveLength(2);
 	});
 
-	test("the card names the entry", async () => {
+	test("the card names the entry and the project of the rule", async () => {
 		expect(
 			await tool("remember_filing_rule").summarize?.(ctxOf(ME), {
 				timeEntryIds: [entry("weekly"), entry("retro")],
 			}),
 		).toBe(
-			"Remember where 2 entries are filed (Weekly sync, ...) as filing rules",
+			"Remember where 2 entries are filed (Weekly sync, ...) as filing rules under Alpha",
 		);
 	});
 });
