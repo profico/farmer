@@ -29,6 +29,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxAccess, ctxTimezone } from "./context";
+import { refusedCommitShas, refusedEventIds } from "./detach-tombstones";
 import { safeErrorMessage } from "./error-message";
 import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
@@ -255,6 +256,27 @@ export const dayAssemblyService = {
 		// Everything `includeDismissed` would add back, whether or not it is on.
 		let dismissedCount = 0;
 
+		// A commit or an event that the person unlinked from an entry. The engine
+		// keeps it off every entry (see ./detach-tombstones), so the assembler does
+		// not offer it either, unless `includeDismissed` asks for it.
+		const [refusedShas, refusedEvents] = await Promise.all([
+			refusedCommitShas(
+				ctx,
+				commits.map((commit) => commit.sha),
+			),
+			refusedEventIds(
+				ctx,
+				pullRequestEvents.map((event) => event.eventId),
+			),
+		]);
+		dismissedCount += refusedShas.size + refusedEvents.size;
+		const offeredCommits = includeDismissed
+			? commits
+			: commits.filter((commit) => !refusedShas.has(commit.sha));
+		const offeredEvents = includeDismissed
+			? pullRequestEvents
+			: pullRequestEvents.filter((event) => !refusedEvents.has(event.eventId));
+
 		// ── Meetings: calendar events not already logged ────────────────────────
 		let meetingSeconds = 0;
 		if (calendarEvents && calendarEvents.length > 0 && meetingTask) {
@@ -364,7 +386,7 @@ export const dayAssemblyService = {
 		let reviewSeconds = 0;
 		const accountedReviews = new Set<string>();
 		const reviews = reviewTask
-			? pullRequestEvents.filter((event) => event.kind === "reviewed")
+			? offeredEvents.filter((event) => event.kind === "reviewed")
 			: [];
 		if (reviewTask && reviews.length > 0) {
 			const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
@@ -452,7 +474,9 @@ export const dayAssemblyService = {
 							kinds: events.map((event) => event.kind),
 						},
 					],
-					dismissed: wasDeleted,
+					dismissed:
+						wasDeleted ||
+						events.some((event) => refusedEvents.has(event.eventId)),
 				});
 			}
 		}
@@ -469,12 +493,18 @@ export const dayAssemblyService = {
 			evidenceByProject.set(projectId, created);
 			return created;
 		};
-		for (const commit of commits) {
+		// The projects whose evidence holds something the person unlinked. Only
+		// `includeDismissed` lets it in, and the suggestion then comes unticked.
+		const refusedProjects = new Set<string>();
+		for (const commit of offeredCommits) {
 			evidenceFor(commit.projectId).commits.push(commit);
+			if (refusedShas.has(commit.sha)) refusedProjects.add(commit.projectId);
 		}
 		// One row per PR, not per event: the dialog and the attach both name a PR.
-		for (const event of pullRequestEvents) {
+		for (const event of offeredEvents) {
 			if (accountedReviews.has(event.eventId)) continue;
+			if (refusedEvents.has(event.eventId))
+				refusedProjects.add(event.projectId);
 			const { pullRequests } = evidenceFor(event.projectId);
 			const existing = pullRequests.find(
 				(pr) =>
@@ -567,9 +597,8 @@ export const dayAssemblyService = {
 					meetingUrl: null,
 					calendarEventId: null,
 					// Per-project commit work is derived fresh from the commits every
-					// time; there is no record of one having been deleted, so there is
-					// nothing here for the toggle to hold back.
-					dismissed: false,
+					// time, so only an unlinked commit or event makes it dismissed.
+					dismissed: refusedProjects.has(group.projectId),
 					commits: group.commits.map((c) => ({
 						projectGithubRepoId: c.projectGithubRepoId,
 						sha: c.sha,
