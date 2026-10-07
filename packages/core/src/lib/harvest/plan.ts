@@ -1267,29 +1267,36 @@ export interface HarvestPlan {
 }
 
 type AppEntry = HarvestSnapshot["appEntries"][number];
+type SnapshotClient = HarvestSnapshot["clients"][number];
+type SnapshotTask = HarvestSnapshot["tasks"][number];
 
-/**
- * Builds the whole import from the parsed files, what the org already holds
- * and the admin's choices. Synchronous and pure.
- *
- * Second import (5.3), and the one digest decision: the server compares the
- * key set it RECEIVES for a day with the stored one, so the plan compares
- * the digest of the keys it SENDS. When every row of the day goes out, that
- * is the digest `parseHarvestFiles` already computed; when 5.2 dropped some
- * rows, the plan hashes the smaller set with `dayDigestSync`. So a day that
- * dedupe shrank the same way on both runs reads as unchanged, not changed.
- *
- * Unchanged days and changed days that a person edited here are left out of
- * `days` (the server would skip them anyway). A day that an earlier run
- * imported and that now sends no row at all (dedupe dropped every row) is
- * left alone too: nothing replaces its rows.
- */
-export function planHarvestImport(
+/** The days before the cutoff that decide "active". */
+interface ActiveWindow {
+	from: string;
+	cutoff: string;
+}
+
+/** `days` before the cutoff; the cutoff itself when it is not a date. */
+function windowStart(cutoff: string, days: number): string {
+	return isValidDayKey(cutoff) ? addDays(cutoff, -days) : cutoff;
+}
+
+// Active: a work row in the window before the cutoff, or named by the
+// project list. The list adds to the set; it never archives a project that
+// was worked on last month.
+function isActiveProject(p: ParsedProject, window: ActiveWindow): boolean {
+	return (
+		p.listed !== null ||
+		p.workDates.some((d) => d >= window.from && d < window.cutoff)
+	);
+}
+
+/** The two choices that block the plan when they are wrong or missing. */
+function checkChoices(
 	parsed: ParsedHarvest,
-	snapshot: HarvestSnapshot,
 	choices: HarvestChoices,
-): HarvestPlan {
-	const blocked: HarvestBlocked[] = [];
+	blocked: HarvestBlocked[],
+): void {
 	const cutoff = choices.cutoffDate;
 	if (!isValidDayKey(cutoff)) {
 		blocked.push({
@@ -1309,44 +1316,77 @@ export function planHarvestImport(
 			message: `Decide what to do with the ${negativeCount} rows with negative hours`,
 		});
 	}
+}
 
+interface MappingIndex {
+	/** The local id of each earlier mapping, keyed by `mappingKey`. */
+	mappings: Map<string, string>;
+	/** The person source key of each user an earlier run mapped. */
+	personByLocalId: Map<string, string>;
+}
+
+function indexMappings(snapshot: HarvestSnapshot): MappingIndex {
 	const mappings = new Map<string, string>();
 	const personByLocalId = new Map<string, string>();
 	for (const m of snapshot.mappings) {
 		mappings.set(mappingKey(m.kind, m.sourceKey), m.localId);
 		if (m.kind === "person") personByLocalId.set(m.localId, m.sourceKey);
 	}
+	return { mappings, personByLocalId };
+}
 
-	// Clients -----------------------------------------------------------------
+// Clients -------------------------------------------------------------------
+
+interface ClientIndex {
+	choices: HarvestChoices;
+	clientById: ReadonlyMap<string, SnapshotClient>;
+	clientByName: ReadonlyMap<string, string>;
+	activeClientKeys: ReadonlySet<string>;
+}
+
+interface ClientsPlanned {
+	clientPlans: HarvestClientPlan[];
+	clientReview: HarvestClientReview[];
+	/** The local client id a project would sit under, when it is known. */
+	clientLocal: Map<string, string | null>;
+	clientIsInternal: Map<string, boolean>;
+}
+
+function planClients(
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	choices: HarvestChoices,
+	mappings: ReadonlyMap<string, string>,
+	window: ActiveWindow,
+	blocked: HarvestBlocked[],
+): ClientsPlanned {
 	const clientById = new Map(snapshot.clients.map((c) => [c.id, c]));
 	const clientByName = new Map<string, string>();
 	for (const c of snapshot.clients) {
 		const key = normName(c.name);
 		if (!clientByName.has(key)) clientByName.set(key, c.id);
 	}
-	// Active: a work row in the window before the cutoff, or named by the
-	// project list. The list adds to the set; it never archives a project that
-	// was worked on last month.
-	const projectActiveFrom = isValidDayKey(cutoff)
-		? addDays(cutoff, -HARVEST_ACTIVE_PROJECT_WINDOW_DAYS)
-		: cutoff;
-	const isActiveProject = (p: ParsedProject) =>
-		p.listed !== null ||
-		p.workDates.some((d) => d >= projectActiveFrom && d < cutoff);
 	const activeClientKeys = new Set<string>();
 	const projectsPerClient = new Map<string, number>();
 	for (const p of parsed.projects) {
-		if (isActiveProject(p)) activeClientKeys.add(p.clientSourceKey);
+		if (isActiveProject(p, window)) activeClientKeys.add(p.clientSourceKey);
 		projectsPerClient.set(
 			p.clientSourceKey,
 			(projectsPerClient.get(p.clientSourceKey) ?? 0) + 1,
 		);
 	}
-	const clientPlans: HarvestClientPlan[] = [];
-	const clientReview: HarvestClientReview[] = [];
-	/** The local client id a project would sit under, when it is known. */
-	const clientLocal = new Map<string, string | null>();
-	const clientIsInternal = new Map<string, boolean>();
+	const index: ClientIndex = {
+		choices,
+		clientById,
+		clientByName,
+		activeClientKeys,
+	};
+	const out: ClientsPlanned = {
+		clientPlans: [],
+		clientReview: [],
+		clientLocal: new Map(),
+		clientIsInternal: new Map(),
+	};
 	for (const c of parsed.clients) {
 		const review: HarvestClientReview = {
 			sourceKey: c.sourceKey,
@@ -1358,59 +1398,9 @@ export function planHarvestImport(
 			projects: projectsPerClient.get(c.sourceKey) ?? 0,
 		};
 		const mapped = mappings.get(mappingKey("client", c.sourceKey));
-		const choice = choices.clients[c.sourceKey];
-		const byName = clientByName.get(c.sourceKey);
-		let plan: HarvestClientPlan;
-		if (mapped !== undefined) {
-			plan = { action: "match", sourceKey: c.sourceKey, localId: mapped };
-			review.matchedBy = "earlier_import";
-		} else if (choice?.action === "match") {
-			plan = {
-				action: "match",
-				sourceKey: c.sourceKey,
-				localId: choice.localId,
-			};
-			if (!clientById.has(choice.localId)) {
-				blocked.push({
-					kind: "client",
-					sourceKey: c.sourceKey,
-					message: `"${c.name}" is matched to a client that does not exist here`,
-				});
-			}
-		} else if (
-			choice?.action === "internal" ||
-			(choice === undefined && INTERNAL_CLIENT_NAMES.has(c.sourceKey))
-		) {
-			plan = { action: "internal", sourceKey: c.sourceKey };
-		} else if (choice === undefined && byName !== undefined) {
-			plan = { action: "match", sourceKey: c.sourceKey, localId: byName };
-			review.matchedBy = "name";
-		} else {
-			const archived = !activeClientKeys.has(c.sourceKey);
-			plan = {
-				action: "create",
-				sourceKey: c.sourceKey,
-				name: c.name,
-				archived,
-			};
-		}
-		clientPlans.push(plan);
-		review.action = plan.action;
-		if (plan.action === "match") {
-			const local = clientById.get(plan.localId);
-			review.localId = plan.localId;
-			review.archived = local?.archived ?? false;
-			clientLocal.set(c.sourceKey, plan.localId);
-			clientIsInternal.set(c.sourceKey, local?.isInternal ?? false);
-		} else if (plan.action === "internal") {
-			review.localId = snapshot.internalClientId;
-			clientLocal.set(c.sourceKey, snapshot.internalClientId);
-			clientIsInternal.set(c.sourceKey, true);
-		} else {
-			review.archived = plan.archived;
-			clientLocal.set(c.sourceKey, null);
-			clientIsInternal.set(c.sourceKey, false);
-		}
+		const plan = decideClientPlan(c, mapped, index, review, blocked);
+		out.clientPlans.push(plan);
+		applyClientPlan(plan, review, index, snapshot.internalClientId, out);
 		if (mapped !== undefined && !clientById.has(mapped)) {
 			blocked.push({
 				kind: "client",
@@ -1418,10 +1408,99 @@ export function planHarvestImport(
 				message: `An earlier import mapped "${c.name}" to a client that no longer exists`,
 			});
 		}
-		clientReview.push(review);
+		out.clientReview.push(review);
 	}
+	return out;
+}
 
-	// Tasks -------------------------------------------------------------------
+/** The plan for one client: an earlier mapping, the admin's choice, the
+ *  internal default, a name match, or a new client. Sets `matchedBy`. */
+function decideClientPlan(
+	c: ParsedClient,
+	mapped: string | undefined,
+	index: ClientIndex,
+	review: HarvestClientReview,
+	blocked: HarvestBlocked[],
+): HarvestClientPlan {
+	const choice = index.choices.clients[c.sourceKey];
+	if (mapped !== undefined) {
+		review.matchedBy = "earlier_import";
+		return { action: "match", sourceKey: c.sourceKey, localId: mapped };
+	}
+	if (choice?.action === "match") {
+		if (!index.clientById.has(choice.localId)) {
+			blocked.push({
+				kind: "client",
+				sourceKey: c.sourceKey,
+				message: `"${c.name}" is matched to a client that does not exist here`,
+			});
+		}
+		return { action: "match", sourceKey: c.sourceKey, localId: choice.localId };
+	}
+	if (
+		choice?.action === "internal" ||
+		(choice === undefined && INTERNAL_CLIENT_NAMES.has(c.sourceKey))
+	) {
+		return { action: "internal", sourceKey: c.sourceKey };
+	}
+	const byName = index.clientByName.get(c.sourceKey);
+	if (choice === undefined && byName !== undefined) {
+		review.matchedBy = "name";
+		return { action: "match", sourceKey: c.sourceKey, localId: byName };
+	}
+	const archived = !index.activeClientKeys.has(c.sourceKey);
+	return { action: "create", sourceKey: c.sourceKey, name: c.name, archived };
+}
+
+/** Copies the plan to the review, and records where the client's projects
+ *  sit. */
+function applyClientPlan(
+	plan: HarvestClientPlan,
+	review: HarvestClientReview,
+	index: ClientIndex,
+	internalClientId: string | null,
+	out: ClientsPlanned,
+): void {
+	const key = plan.sourceKey;
+	review.action = plan.action;
+	if (plan.action === "match") {
+		const local = index.clientById.get(plan.localId);
+		review.localId = plan.localId;
+		review.archived = local?.archived ?? false;
+		out.clientLocal.set(key, plan.localId);
+		out.clientIsInternal.set(key, local?.isInternal ?? false);
+	} else if (plan.action === "internal") {
+		review.localId = internalClientId;
+		out.clientLocal.set(key, internalClientId);
+		out.clientIsInternal.set(key, true);
+	} else {
+		review.archived = plan.archived;
+		out.clientLocal.set(key, null);
+		out.clientIsInternal.set(key, false);
+	}
+}
+
+// Tasks ---------------------------------------------------------------------
+
+interface TaskIndex {
+	mappings: ReadonlyMap<string, string>;
+	taskBySystemKey: ReadonlyMap<string, string>;
+	taskByName: ReadonlyMap<string, string>;
+}
+
+interface TasksPlanned {
+	taskPlans: HarvestTaskPlan[];
+	taskReview: HarvestTaskReview[];
+	taskLocal: Map<string, string | null>;
+	taskById: Map<string, SnapshotTask>;
+}
+
+function planTasks(
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	mappings: ReadonlyMap<string, string>,
+	blocked: HarvestBlocked[],
+): TasksPlanned {
 	const taskById = new Map(snapshot.tasks.map((t) => [t.id, t]));
 	const taskBySystemKey = new Map<string, string>();
 	for (const t of snapshot.tasks) {
@@ -1440,31 +1519,16 @@ export function planHarvestImport(
 		const key = normName(t.name);
 		if (!taskByName.has(key)) taskByName.set(key, t.id);
 	}
-	const taskPlans: HarvestTaskPlan[] = [];
-	const taskReview: HarvestTaskReview[] = [];
-	const taskLocal = new Map<string, string | null>();
+	const index: TaskIndex = { mappings, taskBySystemKey, taskByName };
+	const out: TasksPlanned = {
+		taskPlans: [],
+		taskReview: [],
+		taskLocal: new Map(),
+		taskById,
+	};
 	for (const t of parsed.tasks) {
-		const mapped = mappings.get(mappingKey("task", t.sourceKey));
-		const systemKey = SYSTEM_KEY_BY_TASK.get(t.sourceKey);
-		let localId: string | null = null;
-		let matchedBy: HarvestMatchSource | null = null;
-		if (mapped !== undefined) {
-			localId = mapped;
-			matchedBy = "earlier_import";
-		} else if (systemKey !== undefined) {
-			localId = taskBySystemKey.get(systemKey) ?? null;
-			matchedBy = localId ? "system" : null;
-		}
-		if (localId === null && t.sourceKey === "development") {
-			localId = taskBySystemKey.get("development") ?? null;
-			matchedBy = localId ? "system" : null;
-		}
-		if (localId === null) {
-			localId = taskByName.get(t.sourceKey) ?? null;
-			matchedBy = localId ? "name" : null;
-		}
-		const isAbsence = ABSENCE_BY_TASK.has(t.sourceKey);
-		if (isAbsence && localId === null) {
+		const { localId, matchedBy } = resolveTaskMatch(t, index);
+		if (ABSENCE_BY_TASK.has(t.sourceKey) && localId === null) {
 			blocked.push({
 				kind: "task",
 				sourceKey: t.sourceKey,
@@ -1479,24 +1543,14 @@ export function planHarvestImport(
 				message: `An earlier import mapped "${t.name}" to a task that no longer exists`,
 			});
 		}
-		const archived =
+		const archived = taskArchived(t, localId, local);
+		out.taskPlans.push(
 			localId !== null
-				? (local?.archived ?? false)
-				: t.listed
-					? !t.listed.active
-					: false;
-		if (localId !== null) {
-			taskPlans.push({ action: "match", sourceKey: t.sourceKey, localId });
-		} else {
-			taskPlans.push({
-				action: "create",
-				sourceKey: t.sourceKey,
-				name: t.name,
-				archived,
-			});
-		}
-		taskLocal.set(t.sourceKey, localId);
-		taskReview.push({
+				? { action: "match", sourceKey: t.sourceKey, localId }
+				: { action: "create", sourceKey: t.sourceKey, name: t.name, archived },
+		);
+		out.taskLocal.set(t.sourceKey, localId);
+		out.taskReview.push({
 			sourceKey: t.sourceKey,
 			name: local?.name ?? t.name,
 			harvestNames: t.harvestNames,
@@ -1507,46 +1561,90 @@ export function planHarvestImport(
 			rows: t.rows,
 		});
 	}
+	return out;
+}
 
-	// Projects ----------------------------------------------------------------
+interface Match {
+	localId: string | null;
+	matchedBy: HarvestMatchSource | null;
+}
+
+/** An earlier mapping, then the site task's system key (and Development's),
+ *  then the name. */
+function resolveTaskMatch(t: ParsedTask, index: TaskIndex): Match {
+	const mapped = index.mappings.get(mappingKey("task", t.sourceKey));
+	const systemKey = SYSTEM_KEY_BY_TASK.get(t.sourceKey);
+	let localId: string | null = null;
+	let matchedBy: HarvestMatchSource | null = null;
+	if (mapped !== undefined) {
+		localId = mapped;
+		matchedBy = "earlier_import";
+	} else if (systemKey !== undefined) {
+		localId = index.taskBySystemKey.get(systemKey) ?? null;
+		matchedBy = localId ? "system" : null;
+	}
+	if (localId === null && t.sourceKey === "development") {
+		localId = index.taskBySystemKey.get("development") ?? null;
+		matchedBy = localId ? "system" : null;
+	}
+	if (localId === null) {
+		localId = index.taskByName.get(t.sourceKey) ?? null;
+		matchedBy = localId ? "name" : null;
+	}
+	return { localId, matchedBy };
+}
+
+/** A matched task keeps its own state; a new one follows the task list. */
+function taskArchived(
+	t: ParsedTask,
+	localId: string | null,
+	local: SnapshotTask | undefined,
+): boolean {
+	if (localId !== null) return local?.archived ?? false;
+	return t.listed ? !t.listed.active : false;
+}
+
+// Projects ------------------------------------------------------------------
+
+interface ProjectsPlanned {
+	projectPlans: HarvestProjectPlan[];
+	projectReviewByKey: Map<string, HarvestProjectReview>;
+	projectLocal: Map<string, string | null>;
+	projectActive: Map<string, boolean>;
+}
+
+function planProjects(
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	choices: HarvestChoices,
+	mappings: ReadonlyMap<string, string>,
+	clients: ClientsPlanned,
+	window: ActiveWindow,
+	blocked: HarvestBlocked[],
+): ProjectsPlanned {
 	const projectById = new Map(snapshot.projects.map((p) => [p.id, p]));
-	const projectPlans: HarvestProjectPlan[] = [];
-	const projectReviewByKey = new Map<string, HarvestProjectReview>();
-	const projectLocal = new Map<string, string | null>();
-	const projectActive = new Map<string, boolean>();
+	const out: ProjectsPlanned = {
+		projectPlans: [],
+		projectReviewByKey: new Map(),
+		projectLocal: new Map(),
+		projectActive: new Map(),
+	};
 	for (const p of parsed.projects) {
 		const mapped = mappings.get(mappingKey("project", p.sourceKey));
-		const underClient = clientLocal.get(p.clientSourceKey) ?? null;
-		const suggestedType: ProjectTypeValue = clientIsInternal.get(
-			p.clientSourceKey,
-		)
-			? "internal"
-			: p.workRows > 0 && p.billableRows === 0
-				? "internal"
-				: isHourBudget(p.listed)
-					? "fixed_scope"
-					: "product_team";
-		let localId: string | null = null;
-		let matchedBy: HarvestMatchSource | null = null;
-		if (mapped !== undefined) {
-			localId = mapped;
-			matchedBy = "earlier_import";
-		} else if (underClient !== null) {
-			const name = normName(p.name);
-			const candidates = snapshot.projects.filter(
-				(sp) => sp.clientId === underClient && normName(sp.name) === name,
-			);
-			const best =
-				candidates.find(
-					(sp) => (sp.code ?? "") === p.code.slice(0, MAX_CODE),
-				) ?? candidates[0];
-			if (best) {
-				localId = best.id;
-				matchedBy = "name";
-			}
-		}
+		const suggestedType = suggestProjectType(
+			p,
+			clients.clientIsInternal.get(p.clientSourceKey) ?? false,
+		);
+		const { localId, matchedBy }: Match =
+			mapped !== undefined
+				? { localId: mapped, matchedBy: "earlier_import" }
+				: matchProjectByName(
+						p,
+						clients.clientLocal.get(p.clientSourceKey) ?? null,
+						snapshot,
+					);
 		const code = p.code.slice(0, MAX_CODE).trim() || null;
-		const active = isActiveProject(p);
+		const active = isActiveProject(p, window);
 		const review: HarvestProjectReview = {
 			sourceKey: p.sourceKey,
 			client: p.clientName,
@@ -1575,7 +1673,7 @@ export function planHarvestImport(
 			// The file decides the status on a re-import too: the project set
 			// that was worked on last month is the active set, however an earlier
 			// run or an admin left the row.
-			projectPlans.push({
+			out.projectPlans.push({
 				action: "match",
 				sourceKey: p.sourceKey,
 				localId,
@@ -1584,33 +1682,126 @@ export function planHarvestImport(
 			review.action = "match";
 			review.code = local?.code ?? code;
 			review.type = isProjectType(local?.type) ? local.type : null;
-			projectActive.set(p.sourceKey, active);
+			out.projectActive.set(p.sourceKey, active);
 		} else {
 			const type = choices.projectTypes[p.sourceKey] ?? suggestedType;
-			const budgetSeconds =
-				type === "fixed_scope" && isHourBudget(p.listed) && p.listed?.budget
-					? Math.round(p.listed.budget * 3600)
-					: null;
-			const archived = !active;
-			projectPlans.push({
+			const budgetSeconds = projectBudgetSeconds(p, type);
+			out.projectPlans.push({
 				action: "create",
 				sourceKey: p.sourceKey,
 				clientSourceKey: p.clientSourceKey,
 				name: p.name,
 				code,
 				type,
-				archived,
-				budgetSeconds:
-					budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null,
+				archived: !active,
+				budgetSeconds,
 			});
 			review.type = type;
-			review.budgetSeconds =
-				budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null;
-			projectActive.set(p.sourceKey, !archived);
+			review.budgetSeconds = budgetSeconds;
+			out.projectActive.set(p.sourceKey, active);
 		}
-		projectLocal.set(p.sourceKey, localId);
-		projectReviewByKey.set(p.sourceKey, review);
+		out.projectLocal.set(p.sourceKey, localId);
+		out.projectReviewByKey.set(p.sourceKey, review);
 	}
+	return out;
+}
+
+function suggestProjectType(
+	p: ParsedProject,
+	internalClient: boolean,
+): ProjectTypeValue {
+	if (internalClient) return "internal";
+	if (p.workRows > 0 && p.billableRows === 0) return "internal";
+	if (isHourBudget(p.listed)) return "fixed_scope";
+	return "product_team";
+}
+
+/** A project of the same name under the client the project sits under; one
+ *  with the same code first. */
+function matchProjectByName(
+	p: ParsedProject,
+	underClient: string | null,
+	snapshot: HarvestSnapshot,
+): Match {
+	if (underClient === null) return { localId: null, matchedBy: null };
+	const name = normName(p.name);
+	const candidates = snapshot.projects.filter(
+		(sp) => sp.clientId === underClient && normName(sp.name) === name,
+	);
+	const best =
+		candidates.find((sp) => (sp.code ?? "") === p.code.slice(0, MAX_CODE)) ??
+		candidates[0];
+	if (!best) return { localId: null, matchedBy: null };
+	return { localId: best.id, matchedBy: "name" };
+}
+
+/** The hour budget of a fixed-scope project that Harvest budgets in hours,
+ *  else null. */
+function projectBudgetSeconds(
+	p: ParsedProject,
+	type: ProjectTypeValue,
+): number | null {
+	const budgetSeconds =
+		type === "fixed_scope" && isHourBudget(p.listed) && p.listed?.budget
+			? Math.round(p.listed.budget * 3600)
+			: null;
+	return budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null;
+}
+
+/**
+ * Builds the whole import from the parsed files, what the org already holds
+ * and the admin's choices. Synchronous and pure.
+ *
+ * Second import (5.3), and the one digest decision: the server compares the
+ * key set it RECEIVES for a day with the stored one, so the plan compares
+ * the digest of the keys it SENDS. When every row of the day goes out, that
+ * is the digest `parseHarvestFiles` already computed; when 5.2 dropped some
+ * rows, the plan hashes the smaller set with `dayDigestSync`. So a day that
+ * dedupe shrank the same way on both runs reads as unchanged, not changed.
+ *
+ * Unchanged days and changed days that a person edited here are left out of
+ * `days` (the server would skip them anyway). A day that an earlier run
+ * imported and that now sends no row at all (dedupe dropped every row) is
+ * left alone too: nothing replaces its rows.
+ */
+export function planHarvestImport(
+	parsed: ParsedHarvest,
+	snapshot: HarvestSnapshot,
+	choices: HarvestChoices,
+): HarvestPlan {
+	const blocked: HarvestBlocked[] = [];
+	const cutoff = choices.cutoffDate;
+	checkChoices(parsed, choices, blocked);
+	const { mappings, personByLocalId } = indexMappings(snapshot);
+	const projectWindow: ActiveWindow = {
+		from: windowStart(cutoff, HARVEST_ACTIVE_PROJECT_WINDOW_DAYS),
+		cutoff,
+	};
+	const clients = planClients(
+		parsed,
+		snapshot,
+		choices,
+		mappings,
+		projectWindow,
+		blocked,
+	);
+	const { clientPlans, clientReview } = clients;
+	const { taskPlans, taskReview, taskLocal, taskById } = planTasks(
+		parsed,
+		snapshot,
+		mappings,
+		blocked,
+	);
+	const { projectPlans, projectReviewByKey, projectLocal, projectActive } =
+		planProjects(
+			parsed,
+			snapshot,
+			choices,
+			mappings,
+			clients,
+			projectWindow,
+			blocked,
+		);
 
 	// People ------------------------------------------------------------------
 	const memberById = new Map(snapshot.members.map((m) => [m.userId, m]));
