@@ -121,182 +121,195 @@ const parsePrompts = (text: string) =>
 		)
 		.slice(0, 4);
 
-/** `streaming` is the turn's own state, and the only thing it decides is what an
- *  OPEN directive fence becomes — see the note at the top of this file. */
+/** A block read from `lines`, and the index of the first line after it. A
+ *  line that carries no block (a blank one) gives `null` and is skipped.
+ *
+ *  `next` is always past the line the reader started on. A reader that
+ *  leaves it behind is a tab that hangs on the next streamed delta. */
+type Read = { block: Block | null; next: number };
+
+const ORDERED_ITEM = /^\s*\d+[.)]\s+/;
+const BULLET_ITEM = /^\s*[-*]\s+/;
+
+/** The text of a fence, as the block it stands for.
+ *
+ *  `streaming` is the turn's own state, and the only thing it decides is what
+ *  an OPEN directive fence becomes — see the note at the top of `answer.tsx`. */
+const fenceBlock = (
+	text: string,
+	body: string[],
+	lang: string | null,
+	closed: boolean,
+	streaming: boolean,
+): Block => {
+	// A directive is only read once its fence has CLOSED. Half a JSON object
+	// parses as nothing, so an open chart fence would otherwise flicker
+	// between "malformed, show the code" and the chart on the last token.
+	//
+	// The TAG is deliberately not required, for the same reason `fencedTable`
+	// above exists: `farmer-chart` is the contract, and a model that knows
+	// the shape but reaches for ```json — or for no tag at all — puts the one
+	// thing this file exists to prevent on screen, a wall of raw JSON with a
+	// horizontal scrollbar and the numbers locked inside it. What identifies
+	// a chart is that the body IS one: `parseChartSpec` validates the whole
+	// object against a schema whose `data` is a non-empty array of
+	// `{label, value}`, so any other JSON in any other fence is still code.
+	// Like the table recovery, this can only re-read a wrapper the model
+	// added — it cannot invent a chart from something that is not one.
+	if (closed) {
+		const spec = parseChartSpec(text);
+		// Malformed on purpose falls through to the code block below: the
+		// numbers are in there, and a chart that silently vanishes takes them
+		// with it.
+		if (spec) return { kind: "chart", spec, outline: outlineChart(text) };
+	}
+	// A chart that is still arriving, as a box the size of the chart it is
+	// going to be. Only while the turn is running, and only for the TAGGED
+	// fence: a stopped turn holding half a chart still shows its numbers as
+	// code, and the untagged recovery above cannot be seen coming — what
+	// identifies a chart there is that the body parses as one, which half an
+	// object never does.
+	if (streaming && !closed && lang === "farmer-chart") {
+		return { kind: "chart", spec: null, outline: outlineChart(text) };
+	}
+	// Chips do NOT wait for the closing fence, and the asymmetry with the
+	// chart above is deliberate: every line here stands on its own, so half
+	// of one is a chip that grows rather than a parse that fails. It is also
+	// the last thing in the answer and so the first casualty of a turn that
+	// stops a token early — and a truncated fence rendering the follow-ups as
+	// a code block is exactly how they stop being clickable.
+	if (lang === "farmer-next") {
+		// Unlike a chart, an empty or broken chip list is decoration nobody
+		// loses anything by not seeing.
+		//
+		// `ready` is what the chips are DRAWN as, not whether they were read:
+		// they are parsed either way, so the paragraph above still holds. An
+		// open fence is a box while the turn runs, because a chip that grows
+		// one character at a time is a button whose label keeps changing under
+		// the pointer — and chips, not a box, the moment nothing is arriving.
+		return {
+			kind: "next",
+			prompts: parsePrompts(text),
+			ready: closed || !streaming,
+		};
+	}
+	return fencedTable(body) ?? { kind: "code", text, lang };
+};
+
+/** Fenced code, or null when the line at `start` does not open a fence.
+ *
+ *  An unterminated fence (the usual case mid-stream) runs to the end of what
+ *  has arrived so far, which is what makes code stream legibly instead of
+ *  appearing all at once when the closing fence lands. */
+const readFence = (
+	lines: string[],
+	start: number,
+	streaming: boolean,
+): Read | null => {
+	const fence = /^```([\w-]*)\s*$/.exec((lines[start] ?? "").trim());
+	if (!fence) return null;
+	const lang = fence[1] || null;
+	const body: string[] = [];
+	let index = start + 1;
+	while (index < lines.length && !/^```/.test(lines[index] ?? "")) {
+		body.push(lines[index] ?? "");
+		index += 1;
+	}
+	const closed = index < lines.length;
+	const block = fenceBlock(body.join("\n"), body, lang, closed, streaming);
+	return { block, next: index + 1 };
+};
+
+const headingBlock = (line: string): Block | null => {
+	const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+	if (!heading) return null;
+	return {
+		kind: "h",
+		// SAFETY: the regex above is `^(#{1,3})`, so group 1 is one to three
+		// characters and its length is exactly this union.
+		level: (heading[1]?.length ?? 1) as 1 | 2 | 3,
+		text: heading[2] ?? "",
+	};
+};
+
+/** The run of list items from `start`, which the caller has matched. */
+const takeList = (
+	lines: string[],
+	start: number,
+	pattern: RegExp,
+	kind: "ol" | "ul",
+): Read => {
+	const items: string[] = [];
+	let index = start;
+	while (index < lines.length && pattern.test(lines[index] ?? "")) {
+		items.push((lines[index] ?? "").replace(pattern, ""));
+		index += 1;
+	}
+	return { block: { kind, items }, next: index };
+};
+
+/** Whether `line` is a line a paragraph cannot run into. */
+const endsParagraph = (line: string, next: string) =>
+	line.trim() === "" ||
+	BULLET_ITEM.test(line) ||
+	ORDERED_ITEM.test(line) ||
+	/^#{1,3}\s+/.test(line) ||
+	isTableLine(line) ||
+	startsTable(line, next) ||
+	/^```/.test(line);
+
+const takeParagraph = (lines: string[], start: number): Read => {
+	const paragraph: string[] = [];
+	let index = start;
+	while (
+		index < lines.length &&
+		!endsParagraph(lines[index] ?? "", lines[index + 1] ?? "")
+	) {
+		paragraph.push(lines[index] ?? "");
+		index += 1;
+	}
+	// A lone table header mid-stream matches nothing in `readBlock` and nothing
+	// above, which would spin forever — take the line as its own paragraph.
+	if (paragraph.length === 0) {
+		paragraph.push(lines[start] ?? "");
+		index += 1;
+	}
+	return { block: { kind: "p", text: paragraph.join("\n") }, next: index };
+};
+
+const readBlock = (
+	lines: string[],
+	index: number,
+	streaming: boolean,
+): Read => {
+	const line = lines[index] ?? "";
+	const fence = readFence(lines, index, streaming);
+	if (fence) return fence;
+
+	// A table is a header row, a delimiter, then rows — the delimiter is what
+	// distinguishes it from a sentence that happens to contain a pipe, so both
+	// of the first two lines have to be here before anything is a table.
+	if (startsTable(line, lines[index + 1] ?? "")) return takeTable(lines, index);
+
+	const heading = headingBlock(line);
+	if (heading) return { block: heading, next: index + 1 };
+	if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line))
+		return { block: { kind: "hr" }, next: index + 1 };
+	if (ORDERED_ITEM.test(line))
+		return takeList(lines, index, ORDERED_ITEM, "ol");
+	if (BULLET_ITEM.test(line)) return takeList(lines, index, BULLET_ITEM, "ul");
+	if (line.trim() === "") return { block: null, next: index + 1 };
+	return takeParagraph(lines, index);
+};
+
 export const parseBlocks = (source: string, streaming: boolean): Block[] => {
 	const blocks: Block[] = [];
 	const lines = source.split("\n");
 	let index = 0;
-
 	while (index < lines.length) {
-		const line = lines[index] ?? "";
-
-		// Fenced code. An unterminated fence (the usual case mid-stream) runs to
-		// the end of what has arrived so far, which is what makes code stream
-		// legibly instead of appearing all at once when the closing fence lands.
-		const fence = /^```([\w-]*)\s*$/.exec(line.trim());
-		if (fence) {
-			const lang = fence[1] || null;
-			const body: string[] = [];
-			index += 1;
-			while (index < lines.length && !/^```/.test(lines[index] ?? "")) {
-				body.push(lines[index] ?? "");
-				index += 1;
-			}
-			const closed = index < lines.length;
-			index += 1;
-			const text = body.join("\n");
-
-			// A directive is only read once its fence has CLOSED. Half a JSON object
-			// parses as nothing, so an open chart fence would otherwise flicker
-			// between "malformed, show the code" and the chart on the last token.
-			//
-			// The TAG is deliberately not required, for the same reason `fencedTable`
-			// below exists: `farmer-chart` is the contract, and a model that knows
-			// the shape but reaches for ```json — or for no tag at all — puts the one
-			// thing this file exists to prevent on screen, a wall of raw JSON with a
-			// horizontal scrollbar and the numbers locked inside it. What identifies
-			// a chart is that the body IS one: `parseChartSpec` validates the whole
-			// object against a schema whose `data` is a non-empty array of
-			// `{label, value}`, so any other JSON in any other fence is still code.
-			// Like the table recovery, this can only re-read a wrapper the model
-			// added — it cannot invent a chart from something that is not one.
-			if (closed) {
-				const spec = parseChartSpec(text);
-				// Malformed on purpose falls through to the code block below: the
-				// numbers are in there, and a chart that silently vanishes takes them
-				// with it.
-				if (spec) {
-					blocks.push({ kind: "chart", spec, outline: outlineChart(text) });
-					continue;
-				}
-			}
-			// A chart that is still arriving, as a box the size of the chart it is
-			// going to be. Only while the turn is running, and only for the TAGGED
-			// fence: a stopped turn holding half a chart still shows its numbers as
-			// code, and the untagged recovery above cannot be seen coming — what
-			// identifies a chart there is that the body parses as one, which half an
-			// object never does.
-			if (streaming && !closed && lang === "farmer-chart") {
-				blocks.push({
-					kind: "chart",
-					spec: null,
-					outline: outlineChart(text),
-				});
-				continue;
-			}
-			// Chips do NOT wait for the closing fence, and the asymmetry with the
-			// chart above is deliberate: every line here stands on its own, so half
-			// of one is a chip that grows rather than a parse that fails. It is also
-			// the last thing in the answer and so the first casualty of a turn that
-			// stops a token early — and a truncated fence rendering the follow-ups as
-			// a code block is exactly how they stop being clickable.
-			if (lang === "farmer-next") {
-				// Unlike a chart, an empty or broken chip list is decoration nobody
-				// loses anything by not seeing.
-				//
-				// `ready` is what the chips are DRAWN as, not whether they were read:
-				// they are parsed either way, so the paragraph above still holds. An
-				// open fence is a box while the turn runs, because a chip that grows
-				// one character at a time is a button whose label keeps changing under
-				// the pointer — and chips, not a box, the moment nothing is arriving.
-				blocks.push({
-					kind: "next",
-					prompts: parsePrompts(text),
-					ready: closed || !streaming,
-				});
-				continue;
-			}
-
-			const table = fencedTable(body);
-			if (table) {
-				blocks.push(table);
-				continue;
-			}
-
-			blocks.push({ kind: "code", text, lang });
-			continue;
-		}
-
-		// A table is a header row, a delimiter, then rows — the delimiter is what
-		// distinguishes it from a sentence that happens to contain a pipe, so both
-		// of the first two lines have to be here before anything is a table.
-		if (startsTable(line, lines[index + 1] ?? "")) {
-			const table = takeTable(lines, index);
-			blocks.push(table.block);
-			index = table.next;
-			continue;
-		}
-
-		const heading = /^(#{1,3})\s+(.*)$/.exec(line);
-		if (heading) {
-			blocks.push({
-				kind: "h",
-				// SAFETY: the regex two lines up is `^(#{1,3})`, so group 1 is one to three
-				// characters and its length is exactly this union.
-				level: (heading[1]?.length ?? 1) as 1 | 2 | 3,
-				text: heading[2] ?? "",
-			});
-			index += 1;
-			continue;
-		}
-
-		if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-			blocks.push({ kind: "hr" });
-			index += 1;
-			continue;
-		}
-
-		if (/^\s*\d+[.)]\s+/.test(line)) {
-			const items: string[] = [];
-			while (
-				index < lines.length &&
-				/^\s*\d+[.)]\s+/.test(lines[index] ?? "")
-			) {
-				items.push((lines[index] ?? "").replace(/^\s*\d+[.)]\s+/, ""));
-				index += 1;
-			}
-			blocks.push({ kind: "ol", items });
-			continue;
-		}
-
-		if (/^\s*[-*]\s+/.test(line)) {
-			const items: string[] = [];
-			while (index < lines.length && /^\s*[-*]\s+/.test(lines[index] ?? "")) {
-				items.push((lines[index] ?? "").replace(/^\s*[-*]\s+/, ""));
-				index += 1;
-			}
-			blocks.push({ kind: "ul", items });
-			continue;
-		}
-
-		if (line.trim() === "") {
-			index += 1;
-			continue;
-		}
-
-		const paragraph: string[] = [];
-		while (
-			index < lines.length &&
-			(lines[index] ?? "").trim() !== "" &&
-			!/^\s*[-*]\s+/.test(lines[index] ?? "") &&
-			!/^\s*\d+[.)]\s+/.test(lines[index] ?? "") &&
-			!/^#{1,3}\s+/.test(lines[index] ?? "") &&
-			!isTableLine(lines[index] ?? "") &&
-			!startsTable(lines[index] ?? "", lines[index + 1] ?? "") &&
-			!/^```/.test(lines[index] ?? "")
-		) {
-			paragraph.push(lines[index] ?? "");
-			index += 1;
-		}
-		// A lone table header mid-stream matches nothing above and nothing here,
-		// which would spin forever — take the line as its own paragraph.
-		if (paragraph.length === 0) {
-			paragraph.push(line);
-			index += 1;
-		}
-		blocks.push({ kind: "p", text: paragraph.join("\n") });
+		const { block, next } = readBlock(lines, index, streaming);
+		if (block) blocks.push(block);
+		index = next;
 	}
-
 	return blocks;
 };
