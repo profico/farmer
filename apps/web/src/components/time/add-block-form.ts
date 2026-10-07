@@ -2,6 +2,7 @@ import { summarizeCommitMessages } from "@farmer/core/lib/day-plan";
 import { describePullRequestActivity } from "@farmer/core/lib/github-activity";
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
+	MAX_DAY_SECONDS,
 	parseDuration,
 	snapToQuarterHour,
 	weekdayInTz,
@@ -44,8 +45,6 @@ export type ExistingTimeEntry = {
 	generatedFromRuleId: string | null;
 };
 
-export const MAX_ENTRY_SECONDS = 24 * 3600;
-
 /** The lengths most entries actually are, offered as a row under the field.
  *
  *  Written as clock strings because that is what the field holds and what its
@@ -63,7 +62,7 @@ function durationProblem(duration: string): string | null {
 	const parsed = parseDuration(duration);
 	if (parsed === null) return "Try 1.5 or 1:30";
 	if (parsed <= 0) return "Required";
-	if (snapToQuarterHour(parsed) > MAX_ENTRY_SECONDS) return "Max 24 hours";
+	if (snapToQuarterHour(parsed) > MAX_DAY_SECONDS) return "Max 24 hours";
 	return null;
 }
 
