@@ -144,9 +144,9 @@ holder of the relay id can do these things:
 
 Thus keep the relay id secret, as a token. The relay logs only the first six
 characters of it. The farmer server does not send it in an API answer, an
-audit entry or a webhook event, and its push log lines do not show it. A second shared secret does not give
-more protection, because each party that holds the relay id would hold that
-secret too.
+audit entry or a webhook event, and its push log lines do not show it. A
+second shared secret does not give more protection, because each party that
+holds the relay id would hold that secret too.
 
 ```json
 {
