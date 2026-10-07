@@ -28,6 +28,7 @@ import { member, organization, user } from "../db/schema/auth";
 // per-person guard, or a person pressing it while the sweep is on them gets two
 // passes over the same days at once — see `runExclusive`.
 import { runAutomationSyncForCtx } from "../jobs/automation-sync";
+import { withTimeout } from "../lib/http";
 import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
 import { foldForSearch } from "../lib/search";
 import {
@@ -525,6 +526,9 @@ const timerSummary = (view: TimerView) => {
 		willLogHours: view.snappedSeconds / 3600,
 	};
 };
+
+/** How long a new switch waits for its first sync. The settings page uses the same. */
+const SWITCH_SYNC_WAIT_MS = 5000;
 
 const discardTimerInput = z.object({ timerId: z.uuid() });
 
@@ -2108,7 +2112,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		// A switch that writes entries goes on writing by itself.
 		confirm: true,
 		description:
-			"Change the current user's OWN integration switches, one or more: googleAutoSyncMeetings (sync Google Calendar meetings as unfiled entries), githubAutoLoadCommits (load commits into the suggestions of the entry dialog) and githubSyncCommitsAsWorkTime (write work-time blocks from commits). Send only the switches to change. A switch that goes on starts from today: it never backfills the days before. Switching it off and on again moves that day forward. Read the current state with integration_status first. These are the person's own settings and no one else's.",
+			"Change the current user's OWN integration switches, one or more: googleAutoSyncMeetings (sync Google Calendar meetings as unfiled entries), githubAutoLoadCommits (load commits into the suggestions of the entry dialog) and githubSyncCommitsAsWorkTime (write work-time blocks from commits). Send only the switches to change. A switch that goes on starts from today: it never backfills the days before. Switching it off and on again moves that day forward. Read the current state with integration_status first. When a switch that writes goes on, the answer has synced true if the first sync ended in time, and false if it is still running or none was due. These are the person's own settings and no one else's.",
 		schema: updateIntegrationSettingsInput,
 		summarize: (_ctx, args) => {
 			const parsed = updateIntegrationSettingsInput.safeParse(args);
@@ -2132,7 +2136,23 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			if (Object.values(input).every((value) => value === undefined)) {
 				throw new Error("Send at least one switch to change");
 			}
-			return integrationSettingsService.update(ctx, input);
+			const before = await integrationSettingsService.get(ctx);
+			const after = await integrationSettingsService.update(ctx, input);
+			// The settings page runs the sync when a switch that writes goes on,
+			// so a new switch does not wait for the sweep of up to twenty minutes.
+			// The same here, with the same wait limit. The pass is not stopped
+			// when the limit ends, and it never throws.
+			const switchedOn =
+				(!before.googleAutoSyncMeetings && after.googleAutoSyncMeetings) ||
+				(!before.githubSyncCommitsAsWorkTime &&
+					after.githubSyncCommitsAsWorkTime);
+			if (!switchedOn) return { ...after, synced: false };
+			const synced = await withTimeout(
+				runAutomationSyncForCtx(ctx).then(() => true),
+				SWITCH_SYNC_WAIT_MS,
+				() => new Error("still-syncing"),
+			).catch(() => false);
+			return { ...after, synced };
 		},
 	},
 	{

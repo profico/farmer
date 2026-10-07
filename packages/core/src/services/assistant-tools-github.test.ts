@@ -539,6 +539,28 @@ describe("update_integration_settings", () => {
 		expect(row.googleAutoSyncMeetings).toBe(false);
 	});
 
+	test("runs the first sync when a switch that writes goes on", async () => {
+		await db.delete(integrationSettings);
+		const answer = z.object({ synced: z.boolean() });
+		const syncedAfter = async (change: {
+			githubSyncCommitsAsWorkTime?: boolean;
+			githubAutoLoadCommits?: boolean;
+		}) =>
+			answer.parse(
+				await tool("update_integration_settings").run(ctxOf(MEMBER), change),
+			).synced;
+		// As the settings page does: a switch that goes on does not wait for the
+		// sweep. A switch that goes off, and a switch that writes nothing, do not.
+		expect(await syncedAfter({ githubSyncCommitsAsWorkTime: true })).toBe(true);
+		expect(await syncedAfter({ githubSyncCommitsAsWorkTime: true })).toBe(
+			false,
+		);
+		expect(await syncedAfter({ githubAutoLoadCommits: true })).toBe(false);
+		expect(await syncedAfter({ githubSyncCommitsAsWorkTime: false })).toBe(
+			false,
+		);
+	});
+
 	test("refuses a call that changes nothing", async () => {
 		await expect(
 			tool("update_integration_settings").run(ctxOf(MEMBER), {}),
