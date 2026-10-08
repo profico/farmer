@@ -27,6 +27,11 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import {
+	projectGithubRepo,
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { filingRule } from "../db/schema/settings";
 import { fakeCalendar } from "../test/calendar";
 import { createTestDb, type TestDb } from "../test/harness";
@@ -317,6 +322,77 @@ describe("remembering a rule from what was just filed", () => {
 		const rules = await filingRulesService.list(ctx);
 		expect(rules).toHaveLength(1);
 		expect(present(rules[0], "the rule").title).toBe("Daily standup");
+	});
+
+	// The commit engine writes a block's description from its evidence. A short
+	// title on such a block is still a list of subjects, so it never matches a
+	// later entry, and a rule on it would only clutter the person's rules.
+	test("filing with remember skips an entry that holds GitHub evidence", async () => {
+		const [repo] = await db
+			.insert(projectGithubRepo)
+			.values({
+				organizationId: ORG_ID,
+				projectId,
+				githubRepoId: 7,
+				owner: "profico",
+				name: "repo",
+				fullName: "profico/repo",
+			})
+			.returning({ id: projectGithubRepo.id });
+		const repoId = present(repo, "repo").id;
+		const insertEntry = async (
+			description: string,
+			extra: { fillsDay?: boolean } = {},
+		) => {
+			const [row] = await db
+				.insert(timeEntry)
+				.values({
+					organizationId: ORG_ID,
+					userId: USER_ID,
+					taskId: designTaskId,
+					date: DATE,
+					durationSeconds: 3600,
+					description,
+					...extra,
+				})
+				.returning({ id: timeEntry.id });
+			return present(row, "entry").id;
+		};
+		const withCommit = await insertEntry("Fix the importer");
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: withCommit,
+			projectGithubRepoId: repoId,
+			sha: "sha-rule",
+			message: "Fix the importer",
+			authorLogin: "tester",
+			committedAt: new Date(),
+			url: "https://example.com/c",
+		});
+		const withPr = await insertEntry("Opened a pull request");
+		await db.insert(timeEntryGithubPrActivity).values({
+			timeEntryId: withPr,
+			projectGithubRepoId: repoId,
+			eventId: "evt-rule",
+			kind: "opened",
+			number: 1,
+			title: "A pull request",
+			pullRequestUrl: "https://example.com/pr/1",
+			url: "https://example.com/pr/1",
+			occurredAt: new Date(),
+		});
+		const fill = await insertEntry("Rest of day", { fillsDay: true });
+		const plain = await insertEntry("Design review");
+
+		const result = await timeEntriesService.fileMany(ctx, {
+			timeEntryIds: [withCommit, withPr, fill, plain],
+			projectId,
+			remember: true,
+		});
+
+		expect(result.filed).toBe(4);
+		expect(result.remembered).toBe(1);
+		const rules = await filingRulesService.list(ctx);
+		expect(rules.map((rule) => rule.title)).toEqual(["Design review"]);
 	});
 
 	test("re-filing the same meeting elsewhere moves the rule", async () => {

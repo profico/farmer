@@ -35,7 +35,11 @@ import {
 	automationWriteWindow,
 	enabledSinceKey,
 } from "../lib/automation-window";
-import { summarizeCommitMessages } from "../lib/day-plan";
+import {
+	splitProportionally,
+	splitRestOfDay,
+	summarizeCommitMessages,
+} from "../lib/day-plan";
 import { describePullRequestActivity } from "../lib/github-activity";
 import {
 	addDaysToKey,
@@ -673,51 +677,38 @@ const syncMeetingsForRange = async (
 // `completeDaysOnly`, because the block it writes is sized from the day's WHOLE
 // target and that number is only true once the day is over.
 /**
- * Which project, if any, the day's rest-of-day block should be filed against.
+ * May the rest-of-day block be filed against this project?
  *
- * Only when EVERY commit that found no home belongs to the same project. A repo
- * is linked to exactly one project org-wide (pgr_org_repo_unq), so one project
- * across the day's homeless commits means there is no guess to make: the block
- * describes work on that project and nothing else. Two projects and it stays
- * null — the block is sized from the whole remaining day, so splitting it would
- * be inventing a ratio the commits do not contain, and filing all of it to
- * either project bills that project for the other one's hours.
+ * A repo is linked to exactly one project org-wide (pgr_org_repo_unq), so the
+ * evidence of one repo names one project and there is no guess to make. Two
+ * gates decide whether the engine may write project time there at all.
  *
- * Note this deliberately does NOT read the commits' volume or timestamps. The
- * block never claimed to measure the commits; it claims the rest of the working
- * day, and the commits are the evidence that the day was spent on that project.
- *
- * Both gates fall back to null rather than throwing. This runs inside a
- * background sweep over everybody, and a project that hasn't picked Development
- * is a configuration answer, not a failure — the old project-less block is
- * still the correct, if less helpful, thing to write.
+ * Both gates answer false rather than throw. This runs inside a background
+ * sweep over everybody, and a project that has not picked Development is a
+ * configuration answer, not a failure.
  */
-const resolveFillProject = async (
+const canFileFillOn = async (
 	ctx: Ctx,
-	homelessProjectIds: string[],
-): Promise<string | null> => {
-	const [projectId] = homelessProjectIds;
-	if (!projectId || homelessProjectIds.length !== 1) return null;
-
+	workTaskId: string,
+	projectId: string,
+): Promise<boolean> => {
 	// Belt and braces: `reposForUser` already inner-joins an active projectMember
 	// row, so a commit cannot reach here on a project the person isn't on. Kept
 	// because this writes billable project time and that invariant lives three
 	// files away — the memo makes it free.
 	const access = await ctxAccess(ctx);
-	if (!access.canTrackOn(projectId)) return null;
+	if (!access.canTrackOn(projectId)) return false;
 
 	// The project must actually offer Development. `development` is org-scoped,
 	// not one of the universal site-scoped built-ins, so this is a real
 	// cherry-pick check — and writing an entry the person could not have created
 	// by hand is exactly what assertTaskAvailable exists to prevent.
-	const workTask = await tasksService.findBySystemKey(ctx, "development");
-	if (!workTask) return null;
 	try {
-		await assertTaskAvailable(ctx, workTask.id, projectId);
+		await assertTaskAvailable(ctx, workTaskId, projectId);
 	} catch {
-		return null;
+		return false;
 	}
-	return projectId;
+	return true;
 };
 
 /** What GitHub says happened on one day, or on one project that day: what was
@@ -742,6 +733,337 @@ const describeEvidence = (evidence: DayEvidence): string =>
 		...evidence.commits.map((c) => c.message),
 		...describePullRequestActivity(evidence.pullRequests),
 	]);
+
+type DayEntryRow = {
+	id: string;
+	description: string;
+	projectId: string | null;
+	fillsDay: boolean;
+};
+
+const dayEntryColumns = {
+	id: timeEntry.id,
+	description: timeEntry.description,
+	projectId: timeEntry.projectId,
+	fillsDay: timeEntry.fillsDay,
+};
+
+/** How much one project's evidence weighs in a split: its commits plus its
+ *  distinct pull requests, by repo and number. This is Assemble my day's count,
+ *  so the two split a day the same way; an opened and a merged event on one pull
+ *  request are one pull request. */
+const evidenceWeight = (group: DayEvidence): number =>
+	group.commits.length +
+	new Set(
+		group.pullRequests.map((pr) => `${pr.projectGithubRepoId}|${pr.number}`),
+	).size;
+
+/** The projects that may take part of the rest-of-day block, each with the
+ *  weight of its evidence. */
+const weighEligibleProjects = async (
+	ctx: Ctx,
+	workTaskId: string,
+	projectIds: string[],
+	evidenceByProject: Map<string, DayEvidence>,
+): Promise<{ projectId: string; weight: number }[]> => {
+	const eligible: { projectId: string; weight: number }[] = [];
+	for (const projectId of projectIds) {
+		if (!(await canFileFillOn(ctx, workTaskId, projectId))) continue;
+		eligible.push({
+			projectId,
+			weight: evidenceWeight(
+				evidenceByProject.get(projectId) ?? emptyEvidence(),
+			),
+		});
+	}
+	return eligible;
+};
+
+type DayWeights = { projectId: string; weight: number }[];
+
+/**
+ * Evidence for a project that has no entry on the day, after the day's fill
+ * block was filed against ANOTHER project (an earlier run saw only that one).
+ * Carve each such project a plain Development entry out of the fill, so late
+ * evidence is not dropped for good.
+ *
+ * The fill's project is weighed by the evidence already on the fill plus this
+ * run's, the newcomers by theirs, and the fill's CURRENT length is divided by
+ * `splitProportionally`. The fill shrinks to what is left; a newcomer whose
+ * share is 0 gets nothing and its evidence waits, as it did before. All in one
+ * transaction, so a reader never sees the fill shrunk without the new entry.
+ */
+const carveFromFill = async (
+	ctx: Ctx,
+	input: {
+		workTaskId: string;
+		dayKey: string;
+		fill: DayEntryRow & { projectId: string };
+		newcomers: DayWeights;
+		evidenceByProject: Map<string, DayEvidence>;
+	},
+): Promise<DayEntryRow[]> => {
+	const { fill } = input;
+	return withCtxTx(ctx, async (txCtx) => {
+		const tx = ctxDb(txCtx);
+		// Belt and braces: the sweep and "Sync now" share a per-person guard, so
+		// no second run is expected here. The lock and the re-read make the
+		// carve-out correct without relying on that guard.
+		const [current] = await tx
+			.select({ durationSeconds: timeEntry.durationSeconds })
+			.from(timeEntry)
+			.where(eq(timeEntry.id, fill.id))
+			.for("update");
+		if (!current) return [];
+		const taken = await tx
+			.select({ projectId: timeEntry.projectId })
+			.from(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, input.dayKey),
+					eq(timeEntry.taskId, input.workTaskId),
+					eq(timeEntry.fillsDay, false),
+					inArray(
+						timeEntry.projectId,
+						input.newcomers.map((p) => p.projectId),
+					),
+				),
+			);
+		const owned = new Set(taken.map((row) => row.projectId));
+		const newcomers = input.newcomers.filter((p) => !owned.has(p.projectId));
+		if (newcomers.length === 0) return [];
+		const [commitRows, activityRows] = await Promise.all([
+			tx
+				.select({ sha: timeEntryGithubCommit.sha })
+				.from(timeEntryGithubCommit)
+				.where(eq(timeEntryGithubCommit.timeEntryId, fill.id)),
+			tx
+				.select({
+					projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
+					number: timeEntryGithubPrActivity.number,
+				})
+				.from(timeEntryGithubPrActivity)
+				.where(eq(timeEntryGithubPrActivity.timeEntryId, fill.id)),
+		]);
+		// Distinct, so a rerun that sees the same commit again does not weigh it
+		// twice: what is on the fill and what this run found overlap.
+		const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
+		const keys = new Set([
+			...commitRows.map((c) => `c|${c.sha}`),
+			...own.commits.map((c) => `c|${c.sha}`),
+			...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+			...own.pullRequests.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+		]);
+		const shares = splitProportionally(current.durationSeconds, [
+			keys.size,
+			...newcomers.map((p) => p.weight),
+		]);
+		if ((shares[0] ?? 0) <= 0) return [];
+		const carved = newcomers
+			.map((p, index) => ({
+				projectId: p.projectId,
+				seconds: shares[index + 1] ?? 0,
+			}))
+			.filter((p) => p.seconds > 0);
+		if (carved.length === 0) return [];
+
+		const entries = await tx
+			.insert(timeEntry)
+			.values(
+				carved.map((p) => ({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					taskId: input.workTaskId,
+					projectId: p.projectId,
+					description:
+						describeEvidence(
+							input.evidenceByProject.get(p.projectId) ?? emptyEvidence(),
+						) || "Rest of day",
+					date: input.dayKey,
+					durationSeconds: p.seconds,
+					fillsDay: false,
+				})),
+			)
+			.returning(dayEntryColumns);
+		const carvedSeconds = carved.reduce((sum, p) => sum + p.seconds, 0);
+		await tx
+			.update(timeEntry)
+			.set({
+				durationSeconds: current.durationSeconds - carvedSeconds,
+				updatedAt: new Date(),
+			})
+			.where(eq(timeEntry.id, fill.id));
+		return entries;
+	});
+};
+
+const carveLateProjects = async (
+	ctx: Ctx,
+	input: {
+		workTaskId: string;
+		dayKey: string;
+		fill: DayEntryRow & { projectId: string };
+		homelessProjectIds: string[];
+		evidenceByProject: Map<string, DayEvidence>;
+	},
+): Promise<DayEntryRow[]> => {
+	const others = input.homelessProjectIds.filter(
+		(id) => id !== input.fill.projectId,
+	);
+	const eligible = await weighEligibleProjects(
+		ctx,
+		input.workTaskId,
+		others,
+		input.evidenceByProject,
+	);
+	// A project with only placed reviews has nothing to attach and no weight.
+	const newcomers = eligible.filter((p) => p.weight > 0);
+	if (newcomers.length === 0) return [];
+	return carveFromFill(ctx, { ...input, newcomers });
+};
+
+/**
+ * File the day's rest-of-day block for evidence that found no home, split by
+ * project when the evidence names more than one.
+ *
+ * The day is sized once, from what it holds. Every project the person may file
+ * Development on shares it in the ratio Assemble my day uses (commits and
+ * unplaced pull request events), through `splitRestOfDay`. The largest share is
+ * the fill block, so the day still resizes through `recomputeDayFill`; every
+ * other share is a plain Development entry. A project the person cannot track
+ * on, or that does not offer Development, gets no share. With no project left
+ * the block is project-less, as it was before the split, and holds everything.
+ *
+ * Only the fill is elastic. The plain split entries keep their length when the
+ * person later logs more time that day: `recomputeDayFill` shrinks the fill,
+ * never them, and the fill is deleted when nothing is left.
+ *
+ * Returns what exists on the day afterwards. `fill` is null when the day is
+ * full or the person deleted the block (the tombstone).
+ */
+const fileRestOfDay = async (
+	ctx: Ctx,
+	input: {
+		workTaskId: string;
+		dayKey: string;
+		tz: string;
+		day: { workingHours: WorkingHoursDay[]; holidays: HolidayLookup };
+		homelessProjectIds: string[];
+		evidenceByProject: Map<string, DayEvidence>;
+		tombstones: CommitTombstones;
+	},
+): Promise<{ fill: DayEntryRow | null; split: DayEntryRow[] }> => {
+	const { dayKey, workTaskId } = input;
+	// A day already accounted for in full gets no block. Inserting a 0-second one
+	// would just park an empty second "Development" row next to the entries that
+	// already filled the day. The attach pass still runs, which is the point of
+	// separating the two jobs.
+	const durationSeconds = await computeDayFillSeconds(
+		ctx,
+		dayKey,
+		input.tz,
+		input.day,
+	);
+	if (durationSeconds <= 0 || input.tombstones.day) {
+		return { fill: null, split: [] };
+	}
+
+	// A project the person deleted a block for on this day gets no share, and is
+	// not "ineligible" either: with nothing but such projects left there is no
+	// block, rather than a project-less one that would take their evidence.
+	const asked = input.homelessProjectIds.filter(
+		(id) => !input.tombstones.projects.has(id),
+	);
+	if (asked.length === 0) return { fill: null, split: [] };
+	const evidenceByProject = new Map(
+		[...input.evidenceByProject].filter(
+			([id]) => !input.tombstones.projects.has(id),
+		),
+	);
+	const eligible = await weighEligibleProjects(
+		ctx,
+		workTaskId,
+		asked,
+		evidenceByProject,
+	);
+	// A day of reviews only: every review went to a block of its own, so there is
+	// no evidence to weigh, and the projects share the day equally.
+	if (eligible.every((p) => p.weight === 0)) {
+		for (const p of eligible) p.weight = 1;
+	}
+	const plan =
+		eligible.length > 0
+			? splitRestOfDay(durationSeconds, eligible)
+			: [{ projectId: null, seconds: durationSeconds }];
+
+	const describe = (projectId: string | null) =>
+		describeEvidence(
+			projectId
+				? (evidenceByProject.get(projectId) ?? emptyEvidence())
+				: mergeEvidence([...evidenceByProject.values()]),
+		) || "Rest of day";
+	const values = (entry: { projectId: string | null; seconds: number }) => ({
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		taskId: workTaskId,
+		projectId: entry.projectId,
+		description: describe(entry.projectId),
+		date: dayKey,
+		durationSeconds: entry.seconds,
+	});
+
+	const [owner, ...rest] = plan;
+	if (!owner) return { fill: null, split: [] };
+	// One transaction: a reader (a concurrent `listRange`) must not see the fill
+	// without its siblings, and a failed sibling must not leave the fill sized
+	// for a day it no longer holds.
+	return withCtxTx(ctx, async (txCtx) => {
+		const tx = ctxDb(txCtx);
+		const [created] = await tx
+			.insert(timeEntry)
+			.values({ ...values(owner), fillsDay: true })
+			// te_fill_day_uidx is the real guard against a second fill block on the
+			// day; silently skip rather than raise, since this is a best-effort
+			// background sync, not a user-initiated write. It also covers the race with
+			// a concurrent "Sync now".
+			.onConflictDoNothing({
+				target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
+				where: sql`${timeEntry.fillsDay} = true`,
+			})
+			.returning(dayEntryColumns);
+		if (!created) {
+			// Something else filed the day's fill block between the read and this
+			// insert. Attach to theirs, and leave the split to whoever owns the day.
+			const theirs = await tx.query.timeEntry.findFirst({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, dayKey),
+					eq(timeEntry.fillsDay, true),
+				),
+				columns: {
+					id: true,
+					description: true,
+					projectId: true,
+					fillsDay: true,
+				},
+			});
+			return { fill: theirs ?? null, split: [] };
+		}
+		const split =
+			rest.length > 0
+				? await tx
+						.insert(timeEntry)
+						.values(
+							rest.map((entry) => ({ ...values(entry), fillsDay: false })),
+						)
+						.returning(dayEntryColumns)
+				: [];
+		return { fill: created, split };
+	});
+};
 
 /**
  * File each pull request the person reviewed on the day as a Code Review block
@@ -1026,88 +1348,72 @@ const syncCommitWorkTimeForRange = async (
 		const homelessProjectIds = [
 			...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
 		].filter((projectId) => !byProject.has(projectId));
-		const homeless = mergeEvidence(
-			homelessProjectIds.flatMap(
-				(projectId) => evidenceByProject.get(projectId) ?? [],
-			),
-		);
 
 		// The fill block is created only for evidence that found no home — a day
 		// of reviews is a worked day as surely as a day of commits — and only if
 		// the day still has room and nobody has said no.
+		const tombstones = await commitTombstonesOn(ctx, dayKey);
+		const splitEntries = new Map<string, DayEntryRow>();
+		const fillPredates = fill !== null;
 		if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
-			const durationSeconds = await computeDayFillSeconds(ctx, dayKey, tz, {
-				workingHours,
-				holidays,
+			const filed = await fileRestOfDay(ctx, {
+				workTaskId: workTask.id,
+				dayKey,
+				tz,
+				day: { workingHours, holidays },
+				homelessProjectIds,
+				evidenceByProject,
+				tombstones,
 			});
-			const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
-			// A day already accounted for in full gets no block. Inserting a
-			// 0-second one would just park an empty second "Development" row next to
-			// the entries that already filled the day. Note this no longer skips the
-			// day: the attach pass below still runs, which is the fix described
-			// above.
-			if (durationSeconds > 0 && !(await hasCommitFillTombstone(ctx, dayKey))) {
-				const [created] = await db
-					.insert(timeEntry)
-					.values({
-						organizationId: ctx.organizationId,
-						userId: ctx.userId,
-						taskId: workTask.id,
-						projectId: fillProjectId,
-						// Blank evidence: every review went to a block of its own.
-						description: describeEvidence(homeless) || "Rest of day",
-						date: dayKey,
-						durationSeconds,
-						fillsDay: true,
-					})
-					// te_fill_day_uidx is the real guard against a second fill block on
-					// the day; silently skip rather than raise, since this is a
-					// best-effort background sync, not a user-initiated write. It also
-					// covers the race with a concurrent "Sync now".
-					.onConflictDoNothing({
-						target: [
-							timeEntry.organizationId,
-							timeEntry.userId,
-							timeEntry.date,
-						],
-						where: sql`${timeEntry.fillsDay} = true`,
-					})
-					.returning({
-						id: timeEntry.id,
-						description: timeEntry.description,
-						projectId: timeEntry.projectId,
-						fillsDay: timeEntry.fillsDay,
-					});
+			fill = filed.fill;
+			for (const entry of filed.split) {
+				if (entry.projectId) splitEntries.set(entry.projectId, entry);
+			}
+		}
 
-				fill =
-					created ??
-					// Nothing returned => something else filed the day's fill block
-					// between the read above and this insert. Attach to theirs.
-					(await db.query.timeEntry.findFirst({
-						where: and(
-							eq(timeEntry.organizationId, ctx.organizationId),
-							eq(timeEntry.userId, ctx.userId),
-							eq(timeEntry.date, dayKey),
-							eq(timeEntry.fillsDay, true),
-						),
-						columns: {
-							id: true,
-							description: true,
-							projectId: true,
-							fillsDay: true,
-						},
-					})) ??
-					null;
+		// Late evidence: an earlier run filed the fill against one project and this
+		// run sees another. Carve the newcomer its own entry out of the fill.
+		// A fill filed in this very run already split the day among everything it
+		// saw, so only a fill from an earlier run can be late for a newcomer.
+		if (fillPredates && fill?.projectId && !generalEntry) {
+			const carved = await carveLateProjects(ctx, {
+				workTaskId: workTask.id,
+				dayKey,
+				fill: { ...fill, projectId: fill.projectId },
+				homelessProjectIds: homelessProjectIds.filter(
+					(id) => !tombstones.projects.has(id),
+				),
+				evidenceByProject,
+			});
+			for (const entry of carved) {
+				if (entry.projectId) splitEntries.set(entry.projectId, entry);
 			}
 		}
 
 		// Where each project's evidence goes, best home first. Null means the day
-		// has nothing to attach to — a full day with no work entry on it — and the
-		// evidence is simply left for a later run, once there is.
-		const fallback = fill ?? generalEntry;
+		// has nothing to attach to for that project — a full day with no work entry
+		// on it, or a fill block filed against ANOTHER project — and the evidence is
+		// simply left for a later run, once there is.
+		//
+		// A fallback may only be project-less or on the evidence's own project. A
+		// fill block belongs to the project it was filed against; hanging a second
+		// project's commits on it would bill that project for the other's work.
+		const fallbacks = [fill, generalEntry];
 		const attachments = new Map<string, DayEvidence>();
 		for (const [projectId, group] of evidenceByProject) {
-			const target = byProject.get(projectId) ?? fallback;
+			// A project the person deleted its block for stays unattached, unless
+			// it has an entry again.
+			if (tombstones.projects.has(projectId) && !byProject.has(projectId)) {
+				continue;
+			}
+			const target =
+				byProject.get(projectId) ??
+				splitEntries.get(projectId) ??
+				fallbacks.find(
+					(entry) =>
+						entry &&
+						(entry.projectId === null || entry.projectId === projectId),
+				);
 			if (!target) continue;
 			attachments.set(
 				target.id,
@@ -1167,18 +1473,73 @@ const syncCommitWorkTimeForRange = async (
 	}
 };
 
-/** Did this person delete the day's rest-of-day block? See the table comment in
- *  db/schema/settings.ts — the engine's way of being told no. */
-const hasCommitFillTombstone = async (ctx: Ctx, dateKey: string) => {
-	const row = await db.query.commitFillTombstone.findFirst({
+/** Does this entry hold commits or pull request events of a Development block?
+ *  Read before a delete, because the attachments cascade with the row. A Code
+ *  Review block holds pull request events too, and has a tombstone of its own. */
+const holdsCommitEvidence = async (
+	ctx: Ctx,
+	timeEntryId: string,
+): Promise<boolean> => {
+	const tx = ctxDb(ctx);
+	const [row] = await tx
+		.select({ systemKey: task.systemKey })
+		.from(timeEntry)
+		.innerJoin(task, eq(task.id, timeEntry.taskId))
+		.where(eq(timeEntry.id, timeEntryId));
+	if (row?.systemKey !== "development") return false;
+	const [commit] = await tx
+		.select({ id: timeEntryGithubCommit.id })
+		.from(timeEntryGithubCommit)
+		.where(eq(timeEntryGithubCommit.timeEntryId, timeEntryId))
+		.limit(1);
+	if (commit) return true;
+	const [activity] = await tx
+		.select({ id: timeEntryGithubPrActivity.id })
+		.from(timeEntryGithubPrActivity)
+		.where(eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId))
+		.limit(1);
+	return !!activity;
+};
+
+/** Record the person's no to the commit engine for a day: a project's block, or
+ *  with no project the whole day. */
+const tombstoneCommitBlock = async (
+	ctx: Ctx,
+	date: string,
+	projectId: string | null,
+) => {
+	await ctxDb(ctx)
+		.insert(commitFillTombstone)
+		.values({
+			organizationId: ctx.organizationId,
+			userId: ctx.userId,
+			date,
+			projectId,
+		})
+		.onConflictDoNothing();
+};
+
+/** What this person has told the commit engine no to on a day. See the table
+ *  comment in db/schema/settings.ts. `day` is the old, day-level no (a
+ *  project-less fill block was deleted); `projects` are the projects whose block
+ *  or evidence-holding entry was deleted. */
+type CommitTombstones = { day: boolean; projects: Set<string> };
+
+const commitTombstonesOn = async (
+	ctx: Ctx,
+	dateKey: string,
+): Promise<CommitTombstones> => {
+	const rows = await db.query.commitFillTombstone.findMany({
 		where: and(
 			eq(commitFillTombstone.organizationId, ctx.organizationId),
 			eq(commitFillTombstone.userId, ctx.userId),
 			eq(commitFillTombstone.date, dateKey),
 		),
-		columns: { id: true },
+		columns: { projectId: true },
 	});
-	return !!row;
+	const projects = new Set<string>();
+	for (const row of rows) if (row.projectId) projects.add(row.projectId);
+	return { day: rows.some((row) => row.projectId === null), projects };
 };
 
 /**
@@ -1760,20 +2121,6 @@ export const timeEntriesService = {
 				if (!row) {
 					throw new Error("A work-time block already exists for this day");
 				}
-				// Deliberately asking for a rest-of-day block retracts an earlier "no"
-				// on this day. Without this, deleting the block once would suppress the
-				// engine on that day forever, including after the person changed their
-				// mind and made one by hand — a tombstone outliving the decision it
-				// recorded.
-				await tx
-					.delete(commitFillTombstone)
-					.where(
-						and(
-							eq(commitFillTombstone.organizationId, ctx.organizationId),
-							eq(commitFillTombstone.userId, ctx.userId),
-							eq(commitFillTombstone.date, input.date),
-						),
-					);
 			} else if (input.calendarEventId) {
 				// Manually attaching an event meeting-sync may already have imported
 				// would otherwise hit te_calendar_event_uidx and throw a raw 500. Take
@@ -1804,6 +2151,28 @@ export const timeEntriesService = {
 				[row] = await tx.insert(timeEntry).values(values).returning();
 			}
 			if (!row) throw new Error("Failed to create time entry");
+
+			// Deliberately asking for a rest-of-day block, or for Development time on
+			// a project, retracts an earlier "no" on that day and project. Without
+			// this, deleting the block once would suppress the engine there forever,
+			// including after the person changed their mind and made one by hand (or
+			// accepted it in Assemble my day) — a tombstone outliving the decision it
+			// recorded. A project-less fill clears the day-level no; a fill or entry
+			// on a project clears that project's.
+			if (input.fillsDay || taskRow.systemKey === "development") {
+				await tx
+					.delete(commitFillTombstone)
+					.where(
+						and(
+							eq(commitFillTombstone.organizationId, ctx.organizationId),
+							eq(commitFillTombstone.userId, ctx.userId),
+							eq(commitFillTombstone.date, input.date),
+							input.projectId
+								? eq(commitFillTombstone.projectId, input.projectId)
+								: isNull(commitFillTombstone.projectId),
+						),
+					);
+			}
 
 			// Deliberately creating an entry for a calendar event un-tombstones it.
 			// Deleting a synced meeting writes a tombstone so the sync engine leaves
@@ -2071,7 +2440,11 @@ export const timeEntriesService = {
 		// What was actually filed, for `remember` below — collected from the
 		// returned rows rather than from the request, so a rule can only ever be
 		// recorded for an entry that really moved.
-		const succeeded: { taskId: string; description: string }[] = [];
+		const succeeded: {
+			timeEntryId: string;
+			taskId: string;
+			description: string;
+		}[] = [];
 		for (const timeEntryId of input.timeEntryIds) {
 			try {
 				const entry = await timeEntriesService.file(ctx, {
@@ -2080,6 +2453,7 @@ export const timeEntriesService = {
 					taskId: input.taskId,
 				});
 				succeeded.push({
+					timeEntryId: entry.id,
 					// The key is the task the sync wrote, not the one filed under.
 					taskId: entry.filedFromTaskId,
 					description: entry.description ?? "",
@@ -2357,6 +2731,7 @@ export const timeEntriesService = {
 			const tx = ctxDb(txCtx);
 			// Before the delete: the attachments cascade with the row.
 			const heldReviews = await reviewsHeldBy(txCtx, timeEntryId);
+			const holdsEvidence = await holdsCommitEvidence(txCtx, timeEntryId);
 			// Also before the delete, and for the same reason: a webhook payload is
 			// a projection over this row's joins, and there is nothing left to
 			// project from once it is gone. Read only when somebody asked for one
@@ -2405,14 +2780,11 @@ export const timeEntriesService = {
 			// clears — so without this the next sweep files another one, twenty
 			// minutes later, with nobody watching.
 			if (existing?.fillsDay) {
-				await tx
-					.insert(commitFillTombstone)
-					.values({
-						organizationId: ctx.organizationId,
-						userId: ctx.userId,
-						date: existing.date,
-					})
-					.onConflictDoNothing();
+				await tombstoneCommitBlock(txCtx, existing.date, existing.projectId);
+			} else if (existing?.projectId && holdsEvidence) {
+				// A split entry, or any Development entry the engine put commits on:
+				// the same no, for that project.
+				await tombstoneCommitBlock(txCtx, existing.date, existing.projectId);
 			}
 
 			// And a review block. What told the engine this PR's block exists was

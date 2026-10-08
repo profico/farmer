@@ -2,7 +2,11 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "../db";
-import { project, task } from "../db/schema/domain";
+import { project, task, timeEntry } from "../db/schema/domain";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { filingRule } from "../db/schema/settings";
 import type {
 	DeleteFilingRuleInput,
@@ -47,6 +51,38 @@ export const ruleKeyFor = (taskId: string, title: string) =>
 
 const targetTask = alias(task, "target_task");
 
+/** The ids, out of these entries, that must not become a rule: a fill block,
+ *  or an entry that holds commit or pull request evidence. */
+const entriesWithoutRuleMatch = async (
+	ctx: Ctx,
+	entries: { timeEntryId?: string }[],
+): Promise<Set<string>> => {
+	const ids = entries.flatMap((e) => (e.timeEntryId ? [e.timeEntryId] : []));
+	if (ids.length === 0) return new Set();
+	const [fills, commits, activity] = await Promise.all([
+		db
+			.select({ id: timeEntry.id })
+			.from(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					inArray(timeEntry.id, ids),
+					eq(timeEntry.fillsDay, true),
+				),
+			),
+		db
+			.selectDistinct({ id: timeEntryGithubCommit.timeEntryId })
+			.from(timeEntryGithubCommit)
+			.where(inArray(timeEntryGithubCommit.timeEntryId, ids)),
+		db
+			.selectDistinct({ id: timeEntryGithubPrActivity.timeEntryId })
+			.from(timeEntryGithubPrActivity)
+			.where(inArray(timeEntryGithubPrActivity.timeEntryId, ids)),
+	]);
+	return new Set([...fills, ...commits, ...activity].map((row) => row.id));
+};
+
 export const filingRulesService = {
 	/** The caller's own rules, with the names needed to render them. */
 	list: async (ctx: Ctx) =>
@@ -89,6 +125,11 @@ export const filingRulesService = {
 	 * writes and matches on. `targetTaskId` is the task it was filed under, when
 	 * the filing changed it.
 	 *
+	 * An entry with `timeEntryId` is checked first: a rest-of-day block, or one
+	 * with GitHub commits or pull request events on it, carries a description
+	 * the commit engine wrote from that evidence. It is a list of subjects that
+	 * never comes back word for word, so a rule keyed on it matches nothing.
+	 *
 	 * Best-effort and never throws: the filing itself already succeeded, and
 	 * failing the whole call because a preference could not be saved would report
 	 * an error for work that was done.
@@ -96,14 +137,24 @@ export const filingRulesService = {
 	rememberFrom: async (
 		ctx: Ctx,
 		target: { projectId: string; targetTaskId?: string },
-		entries: { taskId: string; description: string }[],
+		entries: { timeEntryId?: string; taskId: string; description: string }[],
 	) => {
+		let skipped: Set<string>;
+		try {
+			skipped = await entriesWithoutRuleMatch(ctx, entries);
+		} catch (error) {
+			// Without the check an evidence-bearing entry could become a rule, so
+			// remember nothing rather than guess.
+			console.error("[filing-rules] could not check entries", error);
+			return 0;
+		}
 		// One row per distinct (task, title). A month of stand-ups is one rule.
 		const byKey = new Map<
 			string,
 			{ taskId: string; titleKey: string; title: string }
 		>();
 		for (const entry of entries) {
+			if (entry.timeEntryId && skipped.has(entry.timeEntryId)) continue;
 			const title = entry.description.trim();
 			// An empty description is not a rule. The dialog falls back to the task
 			// name for display, so a rule keyed on "" would read as "always file

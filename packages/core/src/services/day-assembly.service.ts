@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -166,6 +166,23 @@ const hasLinkedAccount = async (userId: string, providerId: string) => {
  *  of the assembler with no error anywhere. */
 const findEngineTask = (ctx: Ctx, key: TaskSystemKey) =>
 	tasksService.findBySystemKey(ctx, key);
+
+/** The projects whose commit block the person deleted on this day. */
+const deletedWorkProjects = async (
+	ctx: Ctx,
+	date: string,
+): Promise<Set<string>> => {
+	const rows = await db.query.commitFillTombstone.findMany({
+		where: and(
+			eq(commitFillTombstone.organizationId, ctx.organizationId),
+			eq(commitFillTombstone.userId, ctx.userId),
+			eq(commitFillTombstone.date, date),
+			isNotNull(commitFillTombstone.projectId),
+		),
+		columns: { projectId: true },
+	});
+	return new Set(rows.flatMap((row) => (row.projectId ? [row.projectId] : [])));
+};
 
 export const dayAssemblyService = {
 	/** Read-only preview: nothing here writes. It used to run the recurring
@@ -534,15 +551,30 @@ export const dayAssemblyService = {
 			// A pull request somebody opened, merged or reviewed weighs what one
 			// commit does. Neither measures time; the split only needs a ratio
 			// that leaves a review-only project with a share rather than none.
+			//
+			// A project whose block the person deleted (see `commitFillTombstone`)
+			// does not take part, as in the commit engine: the others share the day
+			// without it. It is still proposed, dismissed, with the share it would
+			// have had, for the toggle that brings dismissed rows back.
+			const deletedProjects = await deletedWorkProjects(ctx, date);
+			const weights = groups.map(
+				(g) => g.commits.length + g.pullRequests.length,
+			);
 			const shares = splitProportionally(
 				remaining,
-				groups.map((g) => g.commits.length + g.pullRequests.length),
+				weights.map((w, i) =>
+					deletedProjects.has(groups[i]?.projectId ?? "") ? 0 : w,
+				),
 			);
+			const dismissedShares = splitProportionally(remaining, weights);
 
 			groups.forEach((group, index) => {
-				const share = shares[index] ?? 0;
+				const deleted = deletedProjects.has(group.projectId);
+				const share = (deleted ? dismissedShares : shares)[index] ?? 0;
 				if (share <= 0) return;
-				workSeconds += share;
+				if (deleted) dismissedCount++;
+				if (deleted && !includeDismissed) return;
+				if (!deleted) workSeconds += share;
 				suggestions.push({
 					key: `work:${group.projectId}`,
 					kind: "work",
@@ -566,10 +598,9 @@ export const dayAssemblyService = {
 					fillsDay: false,
 					meetingUrl: null,
 					calendarEventId: null,
-					// Per-project commit work is derived fresh from the commits every
-					// time; there is no record of one having been deleted, so there is
-					// nothing here for the toggle to hold back.
-					dismissed: false,
+					// Derived fresh from the commits every time; the one record of a "no"
+					// is the project's tombstone, read above.
+					dismissed: deletedProjects.has(group.projectId),
 					commits: group.commits.map((c) => ({
 						projectGithubRepoId: c.projectGithubRepoId,
 						sha: c.sha,
@@ -604,6 +635,7 @@ export const dayAssemblyService = {
 					eq(commitFillTombstone.organizationId, ctx.organizationId),
 					eq(commitFillTombstone.userId, ctx.userId),
 					eq(commitFillTombstone.date, date),
+					isNull(commitFillTombstone.projectId),
 				),
 				columns: { id: true },
 			});
