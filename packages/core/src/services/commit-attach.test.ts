@@ -669,6 +669,41 @@ describe("a fill block filed against one project", () => {
 		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
 	});
 
+	// A fill made by hand, or from Assemble my day, holds no evidence. It is still
+	// the person's block on that project and keeps a share.
+	test("a fill with no evidence still gives a late project its share", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const other = present(
+			rows.find((r) => r.projectId === otherProjectId),
+			"carved entry",
+		);
+		expect(other.durationSeconds).toBe(4 * 60 * 60);
+		expect(
+			present(
+				rows.find((r) => r.id === fill.id),
+				"fill",
+			).durationSeconds,
+		).toBe(4 * 60 * 60);
+		expect((await commitsAttachedTo(other.id)).map((c) => c.sha)).toEqual([
+			`sha-${YESTERDAY}-other`,
+		]);
+
+		await runAutomations();
+		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
+	});
+
 	test("a share of nothing leaves the evidence for later", async () => {
 		const fill = await addEntry({
 			date: YESTERDAY,

@@ -781,98 +781,129 @@ const weighEligibleProjects = async (
 
 type DayWeights = { projectId: string; weight: number }[];
 
+type CarveInput = {
+	workTaskId: string;
+	dayKey: string;
+	fill: DayEntryRow & { projectId: string };
+	newcomers: DayWeights;
+	evidenceByProject: Map<string, DayEvidence>;
+};
+
+/**
+ * What a carve-out would write, or null when it would write nothing. Reads
+ * only, through `client`, so the caller can ask without opening a transaction
+ * and ask again under the lock.
+ *
+ * The fill's project is weighed by the evidence already on the fill plus this
+ * run's, and by at least 1: a fill with no evidence (made by hand, or from
+ * Assemble my day) is still the person's block on that project, and weight 0
+ * would hand the newcomer the whole of it or, as `splitProportionally` does,
+ * nothing at all. The newcomers weigh by theirs. The fill's CURRENT length is
+ * divided by `splitProportionally`; a newcomer whose share is 0 gets nothing.
+ */
+const planCarve = async (
+	client: ReturnType<typeof ctxDb>,
+	ctx: Ctx,
+	input: CarveInput,
+): Promise<{
+	carved: { projectId: string; seconds: number }[];
+	fillSeconds: number;
+} | null> => {
+	const { fill } = input;
+	const [current] = await client
+		.select({ durationSeconds: timeEntry.durationSeconds })
+		.from(timeEntry)
+		.where(eq(timeEntry.id, fill.id));
+	if (!current) return null;
+	const taken = await client
+		.select({ projectId: timeEntry.projectId })
+		.from(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, input.dayKey),
+				eq(timeEntry.taskId, input.workTaskId),
+				eq(timeEntry.fillsDay, false),
+				inArray(
+					timeEntry.projectId,
+					input.newcomers.map((p) => p.projectId),
+				),
+			),
+		);
+	const owned = new Set(taken.map((row) => row.projectId));
+	const newcomers = input.newcomers.filter((p) => !owned.has(p.projectId));
+	if (newcomers.length === 0) return null;
+	const [commitRows, activityRows] = await Promise.all([
+		client
+			.select({ sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.where(eq(timeEntryGithubCommit.timeEntryId, fill.id)),
+		client
+			.select({
+				projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
+				number: timeEntryGithubPrActivity.number,
+			})
+			.from(timeEntryGithubPrActivity)
+			.where(eq(timeEntryGithubPrActivity.timeEntryId, fill.id)),
+	]);
+	// Distinct, so a rerun that sees the same commit again does not weigh it
+	// twice: what is on the fill and what this run found overlap.
+	const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
+	const keys = new Set([
+		...commitRows.map((c) => `c|${c.sha}`),
+		...own.commits.map((c) => `c|${c.sha}`),
+		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+		...own.pullRequests.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+	]);
+	const shares = splitProportionally(current.durationSeconds, [
+		Math.max(1, keys.size),
+		...newcomers.map((p) => p.weight),
+	]);
+	if ((shares[0] ?? 0) <= 0) return null;
+	const carved = newcomers
+		.map((p, index) => ({
+			projectId: p.projectId,
+			seconds: shares[index + 1] ?? 0,
+		}))
+		.filter((p) => p.seconds > 0);
+	if (carved.length === 0) return null;
+	const carvedSeconds = carved.reduce((sum, p) => sum + p.seconds, 0);
+	return { carved, fillSeconds: current.durationSeconds - carvedSeconds };
+};
+
 /**
  * Evidence for a project that has no entry on the day, after the day's fill
  * block was filed against ANOTHER project (an earlier run saw only that one).
  * Carve each such project a plain Development entry out of the fill, so late
  * evidence is not dropped for good.
  *
- * The fill's project is weighed by the evidence already on the fill plus this
- * run's, the newcomers by theirs, and the fill's CURRENT length is divided by
- * `splitProportionally`. The fill shrinks to what is left; a newcomer whose
- * share is 0 gets nothing and its evidence waits, as it did before. All in one
- * transaction, so a reader never sees the fill shrunk without the new entry.
+ * Planned first, without a transaction: a day that cannot settle (no share, no
+ * newcomer left) must not lock the fill on every sweep. A transaction opens
+ * only when a write will follow, and plans again under the lock. Both writes
+ * land together, so a reader never sees the fill shrunk without the new entry.
  */
 const carveFromFill = async (
 	ctx: Ctx,
-	input: {
-		workTaskId: string;
-		dayKey: string;
-		fill: DayEntryRow & { projectId: string };
-		newcomers: DayWeights;
-		evidenceByProject: Map<string, DayEvidence>;
-	},
+	input: CarveInput,
 ): Promise<DayEntryRow[]> => {
-	const { fill } = input;
+	if (!(await planCarve(ctxDb(ctx), ctx, input))) return [];
 	return withCtxTx(ctx, async (txCtx) => {
 		const tx = ctxDb(txCtx);
 		// Belt and braces: the sweep and "Sync now" share a per-person guard, so
-		// no second run is expected here. The lock and the re-read make the
+		// no second run is expected here. The lock and the re-plan make the
 		// carve-out correct without relying on that guard.
-		const [current] = await tx
-			.select({ durationSeconds: timeEntry.durationSeconds })
+		await tx
+			.select({ id: timeEntry.id })
 			.from(timeEntry)
-			.where(eq(timeEntry.id, fill.id))
+			.where(eq(timeEntry.id, input.fill.id))
 			.for("update");
-		if (!current) return [];
-		const taken = await tx
-			.select({ projectId: timeEntry.projectId })
-			.from(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					eq(timeEntry.date, input.dayKey),
-					eq(timeEntry.taskId, input.workTaskId),
-					eq(timeEntry.fillsDay, false),
-					inArray(
-						timeEntry.projectId,
-						input.newcomers.map((p) => p.projectId),
-					),
-				),
-			);
-		const owned = new Set(taken.map((row) => row.projectId));
-		const newcomers = input.newcomers.filter((p) => !owned.has(p.projectId));
-		if (newcomers.length === 0) return [];
-		const [commitRows, activityRows] = await Promise.all([
-			tx
-				.select({ sha: timeEntryGithubCommit.sha })
-				.from(timeEntryGithubCommit)
-				.where(eq(timeEntryGithubCommit.timeEntryId, fill.id)),
-			tx
-				.select({
-					projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
-					number: timeEntryGithubPrActivity.number,
-				})
-				.from(timeEntryGithubPrActivity)
-				.where(eq(timeEntryGithubPrActivity.timeEntryId, fill.id)),
-		]);
-		// Distinct, so a rerun that sees the same commit again does not weigh it
-		// twice: what is on the fill and what this run found overlap.
-		const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
-		const keys = new Set([
-			...commitRows.map((c) => `c|${c.sha}`),
-			...own.commits.map((c) => `c|${c.sha}`),
-			...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
-			...own.pullRequests.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
-		]);
-		const shares = splitProportionally(current.durationSeconds, [
-			keys.size,
-			...newcomers.map((p) => p.weight),
-		]);
-		if ((shares[0] ?? 0) <= 0) return [];
-		const carved = newcomers
-			.map((p, index) => ({
-				projectId: p.projectId,
-				seconds: shares[index + 1] ?? 0,
-			}))
-			.filter((p) => p.seconds > 0);
-		if (carved.length === 0) return [];
-
+		const plan = await planCarve(tx, ctx, input);
+		if (!plan) return [];
 		const entries = await tx
 			.insert(timeEntry)
 			.values(
-				carved.map((p) => ({
+				plan.carved.map((p) => ({
 					organizationId: ctx.organizationId,
 					userId: ctx.userId,
 					taskId: input.workTaskId,
@@ -887,14 +918,10 @@ const carveFromFill = async (
 				})),
 			)
 			.returning(dayEntryColumns);
-		const carvedSeconds = carved.reduce((sum, p) => sum + p.seconds, 0);
 		await tx
 			.update(timeEntry)
-			.set({
-				durationSeconds: current.durationSeconds - carvedSeconds,
-				updatedAt: new Date(),
-			})
-			.where(eq(timeEntry.id, fill.id));
+			.set({ durationSeconds: plan.fillSeconds, updatedAt: new Date() })
+			.where(eq(timeEntry.id, input.fill.id));
 		return entries;
 	});
 };
@@ -1352,7 +1379,11 @@ const syncCommitWorkTimeForRange = async (
 		// The fill block is created only for evidence that found no home — a day
 		// of reviews is a worked day as surely as a day of commits — and only if
 		// the day still has room and nobody has said no.
-		const tombstones = await commitTombstonesOn(ctx, dayKey);
+		// Only evidence that found no home can meet a no.
+		const tombstones =
+			homelessProjectIds.length > 0
+				? await commitTombstonesOn(ctx, dayKey)
+				: { day: false, projects: new Set<string>() };
 		const splitEntries = new Map<string, DayEntryRow>();
 		const fillPredates = fill !== null;
 		if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
