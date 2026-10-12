@@ -473,3 +473,22 @@ describe("a rejected request", () => {
 		);
 	});
 });
+
+describe("a stream with a null frame", () => {
+	test("skips `data: null` and keeps both good frames", async () => {
+		const finish = JSON.stringify({
+			choices: [{ delta: {}, finish_reason: "stop" }],
+		});
+		const frames = [delta("Hello, "), "null", delta("world"), finish, "[DONE]"];
+		// SAFETY: as above — a stub that answers one shape.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(frames.map((frame) => `data: ${frame}\n\n`).join(""), {
+				status: 200,
+				headers: { "Content-Type": "text/event-stream" },
+			})) as typeof globalThis.fetch;
+
+		const turn = await call(new AbortController().signal);
+		expect(turn.content).toBe("Hello, world");
+		expect(turn.finishReason).toBe("stop");
+	});
+});

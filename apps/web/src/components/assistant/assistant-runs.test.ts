@@ -31,6 +31,9 @@ describe("parseFrame", () => {
 	test("skips a line that is not a data line", () => {
 		expect(parseFrame(": ping")).toBeNull();
 	});
+	test("skips a data line that holds null", () => {
+		expect(parseFrame("data: null")).toBeNull();
+	});
 	test("skips a data line with bad JSON", () => {
 		expect(parseFrame("data: {oops")).toBeNull();
 	});
@@ -78,6 +81,23 @@ describe("readEvents", () => {
 				controller.enqueue(encoder.encode('data: {"type":"del'));
 				controller.enqueue(
 					encoder.encode('ta","text":"a"}\n\ndata: {"type":"done"}\n\n'),
+				);
+				controller.close();
+			},
+		});
+		const seen: AssistantEvent[] = [];
+		await readEvents(stream, (event) => seen.push(event));
+		expect(seen).toEqual([{ type: "delta", text: "a" }, { type: "done" }]);
+	});
+
+	test("skips a null frame between two good frames and completes", async () => {
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(
+					encoder.encode(
+						'data: {"type":"delta","text":"a"}\n\ndata: null\n\ndata: {"type":"done"}\n\n',
+					),
 				);
 				controller.close();
 			},
