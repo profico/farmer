@@ -1416,28 +1416,130 @@ describe("late evidence when the fill already holds some of it", () => {
 			.sort();
 
 	test("a new event of a pull request the fill holds one event of still attaches", async () => {
-		pullRequestsFor(["opened"]);
-		await runAutomations();
-		const fill = present(
-			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
-			"fill",
-		);
-		expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
-		const hand = await timeEntriesService.create(ctx, {
-			taskId: devTaskId,
-			projectId,
-			description: "Planning",
-			date: YESTERDAY,
-			durationSeconds: 60 * 60,
-			overtime: false,
-			fillsDay: false,
-		});
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+			const hand = await timeEntriesService.create(ctx, {
+				taskId: devTaskId,
+				projectId,
+				description: "Planning",
+				date: YESTERDAY,
+				durationSeconds: 60 * 60,
+				overtime: false,
+				fillsDay: false,
+			});
 
-		pullRequestsFor(["opened", "merged"]);
-		await runAutomations();
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
 
-		expect(await eventsOn(hand.id)).toEqual(["PR_1:merged"]);
-		expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+			expect(await eventsOn(hand.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// Run 1 filed the fill on P with `opened`. The person moved it to Q, so P has
+	// no entry. The fill holds the pull request, so the carve gives P nothing for
+	// it, and `merged` goes to the fill rather than to no entry at all.
+	test("a new event of a held pull request goes to a fill moved to another project", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+			await runAutomations();
+
+			expect(await entriesOn(YESTERDAY)).toHaveLength(1);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// A new commit of P carves P an entry. The pull request is still on the fill,
+	// so `merged` goes to the fill in this probe too, not to the carved entry.
+	test("a new event of a held pull request stays on the fill when a commit carves an entry", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "main", count: 1 }]),
+			);
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			const rows = await entriesOn(YESTERDAY);
+			expect(rows).toHaveLength(2);
+			const carved = present(
+				rows.find((r) => r.id !== fill.id),
+				"carved entry",
+			);
+			expect(carved.projectId).toBe(projectId);
+			expect(await eventsOn(carved.id)).toEqual([]);
+			expect((await commitsAttachedTo(carved.id)).map((c) => c.sha)).toEqual([
+				shaOf("main", 0),
+			]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// The fill weighs a pull request once, however many events of it it holds.
+	test("a fill that holds two events of one pull request weighs it once", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "other", count: 1 }]),
+			);
+			await runAutomations();
+
+			const rows = await entriesOn(YESTERDAY);
+			expect(rows).toHaveLength(2);
+			// The fill weighs 1 (one pull request), the newcomer 1: 4h each. Two
+			// events counted as two would give 5h20 : 2h40.
+			expect(rows.map((r) => r.durationSeconds).sort()).toEqual([
+				4 * 60 * 60,
+				4 * 60 * 60,
+			]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
 	});
 });
 
@@ -1618,6 +1720,35 @@ describe("copying a day retracts the commit engine's no", () => {
 
 		expect((await entriesOn(COPY_TO)).some((r) => r.fillsDay)).toBe(true);
 		expect(await tombstonesOn(COPY_TO)).toEqual([]);
+	});
+
+	test("a copied entry of another task clears nothing", async () => {
+		const meeting = present(
+			await db.query.task.findFirst({ where: eq(task.systemKey, "meeting") }),
+			"Meeting task",
+		);
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: meeting.id,
+			projectId,
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			description: "Sync",
+			fillsDay: false,
+		});
+		await tombstoneBoth();
+
+		await timeEntriesService.copyDay(ctx, {
+			fromDate: YESTERDAY,
+			toDate: COPY_TO,
+		});
+
+		expect(await entriesOn(COPY_TO)).toHaveLength(1);
+		const left = await tombstonesOn(COPY_TO);
+		expect(left).toHaveLength(2);
+		expect(left).toContain(null);
+		expect(left).toContain(projectId);
 	});
 
 	test("a copied Development entry clears its project's no only", async () => {

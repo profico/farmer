@@ -817,6 +817,32 @@ const withoutHeldEvents = (
 	),
 });
 
+/** The new events of a pull request that the fill holds an event of. The carve
+ *  weighs a pull request as a whole, so it counts such a pull request as on the
+ *  fill and gives its project no entry for it. */
+const newEventsOfHeldPullRequests = (
+	evidence: DayEvidence,
+	held: Set<string>,
+): DayEvidence => ({
+	commits: [],
+	pullRequests: evidence.pullRequests.filter(
+		(a) =>
+			held.has(`p|${a.projectGithubRepoId}|${a.number}`) &&
+			!held.has(`e|${a.eventId}`),
+	),
+});
+
+const withoutLateEvents = (
+	evidence: DayEvidence,
+	late: DayEvidence,
+): DayEvidence => {
+	const ids = new Set(late.pullRequests.map((a) => a.eventId));
+	return {
+		commits: evidence.commits,
+		pullRequests: evidence.pullRequests.filter((a) => !ids.has(a.eventId)),
+	};
+};
+
 /** What an entry already holds, as keys: `c|<sha>` for a commit,
  *  `e|<eventId>` for a pull request event and `p|<repo>|<number>` for its pull
  *  request. */
@@ -1352,9 +1378,22 @@ const planAttachments = async (
 				entry && (entry.projectId === null || entry.projectId === projectId),
 		);
 	const attachments = new Map<string, DayEvidence>();
+	const add = (targetId: string, group: DayEvidence) => {
+		if (evidenceWeight(group) === 0) return;
+		attachments.set(
+			targetId,
+			mergeEvidence([attachments.get(targetId) ?? emptyEvidence(), group]),
+		);
+	};
 	const onFill = fill
 		? await attachedKeys(ctxDb(ctx), fill.id)
 		: new Set<string>();
+	// With a project-less entry on the day there is no carve, so the events stay
+	// with that entry.
+	const lateEvents = (projectId: string, source: DayEvidence): DayEvidence =>
+		fill && !input.generalEntry && !byProject.has(projectId)
+			? newEventsOfHeldPullRequests(source, onFill)
+			: emptyEvidence();
 	for (const [projectId, source] of input.evidenceByProject) {
 		// A project the person deleted its block for stays unattached, unless
 		// it has an entry again.
@@ -1362,14 +1401,20 @@ const planAttachments = async (
 			continue;
 		}
 		const target = homeFor(projectId);
-		if (!target) continue;
-		const group =
-			target.id === fill?.id ? source : withoutHeldEvents(source, onFill);
-		if (evidenceWeight(group) === 0) continue;
-		attachments.set(
-			target.id,
-			mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
-		);
+		if (fill && target?.id === fill.id) {
+			add(fill.id, source);
+			continue;
+		}
+		// The carve treats a pull request the fill holds as on the fill, for a
+		// project with no entry of its own. Its new events follow it there.
+		const late = lateEvents(projectId, source);
+		if (fill) add(fill.id, late);
+		if (target) {
+			add(
+				target.id,
+				withoutLateEvents(withoutHeldEvents(source, onFill), late),
+			);
+		}
 	}
 	return attachments;
 };
@@ -1680,6 +1725,39 @@ const retractCommitTombstones = async (
 				eq(commitFillTombstone.userId, ctx.userId),
 				eq(commitFillTombstone.date, entry.date),
 				or(...rows),
+			),
+		);
+};
+
+/** Take back the project-level no for copied Development entries, in one
+ *  delete for the day. Same rule as `retractCommitTombstones` for an entry that
+ *  is not a fill: only a project's own row is cleared, never the day-level one. */
+const retractCopiedTombstones = async (
+	tx: ReturnType<typeof ctxDb>,
+	ctx: Ctx,
+	date: string,
+	copied: { projectId: string | null; taskId: string }[],
+) => {
+	const developmentIds = await developmentTaskIds(
+		tx,
+		copied.map((e) => e.taskId),
+	);
+	const projectIds = [
+		...new Set(
+			copied.flatMap((e) =>
+				e.projectId && developmentIds.has(e.taskId) ? [e.projectId] : [],
+			),
+		),
+	];
+	if (projectIds.length === 0) return;
+	await tx
+		.delete(commitFillTombstone)
+		.where(
+			and(
+				eq(commitFillTombstone.organizationId, ctx.organizationId),
+				eq(commitFillTombstone.userId, ctx.userId),
+				eq(commitFillTombstone.date, date),
+				inArray(commitFillTombstone.projectId, projectIds),
 			),
 		);
 };
@@ -3259,18 +3337,7 @@ export const timeEntriesService = {
 
 			// A copied fill, or copied Development time on a project, is as deliberate
 			// as one made by hand, so it takes back the same no that `create` does.
-			const developmentIds = await developmentTaskIds(tx, [
-				...permitted.map((e) => e.taskId),
-				...(copyFill && sourceFill ? [sourceFill.taskId] : []),
-			]);
-			for (const e of permitted) {
-				await retractCommitTombstones(tx, ctx, {
-					date: input.toDate,
-					projectId: e.projectId,
-					fillsDay: false,
-					development: developmentIds.has(e.taskId),
-				});
-			}
+			await retractCopiedTombstones(tx, ctx, input.toDate, permitted);
 
 			// One event per row, not one per copy: a receiver reconciles entries,
 			// and a batch shape would be a second payload for every kind to handle.
@@ -3322,7 +3389,9 @@ export const timeEntriesService = {
 						date: input.toDate,
 						projectId: sourceFill.projectId,
 						fillsDay: true,
-						development: developmentIds.has(sourceFill.taskId),
+						development: (
+							await developmentTaskIds(tx, [sourceFill.taskId])
+						).has(sourceFill.taskId),
 					});
 					copied += 1;
 				} else {
