@@ -1512,6 +1512,79 @@ describe("late evidence when the fill already holds some of it", () => {
 		}
 	});
 
+	// The target is decided on each sweep. Run 1 files the fill on P with
+	// `opened`. The person moves the fill to Q. Run 2 sees a new commit of P and
+	// carves P an entry with the commit only, because the fill holds the pull
+	// request. Run 3 finds P with an entry, so `merged` goes to that entry.
+	test("a later event goes to the entry the project has by then", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "main", count: 1 }]),
+			);
+			await runAutomations();
+			const carved = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.id !== fill.id),
+				"carved entry",
+			);
+			expect(carved.projectId).toBe(projectId);
+			expect(await eventsOn(carved.id)).toEqual([]);
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			expect(await eventsOn(carved.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// A project-less entry on the day means there is no carve. A new event of a
+	// held pull request goes to that entry and not to the fill.
+	test("a new event of a held pull request goes to a project-less entry, not the fill", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+			const general = await timeEntriesService.create(ctx, {
+				taskId: devTaskId,
+				description: "Planning",
+				date: YESTERDAY,
+				durationSeconds: 60 * 60,
+				overtime: false,
+				fillsDay: false,
+			});
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			expect(await eventsOn(general.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
 	// The fill weighs a pull request once, however many events of it it holds.
 	test("a fill that holds two events of one pull request weighs it once", async () => {
 		setCommitSourceForTests(commitsFor([]));
@@ -1532,7 +1605,8 @@ describe("late evidence when the fill already holds some of it", () => {
 			const rows = await entriesOn(YESTERDAY);
 			expect(rows).toHaveLength(2);
 			// The fill weighs 1 (one pull request), the newcomer 1: 4h each. Two
-			// events counted as two would give 5h20 : 2h40.
+			// event keys counted beside the pull request key would weigh the fill
+			// 3 against 1: 6h and 2h.
 			expect(rows.map((r) => r.durationSeconds).sort()).toEqual([
 				4 * 60 * 60,
 				4 * 60 * 60,
@@ -1647,6 +1721,29 @@ describe("editing or filing an entry retracts the commit engine's no", () => {
 
 		await runAutomations();
 		expect(await commitsAttachedTo(byHand.id)).toHaveLength(1);
+	});
+
+	test("filing a fill clears the day-level no", async () => {
+		const byHand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+		await db.insert(commitFillTombstone).values({
+			organizationId: ORG_ID,
+			userId: ctx.userId,
+			date: YESTERDAY,
+			projectId: null,
+		});
+		expect(await dayRows()).toHaveLength(1);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: byHand.id,
+			projectId,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
 	});
 
 	test("filing a plain entry that is not Development clears nothing", async () => {
