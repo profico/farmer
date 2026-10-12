@@ -12,6 +12,11 @@
 // SQLSTATE code, the constraint, the table and the column — and removes the
 // messages when the chain holds a database error. Use it for each caught error
 // that a request or a job writes to the log.
+//
+// A chain with no database error keeps more: the own enumerable properties of
+// each link, such as `status`, `resetAt`, `errno` or `syscall`, which a raw
+// `console.error(error)` showed. A chain with a database error never does,
+// because a property of a driver error can hold a value of the query.
 
 import { DrizzleQueryError } from "drizzle-orm/errors";
 import { z } from "zod";
@@ -40,7 +45,15 @@ const placeFields = z.object({
 	column_name: field,
 });
 
-export type LoggableError = {
+/** The own properties of an error that a log line may show: a plain value,
+ *  never a function, an object or an error. */
+const extraProperties = z.record(
+	z.string(),
+	z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
+type ExtraProperties = z.infer<typeof extraProperties>;
+
+type LoggableFields = {
 	/** The class of the error, such as `DrizzleQueryError` or `TypeError`. */
 	error: string;
 	/** Not present when the chain holds a database error. */
@@ -57,6 +70,10 @@ export type LoggableError = {
 	 *  message. */
 	stack?: string;
 };
+
+/** The fields above, and for a chain with no database error the own
+ *  properties of its links, such as `status` or `errno`. */
+export type LoggableError = LoggableFields & ExtraProperties;
 
 const chainOf = (cause: unknown): Error[] => {
 	const chain: Error[] = [];
@@ -151,6 +168,33 @@ const placesOf = (chain: readonly Error[]) => {
 	);
 };
 
+/** The fields that `loggableError` sets itself, and the ones of an error that
+ *  are never copied. */
+const RESERVED = new Set([
+	"error",
+	"message",
+	"cause",
+	"stack",
+	"code",
+	"constraint",
+	"table",
+	"column",
+]);
+
+/** The own enumerable properties of each link. The first link wins on a name
+ *  clash. Only for a chain with no database error. */
+const extraFieldsOf = (chain: readonly Error[]): ExtraProperties => {
+	const extra: ExtraProperties = {};
+	for (const link of chain) {
+		for (const [key, value] of Object.entries(link)) {
+			if (RESERVED.has(key) || key in extra) continue;
+			const parsed = extraProperties.valueType.safeParse(value);
+			if (parsed.success) extra[key] = parsed.data;
+		}
+	}
+	return extra;
+};
+
 /**
  * The parts of a caught value that a log line may show.
  *
@@ -164,7 +208,11 @@ export const loggableError = (cause: unknown): LoggableError => {
 	// A thrown string or object can hold anything, so only say what it was.
 	if (!first) return { error: "a thrown value that is not an Error" };
 	const database = chain.some(isDatabaseError);
-	const result: LoggableError = { error: classOf(first) };
+	// A database chain gives no extra field: the loop has no link to read.
+	const result: LoggableError = {
+		...extraFieldsOf(database ? [] : chain),
+		error: classOf(first),
+	};
 	if (!database) result.message = first.message;
 	if (rest.length > 0) {
 		result.cause = rest.map((link) =>
@@ -181,14 +229,11 @@ export const loggableError = (cause: unknown): LoggableError => {
 /** `loggableError` as one line without the stack, for a logger that takes a
  *  string: `DrizzleQueryError (code 23505, constraint user_email_unique)`. */
 export const loggableErrorLine = (cause: unknown): string => {
-	const {
-		error,
-		message,
-		cause: causes,
-		stack: _stack,
-		...places
-	} = loggableError(cause);
-	const named = Object.entries(places).map(([key, value]) => `${key} ${value}`);
+	const logged = loggableError(cause);
+	const { error, message, cause: causes } = logged;
+	const named = (["code", "constraint", "table", "column"] as const).flatMap(
+		(key) => (logged[key] === undefined ? [] : [`${key} ${logged[key]}`]),
+	);
 	const parts = [
 		message === undefined ? error : `${error}: ${message}`,
 		...(causes ?? []).map((link) => `cause ${link}`),

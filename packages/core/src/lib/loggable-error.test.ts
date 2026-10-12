@@ -87,6 +87,46 @@ describe("loggableError", () => {
 		);
 	});
 
+	test("an error with no database error keeps its own properties", () => {
+		const error = Object.assign(new Error("rate limited"), {
+			status: 403,
+			errno: -111,
+			syscall: "connect",
+			resetAt: "2026-10-12T10:00:00Z",
+			retry: () => {},
+		});
+		const wrapper = Object.assign(new Error("failed", { cause: error }), {
+			status: 500,
+		});
+
+		const result = loggableError(wrapper);
+
+		expect(result).toMatchObject({
+			error: "Error",
+			message: "failed",
+			status: 500,
+			errno: -111,
+			syscall: "connect",
+			resetAt: "2026-10-12T10:00:00Z",
+		});
+		expect(result).not.toHaveProperty("retry");
+		expect(loggableErrorLine(wrapper)).not.toContain("status");
+	});
+
+	test("a chain with a database error drops the other properties", async () => {
+		const inner = await duplicateEmailError();
+		const outer = Object.assign(new Error("could not save", { cause: inner }), {
+			status: 500,
+			body: SECRET,
+		});
+
+		const result = loggableError(outer);
+
+		expect(result).not.toHaveProperty("status");
+		expect(result).not.toHaveProperty("body");
+		expect(JSON.stringify(result)).not.toContain(SECRET);
+	});
+
 	test("a thrown value that is not an Error shows none of its content", () => {
 		expect(JSON.stringify(loggableError(SECRET))).not.toContain(SECRET);
 	});
