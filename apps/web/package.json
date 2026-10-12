@@ -13,7 +13,7 @@
 		"build": "vite build && bun run scripts/prune-client-assets.ts",
 		"start": "NODE_ENV=production bun run server.ts",
 		"preview": "vite preview",
-		"test": "bun test",
+		"test": "bun test --isolate",
 		"format": "oxfmt --write",
 		"lint": "oxlint --config ../../oxlint.config.ts .",
 		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
