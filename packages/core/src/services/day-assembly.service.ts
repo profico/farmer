@@ -139,8 +139,10 @@ export type DayAssembly = {
 		github: "ok" | "unavailable";
 	};
 	/**
-	 * How many suggestions this day is holding back because they were deleted
-	 * before — the count `includeDismissed` would add.
+	 * How many suggestions this day is holding back — the count
+	 * `includeDismissed` would add. It counts deleted meetings, review blocks
+	 * and fill blocks, plus each commit and pull request event that the
+	 * person unlinked from an entry.
 	 *
 	 * Reported rather than left implicit so the dialog can offer the toggle only
 	 * on a day that has something behind it. A switch that is always visible and
@@ -422,9 +424,10 @@ export const dayAssemblyService = {
 		const reviews = reviewTask
 			? offeredEvents.filter((event) => event.kind === "reviewed")
 			: [];
-		// A pull request whose review the person unlinked has a block tombstone
-		// and an event tombstone. The event is already in `dismissedCount`, so the
-		// block must not count the same review a second time.
+		// Unlinking the last review from a Code Review entry leaves a block
+		// tombstone and an event tombstone. Unlinking an earlier review leaves
+		// only the event tombstone. The event is already in `dismissedCount`, so
+		// the block must not count the same review a second time.
 		const unlinkedReviewPullRequests = new Set(
 			pullRequestEvents
 				.filter(
