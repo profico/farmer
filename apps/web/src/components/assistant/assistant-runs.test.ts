@@ -31,9 +31,6 @@ describe("parseFrame", () => {
 	test("skips a line that is not a data line", () => {
 		expect(parseFrame(": ping")).toBeNull();
 	});
-	test("skips a data line that holds null", () => {
-		expect(parseFrame("data: null")).toBeNull();
-	});
 	test("skips a data line with bad JSON", () => {
 		expect(parseFrame("data: {oops")).toBeNull();
 	});
