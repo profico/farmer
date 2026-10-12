@@ -43,6 +43,7 @@ import {
 	commitFillTombstone,
 	filingRule,
 	pullRequestEventDetachTombstone,
+	pullRequestReviewTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
 import { emptyCalendar } from "../test/calendar";
@@ -697,6 +698,7 @@ describe("offering back what was unlinked", () => {
 	beforeEach(async () => {
 		await db.delete(commitDetachTombstone);
 		await db.delete(pullRequestEventDetachTombstone);
+		await db.delete(pullRequestReviewTombstone);
 		setCommitSourceForTests({
 			...noCommits,
 			listUserCommitsForDay: async () => [
@@ -777,6 +779,88 @@ describe("offering back what was unlinked", () => {
 		expect(loud.suggestions.find((s) => s.kind === "work")?.dismissed).toBe(
 			true,
 		);
+	});
+
+	describe("an unlinked review counts once", () => {
+		const PR_URL = "https://github.com/acme/farmer/pull/7";
+		const review = (eventId: string) => ({
+			eventId,
+			kind: "reviewed" as const,
+			reviewState: "approved" as const,
+			number: 7,
+			title: "Fix login",
+			pullRequestUrl: PR_URL,
+			url: `${PR_URL}#${eventId}`,
+			occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+			projectGithubRepoId: repoId,
+			projectId,
+			repoFullName: "acme/farmer",
+		});
+		const reviewsOnTheDay = (eventIds: string[]) => {
+			setCommitSourceForTests(noCommits);
+			setPullRequestSourceForTests({
+				listUserPullRequestActivityByDay: async () => [],
+				listUserPullRequestActivityForDay: async () => eventIds.map(review),
+			});
+		};
+		const refuseEvent = (eventId: string) =>
+			db.insert(pullRequestEventDetachTombstone).values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				eventId,
+				date: MONDAY,
+			});
+		const refuseBlock = () =>
+			db.insert(pullRequestReviewTombstone).values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: MONDAY,
+				pullRequestUrl: PR_URL,
+			});
+
+		test("the last review of a pull request, with the toggle on or off", async () => {
+			reviewsOnTheDay(["PRR_1"]);
+			await refuseEvent("PRR_1");
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.suggestions.some((s) => s.kind === "review")).toBe(false);
+			expect(quiet.dismissedCount).toBe(1);
+
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.suggestions.some((s) => s.kind === "review")).toBe(true);
+			expect(loud.dismissedCount).toBe(1);
+		});
+
+		test("an unlinked review beside another review of the same pull request", async () => {
+			reviewsOnTheDay(["PRR_1", "PRR_2"]);
+			await refuseEvent("PRR_1");
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.dismissedCount).toBe(1);
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.dismissedCount).toBe(1);
+		});
+
+		test("a deleted block with no event tombstone still counts once", async () => {
+			reviewsOnTheDay(["PRR_1"]);
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.dismissedCount).toBe(1);
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.dismissedCount).toBe(1);
+		});
 	});
 
 	test("an unlinked commit moved by hand to another entry is not offered", async () => {

@@ -422,6 +422,17 @@ export const dayAssemblyService = {
 		const reviews = reviewTask
 			? offeredEvents.filter((event) => event.kind === "reviewed")
 			: [];
+		// A pull request whose review the person unlinked has a block tombstone
+		// and an event tombstone. The event is already in `dismissedCount`, so the
+		// block must not count the same review a second time.
+		const unlinkedReviewPullRequests = new Set(
+			pullRequestEvents
+				.filter(
+					(event) =>
+						event.kind === "reviewed" && refusedEvents.has(event.eventId),
+				)
+				.map((event) => event.pullRequestUrl),
+		);
 		if (reviewTask && reviews.length > 0) {
 			const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
 			for (const review of reviews) {
@@ -475,7 +486,7 @@ export const dayAssemblyService = {
 				}
 				const wasDeleted = deleted.has(pullRequestUrl);
 				if (wasDeleted) {
-					dismissedCount++;
+					if (!unlinkedReviewPullRequests.has(pullRequestUrl)) dismissedCount++;
 					if (!includeDismissed) continue;
 				}
 				const durationSeconds = Math.min(
