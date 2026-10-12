@@ -2,8 +2,9 @@
 //
 // `drizzle-kit generate` diffs only against the newest snapshot. Older ones
 // add no value to it, and each new migration added about 7,000 lines of
-// them to its PR. `drizzle-kit up` (the v1 upgrade) needs every snapshot:
-// restore them from git first (see CLAUDE.md).
+// them to its PR. `drizzle-kit up` (the v1 upgrade) needs every snapshot.
+// Restore only the snapshots, never `_journal.json`:
+// git checkout 0b6f8713 -- ':(glob)packages/core/drizzle/meta/*_snapshot.json'
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 

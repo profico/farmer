@@ -9,15 +9,11 @@ import { expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { z } from "zod";
+import { journalSchema, snapshotName } from "./snapshot-check";
 
 const metaDir = join(import.meta.dir, "../../drizzle/meta");
 const fix =
 	"Run `bun run db:generate` (it prunes), or `bun run src/db/prune-snapshots.ts`.";
-
-const journalSchema = z.object({
-	entries: z.array(z.object({ idx: z.number().int() })).min(1),
-});
 
 test("drizzle/meta holds one snapshot, for the last migration", async () => {
 	const snapshots = readdirSync(metaDir).filter((name) =>
@@ -36,7 +32,7 @@ test("drizzle/meta holds one snapshot, for the last migration", async () => {
 		await Bun.file(join(metaDir, "_journal.json")).json(),
 	);
 	const last = journal.entries.at(-1);
-	const expected = `${String(last?.idx).padStart(4, "0")}_snapshot.json`;
+	const expected = snapshotName(last?.idx ?? -1);
 	expect(
 		snapshots[0],
 		`The snapshot must be ${expected}, the last journal entry. ${fix}`,
