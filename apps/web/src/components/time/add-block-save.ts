@@ -58,7 +58,8 @@ export type SavedContext = {
 	selectedPullRequestKeys: Set<string>;
 };
 
-// Each kind attaches on its own, so a failure of one does not stop the other.
+// Commits attach first, then pull requests. Each kind attaches on its own,
+// so a failure of one does not stop the other.
 // The entry is saved already: a kind that fails is a line in the toast.
 async function attachKind(
 	kind: AttachKind,
@@ -69,7 +70,8 @@ async function attachKind(
 	try {
 		await send();
 		return null;
-	} catch {
+	} catch (error) {
+		console.error(`Attaching ${kind} to a saved entry failed`, error);
 		return kind;
 	}
 }
@@ -87,14 +89,14 @@ async function attachSelection(saved: SavedContext): Promise<AttachKind[]> {
 		saved.suggestedPullRequests,
 		saved.selectedPullRequestKeys,
 	);
-	const failed = await Promise.all([
-		attachKind("commits", commits.length, async () => {
+	const failed = [
+		await attachKind("commits", commits.length, async () => {
 			await attachCommitsToEntry({ data: { timeEntryId, commits } });
 		}),
-		attachKind("pull requests", pullRequests.length, async () => {
+		await attachKind("pull requests", pullRequests.length, async () => {
 			await attachPullRequestsToEntry({ data: { timeEntryId, pullRequests } });
 		}),
-	]);
+	];
 	return failed.filter((kind) => kind !== null);
 }
 
