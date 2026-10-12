@@ -57,7 +57,16 @@ describe("metaProblem", () => {
 		write("_journal.json", JSON.stringify(journal));
 		const message = await metaProblem(dir);
 		expect(message).toContain("0076_snapshot.json is missing");
+		expect(message).toContain("git checkout -- ':/packages/core");
 		expect(message).toContain("git checkout HEAD -- ':/packages/core");
+	});
+
+	test("a stray file that sorts last is named", async () => {
+		write("_journal.json", JSON.stringify(journal));
+		write("0076_snapshot.json");
+		write("0077_snapshot.json.bak");
+		const message = await metaProblem(dir);
+		expect(message).toContain("0077_snapshot.json.bak");
 	});
 
 	test("a leftover newer snapshot is named", async () => {

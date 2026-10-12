@@ -9,6 +9,7 @@ import { expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { present } from "../test/harness";
 import { journalSchema, snapshotName } from "./snapshot-check";
 
 const metaDir = join(import.meta.dir, "../../drizzle/meta");
@@ -16,8 +17,9 @@ const fix =
 	"Run `bun run db:generate` (it prunes), or `bun run src/db/prune-snapshots.ts`.";
 
 test("drizzle/meta holds one snapshot, for the last migration", async () => {
-	const snapshots = readdirSync(metaDir).filter((name) =>
-		name.endsWith("_snapshot.json"),
+	// drizzle-kit reads every file in meta whose name does not start with `_`.
+	const snapshots = readdirSync(metaDir).filter(
+		(name) => !name.startsWith("_"),
 	);
 	expect(
 		snapshots.length,
@@ -31,8 +33,8 @@ test("drizzle/meta holds one snapshot, for the last migration", async () => {
 	const journal = journalSchema.parse(
 		await Bun.file(join(metaDir, "_journal.json")).json(),
 	);
-	const last = journal.entries.at(-1);
-	const expected = snapshotName(last?.idx ?? -1);
+	const last = present(journal.entries.at(-1), "a journal entry");
+	const expected = snapshotName(last.idx);
 	expect(
 		snapshots[0],
 		`The snapshot must be ${expected}, the last journal entry. ${fix}`,

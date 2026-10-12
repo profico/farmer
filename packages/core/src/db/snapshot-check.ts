@@ -24,7 +24,8 @@ export function missingSnapshot(
 	return files.includes(name) ? null : name;
 }
 
-// drizzle-kit sorts the meta files and reads the last `*_snapshot.json`.
+// drizzle-kit drops the names that start with `_`, sorts the rest and reads
+// the last one as the snapshot. Any file counts, also `0077_snapshot.json.bak`.
 // Return a file that sorts after the expected one, or null.
 export function newerSnapshot(
 	journal: z.infer<typeof journalSchema>,
@@ -34,7 +35,7 @@ export function newerSnapshot(
 	if (!last) return null;
 	const expected = snapshotName(last.idx);
 	const newest = files
-		.filter((name) => name.endsWith("_snapshot.json"))
+		.filter((name) => !name.startsWith("_"))
 		.sort()
 		.at(-1);
 	return newest && newest > expected ? newest : null;
@@ -42,7 +43,8 @@ export function newerSnapshot(
 
 const restore = (file: string) =>
 	[
-		"Restore it from git. Try the index or HEAD first:",
+		"Restore it from git. Try the index first, then HEAD:",
+		`  git checkout -- ':/packages/core/drizzle/meta/${file}'`,
 		`  git checkout HEAD -- ':/packages/core/drizzle/meta/${file}'`,
 		"If a commit deleted it, find that commit and restore from its parent:",
 		`  git log --diff-filter=D -- ':/packages/core/drizzle/meta/${file}'`,
