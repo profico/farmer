@@ -21,7 +21,9 @@
  *
  * 0 gives `fallback` too, because a deadline of 0 ms is never what an operator
  * wants. Only a limit that 0 turns off passes `zero: "off"`, and then an
- * explicit 0 is returned as 0. Today that is `OPENROUTER_STALL_TIMEOUT_MS`.
+ * explicit 0 is returned as 0. Two limits use it:
+ * `OPENROUTER_STALL_TIMEOUT_MS` (0 means no watchdog) and
+ * `SHUTDOWN_GRACE_MS` (0 is a valid grace: stop at once, with no wait).
  */
 export const durationFromEnv = (
 	raw: string | undefined,

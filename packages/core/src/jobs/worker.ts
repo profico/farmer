@@ -24,6 +24,7 @@ import { startSchedulers, stopSchedulers } from "./scheduler";
 const SHUTDOWN_GRACE_MS = durationFromEnv(
 	process.env.SHUTDOWN_GRACE_MS,
 	10_000,
+	"off",
 );
 
 console.log("[INFO] Starting task worker");

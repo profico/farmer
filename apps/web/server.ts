@@ -766,6 +766,7 @@ function setupGracefulShutdown(
 	const SHUTDOWN_GRACE_MS = durationFromEnv(
 		process.env.SHUTDOWN_GRACE_MS,
 		10_000,
+		"off",
 	);
 	let shuttingDown = false;
 
