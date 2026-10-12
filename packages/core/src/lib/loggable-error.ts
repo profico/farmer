@@ -172,6 +172,7 @@ const placesOf = (chain: readonly Error[]) => {
  *  are never copied. */
 const RESERVED = new Set([
 	"error",
+	"name",
 	"message",
 	"cause",
 	"stack",

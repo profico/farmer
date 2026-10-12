@@ -89,6 +89,7 @@ describe("loggableError", () => {
 
 	test("an error with no database error keeps its own properties", () => {
 		const error = Object.assign(new Error("rate limited"), {
+			name: "APIError",
 			status: 403,
 			errno: -111,
 			syscall: "connect",
@@ -110,6 +111,7 @@ describe("loggableError", () => {
 			resetAt: "2026-10-12T10:00:00Z",
 		});
 		expect(result).not.toHaveProperty("retry");
+		expect(result).not.toHaveProperty("name");
 		expect(loggableErrorLine(wrapper)).not.toContain("status");
 	});
 

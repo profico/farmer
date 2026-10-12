@@ -380,7 +380,7 @@ const serve = async <
 				route: routeTemplate(report.pathname),
 				method: report.method,
 				status: response.status,
-				...loggableError(error),
+				error: loggableError(error),
 			});
 		}
 		return finish(response, error instanceof Error ? error : undefined);
