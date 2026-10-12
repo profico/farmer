@@ -1169,7 +1169,7 @@ describe("the day-level no", () => {
 
 		const held = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
 		expect(held.suggestions.some((s) => s.kind === "fill")).toBe(false);
-		expect(held.dismissedCount).toBe(1);
+		expect(held.dismissedCount).toBe(2);
 
 		const shown = await dayAssemblyService.suggest(ctx, {
 			date: YESTERDAY,
@@ -1260,5 +1260,267 @@ describe("a fill moved to another project", () => {
 		expect(rows[0]?.projectId).toBe(otherProjectId);
 		expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
 		expect(await commitsAttachedTo(fill.id)).toHaveLength(2);
+	});
+});
+
+// The late-evidence rule is per piece of evidence: a project is carved only for
+// the commits that are not on the fill yet.
+describe("late evidence when the fill already holds some of it", () => {
+	const shaOf = (project: "main" | "other", index: number) =>
+		`sha-${YESTERDAY}-${project}${index === 0 ? "" : `-${String(index)}`}`;
+
+	const putOnFill = (timeEntryId: string, sha: string, repo: string) =>
+		db.insert(timeEntryGithubCommit).values({
+			timeEntryId,
+			projectGithubRepoId: repo,
+			sha,
+			message: "Work",
+			authorLogin: "tester",
+			committedAt: new Date(`${YESTERDAY}T12:00:00.000Z`),
+			url: `https://example.com/${sha}`,
+		});
+
+	// Failure A: an old engine hung another project's commit on the fill.
+	test("a fill that holds one commit of a project still gives it the new ones", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await putOnFill(fill.id, shaOf("other", 0), otherRepoId);
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "other", count: 3 }]),
+		);
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const carved = present(
+			rows.find((r) => r.id !== fill.id),
+			"carved entry",
+		);
+		expect(carved.projectId).toBe(otherProjectId);
+		expect(carved.durationSeconds).toBeGreaterThan(0);
+		expect(rows.reduce((sum, r) => sum + r.durationSeconds, 0)).toBe(
+			8 * 60 * 60,
+		);
+		expect(
+			(await commitsAttachedTo(carved.id)).map((c) => c.sha).sort(),
+		).toEqual([shaOf("other", 1), shaOf("other", 2)]);
+		expect((await commitsAttachedTo(fill.id)).map((c) => c.sha)).toEqual([
+			shaOf("other", 0),
+		]);
+
+		await runAutomations();
+		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
+		expect(await commitsAttachedTo(carved.id)).toHaveLength(2);
+	});
+
+	// Failure B: the engine filed project P, the person moved the fill to Q, and
+	// a third P commit arrives.
+	test("a fill moved away still gives its old project the new commit", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 2 }]),
+		);
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.file(ctx, {
+			timeEntryId: fill.id,
+			projectId: otherProjectId,
+		});
+
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 3 }]),
+		);
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const carved = present(
+			rows.find((r) => r.id !== fill.id),
+			"carved entry",
+		);
+		expect(carved.projectId).toBe(projectId);
+		expect(carved.durationSeconds).toBeGreaterThan(0);
+		expect((await commitsAttachedTo(carved.id)).map((c) => c.sha)).toEqual([
+			shaOf("main", 2),
+		]);
+		expect((await commitsAttachedTo(fill.id)).map((c) => c.sha).sort()).toEqual(
+			[shaOf("main", 0), shaOf("main", 1)],
+		);
+	});
+});
+
+describe("editing or filing an entry retracts the commit engine's no", () => {
+	const dayRows = () =>
+		db.query.commitFillTombstone.findMany({
+			where: eq(commitFillTombstone.organizationId, ORG_ID),
+		});
+
+	const deleteTheEnginesFill = async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+	};
+
+	// Probe E.
+	test("an update that turns an entry into a fill clears the day-level no", async () => {
+		await deleteTheEnginesFill();
+		const dev = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+		expect(await dayRows()).toHaveLength(1);
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: dev.id,
+			taskId: devTaskId,
+			projectId,
+			description: "",
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
+	});
+
+	test("an update that makes Development on a project clears that project's no", async () => {
+		await deleteTheEnginesFill();
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: hand.id,
+			taskId: devTaskId,
+			projectId: otherProjectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		// The deleted project is another one: nothing of its no is retracted.
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: hand.id,
+			taskId: devTaskId,
+			projectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		expect((await dayRows()).map((r) => r.projectId)).toEqual([null]);
+	});
+
+	// Probe F.
+	test("filing a fill to a project clears that project's no, so commits attach", async () => {
+		await deleteTheEnginesFill();
+		const byHand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+		expect((await dayRows()).map((r) => r.projectId)).toEqual([projectId]);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: byHand.id,
+			projectId,
+		});
+		expect(await dayRows()).toHaveLength(0);
+
+		await runAutomations();
+		expect(await commitsAttachedTo(byHand.id)).toHaveLength(1);
+	});
+
+	test("filing a plain entry that is not Development clears nothing", async () => {
+		await deleteTheEnginesFill();
+		const other = await db
+			.insert(task)
+			.values({
+				scope: "organization" as const,
+				organizationId: ORG_ID,
+				name: "Design",
+				isAbsence: false,
+			})
+			.returning({ id: task.id });
+		const designId = present(other[0], "design task").id;
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: designId,
+			description: "Mockups",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: hand.id,
+			projectId,
+		});
+
+		expect(await dayRows()).toHaveLength(2);
+	});
+});
+
+describe("the dismissed count and what includeDismissed adds back", () => {
+	// Probe C: a project-less fill and a project's Development entry were both
+	// deleted. Two rows come back with the toggle, so the count is two.
+	test("counts the work row and the fill row separately", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "other", count: 2 }]),
+		);
+		await db.insert(commitFillTombstone).values([
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: YESTERDAY,
+				projectId: otherProjectId,
+			},
+			{ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY },
+		]);
+
+		const held = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
+		const shown = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+
+		expect(held.suggestions.filter((s) => s.dismissed)).toHaveLength(0);
+		expect(shown.suggestions.filter((s) => s.dismissed)).toHaveLength(2);
+		expect(held.dismissedCount).toBe(2);
+		expect(shown.dismissedCount).toBe(2);
 	});
 });

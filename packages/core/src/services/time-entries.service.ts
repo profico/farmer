@@ -791,15 +791,42 @@ type CarveInput = {
 	evidenceByProject: Map<string, DayEvidence>;
 };
 
-const holdsAttached = (
+/** The commits and pull requests of this evidence that are not on the fill. A
+ *  pull request is on the fill when any event of it is. */
+const withoutAttached = (
 	evidence: DayEvidence | undefined,
 	attached: Set<string>,
-): boolean =>
-	!!evidence &&
-	(evidence.commits.some((c) => attached.has(`c|${c.sha}`)) ||
-		evidence.pullRequests.some((a) =>
-			attached.has(`p|${a.projectGithubRepoId}|${a.number}`),
-		));
+): DayEvidence => ({
+	commits: (evidence?.commits ?? []).filter((c) => !attached.has(`c|${c.sha}`)),
+	pullRequests: (evidence?.pullRequests ?? []).filter(
+		(a) => !attached.has(`p|${a.projectGithubRepoId}|${a.number}`),
+	),
+});
+
+/** What an entry already holds, as keys: `c|<sha>` for a commit and
+ *  `p|<repo>|<number>` for a pull request. */
+const attachedKeys = async (
+	client: ReturnType<typeof ctxDb>,
+	timeEntryId: string,
+): Promise<Set<string>> => {
+	const [commitRows, activityRows] = await Promise.all([
+		client
+			.select({ sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.where(eq(timeEntryGithubCommit.timeEntryId, timeEntryId)),
+		client
+			.select({
+				projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
+				number: timeEntryGithubPrActivity.number,
+			})
+			.from(timeEntryGithubPrActivity)
+			.where(eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId)),
+	]);
+	return new Set([
+		...commitRows.map((c) => `c|${c.sha}`),
+		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+	]);
+};
 
 /**
  * What a carve-out would write, or null when it would write nothing. Reads
@@ -818,7 +845,7 @@ const planCarve = async (
 	ctx: Ctx,
 	input: CarveInput,
 ): Promise<{
-	carved: { projectId: string; seconds: number }[];
+	carved: { projectId: string; seconds: number; evidence: DayEvidence }[];
 	fillSeconds: number;
 } | null> => {
 	const { fill } = input;
@@ -846,37 +873,32 @@ const planCarve = async (
 	const owned = new Set(taken.map((row) => row.projectId));
 	const open = input.newcomers.filter((p) => !owned.has(p.projectId));
 	if (open.length === 0) return null;
-	const [commitRows, activityRows] = await Promise.all([
-		client
-			.select({ sha: timeEntryGithubCommit.sha })
-			.from(timeEntryGithubCommit)
-			.where(eq(timeEntryGithubCommit.timeEntryId, fill.id)),
-		client
-			.select({
-				projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
-				number: timeEntryGithubPrActivity.number,
-			})
-			.from(timeEntryGithubPrActivity)
-			.where(eq(timeEntryGithubPrActivity.timeEntryId, fill.id)),
-	]);
-	// A project whose evidence already sits on the fill is not late: the person
-	// moved the fill to another project, and the commits went with it. Carving
-	// it an entry would put the same commits on two entries.
-	const attached = new Set([
-		...commitRows.map((c) => `c|${c.sha}`),
-		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
-	]);
-	const newcomers = open.filter(
-		(p) => !holdsAttached(input.evidenceByProject.get(p.projectId), attached),
-	);
+	// The rule is per piece of evidence. What already sits on the fill is not
+	// late: it went with the fill when the person moved it, or an older engine
+	// hung it there. Carving it an entry would put the same commits on two
+	// entries. A project is weighed and carved only for the rest of its
+	// evidence, and a project with nothing left gets nothing.
+	const attached = await attachedKeys(client, fill.id);
+	const newcomers = open
+		.map((p) => {
+			const evidence = withoutAttached(
+				input.evidenceByProject.get(p.projectId),
+				attached,
+			);
+			return {
+				projectId: p.projectId,
+				evidence,
+				weight: evidenceWeight(evidence),
+			};
+		})
+		.filter((p) => p.weight > 0);
 	if (newcomers.length === 0) return null;
 	// Distinct, so a rerun that sees the same commit again does not weigh it
 	// twice: what is on the fill and what this run found overlap.
 	const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
 	const keys = new Set([
-		...commitRows.map((c) => `c|${c.sha}`),
+		...attached,
 		...own.commits.map((c) => `c|${c.sha}`),
-		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
 		...own.pullRequests.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
 	]);
 	const shares = splitProportionally(current.durationSeconds, [
@@ -888,6 +910,7 @@ const planCarve = async (
 		.map((p, index) => ({
 			projectId: p.projectId,
 			seconds: shares[index + 1] ?? 0,
+			evidence: p.evidence,
 		}))
 		.filter((p) => p.seconds > 0);
 	if (carved.length === 0) return null;
@@ -1454,7 +1477,12 @@ const syncCommitWorkTimeForRange = async (
 		// project's commits on it would bill that project for the other's work.
 		const fallbacks = [fill, generalEntry];
 		const attachments = new Map<string, DayEvidence>();
-		for (const [projectId, group] of evidenceByProject) {
+		// What the fill already holds stays there: a second copy on another entry
+		// would count the same commit twice.
+		const onFill = fill
+			? await attachedKeys(ctxDb(ctx), fill.id)
+			: new Set<string>();
+		for (const [projectId, source] of evidenceByProject) {
 			// A project the person deleted its block for stays unattached, unless
 			// it has an entry again.
 			if (tombstones.projects.has(projectId) && !byProject.has(projectId)) {
@@ -1469,6 +1497,9 @@ const syncCommitWorkTimeForRange = async (
 						(entry.projectId === null || entry.projectId === projectId),
 				);
 			if (!target) continue;
+			const group =
+				target.id === fill?.id ? source : withoutAttached(source, onFill);
+			if (evidenceWeight(group) === 0) continue;
 			attachments.set(
 				target.id,
 				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
@@ -2423,6 +2454,15 @@ export const timeEntriesService = {
 				throw error;
 			}
 
+			// The same retraction `create` makes: editing an entry into a fill, or
+			// into Development time on a project, is as deliberate as making one.
+			await retractCommitTombstones(ctxDb(txCtx), txCtx, {
+				date: input.date,
+				projectId: input.projectId ?? null,
+				fillsDay: input.fillsDay,
+				development: taskRow.systemKey === "development",
+			});
+
 			await recomputeDayFill(txCtx, input.date, tz);
 			if (existing.date !== input.date) {
 				await recomputeDayFill(txCtx, existing.date, tz);
@@ -2462,6 +2502,7 @@ export const timeEntriesService = {
 				calendarEventId: true,
 				description: true,
 				fillsDay: true,
+				date: true,
 			},
 		});
 		if (!existing) throw new Error("Time entry not found");
@@ -2494,6 +2535,14 @@ export const timeEntriesService = {
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		if (!updated) throw new Error("Failed to file entry");
+		// Filing a fill, or Development time, to a project is the same deliberate
+		// act as making one there, so it takes back that project's no.
+		await retractCommitTombstones(ctxDb(ctx), ctx, {
+			date: existing.date,
+			projectId: input.projectId,
+			fillsDay: existing.fillsDay,
+			development: taskRow.systemKey === "development",
+		});
 		// Filing changes an entry's project, which is the field a receiver most
 		// often keys on — so it is an update, not a second creation.
 		await emitEvent(ctx, "time_entry.updated", () =>
