@@ -791,8 +791,9 @@ type CarveInput = {
 	evidenceByProject: Map<string, DayEvidence>;
 };
 
-/** The commits and pull requests of this evidence that are not on the fill. A
- *  pull request is on the fill when any event of it is. */
+/** The commits and pull requests of this evidence that are not held. A pull
+ *  request is held when any event of it is: the carve-out weighs a pull request
+ *  as a whole. */
 const withoutAttached = (
 	evidence: DayEvidence | undefined,
 	attached: Set<string>,
@@ -803,8 +804,22 @@ const withoutAttached = (
 	),
 });
 
-/** What an entry already holds, as keys: `c|<sha>` for a commit and
- *  `p|<repo>|<number>` for a pull request. */
+/** The commits and pull request events of this evidence that are not held. This
+ *  is per event: a new `merged` event still attaches when the entry holds the
+ *  `opened` event of the same pull request. */
+const withoutHeldEvents = (
+	evidence: DayEvidence,
+	held: Set<string>,
+): DayEvidence => ({
+	commits: evidence.commits.filter((c) => !held.has(`c|${c.sha}`)),
+	pullRequests: evidence.pullRequests.filter(
+		(a) => !held.has(`e|${a.eventId}`),
+	),
+});
+
+/** What an entry already holds, as keys: `c|<sha>` for a commit,
+ *  `e|<eventId>` for a pull request event and `p|<repo>|<number>` for its pull
+ *  request. */
 const attachedKeys = async (
 	client: ReturnType<typeof ctxDb>,
 	timeEntryId: string,
@@ -818,13 +833,17 @@ const attachedKeys = async (
 			.select({
 				projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
 				number: timeEntryGithubPrActivity.number,
+				eventId: timeEntryGithubPrActivity.eventId,
 			})
 			.from(timeEntryGithubPrActivity)
 			.where(eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId)),
 	]);
 	return new Set([
 		...commitRows.map((c) => `c|${c.sha}`),
-		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+		...activityRows.flatMap((a) => [
+			`e|${a.eventId}`,
+			`p|${a.projectGithubRepoId}|${a.number}`,
+		]),
 	]);
 };
 
@@ -897,7 +916,7 @@ const planCarve = async (
 	// twice: what is on the fill and what this run found overlap.
 	const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
 	const keys = new Set([
-		...attached,
+		...[...attached].filter((key) => !key.startsWith("e|")),
 		...own.commits.map((c) => `c|${c.sha}`),
 		...own.pullRequests.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
 	]);
@@ -954,10 +973,7 @@ const carveFromFill = async (
 					userId: ctx.userId,
 					taskId: input.workTaskId,
 					projectId: p.projectId,
-					description:
-						describeEvidence(
-							input.evidenceByProject.get(p.projectId) ?? emptyEvidence(),
-						) || "Rest of day",
+					description: describeEvidence(p.evidence) || "Rest of day",
 					date: input.dayKey,
 					durationSeconds: p.seconds,
 					fillsDay: false,
@@ -1300,6 +1316,64 @@ const fileReviewBlocks = async (
 	return { placed, created };
 };
 
+type AttachTargets = {
+	evidenceByProject: Map<string, DayEvidence>;
+	tombstones: CommitTombstones;
+	byProject: Map<string, DayEntryRow>;
+	splitEntries: Map<string, DayEntryRow>;
+	fill: DayEntryRow | null;
+	generalEntry: DayEntryRow | null;
+};
+
+/**
+ * Where each project's evidence goes, best home first. A project with no home
+ * is absent from the answer: the day has nothing to attach to for it (a full
+ * day with no work entry, or a fill block filed against ANOTHER project), and
+ * the evidence is left for a later run.
+ *
+ * A fallback may only be project-less or on the evidence's own project. A fill
+ * block belongs to the project it was filed against; hanging a second
+ * project's commits on it would bill that project for the other's work.
+ *
+ * What the fill already holds stays there, per commit and per pull request
+ * event: a second copy on another entry would count the same commit twice.
+ */
+const planAttachments = async (
+	ctx: Ctx,
+	input: AttachTargets,
+): Promise<Map<string, DayEvidence>> => {
+	const { fill, tombstones, byProject, splitEntries } = input;
+	const fallbacks = [fill, input.generalEntry];
+	const homeFor = (projectId: string) =>
+		byProject.get(projectId) ??
+		splitEntries.get(projectId) ??
+		fallbacks.find(
+			(entry) =>
+				entry && (entry.projectId === null || entry.projectId === projectId),
+		);
+	const attachments = new Map<string, DayEvidence>();
+	const onFill = fill
+		? await attachedKeys(ctxDb(ctx), fill.id)
+		: new Set<string>();
+	for (const [projectId, source] of input.evidenceByProject) {
+		// A project the person deleted its block for stays unattached, unless
+		// it has an entry again.
+		if (tombstones.projects.has(projectId) && !byProject.has(projectId)) {
+			continue;
+		}
+		const target = homeFor(projectId);
+		if (!target) continue;
+		const group =
+			target.id === fill?.id ? source : withoutHeldEvents(source, onFill);
+		if (evidenceWeight(group) === 0) continue;
+		attachments.set(
+			target.id,
+			mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
+		);
+	}
+	return attachments;
+};
+
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
@@ -1467,44 +1541,14 @@ const syncCommitWorkTimeForRange = async (
 			}
 		}
 
-		// Where each project's evidence goes, best home first. Null means the day
-		// has nothing to attach to for that project — a full day with no work entry
-		// on it, or a fill block filed against ANOTHER project — and the evidence is
-		// simply left for a later run, once there is.
-		//
-		// A fallback may only be project-less or on the evidence's own project. A
-		// fill block belongs to the project it was filed against; hanging a second
-		// project's commits on it would bill that project for the other's work.
-		const fallbacks = [fill, generalEntry];
-		const attachments = new Map<string, DayEvidence>();
-		// What the fill already holds stays there: a second copy on another entry
-		// would count the same commit twice.
-		const onFill = fill
-			? await attachedKeys(ctxDb(ctx), fill.id)
-			: new Set<string>();
-		for (const [projectId, source] of evidenceByProject) {
-			// A project the person deleted its block for stays unattached, unless
-			// it has an entry again.
-			if (tombstones.projects.has(projectId) && !byProject.has(projectId)) {
-				continue;
-			}
-			const target =
-				byProject.get(projectId) ??
-				splitEntries.get(projectId) ??
-				fallbacks.find(
-					(entry) =>
-						entry &&
-						(entry.projectId === null || entry.projectId === projectId),
-				);
-			if (!target) continue;
-			const group =
-				target.id === fill?.id ? source : withoutAttached(source, onFill);
-			if (evidenceWeight(group) === 0) continue;
-			attachments.set(
-				target.id,
-				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
-			);
-		}
+		const attachments = await planAttachments(ctx, {
+			evidenceByProject,
+			tombstones,
+			byProject,
+			splitEntries,
+			fill,
+			generalEntry,
+		});
 		if (attachments.size === 0) continue;
 
 		// Only ever fill a BLANK description. A person's own wording outranks
@@ -1638,6 +1682,20 @@ const retractCommitTombstones = async (
 				or(...rows),
 			),
 		);
+};
+
+/** Which of these tasks are the Development task. Read by system key, as the
+ *  engines do. */
+const developmentTaskIds = async (
+	tx: ReturnType<typeof ctxDb>,
+	taskIds: string[],
+): Promise<Set<string>> => {
+	if (taskIds.length === 0) return new Set();
+	const rows = await tx
+		.select({ id: task.id })
+		.from(task)
+		.where(and(inArray(task.id, taskIds), eq(task.systemKey, "development")));
+	return new Set(rows.map((row) => row.id));
 };
 
 /** What this person has told the commit engine no to on a day. See the table
@@ -3199,6 +3257,21 @@ export const timeEntriesService = {
 				throw new DayCapacityError(input.toDate);
 			}
 
+			// A copied fill, or copied Development time on a project, is as deliberate
+			// as one made by hand, so it takes back the same no that `create` does.
+			const developmentIds = await developmentTaskIds(tx, [
+				...permitted.map((e) => e.taskId),
+				...(copyFill && sourceFill ? [sourceFill.taskId] : []),
+			]);
+			for (const e of permitted) {
+				await retractCommitTombstones(tx, ctx, {
+					date: input.toDate,
+					projectId: e.projectId,
+					fillsDay: false,
+					development: developmentIds.has(e.taskId),
+				});
+			}
+
 			// One event per row, not one per copy: a receiver reconciles entries,
 			// and a batch shape would be a second payload for every kind to handle.
 			// A copied week is about forty of them (issue #67, question 1).
@@ -3244,6 +3317,12 @@ export const timeEntriesService = {
 						durationSeconds: fillSeconds,
 						overtime: sourceFill.overtime,
 						fillsDay: true,
+					});
+					await retractCommitTombstones(tx, ctx, {
+						date: input.toDate,
+						projectId: sourceFill.projectId,
+						fillsDay: true,
+						development: developmentIds.has(sourceFill.taskId),
 					});
 					copied += 1;
 				} else {
