@@ -483,6 +483,7 @@ describe("which project the rest-of-day block is filed against", () => {
 		const rows = (await entriesOn(YESTERDAY)).filter(
 			(r) => r.taskId === devTaskId,
 		);
+		expect(rows).toHaveLength(2);
 		expect(rows.reduce((sum, r) => sum + r.durationSeconds, 0)).toBe(
 			8 * 60 * 60 - 45 * 60,
 		);
@@ -970,7 +971,7 @@ describe("a deleted rest-of-day block", () => {
 		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
 	});
 
-	test("records the day, not the row", async () => {
+	test("records the day and the project", async () => {
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
@@ -982,8 +983,10 @@ describe("a deleted rest-of-day block", () => {
 				eq(commitFillTombstone.userId, USER_ID),
 			),
 		});
-		expect(tombstones).toHaveLength(1);
-		expect(tombstones[0]?.date).toBe(YESTERDAY);
+		expect(tombstones.map((t) => t.date)).toEqual([YESTERDAY, YESTERDAY]);
+		expect(tombstones.map((t) => t.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
 	});
 
 	test("is retracted by deliberately making a new one", async () => {
@@ -1126,5 +1129,136 @@ describe("a fill block the day squeezes out", () => {
 		expect(moved.map((commit) => commit.sha)).toEqual([
 			`sha-${YESTERDAY}-main`,
 		]);
+	});
+});
+
+// The tombstone rules, read from both sides: what a delete writes, what a
+// create retracts, and which paths of the engine read the day-level row.
+describe("the day-level no", () => {
+	const dayRows = () =>
+		db.query.commitFillTombstone.findMany({
+			where: eq(commitFillTombstone.organizationId, ORG_ID),
+		});
+
+	test("deleting the fill keeps a late push for another project from filing a new one", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+	});
+
+	test("Assemble my day holds back the rest of the day after the fill was deleted", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+
+		const held = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
+		expect(held.suggestions.some((s) => s.kind === "fill")).toBe(false);
+		expect(held.dismissedCount).toBe(1);
+
+		const shown = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+		expect(shown.suggestions.find((s) => s.kind === "fill")?.dismissed).toBe(
+			true,
+		);
+	});
+
+	test("a project-less entry that is not a fill leaves the no in place", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+		await timeEntriesService.remove(ctx, hand.id);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
+	});
+
+	test("a fill made on a project retracts the day-level no", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			date: YESTERDAY,
+			fillsDay: true,
+			overtime: false,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
+	});
+
+	test("the day-level no stops a carve out of a fill", async () => {
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
+	});
+});
+
+describe("a fill moved to another project", () => {
+	test("is not carved again for the project it left", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 2 }]),
+		);
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		expect(fill.durationSeconds).toBe(8 * 60 * 60);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: fill.id,
+			projectId: otherProjectId,
+		});
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.projectId).toBe(otherProjectId);
+		expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
+		expect(await commitsAttachedTo(fill.id)).toHaveLength(2);
 	});
 });

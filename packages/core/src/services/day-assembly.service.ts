@@ -271,6 +271,7 @@ export const dayAssemblyService = {
 		const suggestions: DaySuggestion[] = [];
 		// Everything `includeDismissed` would add back, whether or not it is on.
 		let dismissedCount = 0;
+		let dismissedWork = false;
 
 		// ── Meetings: calendar events not already logged ────────────────────────
 		let meetingSeconds = 0;
@@ -572,7 +573,10 @@ export const dayAssemblyService = {
 				const deleted = deletedProjects.has(group.projectId);
 				const share = (deleted ? dismissedShares : shares)[index] ?? 0;
 				if (share <= 0) return;
-				if (deleted) dismissedCount++;
+				if (deleted) {
+					dismissedCount++;
+					dismissedWork = true;
+				}
 				if (deleted && !includeDismissed) return;
 				if (!deleted) workSeconds += share;
 				suggestions.push({
@@ -639,7 +643,9 @@ export const dayAssemblyService = {
 				),
 				columns: { id: true },
 			});
-			if (deletedFill) dismissedCount++;
+			// Deleting the fill writes the day-level row beside the project's own. One
+			// deletion is one dismissed thing, so the project's row already counted.
+			if (deletedFill && !dismissedWork) dismissedCount++;
 
 			if (!deletedFill || includeDismissed) {
 				suggestions.push({

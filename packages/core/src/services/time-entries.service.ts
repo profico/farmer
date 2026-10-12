@@ -10,7 +10,9 @@ import {
 	isNull,
 	lte,
 	ne,
+	or,
 	sql,
+	type SQL,
 } from "drizzle-orm";
 import postgres from "postgres";
 
@@ -684,8 +686,8 @@ const syncMeetingsForRange = async (
  * gates decide whether the engine may write project time there at all.
  *
  * Both gates answer false rather than throw. This runs inside a background
- * sweep over everybody, and a project that has not picked Development is a
- * configuration answer, not a failure.
+ * sweep over everybody, and a task that the org archived is a configuration
+ * answer, not a failure.
  */
 const canFileFillOn = async (
 	ctx: Ctx,
@@ -699,10 +701,10 @@ const canFileFillOn = async (
 	const access = await ctxAccess(ctx);
 	if (!access.canTrackOn(projectId)) return false;
 
-	// The project must actually offer Development. `development` is org-scoped,
-	// not one of the universal site-scoped built-ins, so this is a real
-	// cherry-pick check — and writing an entry the person could not have created
-	// by hand is exactly what assertTaskAvailable exists to prevent.
+	// The task must be live and not an absence task. No project has a task subset
+	// any more, so this fails only for an archived task, but writing an entry the
+	// person could not have created by hand is exactly what assertTaskAvailable
+	// exists to prevent.
 	try {
 		await assertTaskAvailable(ctx, workTaskId, projectId);
 	} catch {
@@ -789,6 +791,16 @@ type CarveInput = {
 	evidenceByProject: Map<string, DayEvidence>;
 };
 
+const holdsAttached = (
+	evidence: DayEvidence | undefined,
+	attached: Set<string>,
+): boolean =>
+	!!evidence &&
+	(evidence.commits.some((c) => attached.has(`c|${c.sha}`)) ||
+		evidence.pullRequests.some((a) =>
+			attached.has(`p|${a.projectGithubRepoId}|${a.number}`),
+		));
+
 /**
  * What a carve-out would write, or null when it would write nothing. Reads
  * only, through `client`, so the caller can ask without opening a transaction
@@ -832,8 +844,8 @@ const planCarve = async (
 			),
 		);
 	const owned = new Set(taken.map((row) => row.projectId));
-	const newcomers = input.newcomers.filter((p) => !owned.has(p.projectId));
-	if (newcomers.length === 0) return null;
+	const open = input.newcomers.filter((p) => !owned.has(p.projectId));
+	if (open.length === 0) return null;
 	const [commitRows, activityRows] = await Promise.all([
 		client
 			.select({ sha: timeEntryGithubCommit.sha })
@@ -847,6 +859,17 @@ const planCarve = async (
 			.from(timeEntryGithubPrActivity)
 			.where(eq(timeEntryGithubPrActivity.timeEntryId, fill.id)),
 	]);
+	// A project whose evidence already sits on the fill is not late: the person
+	// moved the fill to another project, and the commits went with it. Carving
+	// it an entry would put the same commits on two entries.
+	const attached = new Set([
+		...commitRows.map((c) => `c|${c.sha}`),
+		...activityRows.map((a) => `p|${a.projectGithubRepoId}|${a.number}`),
+	]);
+	const newcomers = open.filter(
+		(p) => !holdsAttached(input.evidenceByProject.get(p.projectId), attached),
+	);
+	if (newcomers.length === 0) return null;
 	// Distinct, so a rerun that sees the same commit again does not weigh it
 	// twice: what is on the fill and what this run found overlap.
 	const own = input.evidenceByProject.get(fill.projectId) ?? emptyEvidence();
@@ -960,7 +983,7 @@ const carveLateProjects = async (
  * unplaced pull request events), through `splitRestOfDay`. The largest share is
  * the fill block, so the day still resizes through `recomputeDayFill`; every
  * other share is a plain Development entry. A project the person cannot track
- * on, or that does not offer Development, gets no share. With no project left
+ * on gets no share. With no project left
  * the block is project-less, as it was before the split, and holds everything.
  *
  * Only the fill is elastic. The plain split entries keep their length when the
@@ -1166,7 +1189,7 @@ const fileReviewBlocks = async (
 		}
 	}
 
-	// The same two gates as `resolveFillProject`: this writes project time.
+	// The same two gates as `canFileFillOn`: this writes project time.
 	const verdicts = new Map<string, boolean>();
 	const mayFileOn = async (projectId: string) => {
 		const cached = verdicts.get(projectId);
@@ -1406,7 +1429,7 @@ const syncCommitWorkTimeForRange = async (
 		// run sees another. Carve the newcomer its own entry out of the fill.
 		// A fill filed in this very run already split the day among everything it
 		// saw, so only a fill from an earlier run can be late for a newcomer.
-		if (fillPredates && fill?.projectId && !generalEntry) {
+		if (fillPredates && fill?.projectId && !generalEntry && !tombstones.day) {
 			const carved = await carveLateProjects(ctx, {
 				workTaskId: workTask.id,
 				dayKey,
@@ -1516,7 +1539,13 @@ const holdsCommitEvidence = async (
 		.select({ systemKey: task.systemKey })
 		.from(timeEntry)
 		.innerJoin(task, eq(task.id, timeEntry.taskId))
-		.where(eq(timeEntry.id, timeEntryId));
+		.where(
+			and(
+				eq(timeEntry.id, timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+			),
+		);
 	if (row?.systemKey !== "development") return false;
 	const [commit] = await tx
 		.select({ id: timeEntryGithubCommit.id })
@@ -1548,6 +1577,36 @@ const tombstoneCommitBlock = async (
 			projectId,
 		})
 		.onConflictDoNothing();
+};
+
+/** Take back the person's no to the commit engine after a deliberate create.
+ *  See the comment at the call site in `create`. */
+const retractCommitTombstones = async (
+	tx: ReturnType<typeof ctxDb>,
+	ctx: Ctx,
+	entry: {
+		date: string;
+		projectId: string | null;
+		fillsDay: boolean;
+		development: boolean;
+	},
+) => {
+	const rows: SQL[] = [];
+	if (entry.fillsDay) rows.push(isNull(commitFillTombstone.projectId));
+	if (entry.projectId && (entry.fillsDay || entry.development)) {
+		rows.push(eq(commitFillTombstone.projectId, entry.projectId));
+	}
+	if (rows.length === 0) return;
+	await tx
+		.delete(commitFillTombstone)
+		.where(
+			and(
+				eq(commitFillTombstone.organizationId, ctx.organizationId),
+				eq(commitFillTombstone.userId, ctx.userId),
+				eq(commitFillTombstone.date, entry.date),
+				or(...rows),
+			),
+		);
 };
 
 /** What this person has told the commit engine no to on a day. See the table
@@ -2184,26 +2243,19 @@ export const timeEntriesService = {
 			if (!row) throw new Error("Failed to create time entry");
 
 			// Deliberately asking for a rest-of-day block, or for Development time on
-			// a project, retracts an earlier "no" on that day and project. Without
-			// this, deleting the block once would suppress the engine there forever,
-			// including after the person changed their mind and made one by hand (or
-			// accepted it in Assemble my day) — a tombstone outliving the decision it
-			// recorded. A project-less fill clears the day-level no; a fill or entry
-			// on a project clears that project's.
-			if (input.fillsDay || taskRow.systemKey === "development") {
-				await tx
-					.delete(commitFillTombstone)
-					.where(
-						and(
-							eq(commitFillTombstone.organizationId, ctx.organizationId),
-							eq(commitFillTombstone.userId, ctx.userId),
-							eq(commitFillTombstone.date, input.date),
-							input.projectId
-								? eq(commitFillTombstone.projectId, input.projectId)
-								: isNull(commitFillTombstone.projectId),
-						),
-					);
-			}
+			// a project, retracts an earlier "no". Without this, deleting the block
+			// once would suppress the engine there forever, including after the
+			// person changed their mind and made one by hand (or accepted it in
+			// Assemble my day) — a tombstone outliving the decision it recorded. A
+			// fill, with a project or without, clears the day-level no. A fill or a
+			// Development entry on a project clears that project's. Any other entry
+			// clears nothing.
+			await retractCommitTombstones(tx, ctx, {
+				date: input.date,
+				projectId: input.projectId ?? null,
+				fillsDay: !!input.fillsDay,
+				development: taskRow.systemKey === "development",
+			});
 
 			// Deliberately creating an entry for a calendar event un-tombstones it.
 			// Deleting a synced meeting writes a tombstone so the sync engine leaves
@@ -2811,7 +2863,14 @@ export const timeEntriesService = {
 			// clears — so without this the next sweep files another one, twenty
 			// minutes later, with nobody watching.
 			if (existing?.fillsDay) {
-				await tombstoneCommitBlock(txCtx, existing.date, existing.projectId);
+				// The day-level row says no to the whole rest of the day, so a late
+				// push for another project does not file a new block. A fill on a
+				// project also leaves that project's row, which keeps its evidence
+				// off the entries that remain.
+				await tombstoneCommitBlock(txCtx, existing.date, null);
+				if (existing.projectId) {
+					await tombstoneCommitBlock(txCtx, existing.date, existing.projectId);
+				}
 			} else if (existing?.projectId && holdsEvidence) {
 				// A split entry, or any Development entry the engine put commits on:
 				// the same no, for that project.
