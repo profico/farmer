@@ -1,8 +1,9 @@
 // Delete every drizzle snapshot except the newest one.
 //
-// `drizzle-kit generate` reads only the newest snapshot. Older ones had no
-// use, and each new migration added about 7,000 lines of them to its PR.
-// With one snapshot, a new migration shows as a small rename.
+// `drizzle-kit generate` diffs only against the newest snapshot. Older ones
+// add no value to it, and each new migration added about 7,000 lines of
+// them to its PR. `drizzle-kit up` (the v1 upgrade) needs every snapshot:
+// restore them from git first (see CLAUDE.md).
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 

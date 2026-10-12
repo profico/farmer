@@ -1,7 +1,7 @@
 // The drizzle snapshot rule: keep only the newest snapshot.
 //
-// `drizzle-kit generate` reads only the newest snapshot, so older ones only
-// make each migration's PR bigger. The one snapshot must belong to the last
+// `drizzle-kit generate` diffs only against the newest snapshot, so older ones
+// only make each migration's PR bigger. The one snapshot must belong to the last
 // migration in the journal. Otherwise the next `generate` diffs the schema
 // against a stale base and writes a wrong migration.
 
@@ -23,6 +23,10 @@ test("drizzle/meta holds one snapshot, for the last migration", async () => {
 	const snapshots = readdirSync(metaDir).filter((name) =>
 		name.endsWith("_snapshot.json"),
 	);
+	expect(
+		snapshots.length,
+		"Found 0 snapshots. Restore the newest one from git. Do not run `bun run db:generate`: it would write a migration for the full schema.",
+	).toBeGreaterThan(0);
 	expect(
 		snapshots,
 		`Expected exactly one snapshot, found ${snapshots.length}. ${fix}`,
