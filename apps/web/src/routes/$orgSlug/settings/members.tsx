@@ -54,6 +54,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { startImpersonating } from "#/lib/impersonation.ts";
+import { isLastActiveOwner } from "#/lib/last-owner.ts";
 import { searchFlag } from "#/lib/search-flag.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
@@ -286,7 +287,7 @@ function MembersSettingsPage() {
 
 	const renderMemberRow = (m: (typeof membersData.members)[number]) => {
 		const isSelf = m.userId === session.user.id;
-		const isOnlyOwner = m.role === "owner" && owners.length <= 1;
+		const isOnlyOwner = isLastActiveOwner(m, owners);
 		const person = personByUserId.get(m.userId);
 		const type = person?.type ?? "employee_billable";
 		const archived = person?.archivedAt != null;
