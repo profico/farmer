@@ -295,7 +295,6 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		);
 	};
 
-	/** Change the store after APNs or FCM answered. */
 	const settle = (
 		device: Device,
 		message: PushBody,
@@ -351,7 +350,6 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 
 	const notAllowed = () => error(405, "method_not_allowed");
 
-	/** The handler of a route, by method. */
 	const devicesRoute = (request: Request): Promise<Response> | Response => {
 		if (request.method === "POST") return register(request);
 		if (request.method === "PUT") return update(request);

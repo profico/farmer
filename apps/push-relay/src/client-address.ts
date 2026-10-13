@@ -7,8 +7,9 @@
  * relay sets. It has no default: unset, empty or `none` means the socket
  * address only, so a caller cannot pick its own bucket with a header. Behind
  * Cloudflare, set `cf-connecting-ip`. For `x-forwarded-for` the relay reads
- * the LAST entry, the one the nearest proxy appended. When the header is missing, the socket
- * address is the fallback, and then `"unknown"`, one shared bucket.
+ * the LAST entry, the one the nearest proxy appended. When the header is
+ * missing, the socket address is the fallback, and then `"unknown"`, one
+ * shared bucket.
  *
  * An IPv6 caller gets its /64 prefix as the bucket, not its full address. One
  * host usually has a full /64, and it can pick a new address in it for each
@@ -19,8 +20,7 @@
  */
 
 /** The header `TRUSTED_IP_HEADER` names, lower-case, or null for the socket
- *  address only. The relay trusts no header unless the operator names it:
- *  the default is the socket address. */
+ *  address only. */
 export const trustedIpHeader = (
 	configured: string | undefined,
 ): string | null => {

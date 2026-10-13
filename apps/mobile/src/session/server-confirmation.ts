@@ -10,16 +10,13 @@
  */
 let confirmed: string | null = null;
 
-/** Records the origin that the person confirmed with Continue. */
 export const confirmServer = (origin: string): void => {
 	confirmed = origin;
 };
 
-/** True when the person confirmed exactly this origin. */
 export const isServerConfirmed = (origin: string | null): boolean =>
 	origin !== null && origin === confirmed;
 
-/** Forgets the confirmation. */
 export const clearServerConfirmation = (): void => {
 	confirmed = null;
 };

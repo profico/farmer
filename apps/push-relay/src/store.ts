@@ -128,7 +128,6 @@ export class DeviceStore {
 			});
 	}
 
-	/** The number of registered devices. */
 	count(): number {
 		return (
 			this.#db
