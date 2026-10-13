@@ -8,13 +8,14 @@ import { type ReactNode, useEffect, useState } from "react";
 import { AppState } from "react-native";
 
 import { useSession } from "../session/session";
+import { shouldRetry } from "./retry";
 
 const makeQueryClient = () =>
 	new QueryClient({
 		defaultOptions: {
 			queries: {
 				staleTime: 30_000,
-				retry: (failures, error) => failures < 2 && !isSignedOut(error),
+				retry: shouldRetry,
 			},
 		},
 	});
