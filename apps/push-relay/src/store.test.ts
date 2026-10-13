@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -82,5 +83,59 @@ describe("pruneStaleDevices", () => {
 		);
 		stop();
 		expect(store.find("stale-device-0000000")).toBeNull();
+	});
+});
+
+describe("DeviceStore column migration", () => {
+	test("adds last_push_ok_at to a database from before the column", () => {
+		directory = mkdtempSync(join(tmpdir(), "push-relay-"));
+		const path = join(directory, "relay.sqlite");
+		const old = new Database(path, { create: true });
+		old.run(`CREATE TABLE device (
+			relay_id TEXT PRIMARY KEY,
+			platform TEXT NOT NULL CHECK (platform IN ('ios', 'android')),
+			push_token TEXT NOT NULL,
+			apns_environment TEXT,
+			live_activity_start_token TEXT,
+			secret_hash TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			last_seen_at INTEGER NOT NULL
+		) STRICT`);
+		old.run(
+			`INSERT INTO device VALUES ('old-relay-id-0123456789', 'android', 'tok-0123456789', NULL, NULL, 'h', 1, 1, 1)`,
+		);
+		old.close();
+
+		const store = DeviceStore.open(path);
+		expect(store.pruneNeverPushedSince(10)).toBe(1);
+		expect(store.find("old-relay-id-0123456789")).toBeNull();
+		store.close();
+		// A second open finds the column and adds nothing.
+		DeviceStore.open(path).close();
+	});
+
+	test("a delivered push protects a device from the unproven prune", () => {
+		const store = DeviceStore.open(":memory:");
+		for (const relayId of [
+			"proven-relay-id-0123456",
+			"junk-relay-id-01234567",
+		]) {
+			store.insert({
+				relayId,
+				platform: "android",
+				pushToken: `token-${relayId}`,
+				apnsEnvironment: null,
+				liveActivityStartToken: null,
+				secretHash: "0".repeat(64),
+				createdAt: 1,
+				updatedAt: 1,
+				lastSeenAt: 1,
+			});
+		}
+		store.touch("proven-relay-id-0123456", 5, true);
+		expect(store.pruneNeverPushedSince(10)).toBe(1);
+		expect(store.find("proven-relay-id-0123456")).not.toBeNull();
+		store.close();
 	});
 });

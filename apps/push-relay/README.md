@@ -239,8 +239,8 @@ at most 50,000 keys.
 | Alert and data pushes for one relay id | 30 a minute, 500 a day |
 | Live Activity pushes for one relay id | 60 a minute, 2,000 a day |
 | Pushes from one address | 6,000 a minute |
-| Alert and data pushes for one push token (all relay ids that hold it) | 30 a minute, 500 a day |
-| Live Activity pushes for one push token | 60 a minute, 2,000 a day |
+| Alert and data pushes for one push token (all relay ids that hold it, except the oldest) | 30 a minute, 500 a day |
+| Live Activity pushes for one push token (same rule) | 60 a minute, 2,000 a day |
 | Registrations, updates and removals from one address | 60 in 10 minutes |
 | Verify calls from one address | 6,000 a minute |
 | Verify calls for one known relay id from one address | 10 in 10 minutes |
@@ -250,10 +250,19 @@ The relay checks a relay id before it counts a verify call. A known id has a
 limit for each address, so one caller cannot use up the limit of the real
 server. An unknown id counts against the address only.
 
-The relay holds at most `RELAY_MAX_DEVICES` devices. A registration past the
-cap gets `503 relay_full` with `Retry-After`, and the relay logs one line. A
-caller can mint relay ids, so the push token limits and this cap bound the
-abuse: one token has one budget, and the store cannot grow without end.
+The relay holds at most `RELAY_MAX_DEVICES` devices. When the relay is full,
+it first deletes the devices that never received a delivered push and are
+older than 3 days (`UNPROVEN_DEVICE_MS` in `src/prune.ts`), because a
+registration has no proof and junk can fill the cap. If the relay is still
+full, a registration gets `503 relay_full` with `Retry-After`, and the relay
+logs one line. A phone that the prune removed registers again when its relay
+id is unknown.
+
+A caller can mint relay ids, so the push token limits and this cap bound the
+abuse. The oldest registration of a push token counts only against its own
+relay id limit. The younger registrations of the same token share the token
+limit. A caller who knows a victim's push token can thus use up the token
+limit, but not the limit of the victim's own registration.
 
 The address limit for pushes is high on purpose. One farmer server is one
 address for all of its users, and a reminder goes to many users at the same

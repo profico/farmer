@@ -9,6 +9,7 @@ import {
 	relayIdHint,
 	secretMatches,
 } from "./ids";
+import { UNPROVEN_DEVICE_MS } from "./prune";
 import {
 	admit,
 	type FixedWindowLimiter,
@@ -130,6 +131,12 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	const register = async (request: Request): Promise<Response> => {
 		const body = await readJsonBody(request, registerDeviceBody);
 		if (!body.ok) return bodyError(body.error);
+		if (store.count() >= deps.maxDevices) {
+			// A registration has no proof, so junk can fill the cap. Free the
+			// rows that never received a push before a real phone gets a 503.
+			const freed = store.pruneNeverPushedSince(now() - UNPROVEN_DEVICE_MS);
+			if (freed > 0) log(`[push-relay] full: pruned ${freed} unproven devices`);
+		}
 		if (store.count() >= deps.maxDevices) {
 			log(`[push-relay] full: refused a registration at ${deps.maxDevices}`);
 			return error(503, "relay_full", { "retry-after": "3600" });
@@ -277,22 +284,31 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return error(403, "activity_token_mismatch");
 	};
 
-	/** Count a push against the budget of its relay id and of its push token.
-	 *  A caller can register many relay ids for one push token, so the token
-	 *  has the same budget as a relay id. */
+	/**
+	 * Count a push against the budget of its relay id, and for most relay ids
+	 * against the budget of its push token.
+	 *
+	 * A caller can register many relay ids for one push token, so the token
+	 * has one budget that all of those ids share. The oldest registration of
+	 * the token does not count against it, only against its own relay id
+	 * budget. A registration has no proof, so a caller who knows a victim's
+	 * token can register a new id for it. The new id is younger than the
+	 * victim's own registration, so the caller can use up the shared token
+	 * budget but not the budget of the real phone. A token reaches the caller
+	 * only after the phone registered it.
+	 */
 	const admitPush = (device: Device, kind: PushBody["kind"]) => {
 		const budget =
 			kind === "liveactivity" ? limiters.liveActivity : limiters.push;
-		const tokenKey = `token:${hashSecret(device.pushToken)}`;
-		return admit(
-			[
-				[budget.minute, device.relayId],
-				[budget.day, device.relayId],
-				[budget.minute, tokenKey],
-				[budget.day, tokenKey],
-			],
-			now(),
-		);
+		const checks: [FixedWindowLimiter, string][] = [
+			[budget.minute, device.relayId],
+			[budget.day, device.relayId],
+		];
+		if (!store.holdsOldestRegistration(device.relayId, device.pushToken)) {
+			const tokenKey = `token:${hashSecret(device.pushToken)}`;
+			checks.push([budget.minute, tokenKey], [budget.day, tokenKey]);
+		}
+		return admit(checks, now());
 	};
 
 	const settle = (
@@ -302,7 +318,7 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	): void => {
 		const activityToken = message.liveActivity?.token;
 		if (result.outcome === "delivered" || result.outcome === "dry_run") {
-			store.touch(device.relayId, now());
+			store.touch(device.relayId, now(), result.outcome === "delivered");
 			// An end push closes the activity, so its token has no more use.
 			if (message.liveActivity?.event === "end" && activityToken) {
 				store.removeActivityToken(device.relayId, activityToken);

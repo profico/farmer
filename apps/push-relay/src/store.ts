@@ -61,7 +61,11 @@ export const MAX_ACTIVITY_TOKENS = 4;
 /**
  * There are no migrations: the schema is `CREATE TABLE IF NOT EXISTS`, so a
  * new table appears on the next start. A later column in an old table needs
- * an `ALTER TABLE` that checks `PRAGMA table_info` first.
+ * an `ALTER TABLE` that checks `PRAGMA table_info` first (see `ADDED_COLUMNS`).
+ *
+ * `last_push_ok_at` is the time of the last push that the platform
+ * delivered, or NULL. A registration has no proof of a real device, so a row
+ * that never received a push is the first to go when the relay is full.
  *
  * `live_activity_token` binds a per-activity token to one device. The token
  * is unique, so no second device can claim it. The foreign key removes the
@@ -80,6 +84,7 @@ CREATE TABLE IF NOT EXISTS device (
 	last_seen_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS device_last_seen_at ON device (last_seen_at);
+CREATE INDEX IF NOT EXISTS device_push_token ON device (push_token, created_at);
 CREATE TABLE IF NOT EXISTS live_activity_token (
 	token TEXT PRIMARY KEY,
 	relay_id TEXT NOT NULL REFERENCES device (relay_id) ON DELETE CASCADE,
@@ -88,6 +93,11 @@ CREATE TABLE IF NOT EXISTS live_activity_token (
 CREATE INDEX IF NOT EXISTS live_activity_token_relay_id
 	ON live_activity_token (relay_id, created_at);
 `;
+
+/** The columns that came after the first schema, as `[name, definition]`. */
+const ADDED_COLUMNS: readonly (readonly [string, string])[] = [
+	["last_push_ok_at", "INTEGER"],
+];
 
 export class DeviceStore {
 	readonly #db: Database;
@@ -98,6 +108,22 @@ export class DeviceStore {
 		this.#db.run("PRAGMA busy_timeout = 5000;");
 		this.#db.run("PRAGMA foreign_keys = ON;");
 		this.#db.run(SCHEMA);
+		this.#addMissingColumns();
+	}
+
+	/** Add a column that an old database does not have yet. */
+	#addMissingColumns(): void {
+		const present = new Set(
+			this.#db
+				.query<{ name: string }, []>("PRAGMA table_info(device)")
+				.all()
+				.map((column) => column.name),
+		);
+		for (const [name, definition] of ADDED_COLUMNS) {
+			if (!present.has(name)) {
+				this.#db.run(`ALTER TABLE device ADD COLUMN ${name} ${definition}`);
+			}
+		}
 	}
 
 	/** Open the file at `path`, and make its directory first. `:memory:`
@@ -180,11 +206,37 @@ export class DeviceStore {
 			.run({ relayId, now });
 	}
 
-	/** Record that the device was seen: an accepted push. */
-	touch(relayId: string, now: number): void {
+	/** Record that the device was seen: an accepted push. `delivered` is true
+	 *  when the platform really delivered it, not a dry run. */
+	touch(relayId: string, now: number, delivered = false): void {
 		this.#db
-			.query("UPDATE device SET last_seen_at = $now WHERE relay_id = $relayId")
-			.run({ relayId, now });
+			.query(
+				`UPDATE device SET last_seen_at = $now,
+					last_push_ok_at = CASE WHEN $delivered THEN $now ELSE last_push_ok_at END
+				 WHERE relay_id = $relayId`,
+			)
+			.run({ relayId, now, delivered });
+	}
+
+	/** Delete every device that never received a push and was registered
+	 *  before `cutoff`. Returns the count. */
+	pruneNeverPushedSince(cutoff: number): number {
+		return this.#db
+			.query(
+				"DELETE FROM device WHERE last_push_ok_at IS NULL AND created_at < $cutoff",
+			)
+			.run({ cutoff }).changes;
+	}
+
+	/** Whether the device is the oldest registration of its push token. */
+	holdsOldestRegistration(relayId: string, pushToken: string): boolean {
+		const oldest = this.#db
+			.query<{ relay_id: string }, { pushToken: string }>(
+				`SELECT relay_id FROM device WHERE push_token = $pushToken
+				 ORDER BY created_at, rowid LIMIT 1`,
+			)
+			.get({ pushToken });
+		return oldest?.relay_id === relayId;
 	}
 
 	/** Delete every device last seen before `cutoff`. Returns the count. */

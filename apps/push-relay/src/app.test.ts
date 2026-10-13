@@ -6,6 +6,7 @@ import { createRelay } from "./app";
 import { dryRunSender } from "./delivery/dry-run";
 import type { DeliveryResult, Sender } from "./delivery/types";
 import { bindingProof, hashSecret } from "./ids";
+import { UNPROVEN_DEVICE_MS } from "./prune";
 import { createLimiters, DEFAULT_LIMITS, type RelayLimits } from "./rate-limit";
 import type { PushBody } from "./schemas";
 import { type Device, DeviceStore } from "./store";
@@ -608,10 +609,77 @@ describe("rate limits", () => {
 		expect(logs.some((line) => line.includes("full"))).toBe(true);
 	});
 
-	test("one push token has one budget, however many relay ids it holds", async () => {
+	test("a full relay prunes devices that never received a push, then registers", async () => {
+		const { call, advance, store, logs } = setup({ maxDevices: 2 });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const proven = await register(call, body);
+		await register(call, {
+			...body,
+			pushToken: "junk-fcm-registration-token-01",
+		});
+		const push = {
+			relayId: proven.relayId,
+			kind: "alert",
+			ciphertext: CIPHERTEXT,
+		};
+		expect((await call("POST", "/v1/push", push)).status).toBe(200);
+
+		// Too young to prune: the cap holds.
+		advance(UNPROVEN_DEVICE_MS - 1_000);
+		expect((await call("POST", "/v1/devices", body)).status).toBe(503);
+
+		advance(2_000);
+		const fresh = await call("POST", "/v1/devices", body);
+		expect(fresh.status).toBe(201);
+		expect(store.count()).toBe(2);
+		expect(store.find(proven.relayId)).not.toBeNull();
+		expect(logs.some((line) => line.includes("pruned 1 unproven"))).toBe(true);
+	});
+
+	test("a full relay of proven devices still refuses a registration", async () => {
+		const { call, advance } = setup({ maxDevices: 1 });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const proven = await register(call, body);
+		const push = {
+			relayId: proven.relayId,
+			kind: "alert",
+			ciphertext: CIPHERTEXT,
+		};
+		expect((await call("POST", "/v1/push", push)).status).toBe(200);
+		advance(UNPROVEN_DEVICE_MS * 2);
+		expect((await call("POST", "/v1/devices", body)).status).toBe(503);
+	});
+
+	test("a younger registration for the same token cannot use up the first one's budget", async () => {
+		const { call } = setup({ limits: { pushPerMinute: 2 } });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const phone = (await register(call, body)).relayId;
+		const attackers = [
+			(await register(call, body)).relayId,
+			(await register(call, body)).relayId,
+			(await register(call, body)).relayId,
+		];
+		const status = async (relayId: string) =>
+			(
+				await call("POST", "/v1/push", {
+					relayId,
+					kind: "alert",
+					ciphertext: CIPHERTEXT,
+				})
+			).status;
+		const statuses: number[] = [];
+		for (const relayId of attackers) statuses.push(await status(relayId));
+		expect(statuses).toEqual([200, 200, 429]);
+		expect(await status(phone)).toBe(200);
+		expect(await status(phone)).toBe(200);
+		expect(await status(phone)).toBe(429);
+	});
+
+	test("one push token has one budget for the ids registered after the first", async () => {
 		const { call } = setup({ limits: { pushPerMinute: 2 } });
 		const body = { platform: "android", pushToken: ANDROID_TOKEN };
 		const ids = [
+			(await register(call, body)).relayId,
 			(await register(call, body)).relayId,
 			(await register(call, body)).relayId,
 			(await register(call, body)).relayId,
@@ -621,7 +689,7 @@ describe("rate limits", () => {
 			const push = { relayId, kind: "alert", ciphertext: CIPHERTEXT };
 			statuses.push((await call("POST", "/v1/push", push)).status);
 		}
-		expect(statuses).toEqual([200, 200, 429]);
+		expect(statuses).toEqual([200, 200, 200, 429]);
 		const other = await register(call, {
 			platform: "android",
 			pushToken: "another-fcm-registration-token-01",
