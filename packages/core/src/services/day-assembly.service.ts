@@ -9,6 +9,10 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
+import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
@@ -30,6 +34,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxAccess, ctxTimezone } from "./context";
+import { refusedCommitShas, refusedEventIds } from "./detach-tombstones";
 import { safeErrorMessage } from "./error-message";
 import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
@@ -92,6 +97,9 @@ export type DaySuggestionPullRequest = {
 type ProjectEvidence = {
 	commits: Awaited<ReturnType<typeof githubService.listUserCommitsForDay>>;
 	pullRequests: DaySuggestionPullRequest[];
+	/** True when the evidence holds a commit or an event that the person
+	 *  unlinked. Only `includeDismissed` lets it in. */
+	refused: boolean;
 };
 
 export type DaySuggestion = {
@@ -135,8 +143,10 @@ export type DayAssembly = {
 		github: "ok" | "unavailable";
 	};
 	/**
-	 * How many suggestions this day is holding back because they were deleted
-	 * before — the count `includeDismissed` would add.
+	 * How many suggestions this day is holding back — the count
+	 * `includeDismissed` would add. It counts deleted meetings, review blocks
+	 * and fill blocks, plus each commit and pull request event that the
+	 * person unlinked from an entry.
 	 *
 	 * Reported rather than left implicit so the dialog can offer the toggle only
 	 * on a day that has something behind it. A switch that is always visible and
@@ -272,6 +282,84 @@ const loadDayInputs = async (ctx: Ctx, date: string) => {
 
 type DayInputs = Awaited<ReturnType<typeof loadDayInputs>>;
 
+/** The commits and events that are already on an entry of the day. */
+const heldOnEntries = async (entryIds: string[]) => {
+	if (entryIds.length === 0) {
+		return { shas: new Set<string>(), eventIds: new Set<string>() };
+	}
+	const [commitRows, eventRows] = await Promise.all([
+		db
+			.select({ sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.where(inArray(timeEntryGithubCommit.timeEntryId, entryIds)),
+		db
+			.select({ eventId: timeEntryGithubPrActivity.eventId })
+			.from(timeEntryGithubPrActivity)
+			.where(inArray(timeEntryGithubPrActivity.timeEntryId, entryIds)),
+	]);
+	return {
+		shas: new Set(commitRows.map((row) => row.sha)),
+		eventIds: new Set(eventRows.map((row) => row.eventId)),
+	};
+};
+
+/** What the person unlinked from an entry, and what is left to offer. */
+type Unlinked = {
+	offeredCommits: CommitEvents;
+	offeredEvents: PullRequestEvents;
+	refusedShas: Set<string>;
+	refusedEvents: Set<string>;
+	/** How many of them `includeDismissed` would add back. */
+	dismissed: number;
+};
+
+// A commit or an event that the person unlinked from an entry. The engine
+// keeps it off every entry (see ./detach-tombstones), so the assembler does
+// not offer it either, unless `includeDismissed` asks for it. One that is
+// on an entry of the day again (attached by hand) is simply here, as a
+// logged meeting is: it is neither counted nor offered, toggle or not.
+const loadUnlinked = async (
+	ctx: Ctx,
+	inputs: DayInputs,
+	includeDismissed: boolean,
+): Promise<Unlinked> => {
+	const { existing, commits, pullRequestEvents } = inputs;
+	const [refusedCommitSet, refusedEventSet, held] = await Promise.all([
+		refusedCommitShas(
+			ctx,
+			commits.map((commit) => commit.sha),
+		),
+		refusedEventIds(
+			ctx,
+			pullRequestEvents.map((event) => event.eventId),
+		),
+		heldOnEntries(existing.map((entry) => entry.id)),
+	]);
+	const refusedShas = new Set(
+		[...refusedCommitSet].filter((sha) => !held.shas.has(sha)),
+	);
+	const refusedEvents = new Set(
+		[...refusedEventSet].filter((eventId) => !held.eventIds.has(eventId)),
+	);
+	return {
+		refusedShas,
+		refusedEvents,
+		dismissed: refusedShas.size + refusedEvents.size,
+		offeredCommits: commits.filter(
+			(commit) =>
+				!(refusedCommitSet.has(commit.sha) && held.shas.has(commit.sha)) &&
+				(includeDismissed || !refusedShas.has(commit.sha)),
+		),
+		offeredEvents: pullRequestEvents.filter(
+			(event) =>
+				!(
+					refusedEventSet.has(event.eventId) && held.eventIds.has(event.eventId)
+				) &&
+				(includeDismissed || !refusedEvents.has(event.eventId)),
+		),
+	};
+};
+
 /** What one proposal step adds: its rows, the seconds they claim, and how many
  *  rows `includeDismissed` would add back. */
 type SuggestionStep = {
@@ -388,6 +476,14 @@ type ReviewContext = {
 	deleted: Set<string>;
 	access: DayAccess;
 	nameById: Map<string, string>;
+	/** The events that the person unlinked from an entry. */
+	refusedEvents: Set<string>;
+	/** The pull requests with a review that the person unlinked. Unlinking the
+	 *  last review from a Code Review entry leaves a block tombstone and an
+	 *  event tombstone. Unlinking an earlier review leaves only the event
+	 *  tombstone. The event is already in the unlinked count, so the block
+	 *  must not count the same review a second time. */
+	unlinkedPullRequests: Set<string>;
 };
 
 const loadReviewContext = async (
@@ -396,7 +492,7 @@ const loadReviewContext = async (
 	reviews: ScannedPullRequestActivity[],
 	existing: DayInputs["existing"],
 	reviewTask: EngineTask,
-): Promise<ReviewContext> => {
+): Promise<Omit<ReviewContext, "refusedEvents" | "unlinkedPullRequests">> => {
 	const [{ homes, heldBy }, deleted, access, projects] = await Promise.all([
 		reviewsOnDay(ctx, date),
 		deletedReviewsOnDay(ctx, date),
@@ -469,15 +565,18 @@ const reviewSuggestionFor = (
 		return skipped;
 	}
 	const wasDeleted = review.deleted.has(pullRequestUrl);
-	if (wasDeleted && !includeDismissed) return { ...skipped, dismissed: true };
+	const counted =
+		wasDeleted && !review.unlinkedPullRequests.has(pullRequestUrl);
+	if (wasDeleted && !includeDismissed)
+		return { ...skipped, dismissed: counted };
 	const durationSeconds = Math.min(
 		REVIEW_BLOCK_SECONDS,
 		room - (room % QUARTER_HOUR_SECONDS),
 	);
-	if (durationSeconds <= 0) return { ...skipped, dismissed: wasDeleted };
+	if (durationSeconds <= 0) return { ...skipped, dismissed: counted };
 	return {
 		accounted: true,
-		dismissed: wasDeleted,
+		dismissed: counted,
 		suggestion: {
 			key: `review:${pullRequestUrl}`,
 			kind: "review",
@@ -500,7 +599,9 @@ const reviewSuggestionFor = (
 					kinds: events.map((event) => event.kind),
 				},
 			],
-			dismissed: wasDeleted,
+			dismissed:
+				wasDeleted ||
+				events.some((event) => review.refusedEvents.has(event.eventId)),
 		},
 	};
 };
@@ -517,6 +618,7 @@ const suggestReviews = async (
 	ctx: Ctx,
 	date: string,
 	inputs: DayInputs,
+	unlinked: Unlinked,
 	room: number,
 	includeDismissed: boolean,
 ): Promise<SuggestionStep & { accounted: Set<string> }> => {
@@ -528,7 +630,7 @@ const suggestReviews = async (
 		accounted: new Set(),
 	};
 	const reviews = reviewTask
-		? pullRequestEvents.filter((event) => event.kind === "reviewed")
+		? unlinked.offeredEvents.filter((event) => event.kind === "reviewed")
 		: [];
 	if (!reviewTask || reviews.length === 0) return step;
 
@@ -539,13 +641,19 @@ const suggestReviews = async (
 			review,
 		]);
 	}
-	const review = await loadReviewContext(
-		ctx,
-		date,
-		reviews,
-		existing,
-		reviewTask,
-	);
+	const review: ReviewContext = {
+		...(await loadReviewContext(ctx, date, reviews, existing, reviewTask)),
+		refusedEvents: unlinked.refusedEvents,
+		unlinkedPullRequests: new Set(
+			pullRequestEvents
+				.filter(
+					(event) =>
+						event.kind === "reviewed" &&
+						unlinked.refusedEvents.has(event.eventId),
+				)
+				.map((event) => event.pullRequestUrl),
+		),
+	};
 	let left = room;
 	for (const [pullRequestUrl, events] of byPullRequest) {
 		const outcome = reviewSuggestionFor(
@@ -574,7 +682,11 @@ const evidenceFor = (
 ): ProjectEvidence => {
 	const existing = evidenceByProject.get(projectId);
 	if (existing) return existing;
-	const created: ProjectEvidence = { commits: [], pullRequests: [] };
+	const created: ProjectEvidence = {
+		commits: [],
+		pullRequests: [],
+		refused: false,
+	};
 	evidenceByProject.set(projectId, created);
 	return created;
 };
@@ -582,18 +694,21 @@ const evidenceFor = (
 /** One project's commits and pull requests for the day, minus the reviews that
  *  already got a block of their own. */
 const collectEvidence = (
-	commits: CommitEvents,
-	pullRequestEvents: PullRequestEvents,
+	unlinked: Unlinked,
 	accountedReviews: Set<string>,
 ): Map<string, ProjectEvidence> => {
 	const evidenceByProject = new Map<string, ProjectEvidence>();
-	for (const commit of commits) {
-		evidenceFor(evidenceByProject, commit.projectId).commits.push(commit);
+	for (const commit of unlinked.offeredCommits) {
+		const evidence = evidenceFor(evidenceByProject, commit.projectId);
+		evidence.commits.push(commit);
+		if (unlinked.refusedShas.has(commit.sha)) evidence.refused = true;
 	}
 	// One row per PR, not per event: the dialog and the attach both name a PR.
-	for (const event of pullRequestEvents) {
+	for (const event of unlinked.offeredEvents) {
 		if (accountedReviews.has(event.eventId)) continue;
-		const { pullRequests } = evidenceFor(evidenceByProject, event.projectId);
+		const evidence = evidenceFor(evidenceByProject, event.projectId);
+		if (unlinked.refusedEvents.has(event.eventId)) evidence.refused = true;
+		const { pullRequests } = evidence;
 		const existing = pullRequests.find(
 			(pr) =>
 				pr.projectGithubRepoId === event.projectGithubRepoId &&
@@ -642,9 +757,8 @@ const workSuggestionFor = (
 	meetingUrl: null,
 	calendarEventId: null,
 	// Per-project commit work is derived fresh from the commits every
-	// time; there is no record of one having been deleted, so there is
-	// nothing here for the toggle to hold back.
-	dismissed: false,
+	// time, so only an unlinked commit or event makes it dismissed.
+	dismissed: group.refused,
 	commits: group.commits.map((c) => ({
 		projectGithubRepoId: c.projectGithubRepoId,
 		sha: c.sha,
@@ -846,6 +960,7 @@ export const dayAssemblyService = {
 		);
 		const spokenFor = spokenForSeconds(existing);
 
+		const unlinked = await loadUnlinked(ctx, inputs, includeDismissed);
 		const meetings = await suggestMeetings(ctx, inputs, includeDismissed);
 		const breakSuggestion = suggestBreak(
 			inputs.breakTask,
@@ -864,6 +979,7 @@ export const dayAssemblyService = {
 			ctx,
 			date,
 			inputs,
+			unlinked,
 			beforeReviews,
 			includeDismissed,
 		);
@@ -876,11 +992,7 @@ export const dayAssemblyService = {
 		// empty block sitting next to the real one. The fill wins: it's the entry
 		// the person can already see.
 		const hasFillBlock = existing.some((e) => e.fillsDay);
-		const evidenceByProject = collectEvidence(
-			inputs.commits,
-			inputs.pullRequestEvents,
-			reviews.accounted,
-		);
+		const evidenceByProject = collectEvidence(unlinked, reviews.accounted);
 		const work =
 			workTask && !hasFillBlock
 				? await suggestWork(ctx, evidenceByProject, workTask, remaining)
@@ -914,7 +1026,11 @@ export const dayAssemblyService = {
 				github: inputs.githubLinked ? "ok" : "unavailable",
 			},
 			// Everything `includeDismissed` would add back, whether or not it is on.
-			dismissedCount: meetings.dismissed + reviews.dismissed + fill.dismissed,
+			dismissedCount:
+				unlinked.dismissed +
+				meetings.dismissed +
+				reviews.dismissed +
+				fill.dismissed,
 		};
 	},
 

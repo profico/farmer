@@ -23,6 +23,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -30,18 +31,27 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import { client, project, task, timeEntry } from "../db/schema/domain";
+import {
+	client,
+	project,
+	projectMember,
+	task,
+	timeEntry,
+} from "../db/schema/domain";
 import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
+	commitDetachTombstone,
 	commitFillTombstone,
 	integrationSettings,
 	orgSettings,
 } from "../db/schema/settings";
 import { dayKeyInTz } from "../lib/time";
-import { createTestDb, type TestDb } from "../test/harness";
+import { at, createTestDb, present, type TestDb } from "../test/harness";
+import { githubService, setGithubClientForTests } from "./github.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { setCommitSourceForTests } from "./ports";
+import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -53,6 +63,8 @@ const YESTERDAY = "2026-08-11";
 const TODAY = "2026-08-12";
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
+const OTHER_USER_ID = "user-attach-other";
+const otherCtx: Ctx = { organizationId: ORG_ID, userId: OTHER_USER_ID };
 
 let harness: TestDb;
 let devTaskId: string;
@@ -203,27 +215,57 @@ beforeAll(async () => {
 		.returning({ id: task.id });
 	devTaskId = dev?.id ?? "";
 
-	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
-		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-		await db.insert(memberWorkingHoursDay).values({
-			organizationId: ORG_ID,
-			userId: USER_ID,
-			dayOfWeek,
-			enabled: isWeekday,
-			startTime: isWeekday ? "09:00" : null,
-			endTime: isWeekday ? "17:00" : null,
-		});
+	await db.insert(user).values({
+		id: OTHER_USER_ID,
+		name: "Colleague",
+		email: "attach-other@example.com",
+		emailVerified: true,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+	await db.insert(member).values({
+		id: "member-attach-other",
+		organizationId: ORG_ID,
+		userId: OTHER_USER_ID,
+		role: "member",
+		createdAt: new Date(),
+	});
+	// A manual attach reads the repo through the caller's project membership.
+	await db.insert(projectMember).values({
+		organizationId: ORG_ID,
+		projectId,
+		userId: USER_ID,
+	});
+	await db
+		.update(projectGithubRepo)
+		.set({ installationId: 100 })
+		.where(eq(projectGithubRepo.id, repoId));
+
+	for (const userId of [USER_ID, OTHER_USER_ID]) {
+		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+			const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+			await db.insert(memberWorkingHoursDay).values({
+				organizationId: ORG_ID,
+				userId,
+				dayOfWeek,
+				enabled: isWeekday,
+				startTime: isWeekday ? "09:00" : null,
+				endTime: isWeekday ? "17:00" : null,
+			});
+		}
 	}
 });
 
 afterAll(async () => {
 	setCommitSourceForTests(null);
+	setGithubClientForTests(null);
 	await harness.close();
 });
 
 beforeEach(async () => {
 	await db.delete(timeEntry);
 	await db.delete(commitFillTombstone);
+	await db.delete(commitDetachTombstone);
 	await db.delete(integrationSettings);
 	await db.delete(orgSettings);
 	await integrationSettingsService.update(ctx, {
@@ -633,5 +675,287 @@ describe("a fill block the day squeezes out", () => {
 		expect(moved.map((commit) => commit.sha)).toEqual([
 			`sha-${YESTERDAY}-main`,
 		]);
+	});
+});
+
+// Unlinking a commit used to delete one row, and the next pass attached the
+// commit again: the engine re-reads every day in its window. The tombstone is
+// per person and commit, so it holds whichever entry the engine would choose.
+describe("a detached commit", () => {
+	// A manual attach checks the sha's shape, so this one is a real-looking id.
+	const SHA = "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0";
+
+	/** The day's one commit, on the main project, with the id above. */
+	const mainCommit = (): Parameters<typeof setCommitSourceForTests>[0] => ({
+		listUserCommitsForDay: async () => [],
+		listUserCommitsByDay: async (_ctx, range) =>
+			YESTERDAY < range.from || YESTERDAY > range.to
+				? []
+				: [
+						{
+							dayKey: YESTERDAY,
+							commits: [
+								{
+									projectGithubRepoId: repoId,
+									projectId,
+									sha: SHA,
+									message: "Work on main",
+									authorLogin: "tester",
+									committedAt: new Date(`${YESTERDAY}T12:00:00.000Z`),
+									url: `https://github.com/profico/repo-0/commit/${SHA}`,
+								},
+							],
+						},
+					],
+	});
+
+	const attachedRows = (sha: string) =>
+		db.query.timeEntryGithubCommit.findMany({
+			where: eq(timeEntryGithubCommit.sha, sha),
+		});
+
+	const attachNow = (timeEntryId: string) => {
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getCommit: async (_token, _owner, _repo, sha) => ({
+				sha,
+				html_url: `https://github.com/profico/repo-0/commit/${sha}`,
+				commit: {
+					message: "Work on main",
+					author: { date: `${YESTERDAY}T12:00:00Z` },
+				},
+				author: { login: "tester" },
+			}),
+			listInstallationRepos: async () => [],
+		});
+		return githubService.attachCommits(ctx, {
+			timeEntryId,
+			commits: [{ projectGithubRepoId: repoId, sha: SHA }],
+		});
+	};
+
+	/** The work entry with the commit attached, as the engine files it. */
+	const syncedEntry = async () => {
+		const entry = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(mainCommit());
+		await runAutomations();
+		const attached = at(await commitsAttachedTo(entry.id), 0);
+		return { entry, attached };
+	};
+
+	test("is not attached again by the next pass", async () => {
+		const { attached } = await syncedEntry();
+
+		await githubService.detachCommit(ctx, attached.id);
+		await runAutomations();
+
+		expect(await attachedRows(SHA)).toEqual([]);
+	});
+
+	test("stays off every entry, not only the one it left", async () => {
+		const { attached } = await syncedEntry();
+		await githubService.detachCommit(ctx, attached.id);
+		await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+
+		await runAutomations();
+
+		expect(await attachedRows(SHA)).toEqual([]);
+	});
+
+	test("does not make a day with only that commit a worked day", async () => {
+		setCommitSourceForTests(mainCommit());
+		await runAutomations();
+		const fill = present(at(await entriesOn(YESTERDAY), 0), "the fill block");
+		const attached = at(await commitsAttachedTo(fill.id), 0);
+		await githubService.detachCommit(ctx, attached.id);
+		await db.delete(timeEntry);
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toEqual([]);
+	});
+
+	test("records the person and the commit's day, not the entry", async () => {
+		const { attached } = await syncedEntry();
+
+		await githubService.detachCommit(ctx, attached.id);
+
+		const rows = await db.query.commitDetachTombstone.findMany();
+		expect(rows.map((row) => [row.userId, row.sha, row.date])).toEqual([
+			[USER_ID, SHA, YESTERDAY],
+		]);
+	});
+
+	test("moved by hand to another entry, stays off the first", async () => {
+		const { entry, attached } = await syncedEntry();
+		await githubService.detachCommit(ctx, attached.id);
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+
+		await attachNow(other.id);
+		await runAutomations();
+
+		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+		expect(await commitsAttachedTo(entry.id)).toEqual([]);
+		// The hand attach does not take the "no" back.
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
+	});
+
+	test("attached by hand to its old entry, is not added twice", async () => {
+		const { entry, attached } = await syncedEntry();
+		await githubService.detachCommit(ctx, attached.id);
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
+
+		await attachNow(entry.id);
+		await runAutomations();
+
+		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
+			entry.id,
+		]);
+	});
+
+	test("already attached by hand to one entry, is not copied to another", async () => {
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+		await attachNow(other.id);
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(mainCommit());
+
+		await runAutomations();
+
+		expect((await attachedRows(SHA)).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+	});
+
+	test("is not put back by a pass that read before the detach", async () => {
+		// The commit is on an entry of another day, so the pass does not count
+		// it as held on its own day, and it reads no tombstone for it.
+		const earlier = await addEntry({
+			date: "2026-08-10",
+			projectId,
+			durationSeconds: 60 * 60,
+		});
+		const [attached] = await attachNow(earlier.id);
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(mainCommit());
+		// The detach commits while the pass runs: after the pass read the
+		// tombstones, before it inserts. The task lookup sits between the two.
+		const lookup = tasksService.findBySystemKey;
+		let detached = false;
+		const spy = spyOn(tasksService, "findBySystemKey").mockImplementation(
+			async (...args) => {
+				if (!detached) {
+					detached = true;
+					await githubService.detachCommit(
+						ctx,
+						present(attached, "the hand attach").id,
+					);
+				}
+				return lookup(...args);
+			},
+		);
+		try {
+			await runAutomations();
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect(detached).toBe(true);
+		expect(await attachedRows(SHA)).toEqual([]);
+	});
+
+	test("held by hand on another project, files no empty rest-of-day block", async () => {
+		const other = await addEntry({
+			date: YESTERDAY,
+			projectId: otherProjectId,
+			durationSeconds: 60 * 60,
+		});
+		await attachNow(other.id);
+		setCommitSourceForTests(mainCommit());
+
+		await runAutomations();
+
+		expect((await entriesOn(YESTERDAY)).map((entry) => entry.id)).toEqual([
+			other.id,
+		]);
+	});
+
+	test("does not touch the same commit of another person", async () => {
+		const { attached } = await syncedEntry();
+		await githubService.detachCommit(ctx, attached.id);
+		await integrationSettingsService.update(otherCtx, {
+			githubSyncCommitsAsWorkTime: true,
+		});
+		await db
+			.update(integrationSettings)
+			.set({
+				githubSyncCommitsAsWorkTimeSince: new Date("2026-08-01T00:00:00.000Z"),
+			})
+			.where(eq(integrationSettings.userId, OTHER_USER_ID));
+
+		await timeEntriesService.runAutomationsForUser(otherCtx, {
+			now: new Date(`${TODAY}T12:00:00.000Z`),
+		});
+		// The caller's own pass after the colleague's still keeps it off.
+		await runAutomations();
+
+		const rows = await attachedRows(SHA);
+		expect(rows).toHaveLength(1);
+		const entry = present(
+			await db.query.timeEntry.findFirst({
+				where: eq(timeEntry.id, at(rows, 0).timeEntryId),
+			}),
+			"the colleague's entry",
+		);
+		expect(entry.userId).toBe(OTHER_USER_ID);
+	});
+
+	test("is dropped once its day leaves the window", async () => {
+		await db.insert(commitDetachTombstone).values([
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				sha: "sha-old",
+				date: "2026-07-01",
+			},
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				sha: "sha-recent",
+				date: YESTERDAY,
+			},
+		]);
+		setCommitSourceForTests(commitsFor([]));
+
+		await runAutomations();
+
+		const left = await db.query.commitDetachTombstone.findMany();
+		expect(left.map((row) => row.sha)).toEqual(["sha-recent"]);
 	});
 });

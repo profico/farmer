@@ -423,6 +423,14 @@ html:has(.fm-auth) body {
 .fm-auth .fm-auth-search input::placeholder {
 	color: var(--faint);
 }
+/* iOS zooms into a field under 16px. The rule in styles.css loses to the
+   literal sizes above, so this block sets the size again. */
+@media (pointer: coarse) {
+	.fm-auth .fm-auth-dev-fields .fm-input,
+	.fm-auth .fm-auth-search input {
+		font-size: max(16px, calc(16px / var(--ui-scale, 1)));
+	}
+}
 .fm-auth .fm-auth-search:focus-within {
 	box-shadow: inset 0 -2px 0 var(--acc);
 }
@@ -446,7 +454,12 @@ html:has(.fm-auth) body {
 	outline-offset: -2px;
 	transition: background-color var(--dur-base);
 }
-.fm-auth .fm-auth-ws:hover,
+@media (hover: hover) and (pointer: fine) {
+	.fm-auth .fm-auth-ws:hover {
+		background: var(--acc-soft);
+		text-decoration: none;
+	}
+}
 .fm-auth .fm-auth-ws:focus-visible {
 	background: var(--acc-soft);
 	text-decoration: none;

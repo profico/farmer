@@ -75,6 +75,7 @@ import path from "node:path";
 // loaded by the deferred import inside startBackgroundSchedulers().
 import type { SchedulerHandle } from "@farmer/core/jobs";
 import { SOCKET_ADDRESS_HEADER } from "@farmer/core/lib/client-address";
+import { durationFromEnv } from "@farmer/core/lib/http";
 import { loggableErrorLine } from "@farmer/core/lib/loggable-error";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
@@ -802,7 +803,11 @@ function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
 	schedulersHandle: Promise<SchedulerHandle[]>,
 ) {
-	const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 10_000);
+	const SHUTDOWN_GRACE_MS = durationFromEnv(
+		process.env.SHUTDOWN_GRACE_MS,
+		10_000,
+		"off",
+	);
 	let shuttingDown = false;
 
 	const shutdown = async (signal: string) => {

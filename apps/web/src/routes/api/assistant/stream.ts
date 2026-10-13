@@ -4,6 +4,7 @@ import { runAssistantInput } from "@farmer/core/schema";
 import type { AssistantEvent } from "@farmer/core/services";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { SSE_HEARTBEAT, startHeartbeat } from "#/lib/sse-heartbeat.ts";
 import { resolveApiOrgContext } from "#/server/api-auth.ts";
 import { admitAssistantTurn } from "#/server/assistant-rate-limit.ts";
 
@@ -117,16 +118,24 @@ export const Route = createFileRoute("/api/assistant/stream")({
 						request.signal.addEventListener("abort", () => abort.abort());
 
 						let closed = false;
-						const send = (event: AssistantEvent) => {
+						const write = (bytes: Uint8Array) => {
 							if (closed) return;
 							try {
-								controller.enqueue(frame(event));
+								controller.enqueue(bytes);
 							} catch {
 								// The consumer went away between the abort firing and the
 								// loop noticing. Nothing to do and nothing worth logging.
 								closed = true;
 							}
 						};
+						const send = (event: AssistantEvent) => write(frame(event));
+
+						// A turn can be silent for minutes (a model that thinks, a stall
+						// and its retry, a slow tool). `server.ts` closes a connection
+						// that is silent for 255 s, so a comment line goes out every
+						// 20 s. The `finally` below stops it on every exit path.
+						const stopHeartbeat = startHeartbeat(() => write(SSE_HEARTBEAT));
+						request.signal.addEventListener("abort", stopHeartbeat);
 
 						try {
 							await assistantService.run(ctx, parsed.data, send, abort.signal);
@@ -150,6 +159,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 									message ?? "The assistant failed. Try again in a moment.",
 							});
 						} finally {
+							stopHeartbeat();
 							closed = true;
 							controller.close();
 						}

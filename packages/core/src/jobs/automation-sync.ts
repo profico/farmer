@@ -5,7 +5,7 @@ import { member, organization } from "../db/schema/auth";
 import { recurringBlockRule } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { integrationSettings } from "../db/schema/settings";
-import { withTimeout } from "../lib/http";
+import { durationFromEnv, withTimeout } from "../lib/http";
 import { loggableErrorLine } from "../lib/loggable-error";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
@@ -170,8 +170,9 @@ const SWEEP_CONCURRENCY = Number(process.env.AUTOMATION_SYNC_CONCURRENCY ?? 4);
  * bounded by targets x this, whatever happens underneath. Abandoned work keeps
  * running and is harmless — every engine is idempotent.
  */
-const DEFAULT_PER_USER_TIMEOUT_MS = Number(
-	process.env.AUTOMATION_SYNC_USER_TIMEOUT_MS ?? 120_000,
+const DEFAULT_PER_USER_TIMEOUT_MS = durationFromEnv(
+	process.env.AUTOMATION_SYNC_USER_TIMEOUT_MS,
+	120_000,
 );
 let perUserTimeoutMs = DEFAULT_PER_USER_TIMEOUT_MS;
 

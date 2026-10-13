@@ -42,6 +42,8 @@ bun run db:seed              # demo data: clients, projects, assignments, an hou
 bun run db:seed-assistant-ui # an assistant thread holding every renderer construct plus a suspended
                               # approval, so no model call is spent. Idempotent by title, dev only.
                               # Optional args: [org-slug] [user-email].
+bun run bench:assistant      # model benchmark through the real assistant loop. Needs OPENROUTER_API_KEY and
+                              # costs money. `-- --stub` runs without a key. See `scripts/assistant-benchmark/README.md`.
 bun run db:deploy            # src/db/migrate.ts — applies pending migrations without drizzle-kit
 bun run worker               # the standalone background worker (see `docs/domains/deployment.md`)
 bun test                     # the test suite (PGLite, no DATABASE_URL needed)

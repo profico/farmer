@@ -21,3 +21,8 @@ export type HourFundYearInput = z.infer<typeof hourFundYearInput>;
 
 export const monthPeriodInput = z.object({ year, month });
 export type MonthPeriodInput = z.infer<typeof monthPeriodInput>;
+
+// Read the fund for a whole year, or for one month with the suggestion beside
+// it. The month is optional so one tool answers both questions.
+export const readHourFundInput = z.object({ year, month: month.optional() });
+export type ReadHourFundInput = z.infer<typeof readHourFundInput>;

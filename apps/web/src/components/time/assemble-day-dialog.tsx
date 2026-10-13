@@ -278,7 +278,7 @@ export function AssembleDayDialog({
 				) : suggestions.length === 0 ? (
 					<p className="py-6 text-base text-muted-foreground">
 						{(assembly?.dismissedCount ?? 0) > 0
-							? "Nothing new to add — but this day has blocks you deleted."
+							? "Nothing new to add — but this day has items you deleted or unlinked."
 							: "Nothing to add — this day already matches your working hours."}
 					</p>
 				) : (
@@ -371,11 +371,11 @@ export function AssembleDayDialog({
 							className="mt-0.5"
 						/>
 						<span className="min-w-0 flex-1 text-sm">
-							Also offer things I deleted
+							Also offer things I deleted or unlinked
 							<span className="block text-xs text-muted-foreground">
 								{assembly.dismissedCount === 1
-									? "1 block deleted on this day — it won't come back on its own"
-									: `${assembly.dismissedCount} blocks deleted on this day — they won't come back on their own`}
+									? "1 item you deleted or unlinked on this day — it won't come back on its own"
+									: `${assembly.dismissedCount} items you deleted or unlinked on this day — they won't come back on their own`}
 							</span>
 						</span>
 					</label>

@@ -14,14 +14,21 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
-import { client, project, task, timeEntry } from "../db/schema/domain";
+import { account, member, organization, user } from "../db/schema/auth";
+import {
+	client,
+	project,
+	projectMember,
+	task,
+	timeEntry,
+} from "../db/schema/domain";
 import {
 	projectGithubRepo,
 	timeEntryGithubCommit,
@@ -31,14 +38,17 @@ import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
 	integrationSettings,
 	orgSettings,
+	pullRequestEventDetachTombstone,
 	pullRequestReviewTombstone,
 } from "../db/schema/settings";
 import type { PullRequestActivityKind } from "../lib/github-activity";
-import { createTestDb, present, type TestDb } from "../test/harness";
+import { setInstanceSettingsForTests } from "../lib/instance-settings";
+import { at, createTestDb, present, type TestDb } from "../test/harness";
 import {
 	githubService,
 	pullRequestActivityRow,
 	type ScannedPullRequestActivity,
+	setGithubClientForTests,
 } from "./github.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import {
@@ -46,6 +56,7 @@ import {
 	setCommitSourceForTests,
 	setPullRequestSourceForTests,
 } from "./ports";
+import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -56,6 +67,8 @@ const YESTERDAY = "2026-08-11";
 const TODAY = "2026-08-12";
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
+const OTHER_USER_ID = "user-pr-activity-other";
+const otherCtx: Ctx = { organizationId: ORG_ID, userId: OTHER_USER_ID };
 
 let harness: TestDb;
 let devTaskId: string;
@@ -156,6 +169,12 @@ const addEntry = async (values: {
 };
 
 beforeAll(async () => {
+	// A manual attach reads the person's own GitHub login, and that goes through
+	// better-auth, which needs a registered GitHub provider.
+	setInstanceSettingsForTests({
+		GITHUB_CLIENT_ID: "test-client-id",
+		GITHUB_CLIENT_SECRET: "test-client-secret",
+	});
 	harness = await createTestDb();
 
 	await db.insert(organization).values({
@@ -232,28 +251,67 @@ beforeAll(async () => {
 		.returning({ id: task.id });
 	reviewTaskId = present(review, "the Code Review task").id;
 
-	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
-		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-		await db.insert(memberWorkingHoursDay).values({
-			organizationId: ORG_ID,
-			userId: USER_ID,
-			dayOfWeek,
-			enabled: isWeekday,
-			startTime: isWeekday ? "09:00" : null,
-			endTime: isWeekday ? "17:00" : null,
-		});
+	await db.insert(user).values({
+		id: OTHER_USER_ID,
+		name: "Colleague",
+		email: "reviewer-other@example.com",
+		emailVerified: true,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+	await db.insert(member).values({
+		id: "member-pr-activity-other",
+		organizationId: ORG_ID,
+		userId: OTHER_USER_ID,
+		role: "member",
+		createdAt: new Date(),
+	});
+	await db.insert(projectMember).values({
+		organizationId: ORG_ID,
+		projectId,
+		userId: USER_ID,
+	});
+	await db
+		.update(projectGithubRepo)
+		.set({ installationId: 100 })
+		.where(eq(projectGithubRepo.id, repoId));
+	await db.insert(account).values({
+		id: "account-pr-activity",
+		accountId: "4242",
+		providerId: "github",
+		userId: USER_ID,
+		accessToken: "user-token",
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+
+	for (const userId of [USER_ID, OTHER_USER_ID]) {
+		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+			const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+			await db.insert(memberWorkingHoursDay).values({
+				organizationId: ORG_ID,
+				userId,
+				dayOfWeek,
+				enabled: isWeekday,
+				startTime: isWeekday ? "09:00" : null,
+				endTime: isWeekday ? "17:00" : null,
+			});
+		}
 	}
 });
 
 afterAll(async () => {
 	setCommitSourceForTests(null);
 	setPullRequestSourceForTests(null);
+	setGithubClientForTests(null);
+	setInstanceSettingsForTests(undefined);
 	await harness.close();
 });
 
 beforeEach(async () => {
 	await db.delete(timeEntry);
 	await db.delete(pullRequestReviewTombstone);
+	await db.delete(pullRequestEventDetachTombstone);
 	await db.delete(integrationSettings);
 	await db.delete(orgSettings);
 	setCommitSourceForTests(noCommits);
@@ -617,5 +675,304 @@ describe("review blocks", () => {
 
 		expect(await reviewBlocksOn(YESTERDAY)).toEqual([]);
 		expect(await activityOn(entry.id)).toHaveLength(1);
+	});
+});
+
+// Unlinking a pull request event used to delete one row, and the next pass
+// attached the event again. The tombstone is per person and event, so it holds
+// on whichever entry the engine would choose, and it is a separate "no" from
+// the review block's: that one still lets a review stay evidence.
+describe("a detached pull request event", () => {
+	beforeEach(async () => {
+		await setReviewTaskLive(false);
+	});
+
+	const allActivity = () => db.query.timeEntryGithubPrActivity.findMany();
+
+	/** A work entry holding the day's events, as the engine files them. */
+	const syncedEntry = async (events: FakeEvent[]) => {
+		const entry = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 8 * 60 * 60,
+			description: "Importer",
+		});
+		setPullRequestSourceForTests(pullRequestsFor(events));
+		await runAutomations();
+		return entry;
+	};
+
+	test("is not attached again by the next pass", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+		const [row] = await activityOn(entry.id);
+
+		await githubService.detachPullRequestActivity(
+			ctx,
+			present(row, "the attached event").id,
+		);
+		await runAutomations();
+
+		expect(await allActivity()).toEqual([]);
+	});
+
+	test("leaves the same pull request's other events in place", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+			{ day: YESTERDAY, number: 7, kind: "merged" },
+		]);
+		const opened = present(
+			(await activityOn(entry.id)).find((row) => row.kind === "opened"),
+			"the opened event",
+		);
+
+		await githubService.detachPullRequestActivity(ctx, opened.id);
+		await runAutomations();
+
+		expect((await allActivity()).map((row) => row.eventId)).toEqual([
+			"PR_7:merged",
+		]);
+	});
+
+	test("does not make a day with only that event a worked day", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "closed" }]),
+		);
+		await runAutomations();
+		const fill = at(await entriesOn(YESTERDAY), 0);
+		const row = at(await activityOn(fill.id), 0);
+		await githubService.detachPullRequestActivity(ctx, row.id);
+		await db.delete(timeEntry);
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toEqual([]);
+	});
+
+	test("records the person and the event's day", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
+		);
+
+		const rows = await db.query.pullRequestEventDetachTombstone.findMany();
+		expect(rows.map((row) => [row.userId, row.eventId, row.date])).toEqual([
+			[USER_ID, "PR_7:opened", YESTERDAY],
+		]);
+	});
+
+	test("does not touch the same event of another person", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
+		);
+		await integrationSettingsService.update(otherCtx, {
+			githubSyncCommitsAsWorkTime: true,
+		});
+		await db
+			.update(integrationSettings)
+			.set({
+				githubSyncCommitsAsWorkTimeSince: new Date("2026-08-01T00:00:00.000Z"),
+			})
+			.where(eq(integrationSettings.userId, OTHER_USER_ID));
+
+		await timeEntriesService.runAutomationsForUser(otherCtx, {
+			now: new Date(`${TODAY}T12:00:00.000Z`),
+		});
+		// The caller's own pass after the colleague's still keeps it off.
+		await runAutomations();
+
+		const rows = await allActivity();
+		expect(rows.map((row) => row.eventId)).toEqual(["PR_7:opened"]);
+		const owner = await db.query.timeEntry.findFirst({
+			where: eq(timeEntry.id, at(rows, 0).timeEntryId),
+		});
+		expect(owner?.userId).toBe(OTHER_USER_ID);
+	});
+
+	test("is dropped once its day leaves the window", async () => {
+		await db.insert(pullRequestEventDetachTombstone).values([
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				eventId: "PR_1:opened",
+				date: "2026-07-01",
+			},
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				eventId: "PR_2:opened",
+				date: YESTERDAY,
+			},
+		]);
+		setPullRequestSourceForTests(pullRequestsFor([]));
+
+		await runAutomations();
+
+		const left = await db.query.pullRequestEventDetachTombstone.findMany();
+		expect(left.map((row) => row.eventId)).toEqual(["PR_2:opened"]);
+	});
+
+	/** Attach pull request 7 by hand, as the entry dialog does. */
+	const attachNow = (timeEntryId: string) => {
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getAuthenticatedUser: async () => ({ id: 1, login: "tester" }),
+			getPullRequest: async () => ({
+				id: "PR_7",
+				number: 7,
+				title: "Change 7",
+				url: "https://github.com/profico/repo/pull/7",
+				createdAt: `${YESTERDAY}T12:00:00.000Z`,
+				closedAt: null,
+				mergedAt: null,
+				merged: false,
+				state: "OPEN",
+				author: { login: "tester" },
+				reviews: { nodes: [] },
+			}),
+			listInstallationRepos: async () => [],
+		});
+		return githubService.attachPullRequests(ctx, {
+			timeEntryId,
+			pullRequests: [{ projectGithubRepoId: repoId, number: 7 }],
+		});
+	};
+
+	test("moved by hand to another entry, stays off the first", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
+		);
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
+		const other = await addEntry({ date: YESTERDAY, durationSeconds: 60 * 60 });
+
+		await attachNow(other.id);
+		await runAutomations();
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+		// The hand attach does not take the "no" back.
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
+	});
+
+	test("attached by hand to its old entry, is not added twice", async () => {
+		const entry = await syncedEntry([
+			{ day: YESTERDAY, number: 7, kind: "opened" },
+		]);
+		await githubService.detachPullRequestActivity(
+			ctx,
+			at(await activityOn(entry.id), 0).id,
+		);
+		expect(
+			await db.query.pullRequestEventDetachTombstone.findMany(),
+		).toHaveLength(1);
+
+		await attachNow(entry.id);
+		await runAutomations();
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			entry.id,
+		]);
+	});
+
+	test("already attached by hand to one entry, is not copied to another", async () => {
+		const other = await addEntry({ date: YESTERDAY, durationSeconds: 60 * 60 });
+		await attachNow(other.id);
+
+		await syncedEntry([{ day: YESTERDAY, number: 7, kind: "opened" }]);
+
+		expect((await allActivity()).map((row) => row.timeEntryId)).toEqual([
+			other.id,
+		]);
+	});
+});
+
+// With a Code Review task, a detached review must not come back as a block or
+// as evidence on the day's work.
+describe("a detached review", () => {
+	beforeEach(async () => {
+		await setReviewTaskLive(true);
+	});
+
+	test("does not come back as evidence once its review block is detached", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+		await runAutomations();
+		const block = present(
+			(await entriesOn(YESTERDAY)).find(
+				(entry) => entry.taskId === reviewTaskId,
+			),
+			"the review block",
+		);
+		const [review] = await activityOn(block.id);
+
+		await githubService.detachPullRequestActivity(
+			ctx,
+			present(review, "the attached review").id,
+		);
+		await runAutomations();
+
+		expect(await db.query.timeEntryGithubPrActivity.findMany()).toEqual([]);
+		// The block tombstone is kept as well: no second block for that pull request.
+		expect(await db.query.pullRequestReviewTombstone.findMany()).toHaveLength(
+			1,
+		);
+	});
+	test("is not put back by a pass that read before the detach", async () => {
+		// The review is on an entry of another day, so the pass does not count it
+		// as held on its own day, and it reads no tombstone for it.
+		const earlier = await addEntry({
+			date: "2026-08-10",
+			projectId,
+			durationSeconds: 60 * 60,
+		});
+		const reviewed: FakeEvent = { day: YESTERDAY, number: 7, kind: "reviewed" };
+		const [attached] = await db
+			.insert(timeEntryGithubPrActivity)
+			.values(pullRequestActivityRow(earlier.id, repoId, event(reviewed)))
+			.returning();
+		setPullRequestSourceForTests(pullRequestsFor([reviewed]));
+		// The detach commits while the pass runs: after the pass read the
+		// tombstones, before it files the review. The task lookup sits between.
+		const lookup = tasksService.findBySystemKey;
+		let detached = false;
+		const spy = spyOn(tasksService, "findBySystemKey").mockImplementation(
+			async (...args) => {
+				if (!detached) {
+					detached = true;
+					await githubService.detachPullRequestActivity(
+						ctx,
+						present(attached, "the seeded review").id,
+					);
+				}
+				return lookup(...args);
+			},
+		);
+		try {
+			await runAutomations();
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect(detached).toBe(true);
+		expect(await db.query.timeEntryGithubPrActivity.findMany()).toEqual([]);
 	});
 });

@@ -336,7 +336,7 @@ export function PromptBar({
 							placeholder={placeholder}
 							aria-label="Ask the assistant"
 							className={cn(
-								"min-h-7 w-full min-w-0 resize-none bg-transparent px-1 py-[5px] text-[13px] leading-[18px] text-ink outline-none",
+								"min-h-7 w-full min-w-0 resize-none bg-transparent px-1 py-[5px] text-sm leading-[18px] text-ink outline-none",
 								"[overflow-wrap:anywhere] placeholder:text-ink-3 disabled:opacity-50",
 							)}
 						/>
