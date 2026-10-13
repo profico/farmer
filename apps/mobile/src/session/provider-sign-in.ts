@@ -92,11 +92,7 @@ const forgetCookies = async (origin: string) => {
 	);
 };
 
-const startAnswer = z.object({
-	url: z.string(),
-	/** The one-time token that the proxy asks for (ADR 0005). */
-	proxyToken: z.string().min(1),
-});
+const startAnswer = z.object({ url: z.string() });
 const emailAnswer = z.object({ token: z.string().min(1) });
 
 /** A failed request of the auth client: its status, code and message. */
@@ -184,7 +180,7 @@ export const signInWithProvider = async (
 				// Nothing was open.
 			}
 		}
-		const proxy = proxyUrlFor(origin, answer.data.url, answer.data.proxyToken);
+		const proxy = proxyUrlFor(origin, answer.data.url);
 		// The link that answers carries `code`, not `cc`, so the callback URL is
 		// not its prefix. The nonce prefix is (see `redirectPrefixFor`).
 		const result = await WebBrowser.openAuthSessionAsync(

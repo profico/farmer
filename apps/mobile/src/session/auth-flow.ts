@@ -80,15 +80,10 @@ export const callbackUrlFor = (flow: ActiveFlow, challenge: string) =>
 
 /**
  * The address that the system browser opens first. The server's proxy
- * accepts it only with the one-time `token` that the sign-in start gave to
- * this app, and only for the exact `authorizationURL` of that start.
+ * accepts only the exact `authorizationURL` that the sign-in start made.
  */
-export const proxyUrlFor = (
-	origin: string,
-	authorizationURL: string,
-	token: string,
-) =>
-	`${origin}/api/auth/expo-authorization-proxy?${new URLSearchParams({ authorizationURL, token })}`;
+export const proxyUrlFor = (origin: string, authorizationURL: string) =>
+	`${origin}/api/auth/expo-authorization-proxy?${new URLSearchParams({ authorizationURL })}`;
 
 export type CallbackResult =
 	/** The one-time code of the flow. The app sends it, with the flow's

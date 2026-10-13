@@ -75,10 +75,10 @@ import {
 } from "./mcp-consent";
 import { mobileExchange } from "./mobile-exchange";
 import {
+	assertExpoProxyQuery,
 	assertExpoProxyTarget,
 	EXPO_PROXY_PATH,
-	expoProxyQuery,
-	mobileProxyToken,
+	mobileProxyUrl,
 	MOBILE_TRUSTED_ORIGINS,
 } from "./mobile-sign-in";
 import {
@@ -493,12 +493,10 @@ const buildAuth = () => {
 					return;
 				}
 				// The mobile sign-in's browser leg; see `./mobile-sign-in.ts`.
-				// A query that does not parse is the endpoint's own 400.
+				// A query that does not parse is refused here, not passed on.
 				if (ctx.path === EXPO_PROXY_PATH) {
-					const query = expoProxyQuery.safeParse(ctx.query);
-					if (!query.success) return;
 					await assertExpoProxyTarget(
-						query.data,
+						assertExpoProxyQuery(ctx.query),
 						async (state) =>
 							(await ctx.context.internalAdapter.findVerificationValue(state))
 								?.value ?? null,
@@ -1100,9 +1098,9 @@ const buildAuth = () => {
 			// After `expo()`: it turns the session in the `farmer://` link into a
 			// one-time code. See `./mobile-exchange.ts`.
 			mobileExchange(),
-			// Adds the one-time token that the proxy asks for to the answer of a
-			// sign-in start. See `./mobile-sign-in.ts`.
-			mobileProxyToken(),
+			// Stores the authorization URL of each sign-in start from the app, for
+			// the proxy's check. See `./mobile-sign-in.ts`.
+			mobileProxyUrl(),
 			// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 			tanstackStartCookies(),
 		],

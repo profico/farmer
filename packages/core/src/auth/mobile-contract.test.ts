@@ -142,7 +142,7 @@ describe("the Expo sign-in", () => {
 			}),
 		);
 
-	const proxy = (query: Record<string, string>) =>
+	const proxy = (query: Record<string, string> | string) =>
 		auth.handler(
 			new Request(
 				`${ORIGIN}/api/auth/expo-authorization-proxy?${new URLSearchParams(query)}`,
@@ -155,7 +155,7 @@ describe("the Expo sign-in", () => {
 			GOOGLE_CLIENT_SECRET: "client-secret",
 		});
 
-	const startAnswer = z.object({ url: z.string(), proxyToken: z.string() });
+	const startAnswer = z.object({ url: z.string() });
 
 	const startedFlow = async (callbackURL = APP) => {
 		const started = await startGoogle(callbackURL);
@@ -165,14 +165,16 @@ describe("the Expo sign-in", () => {
 
 	test("starts a sign-in that returns to the app", async () => {
 		googleConfigured();
-		const { url, proxyToken } = await startedFlow();
-		const sent = await proxy({ authorizationURL: url, token: proxyToken });
+		const { url } = await startedFlow();
+		const sent = await proxy({ authorizationURL: url });
 		expect(sent.status).toBe(302);
 		expect(sent.headers.get("location")).toBe(url);
 	});
 
 	const expectRefused = async (response: Response) => {
 		expect(response.status).toBe(400);
+		expect(response.headers.get("location")).toBeNull();
+		expect(response.headers.get("set-cookie") ?? "").not.toContain("state");
 		expect(await response.json()).toMatchObject({
 			code: "INVALID_AUTHORIZATION_URL",
 		});
@@ -180,7 +182,7 @@ describe("the Expo sign-in", () => {
 
 	test("the proxy sends a browser only to a configured provider", async () => {
 		googleConfigured();
-		const { url, proxyToken } = await startedFlow();
+		const { url } = await startedFlow();
 		const state = new URL(url).searchParams.get("state") ?? "";
 		const queries: Record<string, string>[] = [
 			{ authorizationURL: `https://evil.example/?state=${state}` },
@@ -191,46 +193,28 @@ describe("the Expo sign-in", () => {
 			},
 		];
 		for (const query of queries) {
-			await expectRefused(await proxy({ ...query, token: proxyToken }));
+			await expectRefused(await proxy(query));
 		}
 	});
 
-	test("the proxy refuses a call without the token of the flow", async () => {
+	test("the proxy refuses a query that does not parse", async () => {
 		googleConfigured();
-		const first = await startedFlow();
-		const second = await startedFlow();
-		await expectRefused(await proxy({ authorizationURL: first.url }));
-		await expectRefused(
-			await proxy({ authorizationURL: first.url, token: "" }),
-		);
-		await expectRefused(
-			await proxy({ authorizationURL: first.url, token: "forged" }),
-		);
-		// The token of another flow does not open this flow's URL.
-		await expectRefused(
-			await proxy({ authorizationURL: first.url, token: second.proxyToken }),
-		);
-	});
-
-	test("a proxy token works once", async () => {
-		googleConfigured();
-		const { url, proxyToken } = await startedFlow();
-		const query = { authorizationURL: url, token: proxyToken };
-		expect((await proxy(query)).status).toBe(302);
-		await expectRefused(await proxy(query));
-	});
-
-	test("a refused call burns the token", async () => {
-		googleConfigured();
-		const { url, proxyToken } = await startedFlow();
-		const other = new URL(url);
-		other.searchParams.set("client_id", "attacker-client");
-		await expectRefused(
-			await proxy({ authorizationURL: other.toString(), token: proxyToken }),
-		);
-		await expectRefused(
-			await proxy({ authorizationURL: url, token: proxyToken }),
-		);
+		const { url } = await startedFlow();
+		const queries: (Record<string, string> | string)[] = [
+			// The query of the review: an extra overlong value used to skip
+			// every check, and the answer was a redirect to evil.example.
+			{
+				authorizationURL: "https://evil.example/?state=x",
+				token: "t".repeat(129),
+			},
+			{ authorizationURL: `${url}&pad=${"p".repeat(4096)}` },
+			`authorizationURL=${encodeURIComponent(url)}&authorizationURL=${encodeURIComponent(url)}`,
+			`authorizationURL=${encodeURIComponent(url)}&oauthState=a&oauthState=b`,
+			{},
+		];
+		for (const query of queries) {
+			await expectRefused(await proxy(query));
+		}
 	});
 
 	test("the proxy refuses a URL that the server did not make", async () => {
@@ -239,23 +223,33 @@ describe("the Expo sign-in", () => {
 			["client_id", "attacker-client"],
 			["redirect_uri", "https://evil.example/callback"],
 		] as const) {
-			const { url, proxyToken } = await startedFlow();
+			const { url } = await startedFlow();
 			const changed = new URL(url);
 			changed.searchParams.set(name, value);
 			await expectRefused(
-				await proxy({
-					authorizationURL: changed.toString(),
-					token: proxyToken,
-				}),
+				await proxy({ authorizationURL: changed.toString() }),
 			);
 		}
 	});
 
+	test("the proxy refuses a flow that the app did not start", async () => {
+		googleConfigured();
+		// A start without `expo-origin`: the state is live, but the server
+		// stored no authorization URL for it.
+		const started = await auth.handler(
+			new Request(`${ORIGIN}/api/auth/sign-in/social`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ provider: "google", callbackURL: APP }),
+			}),
+		);
+		const { url } = startAnswer.parse(await started.json());
+		await expectRefused(await proxy({ authorizationURL: url }));
+	});
+
 	test("the proxy refuses a flow that does not return to the app", async () => {
 		googleConfigured();
-		const { url, proxyToken } = await startedFlow("/");
-		await expectRefused(
-			await proxy({ authorizationURL: url, token: proxyToken }),
-		);
+		const { url } = await startedFlow("/");
+		await expectRefused(await proxy({ authorizationURL: url }));
 	});
 });

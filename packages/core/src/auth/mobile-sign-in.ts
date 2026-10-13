@@ -32,34 +32,38 @@ export const MOBILE_TRUSTED_ORIGINS = ["farmer://"];
 export const EXPO_PROXY_PATH = "/expo-authorization-proxy";
 
 /**
- * The proxy's query. `oauthState` is for the cookie state strategy, which
- * this server does not use (a database is configured), so it is refused.
- * `token` is optional here on purpose: a query that does not parse skips the
- * guard, so the guard itself refuses a missing token.
+ * The proxy's query, as the guard reads it. `oauthState` is for the cookie
+ * state strategy, which this server does not use (a database is configured),
+ * so it is refused. This schema is stricter than the plugin's (a maximum
+ * length, one value for each parameter). That is safe only because the guard
+ * refuses a query that does not parse (`assertExpoProxyQuery`).
  */
 export const expoProxyQuery = z.object({
-	authorizationURL: z.string(),
+	authorizationURL: z.string().max(4096),
 	oauthState: z.string().optional(),
-	token: z.string().max(128).optional(),
 });
 
-/** How long a proxy token lives. The plugin's state cookie lives 300 s. */
-export const PROXY_TOKEN_TTL_MS = 5 * 60_000;
+/** How long the server keeps the authorization URL of a flow. The plugin's
+ *  state cookie lives 300 s. */
+export const PROXY_URL_TTL_MS = 5 * 60_000;
 
 const PROXY_PREFIX = "mobile-proxy:";
 
-const proxyIdentifier = (token: string) =>
-	`${PROXY_PREFIX}${createHash("sha256").update(token).digest("hex")}`;
+const proxyIdentifier = (state: string) =>
+	`${PROXY_PREFIX}${createHash("sha256").update(state).digest("hex")}`;
 
 /**
- * Stores a one-time proxy token for the authorization URL that the server
- * made for a flow, and returns the token. The server keeps only the hash.
- * Rows that expired are removed here, so the table does not grow.
+ * Stores the authorization URL that the server made for an app flow, under
+ * the hash of the flow's `state`. Rows that expired are removed here, so the
+ * table does not grow. A URL with no `state` is not stored: the proxy refuses
+ * it in all cases.
  */
-export const mintProxyToken = async (
+export const rememberAuthorizationURL = async (
 	authorizationURL: string,
 	now: Date = new Date(),
-): Promise<string> => {
+): Promise<void> => {
+	const state = URL.parse(authorizationURL)?.searchParams.get("state");
+	if (!state) return;
 	await db
 		.delete(verification)
 		.where(
@@ -68,30 +72,29 @@ export const mintProxyToken = async (
 				lt(verification.expiresAt, now),
 			),
 		);
-	const token = randomBytes(32).toString("base64url");
 	await db.insert(verification).values({
 		id: randomBytes(16).toString("hex"),
-		identifier: proxyIdentifier(token),
+		identifier: proxyIdentifier(state),
 		value: authorizationURL,
-		expiresAt: new Date(now.getTime() + PROXY_TOKEN_TTL_MS),
+		expiresAt: new Date(now.getTime() + PROXY_URL_TTL_MS),
 	});
-	return token;
 };
 
 /**
- * Spends a proxy token and returns the authorization URL it was made for, or
- * null for an unknown, used or expired token. The delete is the single use:
- * it removes the row and returns it in one statement.
+ * Returns the authorization URL that the server made for a `state`, or null
+ * for a state that the app did not start, or that expired or was used. The
+ * delete is the single use: it removes the row and returns it in one
+ * statement.
  */
-export const redeemProxyToken = async (
-	token: string,
+export const takeAuthorizationURL = async (
+	state: string,
 	now: Date = new Date(),
 ): Promise<string | null> => {
 	const [row] = await db
 		.delete(verification)
 		.where(
 			and(
-				eq(verification.identifier, proxyIdentifier(token)),
+				eq(verification.identifier, proxyIdentifier(state)),
 				gt(verification.expiresAt, now),
 			),
 		)
@@ -102,14 +105,14 @@ export const redeemProxyToken = async (
 const startAnswer = z.looseObject({ url: z.string() });
 
 /**
- * Adds `proxyToken` to the answer of a sign-in start from the app (a request
- * with the header `expo-origin`). The app must give the token back to the
- * proxy, so a `state` that somebody else started cannot be sent into another
- * browser. The plugin must come after `expo()` in the plugin list.
+ * Stores the authorization URL of each sign-in start from the app (a request
+ * with the header `expo-origin`), so the proxy can compare the URL that it
+ * gets with the URL that the server made. The answer does not change. The
+ * plugin must come after `expo()` in the plugin list.
  */
-export const mobileProxyToken = () =>
+export const mobileProxyUrl = () =>
 	({
-		id: "mobile-proxy-token",
+		id: "mobile-proxy-url",
 		hooks: {
 			after: [
 				{
@@ -123,10 +126,7 @@ export const mobileProxyToken = () =>
 						if (!headers?.get("expo-origin")) return;
 						const answer = startAnswer.safeParse(ctx.context.returned);
 						if (!answer.success) return;
-						ctx.context.returned = {
-							...answer.data,
-							proxyToken: await mintProxyToken(answer.data.url),
-						};
+						await rememberAuthorizationURL(answer.data.url);
 					}),
 				},
 			],
@@ -136,11 +136,25 @@ export const mobileProxyToken = () =>
 /** The part of a stored OAuth state that the guard reads. */
 const storedState = z.looseObject({ callbackURL: z.string() });
 
-const refused = (message: string) =>
+export const proxyRefused = (message: string) =>
 	new APIError("BAD_REQUEST", {
 		message,
 		code: "INVALID_AUTHORIZATION_URL",
 	});
+
+/**
+ * Parses the proxy's query, and refuses a query that does not parse: a
+ * missing or overlong `authorizationURL`, or a parameter that occurs two
+ * times. The guard must fail closed. If it returned, the plugin's endpoint
+ * would redirect with no check.
+ */
+export const assertExpoProxyQuery = (
+	query: Parameters<typeof expoProxyQuery.safeParse>[0],
+): z.infer<typeof expoProxyQuery> => {
+	const parsed = expoProxyQuery.safeParse(query);
+	if (!parsed.success) throw proxyRefused("Invalid query");
+	return parsed.data;
+};
 
 /**
  * The origins that the proxy may send a browser to: Google when it is
@@ -165,56 +179,29 @@ const providerOrigins = (): Set<string> => {
 	return origins;
 };
 
-/**
- * Refuse a proxy request that this server did not start for the app.
- *
- * The plugin's endpoint redirects to ANY https URL and sets a signed `state`
- * cookie from the URL's own `state` parameter. Unguarded, that is an open
- * redirect on this origin, and a way to put a chosen state cookie into a
- * visitor's browser. Four checks close it:
- *
- *  0. The query holds the one-time token that this server gave to the app
- *     that started the flow, and the `authorizationURL` is exactly the URL
- *     that the server made for that token. Without it, an attacker could
- *     start a flow, and send the proxy link with their own state to a
- *     victim. The token is spent first, so a refused attempt burns it. The
- *     whole URL is compared, not its origin: a provider URL with another
- *     `client_id` or `redirect_uri` is refused.
- *  1. The target's origin is a configured identity provider. This is the
- *     check that stops the open redirect, because anybody can start a real
- *     flow with curl and get a valid state.
- *  2. No `oauthState`: see `expoProxyQuery`.
- *  3. The `state` is a live flow of this server whose callback is a link back
- *     into the app (a trusted origin that is not http or https).
- */
-export const assertExpoProxyTarget = async (
-	query: z.infer<typeof expoProxyQuery>,
-	findState: (state: string) => Promise<string | null>,
-	isTrustedOrigin: (url: string) => boolean,
-	redeemToken: (token: string) => Promise<string | null> = redeemProxyToken,
-): Promise<void> => {
-	if (query.oauthState !== undefined) throw refused("Unexpected oauthState");
-	const generated = query.token ? await redeemToken(query.token) : null;
-	if (generated === null || generated !== query.authorizationURL) {
-		throw refused("The token does not match the authorizationURL");
-	}
-	let target: URL;
-	try {
-		target = new URL(query.authorizationURL);
-	} catch {
-		throw refused("Invalid authorizationURL");
-	}
+/** The `state` of a URL on a configured provider, or a refusal. */
+const providerState = (authorizationURL: string): string => {
+	const target = URL.parse(authorizationURL);
+	if (!target) throw proxyRefused("Invalid authorizationURL");
 	if (!providerOrigins().has(target.origin)) {
-		throw refused("The authorizationURL is not a configured provider");
+		throw proxyRefused("The authorizationURL is not a configured provider");
 	}
 	const state = target.searchParams.get("state");
-	const stored = state ? await findState(state) : null;
-	if (!stored) throw refused("Unknown state");
+	if (!state) throw proxyRefused("Unknown state");
+	return state;
+};
+
+/** Refuses a stored state whose callback is not a link back into the app. */
+const assertReturnsToApp = (
+	stored: string | null,
+	isTrustedOrigin: (url: string) => boolean,
+): void => {
+	if (!stored) throw proxyRefused("Unknown state");
 	let callbackURL: string;
 	try {
 		callbackURL = storedState.parse(JSON.parse(stored)).callbackURL;
 	} catch {
-		throw refused("Unknown state");
+		throw proxyRefused("Unknown state");
 	}
 	const protocol = URL.parse(callbackURL)?.protocol;
 	if (
@@ -223,6 +210,44 @@ export const assertExpoProxyTarget = async (
 		protocol === "https:" ||
 		!isTrustedOrigin(callbackURL)
 	) {
-		throw refused("The flow does not return to the app");
+		throw proxyRefused("The flow does not return to the app");
 	}
+};
+
+/**
+ * Refuse a proxy request that this server did not start for the app.
+ *
+ * The plugin's endpoint redirects to ANY https URL and sets a signed `state`
+ * cookie from the URL's own `state` parameter. Unguarded, that is an open
+ * redirect on this origin, and a way to put a chosen state cookie into a
+ * visitor's browser. These checks close it:
+ *
+ *  1. No `oauthState`: see `expoProxyQuery`.
+ *  2. The target's origin is a configured identity provider. This is the
+ *     check that stops the open redirect, because anybody can start a real
+ *     flow with curl and get a valid state.
+ *  3. The `authorizationURL` is exactly the URL that the server made for
+ *     that `state` at the start of an app flow. A provider URL with another
+ *     `client_id` or `redirect_uri` is refused. The stored URL works once.
+ *  4. The `state` is a live flow of this server whose callback is a link back
+ *     into the app (a trusted origin that is not http or https).
+ *
+ * These checks do not stop a person who started a real flow from sending
+ * the proxy link to somebody else.
+ */
+export const assertExpoProxyTarget = async (
+	query: z.infer<typeof expoProxyQuery>,
+	findState: (state: string) => Promise<string | null>,
+	isTrustedOrigin: (url: string) => boolean,
+	takeGenerated: (
+		state: string,
+	) => Promise<string | null> = takeAuthorizationURL,
+): Promise<void> => {
+	if (query.oauthState !== undefined)
+		throw proxyRefused("Unexpected oauthState");
+	const state = providerState(query.authorizationURL);
+	if ((await takeGenerated(state)) !== query.authorizationURL) {
+		throw proxyRefused("The server did not make this authorizationURL");
+	}
+	assertReturnsToApp(await findState(state), isTrustedOrigin);
 };
