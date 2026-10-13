@@ -58,7 +58,8 @@ describe("the native date picker", () => {
 	});
 });
 
-// Run with TZ=America/New_York and TZ=Pacific/Auckland as well as UTC.
+// `bun run test` runs the suite under the host zone, America/New_York and
+// Pacific/Auckland (see the `test` script of package.json).
 const DAYS = ["2026-01-01", "2026-03-29", "2026-10-06", "2026-12-31"];
 
 describe("the Android date picker", () => {
