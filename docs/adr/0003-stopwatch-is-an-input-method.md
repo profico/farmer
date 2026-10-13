@@ -74,9 +74,12 @@ duration the entry model already allows.
   identity, so the read path is the promise.
 - The timer emits no webhook event. The entry it creates emits
   `time_entry.created`, as every entry does.
-- There is no MCP tool and no assistant tool for the stopwatch. An agent should
-  not start a wall clock it cannot watch, and `list_time_entries` is already
-  the read an agent loop hits hardest.
+- The first version had no MCP tool and no assistant tool for the stopwatch,
+  because an agent should not start a wall clock it cannot watch. The owner
+  reversed this in October 2026: the assistant and the MCP server now have
+  `get_timer`, `start_timer`, `pause_timer`, `resume_timer`, `stop_timer` and
+  `discard_timer`. The decision above still holds: nothing is written until a
+  stop, and the cap drops a timer that nobody stops. See `docs/domains/timer.md`.
 - Pause and resume are IN, by the owner's decision of 17 September 2026. They
   were out in the first version of this record, for the reason the amendment
   below answers.

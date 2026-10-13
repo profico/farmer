@@ -2,15 +2,34 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "../db";
-import { project, task } from "../db/schema/domain";
+import { project, task, timeEntry } from "../db/schema/domain";
 import { filingRule } from "../db/schema/settings";
 import type {
 	DeleteFilingRuleInput,
+	RememberFilingRuleInput,
 	UpdateFilingRuleInput,
 } from "../schema/filing-rules";
 import { ctxAccess } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
+
+/** The next sync files a meeting on the project of a rule. It must not be an
+ *  archived project, as the picker in the dialog does not offer one. */
+const assertProjectActive = async (ctx: Ctx, projectId: string) => {
+	const live = await db.query.project.findFirst({
+		where: and(
+			eq(project.id, projectId),
+			eq(project.organizationId, ctx.organizationId),
+			eq(project.status, "active"),
+		),
+		columns: { id: true },
+	});
+	if (!live) {
+		throw new Error(
+			"That project is archived. Pick another one for this rule.",
+		);
+	}
+};
 
 // Standing answers to "which project does this meeting belong to".
 //
@@ -163,6 +182,66 @@ export const filingRulesService = {
 	},
 
 	/**
+	 * Make rules from entries the caller already filed, with no project or title
+	 * from the caller. The assistant uses it: `rememberFrom` trusts its target,
+	 * so this reads the caller's OWN entries and uses the project each one is on.
+	 * An entry with no project, and an id that is not the caller's, adds no
+	 * rule. The project must be live and the caller's to work on, because the
+	 * next sync files a meeting there.
+	 */
+	rememberFromEntries: async (ctx: Ctx, input: RememberFilingRuleInput) => {
+		const ids = [...new Set(input.timeEntryIds)];
+		const rows = await db
+			.select({
+				projectId: timeEntry.projectId,
+				taskId: timeEntry.taskId,
+				description: timeEntry.description,
+			})
+			.from(timeEntry)
+			.where(
+				and(
+					inArray(timeEntry.id, ids),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			);
+
+		const byProject = new Map<
+			string,
+			{ taskId: string; description: string }[]
+		>();
+		for (const row of rows) {
+			if (!row.projectId) continue;
+			const group = byProject.get(row.projectId) ?? [];
+			group.push({ taskId: row.taskId, description: row.description });
+			byProject.set(row.projectId, group);
+		}
+
+		const access = await ctxAccess(ctx);
+		// Every project is checked before any rule is written, so one refused
+		// project leaves the batch unwritten.
+		for (const projectId of byProject.keys()) {
+			await assertProjectInOrg(ctx, projectId);
+			await assertProjectActive(ctx, projectId);
+			access.assertCanTrackOn(projectId);
+		}
+		let remembered = 0;
+		for (const [projectId, entries] of byProject) {
+			remembered += await filingRulesService.rememberFrom(
+				ctx,
+				{ projectId },
+				entries,
+			);
+		}
+		return {
+			remembered,
+			// Own entries found, and how many of those had no project.
+			entriesFound: rows.length,
+			unfiled: rows.filter((row) => !row.projectId).length,
+		};
+	},
+
+	/**
 	 * Change where a rule files its meetings. The same checks as filing by hand,
 	 * because the next sync writes exactly this: the project must be live and the
 	 * person's, and the task one that may go on a project.
@@ -179,6 +258,7 @@ export const filingRulesService = {
 		if (!existing) throw new Error("Filing rule not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
+		await assertProjectActive(ctx, input.projectId);
 		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(input.projectId);
 		const targetTaskId =

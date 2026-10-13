@@ -80,6 +80,12 @@ import {
 	recomputeDayFill,
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
+import {
+	lockDetachTombstones,
+	pruneDetachTombstones,
+	refusedCommitShas,
+	refusedEventIds,
+} from "./detach-tombstones";
 import { safeErrorMessage } from "./error-message";
 import {
 	emitEvent,
@@ -896,11 +902,23 @@ const fileReviewBlocks = async (
 		),
 	);
 	if (rows.length > 0) {
-		await db
-			.insert(timeEntryGithubPrActivity)
-			.values(rows)
-			// tegpa_entry_event_unq: a re-run attaches the same reviews again.
-			.onConflictDoNothing();
+		await withCtxTx(ctx, async (txCtx) => {
+			// A detach can commit after the read at the start of the pass. Under
+			// the lock, the tombstones are read again, and the insert does not put
+			// back the review that the detach just took off.
+			await lockDetachTombstones(txCtx);
+			const refusedNow = await refusedEventIds(
+				txCtx,
+				rows.map((row) => row.eventId),
+			);
+			const kept = rows.filter((row) => !refusedNow.has(row.eventId));
+			if (kept.length === 0) return;
+			await ctxDb(txCtx)
+				.insert(timeEntryGithubPrActivity)
+				.values(kept)
+				// tegpa_entry_event_unq: a re-run attaches the same reviews again.
+				.onConflictDoNothing();
+		});
 	}
 	return { placed, created };
 };
@@ -917,13 +935,46 @@ const syncCommitWorkTimeForRange = async (
 		commitSource().listUserCommitsByDay(ctx, range),
 		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
 	]);
+	// Tombstones for days the window no longer reaches are dead rows: drop them
+	// before the read below, so the table stays small.
+	await pruneDetachTombstones(ctx, range.to);
+	// What the person took off an entry is not evidence any more. It is cut here,
+	// before any day is built, so a day with nothing else left is not a worked
+	// day. A manual attach keeps the tombstone (see `githubService.attachCommits`),
+	// so a commit that the person moved to another entry stays off the first.
+	const refusedShas = await refusedCommitShas(
+		ctx,
+		commitDays.flatMap((day) => day.commits.map((commit) => commit.sha)),
+	);
+	const refusedEvents = await refusedEventIds(
+		ctx,
+		pullRequestDays.flatMap((day) =>
+			day.activity.map((activity) => activity.eventId),
+		),
+	);
+	// Evidence that is already on one of the person's entries of its day stays
+	// where it is. The person or an earlier pass put it there, and it has found
+	// its home: it neither goes on a second entry nor asks for a rest-of-day
+	// block.
+	const held = await evidenceHeldIn(ctx, range.from, range.to);
 	const days = new Map<string, DayEvidence>();
 	for (const { dayKey, commits } of commitDays) {
-		days.set(dayKey, { commits, pullRequests: [] });
+		const kept = commits.filter(
+			(commit) =>
+				!refusedShas.has(commit.sha) &&
+				!held.commits.has(heldKey(dayKey, commit.sha)),
+		);
+		if (kept.length > 0) days.set(dayKey, { commits: kept, pullRequests: [] });
 	}
 	for (const { dayKey, activity } of pullRequestDays) {
+		const kept = activity.filter(
+			(event) =>
+				!refusedEvents.has(event.eventId) &&
+				!held.events.has(heldKey(dayKey, event.eventId)),
+		);
+		if (kept.length === 0) continue;
 		const day = days.get(dayKey) ?? emptyEvidence();
-		day.pullRequests.push(...activity);
+		day.pullRequests.push(...kept);
 		days.set(dayKey, day);
 	}
 	if (days.size === 0) return;
@@ -1134,37 +1185,113 @@ const syncCommitWorkTimeForRange = async (
 				.where(eq(timeEntry.id, entry.id));
 		}
 
-		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.commits.map((commit) => ({
-				timeEntryId,
-				projectGithubRepoId: commit.projectGithubRepoId,
-				sha: commit.sha,
-				message: commit.message,
-				authorLogin: commit.authorLogin,
-				committedAt: commit.committedAt,
-				url: commit.url,
-			})),
-		);
-		if (commitRows.length > 0) {
-			await db
-				.insert(timeEntryGithubCommit)
-				.values(commitRows)
-				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
-				.onConflictDoNothing();
-		}
-		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
-			group.pullRequests.map((event) =>
-				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
-			),
-		);
-		if (activityRows.length > 0) {
-			await db
-				.insert(timeEntryGithubPrActivity)
-				.values(activityRows)
-				// tegpa_entry_event_unq: the same, for pull request events.
-				.onConflictDoNothing();
-		}
+		await withCtxTx(ctx, async (txCtx) => {
+			// A detach can commit after the read at the top of this pass. Under the
+			// lock, the tombstones are read again, and the insert does not put back
+			// what the detach just took off.
+			await lockDetachTombstones(txCtx);
+			const [refusedNow, refusedEventsNow] = await Promise.all([
+				refusedCommitShas(
+					txCtx,
+					[...attachments.values()].flatMap((group) =>
+						group.commits.map((commit) => commit.sha),
+					),
+				),
+				refusedEventIds(
+					txCtx,
+					[...attachments.values()].flatMap((group) =>
+						group.pullRequests.map((event) => event.eventId),
+					),
+				),
+			]);
+			// Read again under the lock too: a hand attach can land during the
+			// pass, and a second copy on another entry counts the same work twice.
+			const heldNow = await evidenceHeldIn(txCtx, dayKey, dayKey);
+			const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
+				group.commits
+					.filter(
+						(commit) =>
+							!heldNow.commits.has(heldKey(dayKey, commit.sha)) &&
+							!refusedNow.has(commit.sha),
+					)
+					.map((commit) => ({
+						timeEntryId,
+						projectGithubRepoId: commit.projectGithubRepoId,
+						sha: commit.sha,
+						message: commit.message,
+						authorLogin: commit.authorLogin,
+						committedAt: commit.committedAt,
+						url: commit.url,
+					})),
+			);
+			if (commitRows.length > 0) {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubCommit)
+					.values(commitRows)
+					// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+					.onConflictDoNothing();
+			}
+			const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
+				group.pullRequests
+					.filter(
+						(event) =>
+							!heldNow.events.has(heldKey(dayKey, event.eventId)) &&
+							!refusedEventsNow.has(event.eventId),
+					)
+					.map((event) =>
+						pullRequestActivityRow(
+							timeEntryId,
+							event.projectGithubRepoId,
+							event,
+						),
+					),
+			);
+			if (activityRows.length > 0) {
+				await ctxDb(txCtx)
+					.insert(timeEntryGithubPrActivity)
+					.values(activityRows)
+					// tegpa_entry_event_unq: the same, for pull request events.
+					.onConflictDoNothing();
+			}
+		});
 	}
+};
+
+/** The key of one piece of evidence on one day, for `evidenceHeldIn`. */
+const heldKey = (dayKey: string, id: string) => `${dayKey} ${id}`;
+
+/** The commits and pull request events already on the person's entries dated
+ *  in the span, keyed by `heldKey(entry date, sha or event id)`. The engine
+ *  does not attach them again, to that entry or to another one. */
+const evidenceHeldIn = async (ctx: Ctx, from: string, to: string) => {
+	const inSpan = and(
+		eq(timeEntry.organizationId, ctx.organizationId),
+		eq(timeEntry.userId, ctx.userId),
+		gte(timeEntry.date, from),
+		lte(timeEntry.date, to),
+	);
+	const [commits, events] = await Promise.all([
+		ctxDb(ctx)
+			.select({ date: timeEntry.date, sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.where(inSpan),
+		ctxDb(ctx)
+			.select({
+				date: timeEntry.date,
+				eventId: timeEntryGithubPrActivity.eventId,
+			})
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.where(inSpan),
+	]);
+	return {
+		commits: new Set(commits.map((row) => heldKey(row.date, row.sha))),
+		events: new Set(events.map((row) => heldKey(row.date, row.eventId))),
+	};
 };
 
 /** Did this person delete the day's rest-of-day block? See the table comment in

@@ -360,6 +360,49 @@ describe("remembering a rule from what was just filed", () => {
 	});
 });
 
+describe("remembering a rule from entries already filed", () => {
+	const filedEntry = async (onProject: string) => {
+		const [row] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: meetingTaskId,
+				projectId: onProject,
+				date: "2026-08-10",
+				durationSeconds: 3600,
+				description: "Daily standup",
+			})
+			.returning({ id: timeEntry.id });
+		return present(row, "the filed entry");
+	};
+
+	test("makes a rule from an entry on a live project", async () => {
+		const entry = await filedEntry(projectId);
+
+		const result = await filingRulesService.rememberFromEntries(ctx, {
+			timeEntryIds: [entry.id],
+		});
+
+		expect(result.remembered).toBe(1);
+	});
+
+	test("refuses an entry on an archived project", async () => {
+		const entry = await filedEntry(projectId);
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, projectId));
+
+		await expect(
+			filingRulesService.rememberFromEntries(ctx, {
+				timeEntryIds: [entry.id],
+			}),
+		).rejects.toThrow("That project is archived");
+		expect(await filingRulesService.list(ctx)).toHaveLength(0);
+	});
+});
+
 describe("the task a rule files under", () => {
 	test("a rule with a task files the meeting under that task", async () => {
 		await ruleFor("Design review", projectId, designTaskId);
@@ -473,6 +516,23 @@ describe("the task a rule files under", () => {
 			targetTaskId: meetingTaskId,
 		});
 		expect((await filingRulesService.list(ctx))[0]?.targetTaskId).toBeNull();
+	});
+
+	test("a rule cannot be pointed at an archived project", async () => {
+		await ruleFor("Design review", projectId);
+		const [rule] = await filingRulesService.list(ctx);
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, otherProjectId));
+
+		await expect(
+			filingRulesService.update(ctx, {
+				id: present(rule, "the rule").id,
+				projectId: otherProjectId,
+				targetTaskId: null,
+			}),
+		).rejects.toThrow("That project is archived");
 	});
 
 	test("a rule cannot be pointed at a project the person is not on", async () => {

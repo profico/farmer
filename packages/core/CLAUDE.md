@@ -18,7 +18,7 @@ argument — **tenancy is a parameter, never ambient**.
   - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry (a synced meeting also carries `syncedDate/syncedDurationSeconds/syncedDescription`, what the calendar last said — the meeting engine is a per-field merge against them, see `docs/domains/automation.md`).
   - `schema/people.ts` — memberProfile (`claimPendingSince`: a Harvest import's membership the person has not accepted yet), memberTypeHistory (effective-dated `memberType`), teamLeadPerson, invitationEmail (whether an invite email reached the provider; it sits here because `invitation` is CLI-generated).
   - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
-  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
+  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, commitDetachTombstone, pullRequestEventDetachTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
   - `schema/github.ts` — orgGithubInstallation, projectGithubRepo, timeEntryGithubCommit, timeEntryGithubPrActivity (one row per pull request EVENT — opened, merged, closed, reviewed — not per PR).
   - `schema/slack.ts` — slackInstallation, memberSlackIdentity, slackReminderLog.
   - `schema/notifications.ts` — pushSubscription, notificationSettings.
