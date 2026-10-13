@@ -12,7 +12,8 @@
 		"./schema": "./src/schema/index.ts",
 		"./lib/*": "./src/lib/*.ts",
 		"./api": "./src/api/index.ts",
-		"./db/seed-tasks": "./src/db/seed-tasks.ts"
+		"./db/seed-tasks": "./src/db/seed-tasks.ts",
+		"./test/*": "./src/test/*.ts"
 	},
 	"scripts": {
 		"test": "bun test",
