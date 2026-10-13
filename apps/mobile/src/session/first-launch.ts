@@ -47,14 +47,15 @@ export const wipeIfFirstLaunch = async (): Promise<void> => {
 	}
 };
 
-/** Write the Keychain items again with the "this device only" accessibility,
- *  one time. Never throws. */
+/** Write the Keychain items again with the "this device only" accessibility.
+ *  The flag is set only when every item was read and written again, so a
+ *  failure makes the next launch run it again. Never throws. */
 export const migrateKeychainAccessibility = async (): Promise<void> => {
 	if (Platform.OS !== "ios") return;
 	try {
 		if (Storage.getItemSync(DEVICE_ONLY_FLAG)) return;
-		await Promise.all([migrateSession(), migratePushItems()]);
-		Storage.setItemSync(DEVICE_ONLY_FLAG, "1");
+		const results = await Promise.all([migrateSession(), migratePushItems()]);
+		if (results.every(Boolean)) Storage.setItemSync(DEVICE_ONLY_FLAG, "1");
 	} catch {
 		// The next launch tries again.
 	}

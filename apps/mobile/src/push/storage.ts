@@ -2,6 +2,8 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { z } from "zod";
 
+import { rewriteItem } from "../session/rewrite-item";
+
 /**
  * What the push code keeps on the phone. Every item is in the Keychain or
  * the Keystore (expo-secure-store).
@@ -68,19 +70,20 @@ export const deleteAllPushItems = async (): Promise<void> => {
 };
 
 /** Write every push item again, so that an item from an earlier build gets
- *  the "this device only" accessibility. A write over an existing item
- *  changes the value only, so the item is deleted first. Never throws. */
-export const migratePushItems = async (): Promise<void> => {
+ *  the "this device only" accessibility (see `rewriteItem`). Returns true
+ *  only when every item is done, so that the caller tries again at the next
+ *  launch after a failure. Never throws. */
+export const migratePushItems = async (): Promise<boolean> => {
+	let allDone = true;
 	for (const key of Object.values(KEYS)) {
-		try {
-			const value = await readItem(key);
-			if (value === null) continue;
-			await deleteItem(key);
-			await writeItem(key, value);
-		} catch {
-			// The next launch does not retry. The item keeps its old accessibility.
-		}
+		const done = await rewriteItem({
+			read: () => readItem(key),
+			remove: () => deleteItem(key),
+			write: (value) => writeItem(key, value),
+		});
+		allDone &&= done;
 	}
+	return allDone;
 };
 
 /** The relay registration of this installation. */

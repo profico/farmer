@@ -1,6 +1,8 @@
 import * as SecureStore from "expo-secure-store";
 import { z } from "zod";
 
+import { rewriteItem } from "./rewrite-item";
+
 /** One key, holding JSON: a secure-store key allows only a few characters,
  *  and one write keeps the server and its token together. */
 export const SESSION_KEY = "farmer.session";
@@ -35,15 +37,11 @@ export const writeSession = (session: StoredSession) =>
 export const wipeSession = () => SecureStore.deleteItemAsync(SESSION_KEY);
 
 /** Write the session again, so that a session from an earlier build gets the
- *  "this device only" accessibility. A write over an existing item changes
- *  the value only, so the item is deleted first. Never throws. */
-export const migrateSession = async (): Promise<void> => {
-	try {
-		const raw = await SecureStore.getItemAsync(SESSION_KEY, options);
-		if (raw === null) return;
-		await SecureStore.deleteItemAsync(SESSION_KEY, options);
-		await SecureStore.setItemAsync(SESSION_KEY, raw, options);
-	} catch {
-		// The session keeps its old accessibility.
-	}
-};
+ *  "this device only" accessibility (see `rewriteItem`). Returns false when
+ *  a step failed. Never throws. */
+export const migrateSession = (): Promise<boolean> =>
+	rewriteItem({
+		read: () => SecureStore.getItemAsync(SESSION_KEY, options),
+		remove: () => SecureStore.deleteItemAsync(SESSION_KEY, options),
+		write: (value) => SecureStore.setItemAsync(SESSION_KEY, value, options),
+	});

@@ -17,6 +17,12 @@ mock.module("expo-sqlite/kv-store", () => ({
 		},
 	},
 }));
+// The Keychain holds `stored` for the session key. `writeFailures` is the
+// number of `setItemAsync` calls that fail before one succeeds.
+const keychain = { stored: null as string | null, writeFailures: 0 };
+const writes: string[] = [];
+const pushResult = { done: true };
+
 mock.module("expo-secure-store", () => ({
 	AFTER_FIRST_UNLOCK: 0,
 	deleteItemAsync: async (key: string) => {
@@ -24,9 +30,15 @@ mock.module("expo-secure-store", () => ({
 	},
 	getItemAsync: async (key: string) => {
 		migrated.push(key);
-		return null;
+		return keychain.stored;
 	},
-	setItemAsync: async () => undefined,
+	setItemAsync: async (_key: string, value: string) => {
+		if (keychain.writeFailures > 0) {
+			keychain.writeFailures -= 1;
+			throw new Error("keychain busy");
+		}
+		writes.push(value);
+	},
 }));
 
 // The push store is a fake too: it records the delete of the push items as
@@ -37,6 +49,7 @@ mock.module("../push/storage", () => ({
 	},
 	migratePushItems: async () => {
 		migrated.push("push-items");
+		return pushResult.done;
 	},
 }));
 
@@ -47,6 +60,10 @@ beforeEach(() => {
 	kv.clear();
 	deleted.length = 0;
 	migrated.length = 0;
+	writes.length = 0;
+	keychain.stored = null;
+	keychain.writeFailures = 0;
+	pushResult.done = true;
 	platform.OS = "ios";
 });
 
@@ -81,6 +98,38 @@ describe("migrateKeychainAccessibility", () => {
 		migrated.length = 0;
 		await migrateKeychainAccessibility();
 		expect(migrated).toEqual([]);
+	});
+
+	test("a stored session is deleted and written back, then the flag is set", async () => {
+		keychain.stored = '{"token":"t"}';
+		await migrateKeychainAccessibility();
+		expect(deleted).toContain("farmer.session");
+		expect(writes).toEqual(['{"token":"t"}']);
+		expect(kv.get("farmer.keychain-device-only")).toBe("1");
+	});
+
+	test("a failed write is tried once more, and the flag is set", async () => {
+		keychain.stored = '{"token":"t"}';
+		keychain.writeFailures = 1;
+		await migrateKeychainAccessibility();
+		expect(writes).toEqual(['{"token":"t"}']);
+		expect(kv.get("farmer.keychain-device-only")).toBe("1");
+	});
+
+	test("two failed writes leave the flag unset, so the next launch runs again", async () => {
+		keychain.stored = '{"token":"t"}';
+		keychain.writeFailures = 2;
+		await migrateKeychainAccessibility();
+		expect(kv.has("farmer.keychain-device-only")).toBe(false);
+		keychain.stored = null;
+		await migrateKeychainAccessibility();
+		expect(kv.get("farmer.keychain-device-only")).toBe("1");
+	});
+
+	test("a push item that failed leaves the flag unset", async () => {
+		pushResult.done = false;
+		await migrateKeychainAccessibility();
+		expect(kv.has("farmer.keychain-device-only")).toBe(false);
 	});
 
 	test("Android does nothing", async () => {
