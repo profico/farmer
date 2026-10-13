@@ -677,7 +677,7 @@ export class FarmerClient {
 	}
 
 	/** List projects, with their stats, type, icon and money. `projects`
-	 *  reads the same route with the short shape of API version 1. */
+	 *  reads the same route and keeps the short shape. */
 	listProjects(slug: string) {
 		return this.#request(
 			"GET",

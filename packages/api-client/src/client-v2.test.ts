@@ -154,7 +154,7 @@ describe("the api/v1 routes", () => {
 		expect(error.message).toBe("Only an admin can change the organization.");
 	});
 
-	test("whoami from an API version 1 server has no capabilities", async () => {
+	test("whoami with no capabilities field reads as no capabilities", async () => {
 		const { transport } = scriptedServer([
 			jsonReply(200, {
 				userId: "u1",

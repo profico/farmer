@@ -170,7 +170,7 @@ export const projectSchema = z.object({
 	client: clientRef,
 	role: z.string().nullable(),
 	/** The emoji or the path of the uploaded image (`/api/files/...`).
-	 *  Absent on a server from before API version 2. */
+	 *  Optional: a server that predates the field leaves it out. */
 	icon: z.string().nullable().optional(),
 });
 export type Project = z.output<typeof projectSchema>;
