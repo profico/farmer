@@ -77,19 +77,29 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
 - The OIDC path of `@better-auth/expo` (`signIn.oauth2`) has no documented
   proof. A spike against a local server must pass before the sign-in screen
   is built on it.
-- Spike, 6 October 2026: pass. `packages/core/scripts/mobile-sign-in-spike.ts`
-  drove `signIn.oauth2` against a mock OIDC provider, as `expoClient` does. The
+- Spike, 6 October 2026: pass. A script drove `signIn.oauth2` against a mock
+  OIDC provider, as `expoClient` does. The script is removed;
+  `auth/mobile-contract.test.ts` and `auth/mobile-exchange.test.ts` are the
+  proof now. The
   callback sent the browser to `farmer://auth-callback?cookie=<Set-Cookie>`
   (the plugin's own link, before the exchange below), and the session token
   from that cookie gave a 200 on `GET /api/v1/me` as a bearer. The Google
   start and proxy pass too; the Google callback runs through the same hook.
-  The device flow stays the fallback. The script now covers the exchange:
-  the code in the link, the one use, the wrong verifier, and a refused
-  sign-in with a challenge.
+  The device flow stays the fallback. The tests cover the exchange: the
+  code in the link, the one use, the wrong verifier, and a refused sign-in
+  with a challenge.
 - The plugin's `/expo-authorization-proxy` was an open redirect to any https
   URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
   OIDC source, so a source whose authorization endpoint is on a different
   host fails closed.
+- **Resolved, 13 October 2026: the proxy needs a one-time token.** Anybody
+  can start a flow and get a valid `state`, so a check of the state alone
+  let an attacker send a victim to the proxy with the attacker's state. The
+  start answer now holds `proxyToken` for the app. The proxy needs it,
+  spends it once (it lives 5 minutes, and the server keeps only its hash),
+  and compares the whole `authorizationURL` with the one that the server
+  made for it. The token is not bound to one browser: a person who gets the
+  full link can open it.
 - **Resolved, 6 October 2026: the link carries a one-time code, not the
   session.** The session in the `farmer://` link could reach another Android
   app that claims the same scheme, and a self-hosted server cannot use

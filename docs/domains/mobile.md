@@ -267,6 +267,26 @@ link carries a one-time code, not the session (ADR 0005). The code is in
 - The password sign-in, the device flow and API tokens do not use the link
   and did not change.
 
+### The proxy token
+
+The app opens `GET /api/auth/expo-authorization-proxy` in the system browser.
+The plugin's endpoint redirects to any https URL and sets a signed `state`
+cookie from that URL. `packages/core/src/auth/mobile-sign-in.ts` guards it:
+
+- The `mobileProxyToken` plugin adds `proxyToken` to the answer of
+  `/sign-in/social` and `/sign-in/oauth2` for a request with the header
+  `expo-origin`. The server keeps the SHA-256 of the token in `verification`
+  (`mobile-proxy:<hash>`), with the authorization URL that it made. The row
+  lives 5 minutes.
+- The app sends `token` with `authorizationURL` (`proxyUrlFor` in
+  `auth-flow.ts`). The guard spends the token first, with one delete, so the
+  token works once and a refused call burns it.
+- The guard compares the whole `authorizationURL` with the stored one. A URL
+  with another `client_id` or `redirect_uri` is refused. The checks of the
+  provider origin, of the live state and of the app callback stay.
+- The token is a secret of the app that started the flow. It does not bind
+  the proxy link to one browser: a person who gets the full link can open it.
+
 ## Builds
 
 `.github/workflows/mobile-release.yml` builds the app on GitHub runners. It
