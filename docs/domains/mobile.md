@@ -370,7 +370,9 @@ starts with this address in its field. The person taps Continue, and the
 version check and the sign-in run as for a typed address. The person can
 still change the address. Without the variable, or with a bad value, the
 screen starts empty. The workflow sets it to `https://farmer.profi.co` for
-both platforms. Remove the line in the workflow for a build with no default.
+the internal builds only: the APK and the job `ios`. The store builds (the
+AAB and the job `testflight`) do not set it, so their Server field starts
+empty. Remove the line in the workflow for an internal build with no default.
 
 ### Release notes for colleagues
 

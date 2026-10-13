@@ -108,10 +108,6 @@ env:
   # installs over an old one only when its version code is higher, and the
   # run number only goes up. The iOS build number takes the same value.
   FARMER_VERSION_CODE: ${{ github.run_number }}
-  # The Server screen of both apps starts with this address when the app has
-  # no saved server. The person can still change it
-  # (`apps/mobile/app.config.ts`). Remove the line for a build with no default.
-  FARMER_DEFAULT_SERVER: https://farmer.profi.co
   # "true" for a tag `mobile-v*`, and for a manual run with the input on. A
   # push to a branch never uploads to a store. The two upload jobs repeat
   # this test in their `if`, because a job `if` cannot read the workflow env.
@@ -128,7 +124,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
 
@@ -170,7 +166,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
 
@@ -186,7 +182,7 @@ jobs:
       # longer has, and sdkmanager fails on it. Gradle installs the platform,
       # the build tools and the NDK that the project asks for.
       - name: Setup the Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: platform-tools
 
@@ -257,9 +253,16 @@ jobs:
 
       # `with-android-signing.js` reads the keystore from these variables when
       # FARMER_KEYSTORE_PATH is set. Only this step sees the passwords.
+      #
+      # FARMER_DEFAULT_SERVER fills the Server screen of an internal build
+      # (`apps/mobile/app.config.ts`). The APK is an internal build. The AAB
+      # and the TestFlight build are store builds and do not set it, so their
+      # Server field starts empty. `createExpoConfig` runs on every Gradle
+      # build, so the AAB step does not keep the value of the APK step.
       - name: Build the APK
         working-directory: apps/mobile/android
         env:
+          FARMER_DEFAULT_SERVER: https://farmer.profi.co
           FARMER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           FARMER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           FARMER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -331,6 +334,10 @@ jobs:
     timeout-minutes: 90
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      # An internal build (unsigned IPA, simulator zip): the Server screen
+      # starts with this address. The job `testflight` is the store build
+      # and does not set it.
+      FARMER_DEFAULT_SERVER: https://farmer.profi.co
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -341,7 +348,7 @@ jobs:
       # an older SDK. Set the repository variable XCODE_VERSION (for example
       # `27.0` or `latest`) to build with another one.
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: ${{ vars.XCODE_VERSION || 'latest-stable' }}
 
@@ -349,7 +356,7 @@ jobs:
         run: xcodebuild -version
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
 
@@ -508,7 +515,7 @@ jobs:
       # Play Console. A draft app accepts only the status `draft`.
       - name: Upload to Google Play
         if: steps.check.outputs.ready == 'true'
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.profico.farmer
@@ -535,12 +542,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: ${{ vars.XCODE_VERSION || 'latest-stable' }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
 
@@ -708,7 +715,7 @@ jobs:
       # it, App Store Connect holds the build at "Missing Compliance".
       - name: Upload to TestFlight
         if: steps.check.outputs.ready == 'true'
-        uses: apple-actions/upload-testflight-build@v5
+        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5
         with:
           app-path: ${{ steps.ipa.outputs.path }}
           issuer-id: ${{ secrets.ASC_ISSUER_ID }}
