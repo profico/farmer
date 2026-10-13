@@ -160,6 +160,27 @@ const memberTarget = async (userId: string) => {
 	return { type: "member", id: userId, label: row?.name ?? null };
 };
 
+/** Refuse an act on the only owner of the org. The People page hides these
+ *  acts for that row; the REST routes have no page, so the service refuses. */
+const assertNotOnlyOwner = async (
+	ctx: Ctx,
+	userId: string,
+	message: string,
+) => {
+	const owners = await db
+		.select({ userId: member.userId })
+		.from(member)
+		.where(
+			and(
+				eq(member.organizationId, ctx.organizationId),
+				eq(member.role, "owner"),
+			),
+		);
+	if (owners.length <= 1 && owners.some((o) => o.userId === userId)) {
+		throw new Error(message);
+	}
+};
+
 export const membersService = {
 	/** The caller's role in the org, or null when they may not enter it: no
 	 *  membership, or a membership with a pending claim (see
@@ -594,6 +615,13 @@ export const membersService = {
 		if (archived && userId === ctx.userId) {
 			throw new Error("You cannot archive yourself");
 		}
+		if (archived) {
+			await assertNotOnlyOwner(
+				ctx,
+				userId,
+				"You cannot archive the only owner",
+			);
+		}
 		const target = await memberTarget(userId);
 		const archivedAt = archived ? new Date() : null;
 		await db
@@ -642,6 +670,11 @@ export const membersService = {
 	confirmEmail: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, userId);
+		await assertNotOnlyOwner(
+			ctx,
+			userId,
+			"You cannot confirm the address of the only owner",
+		);
 		const profile = await db.query.memberProfile.findFirst({
 			where: and(
 				eq(memberProfile.organizationId, ctx.organizationId),
