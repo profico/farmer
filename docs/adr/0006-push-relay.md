@@ -67,8 +67,10 @@ default).
 - The relay holds the APNs key and the FCM credentials. These are Profico's
   secrets and live only in the relay's Coolify environment.
 - The relay's rate limits trust the one header that `TRUSTED_IP_HEADER`
-  names. With no value, the relay trusts no header and uses the socket
-  address. The relay's origin must accept traffic only through the proxy that
+  names. With the value `none`, the relay trusts no header and uses the
+  socket address. In production the relay refuses to start when the variable
+  is unset, because all phones would then share the proxy's address and one
+  bucket. The relay's origin must accept traffic only through the proxy that
   sets this header. Else a caller sets the header and picks its own bucket.
   An IPv6 caller gets its /64 prefix as its bucket.
 - A reminder can arrive twice. If the relay times out after it delivered the

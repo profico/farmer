@@ -25,6 +25,7 @@ const environment = z.object({
 	PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 	RELAY_DB_PATH: optionalText,
 	TRUSTED_IP_HEADER: z.string().optional(),
+	NODE_ENV: z.string().optional(),
 	RELAY_MAX_DEVICES: z.preprocess(
 		(value) => (value === "" ? undefined : value),
 		z.coerce.number().int().min(1).optional(),
@@ -49,6 +50,15 @@ export const readConfig = (
 	env: Record<string, string | undefined>,
 ): RelayConfig => {
 	const parsed = environment.parse(env);
+
+	// With no value in production, every phone would share the proxy's
+	// address and one rate-limit bucket. `none` states that no proxy is in
+	// front of the relay.
+	if (parsed.NODE_ENV === "production" && !parsed.TRUSTED_IP_HEADER?.trim()) {
+		throw new Error(
+			"Set TRUSTED_IP_HEADER in production: the header that the proxy sets with the client address, or none for a relay with no proxy in front.",
+		);
+	}
 
 	const apnsParts = [
 		parsed.APNS_KEY_P8,

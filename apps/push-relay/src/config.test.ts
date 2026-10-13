@@ -20,6 +20,33 @@ describe("readConfig", () => {
 		);
 	});
 
+	test("production refuses to start without TRUSTED_IP_HEADER", () => {
+		const message = "Set TRUSTED_IP_HEADER in production";
+		expect(() => readConfig({ NODE_ENV: "production" })).toThrow(message);
+		expect(() =>
+			readConfig({ NODE_ENV: "production", TRUSTED_IP_HEADER: "  " }),
+		).toThrow(message);
+	});
+
+	test("production starts with a header name or an explicit none", () => {
+		const header = readConfig({
+			NODE_ENV: "production",
+			TRUSTED_IP_HEADER: "cf-connecting-ip",
+		});
+		expect(header.trustedIpHeader).toBe("cf-connecting-ip");
+		const none = readConfig({
+			NODE_ENV: "production",
+			TRUSTED_IP_HEADER: "none",
+		});
+		expect(none.trustedIpHeader).toBe("none");
+	});
+
+	test("outside production the header stays optional", () => {
+		expect(readConfig({ NODE_ENV: "development" }).trustedIpHeader).toBe(
+			undefined,
+		);
+	});
+
 	test("a half-set APNs configuration stops the start", () => {
 		expect(() => readConfig({ APNS_KEY_ID: "KEY123" })).toThrow(
 			"Set all of APNS_KEY_P8, APNS_KEY_ID and APNS_TEAM_ID, or none of them.",

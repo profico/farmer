@@ -4,8 +4,9 @@
  * but the relay must not import `@farmer/core`, so this is a small copy.
  *
  * `TRUSTED_IP_HEADER` names the ONE header that the proxy in front of the
- * relay sets. It has no default: unset, empty or `none` means the socket
- * address only, so a caller cannot pick its own bucket with a header. Behind
+ * relay sets. It has no default: empty or `none` means the socket
+ * address only, so a caller cannot pick its own bucket with a header. In
+ * production, `readConfig` refuses to start when it is unset. Behind
  * Cloudflare, set `cf-connecting-ip`. For `x-forwarded-for` the relay reads
  * the LAST entry, the one the nearest proxy appended. When the header is
  * missing, the socket address is the fallback, and then `"unknown"`, one

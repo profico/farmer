@@ -44,7 +44,7 @@ const clientHeader = trustedIpHeader(config.trustedIpHeader);
 log(
 	clientHeader
 		? `[push-relay] client address from the header ${clientHeader}`
-		: "[push-relay] client address from the socket (TRUSTED_IP_HEADER is unset)",
+		: "[push-relay] client address from the socket (TRUSTED_IP_HEADER is none or empty)",
 );
 
 const relay = createRelay({
