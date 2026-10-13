@@ -7,7 +7,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { userWriteRoute } from "#/server/api-route.ts";
+import { requireSignIn, userWriteRoute } from "#/server/api-route.ts";
 
 type Params = { installationId: string };
 
@@ -31,7 +31,8 @@ const withInstallationId = ({
 /**
  * `PATCH` and `DELETE /api/v1/me/devices/$installationId` — the app reports
  * a new Live Activity token, a change of the notification permission or a
- * new app version, or forgets the phone. The caller's own phones only.
+ * new app version, or forgets the phone. The caller's own phones only. A
+ * personal API token is refused, as it is on register.
  */
 export const Route = createFileRoute("/api/v1/me/devices/$installationId")({
 	server: {
@@ -40,6 +41,7 @@ export const Route = createFileRoute("/api/v1/me/devices/$installationId")({
 				input: updateMobileDeviceInput,
 				raw: withInstallationId,
 				run: async (caller, input) => {
+					await requireSignIn(caller.via);
 					const { mobileDevicesService } =
 						await import("@farmer/core/services");
 					return toApiMobileDevice(
@@ -54,6 +56,7 @@ export const Route = createFileRoute("/api/v1/me/devices/$installationId")({
 				}),
 				status: 204,
 				run: async (caller, input) => {
+					await requireSignIn(caller.via);
 					const { mobileDevicesService } =
 						await import("@farmer/core/services");
 					await mobileDevicesService.remove({ userId: caller.userId }, input);
