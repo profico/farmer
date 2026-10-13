@@ -113,7 +113,9 @@ beforeAll(async () => {
 		},
 	);
 	apiToken = made.token;
-});
+	// The first `createTestDb` of the run starts PGLite and applies every
+	// migration, which takes about 7 s on a CI runner, over the 5 s default.
+}, 60_000);
 
 afterAll(async () => {
 	await harness.close();
