@@ -16,7 +16,7 @@ export type FetchInit = {
  *  class, which has these members but not every one of the DOM type. */
 export type FetchResponse = Pick<
 	Response,
-	"ok" | "status" | "headers" | "json" | "text" | "body"
+	"ok" | "status" | "headers" | "json" | "text" | "body" | "url"
 >;
 
 export type FetchLike = (
@@ -79,16 +79,49 @@ const timedOut = (transport: Transport, timeoutMs: number) =>
 		`${transport.origin} did not answer within ${Math.round(timeoutMs / 1000)} seconds. The server may be busy: try again in a moment.`,
 	);
 
-/** A 3xx answer. The client does not follow it, and names it. */
+/** A redirect. The client does not follow it, and names it. */
 const redirected = (transport: Transport, response: FetchResponse) =>
 	new ApiClientError(
-		"unreachable",
+		"redirected",
 		`${transport.origin} redirects to ${response.headers.get("location") ?? "another address"} (status ${response.status}). Use that address, and check the proxy of the server.`,
 		{ status: response.status },
 	);
 
-const isRedirect = (response: FetchResponse) =>
-	response.status >= 300 && response.status < 400;
+/** The redirect error for a fetch that followed the redirect itself. */
+const followed = (transport: Transport, response: FetchResponse) =>
+	new ApiClientError(
+		"redirected",
+		`${transport.origin} redirects to ${response.url}. Use that address, and check the proxy of the server.`,
+	);
+
+/** The fetch of React Native can ignore `redirect: "manual"` and follow the
+ *  redirect, and it does not keep the 3xx status. Its `response.url` is then
+ *  the final address, so a different origin or path shows the hop. */
+const wasFollowed = (requestUrl: string, response: FetchResponse): boolean => {
+	if (!response.url) return false;
+	try {
+		const sent = new URL(requestUrl);
+		const received = new URL(response.url);
+		return (
+			sent.origin !== received.origin || sent.pathname !== received.pathname
+		);
+	} catch {
+		return false;
+	}
+};
+
+/** Throw the redirect error when the answer is a 3xx, or when the fetch
+ *  followed a redirect. */
+const rejectRedirect = (
+	transport: Transport,
+	requestUrl: string,
+	response: FetchResponse,
+): void => {
+	if (response.status >= 300 && response.status < 400) {
+		throw redirected(transport, response);
+	}
+	if (wasFollowed(requestUrl, response)) throw followed(transport, response);
+};
 
 const fetchWithTimeout = async (
 	transport: Transport,
@@ -151,13 +184,14 @@ export const send = async (
 	const headers = headersFor(transport, options, "application/json");
 
 	for (let attempt = 0; ; attempt++) {
+		const url = `${transport.origin}${options.path}`;
 		const response = await fetchWithTimeout(
 			transport,
-			`${transport.origin}${options.path}`,
+			url,
 			{ method: options.method, headers, body: options.body },
 			options.timeoutMs ?? REQUEST_TIMEOUT_MS,
 		);
-		if (isRedirect(response)) throw redirected(transport, response);
+		rejectRedirect(transport, url, response);
 		if (response.status !== 429) return response;
 
 		const wait = retryAfterSeconds(
@@ -216,14 +250,15 @@ export const openStream = async (
 	}, timeoutMs);
 	const fetcher = transport.streamFetch ?? transport.fetch;
 	try {
-		const response = await fetcher(`${transport.origin}${options.path}`, {
+		const url = `${transport.origin}${options.path}`;
+		const response = await fetcher(url, {
 			method: options.method,
 			headers: headersFor(transport, options, "text/event-stream"),
 			body: options.body,
 			signal: controller.signal,
 			redirect: "manual",
 		});
-		if (isRedirect(response)) throw redirected(transport, response);
+		rejectRedirect(transport, url, response);
 		return response;
 	} catch (error) {
 		throw streamFailure(

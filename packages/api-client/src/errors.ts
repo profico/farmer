@@ -5,6 +5,9 @@
 export type ApiClientErrorKind =
 	/** No answer: no network, a wrong address, a timeout. */
 	| "unreachable"
+	/** The address sent the request on to another address. A second try ends
+	 *  the same way: the person has to change the address. */
+	| "redirected"
 	/** The address answers, but not as a Farmer server. */
 	| "not_farmer"
 	/** The server has the API switched off (`CLI_ENABLED=false`). */

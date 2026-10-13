@@ -28,6 +28,7 @@ describe("shouldRetry", () => {
 	test("does not retry an answer the app cannot use, or a plain error", () => {
 		expect(shouldRetry(0, failure("invalid_response", 200))).toBe(false);
 		expect(shouldRetry(0, failure("update_required", 426))).toBe(false);
+		expect(shouldRetry(0, failure("redirected", 308))).toBe(false);
 		expect(shouldRetry(0, new Error("bug"))).toBe(false);
 	});
 });

@@ -111,7 +111,7 @@ describe("a redirect", () => {
 	test("is not followed and is named", async () => {
 		const { transport, requests } = scriptedServer([redirect()]);
 		const error = await failureOf(new FarmerClient(transport, "tok").me());
-		expect(error.kind).toBe("unreachable");
+		expect(error.kind).toBe("redirected");
 		expect(error.message).toContain("redirects to https://other.test");
 		expect(error.message).not.toContain("signed");
 		expect(requests).toHaveLength(1);
@@ -127,6 +127,52 @@ describe("a redirect", () => {
 			send(transport, { method: "GET", path: "/api/v1/me", token: null }),
 		);
 		expect(seen).toBe("manual");
+	});
+
+	describe("followed by the fetch itself", () => {
+		/** A 200 answer whose final address is `url`, as a fetch that ignored
+		 *  `redirect: "manual"` gives it. */
+		const answerFrom = (url: string) => {
+			const response = new Response("{}", { status: 200 });
+			Object.defineProperty(response, "url", { value: url });
+			return response;
+		};
+		const call = (url: string) =>
+			send(
+				transportOf(async () => answerFrom(url)),
+				{ method: "GET", path: "/api/v1/me", token: "tok" },
+			);
+
+		test("another origin is named as a redirect", async () => {
+			const error = await failureOf(call("https://other.test/api/v1/me"));
+			expect(error.kind).toBe("redirected");
+			expect(error.message).toContain("redirects to https://other.test");
+		});
+
+		test("another path on the same origin is a redirect", async () => {
+			const error = await failureOf(call(`${ORIGIN}/login`));
+			expect(error.kind).toBe("redirected");
+		});
+
+		test("the same address, an empty url and a query pass", async () => {
+			for (const url of [
+				`${ORIGIN}/api/v1/me`,
+				`${ORIGIN}/api/v1/me?a=1`,
+				"",
+			]) {
+				expect((await call(url)).status).toBe(200);
+			}
+		});
+
+		test("a stream request detects it too", async () => {
+			const error = await failureOf(
+				openStream(
+					transportOf(async () => answerFrom("https://other.test/x")),
+					{ method: "POST", path: "/api/v1/assistant", token: "tok" },
+				),
+			);
+			expect(error.kind).toBe("redirected");
+		});
 	});
 
 	test("a stream request names the redirect too", async () => {
