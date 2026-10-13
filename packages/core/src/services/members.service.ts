@@ -160,7 +160,8 @@ const memberTarget = async (userId: string) => {
 	return { type: "member", id: userId, label: row?.name ?? null };
 };
 
-/** Refuse an act on the only owner of the org. The People page hides these
+/** Refuse an act on the only active owner of the org. An archived owner does
+ *  not count: the org must keep one owner who can still sign in. The People page hides these
  *  acts for that row; the REST routes have no page, so the service refuses. */
 const assertNotOnlyOwner = async (
 	ctx: Ctx,
@@ -170,10 +171,18 @@ const assertNotOnlyOwner = async (
 	const owners = await db
 		.select({ userId: member.userId })
 		.from(member)
+		.leftJoin(
+			memberProfile,
+			and(
+				eq(memberProfile.organizationId, member.organizationId),
+				eq(memberProfile.userId, member.userId),
+			),
+		)
 		.where(
 			and(
 				eq(member.organizationId, ctx.organizationId),
 				eq(member.role, "owner"),
+				isNull(memberProfile.archivedAt),
 			),
 		);
 	if (owners.length <= 1 && owners.some((o) => o.userId === userId)) {

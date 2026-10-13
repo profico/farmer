@@ -90,4 +90,13 @@ describe("the only owner", () => {
 			membersService.setArchived(ctx(OWNER), OWNER_TWO, true),
 		).resolves.toEqual({ emailConfirmed: false });
 	});
+
+	test("an archived owner does not count as an owner", async () => {
+		await expect(
+			membersService.setArchived(ctx(ADMIN), OWNER, true),
+		).rejects.toThrow("You cannot archive the only owner");
+		await expect(
+			membersService.confirmEmail(ctx(ADMIN), OWNER),
+		).rejects.toThrow("You cannot confirm the address of the only owner");
+	});
 });

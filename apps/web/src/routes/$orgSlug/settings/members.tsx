@@ -121,7 +121,10 @@ function MembersSettingsPage() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
 
-	const owners = membersData.members.filter((m) => m.role === "owner");
+	const owners = membersData.members.filter(
+		(m) =>
+			m.role === "owner" && personByUserId.get(m.userId)?.archivedAt == null,
+	);
 
 	const invalidate = () =>
 		Promise.all([
