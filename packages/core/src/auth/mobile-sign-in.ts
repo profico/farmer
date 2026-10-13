@@ -233,7 +233,8 @@ const assertReturnsToApp = (
  *     into the app (a trusted origin that is not http or https).
  *
  * These checks do not stop a person who started a real flow from sending
- * the proxy link to somebody else.
+ * the proxy link to somebody else. The confirmation page after the callback
+ * (`mobile-confirm.ts`) is the step for that case.
  */
 export const assertExpoProxyTarget = async (
 	query: z.infer<typeof expoProxyQuery>,

@@ -138,10 +138,12 @@ const redeemCode = async (
 };
 
 /**
- * Signs in with a provider: the server's start, the provider's page in the
- * system auth session, and the callback, checked against the flow's nonce.
- * The link of the callback carries a one-time code. The app redeems the code
- * with the verifier that made the challenge in the `callbackURL`.
+ * Signs in with a provider: the server's start, the provider's page and the
+ * server's confirmation page in the system auth session, and the link back,
+ * checked against the flow's nonce. The auth session waits for the first
+ * `farmer://` link and does not care how many pages come before it. The link
+ * carries a one-time code. The app redeems the code with the verifier that
+ * made the challenge in the `callbackURL`.
  */
 export const signInWithProvider = async (
 	origin: string,

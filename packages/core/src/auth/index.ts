@@ -73,6 +73,7 @@ import {
 	OAUTH_CONSENT_PATH,
 	oauthConsentRequest,
 } from "./mcp-consent";
+import { mobileConfirm } from "./mobile-confirm";
 import { mobileExchange } from "./mobile-exchange";
 import {
 	assertExpoProxyQuery,
@@ -1095,9 +1096,12 @@ const buildAuth = () => {
 			}),
 			// The mobile app's sign-in (ADR 0005). See `./mobile-sign-in.ts`.
 			expo(),
-			// After `expo()`: it turns the session in the `farmer://` link into a
-			// one-time code. See `./mobile-exchange.ts`.
+			// After `expo()`: it removes the session from the `farmer://` link and
+			// sends the browser to the confirmation page. See `./mobile-exchange.ts`.
 			mobileExchange(),
+			// The confirmation page, which makes the one-time code. See
+			// `./mobile-confirm.ts`.
+			mobileConfirm(),
 			// Stores the authorization URL of each sign-in start from the app, for
 			// the proxy's check. See `./mobile-sign-in.ts`.
 			mobileProxyUrl(),

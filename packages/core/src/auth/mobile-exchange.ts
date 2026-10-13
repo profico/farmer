@@ -26,11 +26,15 @@ import { session, verification } from "../db/schema/auth";
  *     base64url SHA-256 of the verifier, as the `cc` parameter of the
  *     `callbackURL` that it gives to the sign-in start.
  *  2. The provider callback redirects to that `callbackURL`. The `expo()`
- *     plugin adds `cookie=<Set-Cookie>`. The hook below runs after the plugin,
- *     removes the cookie and `cc`, and adds `code=<random>`. The plugin keeps
- *     the `callbackURL` query intact, so `cc` is in the redirect (the proxy
- *     and the OAuth state hold the URL as the app gave it).
- *  3. The app sends the code and the verifier to `POST /mobile/exchange`. The
+ *     plugin adds `cookie=<Set-Cookie>`. The hook below runs after the plugin
+ *     and removes the cookie and `cc`. The plugin keeps the `callbackURL`
+ *     query intact, so `cc` is in the redirect (the proxy and the OAuth state
+ *     hold the URL as the app gave it).
+ *  3. The hook does not send the browser to the app. It stores a pending
+ *     confirmation and sends the browser to the confirmation page
+ *     (`mobile-confirm.ts`). When the person continues there, the server
+ *     makes `code=<random>` and redirects to the app.
+ *  4. The app sends the code and the verifier to `POST /mobile/exchange`. The
  *     answer is the session token.
  *
  * The code is 32 random bytes. The server keeps only its SHA-256, in the
@@ -50,6 +54,9 @@ import { session, verification } from "../db/schema/auth";
 export const EXCHANGE_TTL_MS = 60_000;
 
 export const EXCHANGE_PATH = "/mobile/exchange";
+
+/** The confirmation page of `mobile-confirm.ts`, under the auth base path. */
+export const CONFIRM_PATH = "/mobile/confirm";
 
 const IDENTIFIER_PREFIX = "mobile-exchange:";
 
@@ -146,18 +153,111 @@ const exchangeBody = z.object({
 	verifier: z.string().min(43).max(128),
 });
 
+/** How long the confirmation page waits for the person. */
+export const CONFIRMATION_TTL_MS = 5 * 60_000;
+
+const CONFIRMATION_PREFIX = "mobile-confirm:";
+
+const confirmationIdentifier = (id: string) =>
+	`${CONFIRMATION_PREFIX}${sha256(id).toString("hex")}`;
+
+const pendingValue = z.object({
+	challenge: z.string(),
+	sessionId: z.string(),
+	link: z.string(),
+});
+
+export type PendingConfirmation = z.infer<typeof pendingValue>;
+
+/**
+ * Stores a sign-in that waits for the person to confirm it, and returns the
+ * one-time id of the confirmation page. `link` is the `farmer://` link with
+ * no code. The server keeps only the hash of the id. Rows that expired are
+ * removed here, so the table does not grow.
+ */
+export const startConfirmation = async (
+	pending: PendingConfirmation,
+	now: Date = new Date(),
+): Promise<string> => {
+	await db
+		.delete(verification)
+		.where(
+			and(
+				like(verification.identifier, `${CONFIRMATION_PREFIX}%`),
+				lt(verification.expiresAt, now),
+			),
+		);
+	const id = randomBytes(32).toString("base64url");
+	await db.insert(verification).values({
+		id: randomBytes(16).toString("hex"),
+		identifier: confirmationIdentifier(id),
+		value: JSON.stringify(pending),
+		expiresAt: new Date(now.getTime() + CONFIRMATION_TTL_MS),
+	});
+	return id;
+};
+
+const parsePending = (value: string): PendingConfirmation | null => {
+	try {
+		return pendingValue.parse(JSON.parse(value));
+	} catch {
+		return null;
+	}
+};
+
+/** Reads a live confirmation and leaves it in place, for the page. */
+export const peekConfirmation = async (
+	id: string,
+	now: Date = new Date(),
+): Promise<PendingConfirmation | null> => {
+	const [row] = await db
+		.select({ value: verification.value })
+		.from(verification)
+		.where(
+			and(
+				eq(verification.identifier, confirmationIdentifier(id)),
+				gt(verification.expiresAt, now),
+			),
+		);
+	return row ? parsePending(row.value) : null;
+};
+
+/**
+ * Spends a confirmation and returns it, or null for an unknown, used or
+ * expired id. The delete is the single use: two requests with the same id
+ * cannot both get the row.
+ */
+export const takeConfirmation = async (
+	id: string,
+	now: Date = new Date(),
+): Promise<PendingConfirmation | null> => {
+	const [row] = await db
+		.delete(verification)
+		.where(
+			and(
+				eq(verification.identifier, confirmationIdentifier(id)),
+				gt(verification.expiresAt, now),
+			),
+		)
+		.returning({ value: verification.value });
+	return row ? parsePending(row.value) : null;
+};
+
 /**
  * Rewrites the redirect of a callback that ends at the app (a link that is
  * not http or https). The session cookie that `expo()` added never stays in
- * the link. A valid `cc` and a new session give `code`. A callback that has
- * an `error` already (a refused sign-in) keeps that error, with no code,
- * because the callback still sets a cookie (the one that clears the state
- * cookie). Any other callback gives `error=exchange_failed`: a `cc` that is
- * not a challenge, no `cc`, or no new session.
+ * the link. A valid `cc` and a new session give the address of the
+ * confirmation page (`confirmPage?id=<one-time id>`), not a code: the code
+ * comes only after the person confirms there. A callback that has an `error`
+ * already (a refused sign-in) keeps that error and goes to the app, because
+ * the callback still sets a cookie (the one that clears the state cookie).
+ * Any other callback gives `error=exchange_failed`: a `cc` that is not a
+ * challenge, no `cc`, or no new session.
  */
 export const rewriteExchangeRedirect = async (
 	location: string,
 	newSessionId: string | null,
+	confirmPage: string,
 ): Promise<string | null> => {
 	let url: URL;
 	try {
@@ -169,17 +269,17 @@ export const rewriteExchangeRedirect = async (
 	const challenge = url.searchParams.get("cc");
 	url.searchParams.delete("cookie");
 	url.searchParams.delete("cc");
-	if (url.searchParams.has("error")) {
-		// The error is the reason for the app to show. No code is made.
-	} else if (newSessionId && challenge !== null && CHALLENGE.test(challenge)) {
-		url.searchParams.set(
-			"code",
-			await mintExchangeCode(newSessionId, challenge),
-		);
-	} else {
+	if (url.searchParams.has("error")) return url.toString();
+	if (!newSessionId || challenge === null || !CHALLENGE.test(challenge)) {
 		url.searchParams.set("error", "exchange_failed");
+		return url.toString();
 	}
-	return url.toString();
+	const id = await startConfirmation({
+		challenge,
+		sessionId: newSessionId,
+		link: url.toString(),
+	});
+	return `${confirmPage}?${new URLSearchParams({ id })}`;
 };
 
 /**
@@ -211,6 +311,7 @@ export const mobileExchange = () =>
 						const rewritten = await rewriteExchangeRedirect(
 							location,
 							ctx.context.newSession?.session.id ?? null,
+							`${ctx.context.baseURL}${CONFIRM_PATH}`,
 						);
 						if (rewritten) ctx.setHeader("location", rewritten);
 					}),

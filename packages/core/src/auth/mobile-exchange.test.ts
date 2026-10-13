@@ -1,5 +1,6 @@
 // The exchange code of the mobile sign-in (ADR 0005): single use, a short
-// life, the verifier, and a redirect that never carries the session.
+// life, the verifier, and a redirect that never carries the session and
+// goes to the confirmation page first.
 
 import {
 	afterAll,
@@ -21,6 +22,7 @@ import {
 	challengeFor,
 	EXCHANGE_TTL_MS,
 	mintExchangeCode,
+	peekConfirmation,
 	redeemExchangeCode,
 	rewriteExchangeRedirect,
 } from "./mobile-exchange";
@@ -170,6 +172,7 @@ describe("POST /mobile/exchange", () => {
 
 describe("the redirect", () => {
 	const SET_COOKIE = `better-auth.session_token=${TOKEN}.sig; Path=/`;
+	const CONFIRM = "http://localhost:3000/api/auth/mobile/confirm";
 	const linkWith = (extra: Record<string, string>) => {
 		const url = new URL("farmer://auth-callback?flow=n-1");
 		for (const [key, value] of Object.entries(extra)) {
@@ -178,25 +181,53 @@ describe("the redirect", () => {
 		return url.toString();
 	};
 
-	test("carries a code and never the session", async () => {
+	test("goes to the confirmation page, with no code and no session", async () => {
 		const challenge = challengeFor(VERIFIER);
 		const out = await rewriteExchangeRedirect(
 			linkWith({ cc: challenge, cookie: SET_COOKIE }),
 			sessionId,
+			CONFIRM,
 		);
 		const url = new URL(present(out, "the rewritten link"));
-		expect(url.searchParams.get("flow")).toBe("n-1");
-		expect(url.searchParams.has("cookie")).toBe(false);
-		expect(url.searchParams.has("cc")).toBe(false);
+		expect(`${url.origin}${url.pathname}`).toBe(CONFIRM);
+		expect([...url.searchParams.keys()]).toEqual(["id"]);
 		expect(url.toString()).not.toContain(TOKEN);
-		const code = present(url.searchParams.get("code"), "the code");
-		expect(await redeemExchangeCode(code, VERIFIER)).toBe(TOKEN);
+		const pending = present(
+			await peekConfirmation(present(url.searchParams.get("id"), "id")),
+			"the pending confirmation",
+		);
+		expect(pending).toEqual({
+			challenge,
+			sessionId,
+			link: "farmer://auth-callback?flow=n-1",
+		});
+	});
+
+	test("stores only a hash of the confirmation id", async () => {
+		const out = await rewriteExchangeRedirect(
+			linkWith({ cc: challengeFor(VERIFIER), cookie: SET_COOKIE }),
+			sessionId,
+			CONFIRM,
+		);
+		const id = present(
+			new URL(present(out, "link")).searchParams.get("id"),
+			"id",
+		);
+		const rows = await db
+			.select()
+			.from(verification)
+			.where(like(verification.identifier, "mobile-confirm:%"));
+		const row = present(rows[0], "the confirmation row");
+		expect(row.identifier).not.toContain(id);
+		expect(row.value).not.toContain(id);
+		expect(row.value).not.toContain(TOKEN);
 	});
 
 	test("drops the session when the challenge is not a challenge", async () => {
 		const out = await rewriteExchangeRedirect(
 			linkWith({ cc: "short", cookie: SET_COOKIE }),
 			sessionId,
+			CONFIRM,
 		);
 		const url = new URL(present(out, "the rewritten link"));
 		expect(url.toString()).not.toContain(TOKEN);
@@ -208,6 +239,7 @@ describe("the redirect", () => {
 		const out = await rewriteExchangeRedirect(
 			linkWith({ cc: challengeFor(VERIFIER), cookie: SET_COOKIE }),
 			null,
+			CONFIRM,
 		);
 		const url = new URL(present(out, "the rewritten link"));
 		expect(url.toString()).not.toContain(TOKEN);
@@ -219,6 +251,7 @@ describe("the redirect", () => {
 		const out = await rewriteExchangeRedirect(
 			linkWith({ cookie: SET_COOKIE }),
 			sessionId,
+			CONFIRM,
 		);
 		const url = new URL(present(out, "the rewritten link"));
 		expect(url.toString()).not.toContain(TOKEN);
@@ -236,6 +269,7 @@ describe("the redirect", () => {
 				error: "This_instance_does_not_accept_new_accounts.",
 			}),
 			null,
+			CONFIRM,
 		);
 		const url = new URL(present(out, "the rewritten link"));
 		expect(url.searchParams.get("error")).toBe(
@@ -251,6 +285,7 @@ describe("the redirect", () => {
 			await rewriteExchangeRedirect(
 				"https://x.example/?cc=a&cookie=b",
 				sessionId,
+				CONFIRM,
 			),
 		).toBeNull();
 	});
