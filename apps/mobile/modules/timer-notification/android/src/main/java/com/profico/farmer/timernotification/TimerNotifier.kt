@@ -12,7 +12,9 @@ import android.net.Uri
 /**
  * Builds and posts the ongoing timer notification (ADR 0003, ADR 0005).
  *
- * The notification shows the elapsed time only. Stop opens the app on the
+ * On the lock screen the notification shows the elapsed time only, under a
+ * generic title (`publicVersion`). The project, the task and the workspace
+ * name show once the phone is unlocked. Stop opens the app on the
  * stop sheet, where the person confirms the figure: nothing confirms an entry
  * from the notification. Pause and Resume go to `TimerActionReceiver`, which
  * calls the server without the app.
@@ -85,6 +87,30 @@ object TimerNotifier {
     return "%d:%02d:%02d".format(hours, minutes, secs)
   }
 
+  /** What the lock screen shows when the phone hides private content: a
+   *  generic title and the elapsed time. No project, no task, no workspace
+   *  name and no action. */
+  private fun publicVersion(context: Context, icon: Int, snapshot: TimerSnapshot): Notification {
+    val builder = Notification.Builder(context, CHANNEL_ID)
+      .setSmallIcon(icon)
+      .setContentTitle("Farmer timer")
+      .setOngoing(true)
+      .setOnlyAlertOnce(true)
+      .setCategory(Notification.CATEGORY_STOPWATCH)
+    if (snapshot.paused) {
+      builder
+        .setContentText("Paused at ${formatElapsed(snapshot.elapsedSeconds)}")
+        .setUsesChronometer(false)
+        .setShowWhen(false)
+    } else {
+      builder
+        .setUsesChronometer(true)
+        .setShowWhen(true)
+        .setWhen(snapshot.chronometerBaseMs)
+    }
+    return builder.build()
+  }
+
   fun post(context: Context, snapshot: TimerSnapshot) {
     ensureChannel(context)
     save(context, snapshot)
@@ -101,7 +127,8 @@ object TimerNotifier {
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setCategory(Notification.CATEGORY_STOPWATCH)
-      .setVisibility(Notification.VISIBILITY_PUBLIC)
+      .setVisibility(Notification.VISIBILITY_PRIVATE)
+      .setPublicVersion(publicVersion(context, icon, snapshot))
       .setContentIntent(viewIntent(context, snapshot.openUrl, 1))
 
     if (snapshot.paused) {
