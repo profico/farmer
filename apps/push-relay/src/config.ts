@@ -37,9 +37,23 @@ const environment = z.object({
 	FCM_SERVICE_ACCOUNT_JSON: optionalText,
 });
 
+const HEADER_NAME = /^[a-z0-9-]+$/i;
+
 export const DEFAULT_MAX_DEVICES = 100_000;
 export const DEFAULT_DB_PATH = "./data/relay.sqlite";
 export const DEFAULT_APNS_TOPIC = "com.profico.farmer";
+
+/** Refuse a value that is not a header name or `none`. A bad name would make
+ *  every request fail in the runtime. */
+const checkTrustedIpHeader = (value: string | undefined): void => {
+	const header = value?.trim() ?? "";
+	if (header === "" || header.toLowerCase() === "none") return;
+	if (!HEADER_NAME.test(header)) {
+		throw new Error(
+			"TRUSTED_IP_HEADER is not a header name: use letters, digits and hyphens, or none.",
+		);
+	}
+};
 
 /**
  * Read the configuration from the environment. Throws on a half-set APNs
@@ -50,6 +64,8 @@ export const readConfig = (
 	env: Record<string, string | undefined>,
 ): RelayConfig => {
 	const parsed = environment.parse(env);
+
+	checkTrustedIpHeader(parsed.TRUSTED_IP_HEADER);
 
 	// With no value in production, every phone would share the proxy's
 	// address and one rate-limit bucket. `none` states that no proxy is in

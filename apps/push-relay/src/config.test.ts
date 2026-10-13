@@ -20,6 +20,18 @@ describe("readConfig", () => {
 		);
 	});
 
+	test("TRUSTED_IP_HEADER must be a header name or none", () => {
+		expect(() => readConfig({ TRUSTED_IP_HEADER: "bad header" })).toThrow(
+			"TRUSTED_IP_HEADER",
+		);
+		expect(() => readConfig({ TRUSTED_IP_HEADER: "x:y" })).toThrow(
+			"TRUSTED_IP_HEADER",
+		);
+		for (const value of ["cf-connecting-ip", "X-Forwarded-For", "none", ""]) {
+			expect(() => readConfig({ TRUSTED_IP_HEADER: value })).not.toThrow();
+		}
+	});
+
 	test("production refuses to start without TRUSTED_IP_HEADER", () => {
 		const message = "Set TRUSTED_IP_HEADER in production";
 		expect(() => readConfig({ NODE_ENV: "production" })).toThrow(message);
