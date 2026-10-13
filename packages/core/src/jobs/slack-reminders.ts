@@ -68,8 +68,11 @@ export type SlackReminderSummary = {
 // A workspace with no Slack installation is still run when one of its people
 // has a phone that allows notifications. The pass then sends through the app
 // channel only (`notify` with `appOnly`), and never tries Slack. A person
-// without such a phone is skipped before the claim, so a phone that registers
-// later today, or a Slack install, still reaches them the same day.
+// without such a phone is skipped before the claim. A workspace with no such
+// phone at all is not run, and does not count as finished, so its first phone
+// or a Slack install still reaches everyone the same day. A phone that
+// registers after a pass finished waits for the next day, because `finishedRuns`
+// ends the pass of that kind for the day.
 //
 // A refused bot token is neither case: it is about the credential, and every
 // send after it fails the same way. `sendDm` records it on the installation
@@ -246,8 +249,7 @@ export const runSlackRemindersOnce = async (
 		const installation = await slackService.installationFor(org.id);
 		// Without Slack, the pass still runs for an org with a phone to tell.
 		const appOnly = !installation;
-		if (appOnly && !(await orgHasNotifiablePhone(org.id))) continue;
-		summary.organizations++;
+		if (!appOnly) summary.organizations++;
 
 		// The job runs unattended, so it needs a ctx to satisfy the service
 		// signatures; nothing below checks a caller, because there is none.
@@ -268,6 +270,12 @@ export const runSlackRemindersOnce = async (
 				due.push(entry);
 			}
 			if (due.length === 0) continue;
+
+			// The phone check is a query, so it runs after the cheap exit above.
+			if (appOnly) {
+				if (!(await orgHasNotifiablePhone(org.id))) continue;
+				summary.organizations++;
+			}
 
 			const dashboard = dashboardLoader(ctx, settings, now);
 			const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
