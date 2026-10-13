@@ -19,7 +19,10 @@ mock.module("expo-sqlite/kv-store", () => ({
 }));
 // The Keychain holds `stored` for the session key. `writeFailures` is the
 // number of `setItemAsync` calls that fail before one succeeds.
-const keychain = { stored: null as string | null, writeFailures: 0 };
+const keychain: { stored: string | null; writeFailures: number } = {
+	stored: null,
+	writeFailures: 0,
+};
 const writes: string[] = [];
 const pushResult = { done: true };
 
