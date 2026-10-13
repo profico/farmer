@@ -76,12 +76,14 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 
 ## Architecture
 
-Five workspaces:
+Seven workspaces:
 
 - `apps/web` — the TanStack Start/React app and its Bun production host.
 - `apps/cli` — `@farmer/cli`, the `farmer` command-line tool (see `apps/cli/CLAUDE.md`).
 - `packages/core` — `@farmer/core`, the services, the schema, the jobs and the auth config.
 - `apps/push-relay` — `@farmer/push-relay`, the push relay at `push.farmer.profi.co`, its own image, never imports the server (see `apps/push-relay/README.md`, ADR 0006).
+- `apps/mobile` — `@farmer/mobile`, the Expo app for Android and iOS (see `docs/domains/mobile.md`, ADR 0005).
+- `packages/api-client` — `@farmer/api-client`, the typed client of `api/v1` that the app uses.
 - `packages/push-crypto` — `@farmer/push-crypto`, the HPKE seal/open for a push payload, shared by the server and the app, no `@farmer/core` imports.
 
 The split is deliberate: `packages/core` must stay reusable from another process.

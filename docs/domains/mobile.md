@@ -229,8 +229,6 @@ opens the sealed payload with the phone's private key. Use
   must send it so, or the routes must learn to read the cookie on a write.
 - The Slack reminder job skips a workspace with no Slack installation, so the
   Slack kinds do not reach the app in such a workspace.
-- `remindersChannel` has no control in the web app yet. The API and the server
-  function of Preferences accept it.
 
 ## The sign-in exchange
 

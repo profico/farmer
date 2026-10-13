@@ -63,7 +63,8 @@ The "Area" column names the part of the app that owns the row.
 | Absences: list, add, delete | `absences` | done |
 | Rewind | `rewind` | done |
 | Display: theme, Material You, dark mode, contrast, less motion | on the device | done |
-| Signed-in devices, API tokens | none | owner |
+| Signed-in devices: list, end a session | `me/sessions` | written |
+| API tokens: list, create, revoke | `api-tokens` | written |
 | Link or unlink Google sign-in | better-auth | web link |
 
 ## Projects and reports (area: projects)
@@ -122,7 +123,8 @@ links to them.
 These rows wait for accounts of the owner: `google-services.json` for FCM, an
 APNs key and an Apple team, and the relay on Coolify at
 `push.farmer.profi.co`. The Android code compiles in the release build. The
-iOS code has no build yet.
+workflow `mobile-release.yml` also builds the iOS app on a GitHub runner, but
+no device ran the iOS code with APNs.
 
 ## The emulator run, 6 October 2026
 
