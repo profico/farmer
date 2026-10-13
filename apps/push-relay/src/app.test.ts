@@ -39,6 +39,7 @@ const setup = (
 		android?: Sender;
 		limits?: Partial<RelayLimits>;
 		trustedIpHeader?: string | null;
+		maxDevices?: number;
 	} = {},
 ) => {
 	const store = DeviceStore.open(":memory:");
@@ -56,19 +57,35 @@ const setup = (
 			options.trustedIpHeader === undefined
 				? "cf-connecting-ip"
 				: options.trustedIpHeader,
+		maxDevices: options.maxDevices ?? 1_000,
 		log: (line) => logs.push(line),
 		now: () => clock,
 	});
+	// The tests write a device route as `/v1/devices/<relayId>` and
+	// `/v1/devices/<relayId>/verify`. The relay takes the id from a header,
+	// so this helper moves the id out of the path, as the clients do.
 	const call = (
 		method: string,
 		path: string,
 		body?: string | JsonObject,
 		headers: Record<string, string> = {},
-	) =>
-		relay(
-			new Request(`${BASE}${path}`, {
+	) => {
+		const device = /^\/v1\/devices\/([^/]+)(\/verify)?$/.exec(path);
+		const wire = device
+			? {
+					path: device[2] ? "/v1/devices/verify" : "/v1/devices",
+					id: device[1],
+				}
+			: { path, id: undefined };
+		const baseHeaders = new Headers({ "content-type": "application/json" });
+		if (wire.id) baseHeaders.set("x-relay-id", wire.id);
+		for (const [name, value] of Object.entries(headers)) {
+			baseHeaders.set(name, value);
+		}
+		return relay(
+			new Request(`${BASE}${wire.path}`, {
 				method,
-				headers: { "content-type": "application/json", ...headers },
+				headers: baseHeaders,
 				body:
 					body === undefined
 						? undefined
@@ -78,6 +95,7 @@ const setup = (
 			}),
 			"10.0.0.1",
 		);
+	};
 	return {
 		store,
 		logs,
@@ -578,6 +596,44 @@ describe("rate limits", () => {
 		expect(other.status).toBe(201);
 	});
 
+	test("a registration past the device cap is a 503 with a log line", async () => {
+		const { call, logs, store } = setup({ maxDevices: 2 });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		await register(call, body);
+		await register(call, body);
+		const refused = await call("POST", "/v1/devices", body);
+		expect(refused.status).toBe(503);
+		expect(await errorOf(refused)).toBe("relay_full");
+		expect(store.count()).toBe(2);
+		expect(logs.some((line) => line.includes("full"))).toBe(true);
+	});
+
+	test("one push token has one budget, however many relay ids it holds", async () => {
+		const { call } = setup({ limits: { pushPerMinute: 2 } });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const ids = [
+			(await register(call, body)).relayId,
+			(await register(call, body)).relayId,
+			(await register(call, body)).relayId,
+		];
+		const statuses: number[] = [];
+		for (const relayId of ids) {
+			const push = { relayId, kind: "alert", ciphertext: CIPHERTEXT };
+			statuses.push((await call("POST", "/v1/push", push)).status);
+		}
+		expect(statuses).toEqual([200, 200, 429]);
+		const other = await register(call, {
+			platform: "android",
+			pushToken: "another-fcm-registration-token-01",
+		});
+		const push = {
+			relayId: other.relayId,
+			kind: "alert",
+			ciphertext: CIPHERTEXT,
+		};
+		expect((await call("POST", "/v1/push", push)).status).toBe(200);
+	});
+
 	test("with TRUSTED_IP_HEADER none, a caller's header does not pick its bucket", async () => {
 		const { call } = setup({
 			limits: { devicePerAddressPer10Minutes: 1 },
@@ -620,6 +676,7 @@ describe("size limits", () => {
 			},
 			limiters: createLimiters(DEFAULT_LIMITS),
 			trustedIpHeader: null,
+			maxDevices: 1_000,
 			log: () => {},
 			now: () => 0,
 		});
@@ -1089,6 +1146,63 @@ describe("registration proof", () => {
 		).toBe(204);
 		const refused = await call("POST", `/v1/devices/${relayId}/verify`, body);
 		expect(refused.status).toBe(429);
+	});
+
+	test("junk ids count against the address and not against a known id", async () => {
+		const { call } = setup({
+			limits: { verifyUnknownPerAddressPer10Minutes: 2 },
+		});
+		const { relayId, deviceSecret } = await register(call);
+		const statuses: number[] = [];
+		for (let i = 0; i < 4; i += 1) {
+			const id = `junk-${i}`.padEnd(22, "x");
+			const junk = await call("POST", `/v1/devices/${id}/verify`, {
+				publicKey: KEY,
+				proof: proofOf("secret", id),
+			});
+			statuses.push(junk.status);
+		}
+		expect(statuses).toEqual([401, 401, 429, 429]);
+		const real = await call("POST", `/v1/devices/${relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(deviceSecret, relayId),
+		});
+		expect(real.status).toBe(204);
+	});
+
+	test("a caller at another address cannot use up the limit of a known id", async () => {
+		const { call } = setup({ limits: { verifyPerRelayPer10Minutes: 2 } });
+		const { relayId, deviceSecret } = await register(call);
+		const body = { publicKey: KEY, proof: proofOf("wrong", relayId) };
+		for (let i = 0; i < 3; i += 1) {
+			await call("POST", `/v1/devices/${relayId}/verify`, body, {
+				"cf-connecting-ip": "203.0.113.9",
+			});
+		}
+		const real = await call("POST", `/v1/devices/${relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(deviceSecret, relayId),
+		});
+		expect(real.status).toBe(204);
+	});
+
+	test("an id in the URL path is not a route, and no id header is a 401", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const noHeader = await call(
+			"PUT",
+			"/v1/devices",
+			{ pushToken: "d".repeat(64) },
+			{ authorization: `Bearer ${deviceSecret}` },
+		);
+		expect(noHeader.status).toBe(401);
+		const viaPath = await call(
+			"PUT",
+			`/v1/devices/${relayId}/extra`,
+			{ pushToken: "d".repeat(64) },
+			{ authorization: `Bearer ${deviceSecret}` },
+		);
+		expect(viaPath.status).toBe(404);
 	});
 
 	test("a malformed body is a 400, and another method is a 405", async () => {

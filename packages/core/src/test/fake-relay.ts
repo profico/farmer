@@ -31,7 +31,7 @@ export type FakeRelay = {
 	/** The answer for one relay id, until `reset`. Else 200. */
 	answer: (relayId: string, answer: Answer) => void;
 	/** Make the relay hold a registration, as `POST /v1/devices` does. A
-	 *  `POST /v1/devices/:relayId/verify` answers 204 for a proof that the
+	 *  `POST /v1/devices/verify` (the id in `x-relay-id`) answers 204 for a proof that the
 	 *  secret made, and 401 for any other. */
 	registerDevice: (relayId: string, deviceSecret: string) => void;
 	/** The verify requests, as the relay saw them. */
@@ -74,11 +74,8 @@ export const startFakeRelay = (): FakeRelay => {
 	const server = Bun.serve({
 		port: 0,
 		fetch: async (request) => {
-			const verify = /^\/v1\/devices\/([^/]+)\/verify$/.exec(
-				new URL(request.url).pathname,
-			);
-			if (verify) {
-				const relayId = decodeURIComponent(verify[1] ?? "");
+			if (new URL(request.url).pathname === "/v1/devices/verify") {
+				const relayId = request.headers.get("x-relay-id") ?? "";
 				// SAFETY: the server under test sends `{ publicKey, proof }`.
 				const check = (await request.json()) as {
 					publicKey: string;

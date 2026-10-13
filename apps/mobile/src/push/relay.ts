@@ -31,7 +31,7 @@ export type RelayAnswer = "ok" | "unauthorized" | "failed";
 const call = async (
 	url: string,
 	method: "POST" | "PUT" | "DELETE",
-	secret: string | null,
+	credentials: RelayCredentials | null,
 	body: string | null,
 ) => {
 	// `AbortSignal.timeout` is not in React Native, so the timer is our own.
@@ -42,7 +42,11 @@ const call = async (
 		"user-agent": USER_AGENT,
 	});
 	if (body !== null) headers.set("content-type", "application/json");
-	if (secret !== null) headers.set("authorization", `Bearer ${secret}`);
+	// The relay id goes in a header, not in the URL path: a proxy logs a path.
+	if (credentials !== null) {
+		headers.set("x-relay-id", credentials.relayId);
+		headers.set("authorization", `Bearer ${credentials.deviceSecret}`);
+	}
 	try {
 		return await fetch(url, {
 			method,
@@ -94,7 +98,7 @@ export type RelayUpdate = {
 	liveActivityToken?: string | null;
 };
 
-/** `PUT /v1/devices/:relayId`. Never throws. */
+/** `PUT /v1/devices`, with the relay id in `x-relay-id`. Never throws. */
 export const updateRelay = async (
 	relayUrl: string,
 	credentials: RelayCredentials,
@@ -102,9 +106,9 @@ export const updateRelay = async (
 ): Promise<RelayAnswer> => {
 	try {
 		const response = await call(
-			`${devicesUrl(relayUrl)}/${encodeURIComponent(credentials.relayId)}`,
+			devicesUrl(relayUrl),
 			"PUT",
-			credentials.deviceSecret,
+			credentials,
 			JSON.stringify(update),
 		);
 		if (response.ok) return "ok";
@@ -114,16 +118,16 @@ export const updateRelay = async (
 	}
 };
 
-/** `DELETE /v1/devices/:relayId`. Never throws. */
+/** `DELETE /v1/devices`, with the relay id in `x-relay-id`. Never throws. */
 export const removeFromRelay = async (
 	relayUrl: string,
 	credentials: RelayCredentials,
 ): Promise<RelayAnswer> => {
 	try {
 		const response = await call(
-			`${devicesUrl(relayUrl)}/${encodeURIComponent(credentials.relayId)}`,
+			devicesUrl(relayUrl),
 			"DELETE",
-			credentials.deviceSecret,
+			credentials,
 			null,
 		);
 		if (response.ok) return "ok";

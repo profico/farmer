@@ -27,7 +27,8 @@ accounts exist.
 |---|---|---|
 | `PORT` | `3000` | The HTTP port. |
 | `RELAY_DB_PATH` | `./data/relay.sqlite` | The SQLite file. The relay makes the directory on start. The image sets `/data/relay.sqlite` on the `/data` volume. |
-| `TRUSTED_IP_HEADER` | `cf-connecting-ip` | The one header that the proxy in front of the relay sets with the client address. For `x-forwarded-for` the relay reads the last entry. `none` means the socket address only: behind a proxy, every caller then shares the proxy's bucket, so do not set `none` there. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. |
+| `TRUSTED_IP_HEADER` | (none) | The one header that the proxy in front of the relay sets with the client address. Unset, empty or `none` means the socket address only: the relay trusts no header. Behind Cloudflare, set `cf-connecting-ip`, or every caller shares the proxy's bucket. For `x-forwarded-for` the relay reads the last entry. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. The relay logs the choice at start. |
+| `RELAY_MAX_DEVICES` | `100000` | The most devices that the relay holds. A registration past it gets `503 relay_full`. |
 | `APNS_KEY_P8` | (none) | The `.p8` key from Apple, as PEM. Literal `\n` sequences count as line breaks. |
 | `APNS_KEY_ID` | (none) | The key id of the `.p8` key. |
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
@@ -68,9 +69,11 @@ base64url values: 128 bits for the relay id, 256 bits for the secret. The
 relay keeps only the SHA-256 hash of the secret. The app keeps the secret and
 gives only the relay id (and its public key) to its server.
 
-### `PUT /v1/devices/:relayId`
+### `PUT /v1/devices`
 
-The app sends a new token, with `Authorization: Bearer <deviceSecret>`. Send
+The app sends a new token, with `Authorization: Bearer <deviceSecret>` and
+`X-Relay-Id: <relayId>`. The relay id is in a header and not in the URL path,
+because a proxy writes the path in its access log. Send
 one or more of `pushToken`, `apnsEnvironment` and
 `liveActivityPushToStartToken` and `liveActivityToken`. A `null` push-to-start
 token clears it. `liveActivityToken` binds a per-activity token to the
@@ -107,15 +110,17 @@ secret:
   `403 activity_token_unbound`. The relay sends nothing. The app binds
   each new activity token with `liveActivityToken` before the server uses it.
 
-### `DELETE /v1/devices/:relayId`
+### `DELETE /v1/devices`
 
-The app forgets the device, with the same `Authorization` header. The answer
+The app forgets the device, with the same `Authorization` and `X-Relay-Id`
+headers. The answer
 is `204`, or `401`.
 
-### `POST /v1/devices/:relayId/verify`
+### `POST /v1/devices/verify`
 
 A farmer server asks whether a phone holds a registration. The server sends
-`{ "publicKey", "proof" }`. The app made the proof from its device secret:
+the relay id in the `X-Relay-Id` header and `{ "publicKey", "proof" }` as the
+body. The app made the proof from its device secret:
 
     proof = base64url(HMAC-SHA256(SHA-256(deviceSecret),
             "farmer-device-binding v1\n" + relayId + "\n" + publicKey))
@@ -125,8 +130,8 @@ The answer is `204` for a good proof. A wrong proof and an unknown relay id
 both give `401 unauthorized`. The server never sees the device secret. The
 proof names the public key, so a proof for one key cannot bind another key.
 The server calls this route only when a phone takes a relay id or a key that
-the server did not hold for that installation. This route counts in the
-limit of registrations, updates and removals for one address.
+the server did not hold for that installation. This route has its own
+limits (see "Rate limits").
 
 ### `POST /v1/push`
 
@@ -234,7 +239,21 @@ at most 50,000 keys.
 | Alert and data pushes for one relay id | 30 a minute, 500 a day |
 | Live Activity pushes for one relay id | 60 a minute, 2,000 a day |
 | Pushes from one address | 6,000 a minute |
+| Alert and data pushes for one push token (all relay ids that hold it) | 30 a minute, 500 a day |
+| Live Activity pushes for one push token | 60 a minute, 2,000 a day |
 | Registrations, updates and removals from one address | 60 in 10 minutes |
+| Verify calls from one address | 6,000 a minute |
+| Verify calls for one known relay id from one address | 10 in 10 minutes |
+| Verify calls for an unknown relay id from one address | 60 in 10 minutes |
+
+The relay checks a relay id before it counts a verify call. A known id has a
+limit for each address, so one caller cannot use up the limit of the real
+server. An unknown id counts against the address only.
+
+The relay holds at most `RELAY_MAX_DEVICES` devices. A registration past the
+cap gets `503 relay_full` with `Retry-After`, and the relay logs one line. A
+caller can mint relay ids, so the push token limits and this cap bound the
+abuse: one token has one budget, and the store cannot grow without end.
 
 The address limit for pushes is high on purpose. One farmer server is one
 address for all of its users, and a reminder goes to many users at the same
@@ -262,7 +281,7 @@ fixed alert (`Farmer`, `Timer running`), because APNs requires one.
 The relay sends to `api.push.apple.com` or `api.sandbox.push.apple.com`, as
 the device's `apnsEnvironment` tells. An `update` has priority 5,
 because priority 10 spends the budget that Apple gives each app for Live
-Activity updates. A `410` on the device token deletes the device. A `410` (or `BadDeviceToken`) on a Live Activity token does not.
+Activity updates. A `410` or `BadDeviceToken` on the device token deletes the device. The same answer on a Live Activity token does not: the relay drops only that token. A real app that sent a sandbox token to production registers again.
 
 **HTTP/2 under Bun.** APNs speaks HTTP/2 only. Bun 1.4.2's `fetch` speaks
 HTTP/1.1 to it and fails with `Malformed_HTTP_Response`. Thus the relay uses
@@ -290,8 +309,9 @@ notification itself. FCM accepts only string values in the data map:
 | `la_attributes_type` | The attributes type. |
 | `la_attributes` | The attributes, as one JSON string. |
 
-Only `UNREGISTERED` deletes the device. `INVALID_ARGUMENT` usually means a
-fault in the message, so the device stays.
+`UNREGISTERED` and `INVALID_ARGUMENT` delete the device. The relay checks the
+shape and the size of each message, so `INVALID_ARGUMENT` means that the token
+is not a registration token. A junk token does not stay in the store.
 
 ## The encryption contract
 

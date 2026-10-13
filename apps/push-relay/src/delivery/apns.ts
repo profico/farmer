@@ -221,12 +221,10 @@ export const apnsSender = (
 		if (response.status === 200) return { outcome: "delivered" };
 		const reason = reasonOf(response.body);
 		if (response.status === 410) return deadTokenOutcome(push);
-		// A per-activity token that APNs does not know is as good as dead. For a
-		// device token, BadDeviceToken often means a sandbox token sent to
-		// production, so the device is kept.
-		if (reason === "BadDeviceToken" && push.liveActivity) {
-			return deadTokenOutcome(push);
-		}
+		// A token that APNs does not know is as good as dead. This holds for a
+		// device token too: a junk token stays invalid, and a real app that
+		// sent a sandbox token to production registers again.
+		if (reason === "BadDeviceToken") return deadTokenOutcome(push);
 		if (response.status === 413) return { outcome: "too_large" };
 		if (response.status === 403 && reason === "ExpiredProviderToken") {
 			if (!retried) return send(device, push, true);

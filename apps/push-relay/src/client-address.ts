@@ -4,9 +4,10 @@
  * but the relay must not import `@farmer/core`, so this is a small copy.
  *
  * `TRUSTED_IP_HEADER` names the ONE header that the proxy in front of the
- * relay sets. Default `cf-connecting-ip`. For `x-forwarded-for` the relay
- * reads the LAST entry, the one the nearest proxy appended. `none` (or empty)
- * means the socket address only. When the header is missing, the socket
+ * relay sets. It has no default: unset, empty or `none` means the socket
+ * address only, so a caller cannot pick its own bucket with a header. Behind
+ * Cloudflare, set `cf-connecting-ip`. For `x-forwarded-for` the relay reads
+ * the LAST entry, the one the nearest proxy appended. When the header is missing, the socket
  * address is the fallback, and then `"unknown"`, one shared bucket.
  *
  * An IPv6 caller gets its /64 prefix as the bucket, not its full address. One
@@ -17,13 +18,13 @@
  * through the proxy that sets it (README, "Environment").
  */
 
-export const DEFAULT_TRUSTED_IP_HEADER = "cf-connecting-ip";
-
-/** The header `TRUSTED_IP_HEADER` names, lower-case, or null for `none`. */
+/** The header `TRUSTED_IP_HEADER` names, lower-case, or null for the socket
+ *  address only. The relay trusts no header unless the operator names it:
+ *  the default is the socket address. */
 export const trustedIpHeader = (
 	configured: string | undefined,
 ): string | null => {
-	const name = (configured ?? DEFAULT_TRUSTED_IP_HEADER).trim().toLowerCase();
+	const name = (configured ?? "").trim().toLowerCase();
 	return name === "" || name === "none" ? null : name;
 };
 

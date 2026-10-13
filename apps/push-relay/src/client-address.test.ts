@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { clientAddress, rateLimitBucket } from "./client-address";
+import {
+	clientAddress,
+	rateLimitBucket,
+	trustedIpHeader,
+} from "./client-address";
 
 describe("rateLimitBucket", () => {
 	test("an IPv6 address becomes its /64 prefix", () => {
@@ -42,5 +46,14 @@ describe("clientAddress", () => {
 		expect(clientAddress(new Headers(), null, "::ffff:10.0.1.6")).toBe(
 			"10.0.1.6",
 		);
+	});
+});
+
+describe("trustedIpHeader", () => {
+	test("no header is trusted unless the operator names one", () => {
+		expect(trustedIpHeader(undefined)).toBeNull();
+		expect(trustedIpHeader("")).toBeNull();
+		expect(trustedIpHeader("none")).toBeNull();
+		expect(trustedIpHeader(" CF-Connecting-IP ")).toBe("cf-connecting-ip");
 	});
 });

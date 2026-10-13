@@ -212,9 +212,12 @@ export const fcmSender = (
 		);
 		if (response.status === 200) return { outcome: "delivered" };
 		const reason = errorCodeOf(response.body);
-		// Only UNREGISTERED means that the token is dead. INVALID_ARGUMENT is
-		// usually a fault in the message, not in the device.
-		if (reason === "UNREGISTERED") return { outcome: "device_gone" };
+		// UNREGISTERED means that the token is dead. The relay builds a message
+		// that it checked (shape and size), so INVALID_ARGUMENT means that
+		// the token is not a valid registration token.
+		if (reason === "UNREGISTERED" || reason === "INVALID_ARGUMENT") {
+			return { outcome: "device_gone" };
+		}
 		if (response.status === 401 && !retried) return send(device, push, true);
 		return { outcome: "failed", status: response.status, reason };
 	};

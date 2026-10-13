@@ -348,16 +348,12 @@ describe("apnsSender", () => {
 		expect(result).toEqual({ outcome: "start_token_gone" });
 	});
 
-	test("BadDeviceToken on the device token is a failure, not a dead device", async () => {
+	test("BadDeviceToken on the device token is device_gone", async () => {
 		const { send } = await setup(() => ({
 			status: 400,
 			body: '{"reason":"BadDeviceToken"}',
 		}));
-		expect(await send(device(), alert)).toEqual({
-			outcome: "failed",
-			status: 400,
-			reason: "BadDeviceToken",
-		});
+		expect(await send(device(), alert)).toEqual({ outcome: "device_gone" });
 	});
 
 	test("ExpiredProviderToken signs a new token and tries one more time", async () => {

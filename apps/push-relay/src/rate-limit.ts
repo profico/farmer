@@ -110,7 +110,7 @@ const DAY = 24 * 60 * MINUTE;
 
 /** The numbers behind every limit. A test passes smaller ones. */
 export type RelayLimits = {
-	/** Alert and data pushes for one relay id. */
+	/** Alert and data pushes for one relay id and for one push token. */
 	pushPerMinute: number;
 	pushPerDay: number;
 	/** Live Activity pushes for one relay id. A running timer changes more
@@ -126,8 +126,11 @@ export type RelayLimits = {
 	/** Binding checks from one address. One farmer server is one address
 	 *  for all of its users, so this is high. */
 	verifyPerAddressPerMinute: number;
-	/** Binding checks for one relay id. This stops a guess of a proof. */
+	/** Binding checks for one known relay id from one address. This stops a
+	 *  guess of a proof. */
 	verifyPerRelayPer10Minutes: number;
+	/** Binding checks for an unknown relay id from one address. */
+	verifyUnknownPerAddressPer10Minutes: number;
 };
 
 export const DEFAULT_LIMITS: RelayLimits = {
@@ -139,6 +142,7 @@ export const DEFAULT_LIMITS: RelayLimits = {
 	devicePerAddressPer10Minutes: 60,
 	verifyPerAddressPerMinute: 6_000,
 	verifyPerRelayPer10Minutes: 10,
+	verifyUnknownPerAddressPer10Minutes: 60,
 };
 
 export type RelayLimiters = {
@@ -147,7 +151,9 @@ export type RelayLimiters = {
 	pushByAddress: FixedWindowLimiter;
 	deviceByAddress: FixedWindowLimiter;
 	verifyByAddress: FixedWindowLimiter;
+	/** Keyed on `relayId|address`. */
 	verifyByRelayId: FixedWindowLimiter;
+	verifyUnknownByAddress: FixedWindowLimiter;
 };
 
 export const createLimiters = (limits: RelayLimits): RelayLimiters => ({
@@ -170,6 +176,10 @@ export const createLimiters = (limits: RelayLimits): RelayLimiters => ({
 	),
 	verifyByRelayId: new FixedWindowLimiter(
 		limits.verifyPerRelayPer10Minutes,
+		10 * MINUTE,
+	),
+	verifyUnknownByAddress: new FixedWindowLimiter(
+		limits.verifyUnknownPerAddressPer10Minutes,
 		10 * MINUTE,
 	),
 });

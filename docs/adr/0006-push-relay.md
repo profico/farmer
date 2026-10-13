@@ -33,7 +33,7 @@ default).
   Keychain or the Keystore and gives `{relayId, publicKey}` to its server.
 - **The phone proves that it holds the relay id.** The app sends its server
   a `relayProof`: an HMAC of the relay id and the public key, made from the
-  `deviceSecret`. The server asks the relay (`POST /v1/devices/:relayId/verify`)
+  `deviceSecret`. The server asks the relay (`POST /v1/devices/verify`)
   to check it before it binds a relay id or a key to a person. Without the
   proof, a person who learns a relay id could take it with their own key.
 - **The server encrypts each payload for the device.** It posts
@@ -67,7 +67,8 @@ default).
 - The relay holds the APNs key and the FCM credentials. These are Profico's
   secrets and live only in the relay's Coolify environment.
 - The relay's rate limits trust the one header that `TRUSTED_IP_HEADER`
-  names. The relay's origin must accept traffic only through the proxy that
+  names. With no value, the relay trusts no header and uses the socket
+  address. The relay's origin must accept traffic only through the proxy that
   sets this header. Else a caller sets the header and picks its own bucket.
   An IPv6 caller gets its /64 prefix as its bucket.
 - A new kind of notification must name its channels in the `KINDS` table, as

@@ -40,11 +40,19 @@ if (config.fcm) {
 	log("[push-relay] no FCM credentials: Android pushes are a dry run");
 }
 
+const clientHeader = trustedIpHeader(config.trustedIpHeader);
+log(
+	clientHeader
+		? `[push-relay] client address from the header ${clientHeader}`
+		: "[push-relay] client address from the socket (TRUSTED_IP_HEADER is unset)",
+);
+
 const relay = createRelay({
 	store,
 	senders: { ios, android },
 	limiters: createLimiters(DEFAULT_LIMITS),
-	trustedIpHeader: trustedIpHeader(config.trustedIpHeader),
+	trustedIpHeader: clientHeader,
+	maxDevices: config.maxDevices,
 	log,
 	now,
 });

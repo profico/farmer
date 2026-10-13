@@ -191,7 +191,7 @@ describe("fcmSender", () => {
 		expect(await send(device, alert)).toEqual({ outcome: "device_gone" });
 	});
 
-	test("INVALID_ARGUMENT is a failure, not a dead device", async () => {
+	test("INVALID_ARGUMENT is device_gone", async () => {
 		const { send } = await setup(() => ({
 			status: 400,
 			body: JSON.stringify({
@@ -201,11 +201,7 @@ describe("fcmSender", () => {
 				},
 			}),
 		}));
-		expect(await send(device, alert)).toEqual({
-			outcome: "failed",
-			status: 400,
-			reason: "INVALID_ARGUMENT",
-		});
+		expect(await send(device, alert)).toEqual({ outcome: "device_gone" });
 	});
 
 	test("a data payload over 4 KB is too_large and is not sent", async () => {

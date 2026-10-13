@@ -11,6 +11,15 @@ describe("readConfig", () => {
 		expect(config.dbPath).toBe("./data/relay.sqlite");
 	});
 
+	test("the device cap has a default, and an empty value keeps it", () => {
+		expect(readConfig({}).maxDevices).toBe(100_000);
+		expect(readConfig({ RELAY_MAX_DEVICES: "" }).maxDevices).toBe(100_000);
+		expect(readConfig({ RELAY_MAX_DEVICES: "50" }).maxDevices).toBe(50);
+		expect(() => readConfig({ RELAY_MAX_DEVICES: "0" })).toThrow(
+			"RELAY_MAX_DEVICES",
+		);
+	});
+
 	test("a half-set APNs configuration stops the start", () => {
 		expect(() => readConfig({ APNS_KEY_ID: "KEY123" })).toThrow(
 			"Set all of APNS_KEY_P8, APNS_KEY_ID and APNS_TEAM_ID, or none of them.",

@@ -7,6 +7,8 @@ export type RelayConfig = {
 	port: number;
 	dbPath: string;
 	trustedIpHeader: string | undefined;
+	/** The most devices that the relay holds. */
+	maxDevices: number;
 	/** Null: no APNs credentials, so iOS pushes are a dry run. */
 	apns: ApnsConfig | null;
 	/** Null: no FCM credentials, so Android pushes are a dry run. */
@@ -23,6 +25,10 @@ const environment = z.object({
 	PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 	RELAY_DB_PATH: optionalText,
 	TRUSTED_IP_HEADER: z.string().optional(),
+	RELAY_MAX_DEVICES: z.preprocess(
+		(value) => (value === "" ? undefined : value),
+		z.coerce.number().int().min(1).optional(),
+	),
 	APNS_KEY_P8: optionalText,
 	APNS_KEY_ID: optionalText,
 	APNS_TEAM_ID: optionalText,
@@ -30,6 +36,7 @@ const environment = z.object({
 	FCM_SERVICE_ACCOUNT_JSON: optionalText,
 });
 
+export const DEFAULT_MAX_DEVICES = 100_000;
 export const DEFAULT_DB_PATH = "./data/relay.sqlite";
 export const DEFAULT_APNS_TOPIC = "com.profico.farmer";
 
@@ -82,6 +89,7 @@ export const readConfig = (
 		port: parsed.PORT,
 		dbPath: parsed.RELAY_DB_PATH ?? DEFAULT_DB_PATH,
 		trustedIpHeader: parsed.TRUSTED_IP_HEADER,
+		maxDevices: parsed.RELAY_MAX_DEVICES ?? DEFAULT_MAX_DEVICES,
 		apns,
 		fcm,
 	};

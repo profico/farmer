@@ -161,10 +161,14 @@ export const verifyWithRelay = async (
 ): Promise<RelayVerdict> => {
 	try {
 		const response = await externalFetch(
-			`${baseUrl}/v1/devices/${encodeURIComponent(relayId)}/verify`,
+			`${baseUrl}/v1/devices/verify`,
 			{
 				method: "POST",
-				headers: { "content-type": "application/json" },
+				// The relay id is a credential, so it stays out of the URL path.
+				headers: {
+					"content-type": "application/json",
+					"x-relay-id": relayId,
+				},
 				body: JSON.stringify(check),
 			},
 			PUSH_RELAY_TIMEOUT_MS,

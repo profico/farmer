@@ -16,6 +16,7 @@ import {
 } from "./rate-limit";
 import {
 	isApnsToken,
+	type PushBody,
 	pushBody,
 	registerDeviceBody,
 	relayIdSchema,
@@ -30,6 +31,9 @@ export type RelayDependencies = {
 	limiters: RelayLimiters;
 	/** The header `TRUSTED_IP_HEADER` names, or null for the socket only. */
 	trustedIpHeader: string | null;
+	/** The most devices that the relay holds. A registration past it gets
+	 *  `503 relay_full`. */
+	maxDevices: number;
 	log: Log;
 	now: () => number;
 };
@@ -54,6 +58,10 @@ const tooMany = (retryAfterSeconds: number): Response =>
 
 const bodyError = (code: "too_large" | "invalid_json" | "invalid_body") =>
 	code === "too_large" ? error(413, code) : error(400, code);
+
+/** The header that carries the relay id for `PUT`, `DELETE` and verify. A
+ *  proxy logs a URL path, so the id does not go there. */
+export const RELAY_ID_HEADER = "x-relay-id";
 
 /** The secret from `Authorization: Bearer <secret>`, or null. */
 const bearer = (request: Request): string | null => {
@@ -107,10 +115,8 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		clientAddress(request.headers, deps.trustedIpHeader, socketAddress);
 
 	/** The device that `relayId` names, when the bearer secret is its own. */
-	const authorizedDevice = (
-		request: Request,
-		relayId: string,
-	): Device | null => {
+	const authorizedDevice = (request: Request): Device | null => {
+		const relayId = request.headers.get(RELAY_ID_HEADER) ?? "";
 		const secret = bearer(request);
 		const parsedId = relayIdSchema.safeParse(relayId);
 		const device = parsedId.success ? store.find(parsedId.data) : null;
@@ -124,6 +130,10 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	const register = async (request: Request): Promise<Response> => {
 		const body = await readJsonBody(request, registerDeviceBody);
 		if (!body.ok) return bodyError(body.error);
+		if (store.count() >= deps.maxDevices) {
+			log(`[push-relay] full: refused a registration at ${deps.maxDevices}`);
+			return error(503, "relay_full", { "retry-after": "3600" });
+		}
 		const ios = body.value.platform === "ios";
 		const relayId = newRelayId();
 		const deviceSecret = newDeviceSecret();
@@ -149,11 +159,8 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return json(201, { relayId, deviceSecret });
 	};
 
-	const update = async (
-		request: Request,
-		relayId: string,
-	): Promise<Response> => {
-		const device = authorizedDevice(request, relayId);
+	const update = async (request: Request): Promise<Response> => {
+		const device = authorizedDevice(request);
 		if (!device) return error(401, "unauthorized");
 		const body = await readJsonBody(request, updateDeviceBody);
 		if (!body.ok) return bodyError(body.error);
@@ -207,8 +214,8 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return json(200, { status: "updated" });
 	};
 
-	const forget = (request: Request, relayId: string): Response => {
-		const device = authorizedDevice(request, relayId);
+	const forget = (request: Request): Response => {
+		const device = authorizedDevice(request);
 		if (!device) return error(401, "unauthorized");
 		store.delete(device.relayId);
 		log(`[push-relay] forgot relay=${relayIdHint(device.relayId)}`);
@@ -220,15 +227,26 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	 * a proof for its public key from the device secret. A good proof gives
 	 * 204. A wrong proof and an unknown relay id both give 401, so the answer
 	 * does not tell which relay ids exist.
+	 *
+	 * The relay checks the id before it counts the call. A known id has its
+	 * own limit for each address, so a caller cannot use up the limit of the
+	 * real server. An unknown id counts against the address only, so a
+	 * caller cannot fill the limiter with ids that it chooses.
 	 */
 	const verify = async (
 		request: Request,
-		relayId: string,
+		address: string,
 	): Promise<Response> => {
-		const body = await readJsonBody(request, verifyDeviceBody);
-		if (!body.ok) return bodyError(body.error);
+		const relayId = request.headers.get(RELAY_ID_HEADER) ?? "";
 		const parsedId = relayIdSchema.safeParse(relayId);
 		const device = parsedId.success ? store.find(parsedId.data) : null;
+		const check: readonly [FixedWindowLimiter, string] = device
+			? [limiters.verifyByRelayId, `${device.relayId}|${address}`]
+			: [limiters.verifyUnknownByAddress, address];
+		const admission = admit([check], now());
+		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
+		const body = await readJsonBody(request, verifyDeviceBody);
+		if (!body.ok) return bodyError(body.error);
 		const matches = bindingProofMatches(
 			body.value.proof,
 			device?.secretHash ?? NO_DEVICE_HASH,
@@ -240,53 +258,50 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 			: error(401, "unauthorized");
 	};
 
-	const push = async (request: Request): Promise<Response> => {
-		const body = await readJsonBody(request, pushBody);
-		if (!body.ok) return bodyError(body.error);
-		const message = body.value;
-		const device = store.find(message.relayId);
-		if (!device) return error(404, "unknown_relay_id");
-		const activityToken = message.liveActivity?.token;
-		if (
-			device.platform === "ios" &&
-			activityToken !== undefined &&
-			!isApnsToken(activityToken)
-		) {
+	/** The refusal for a Live Activity token that this device may not use, or
+	 *  null. */
+	const activityTokenFault = (
+		device: Device,
+		activityToken: string | undefined,
+	): Response | null => {
+		if (activityToken === undefined) return null;
+		if (device.platform === "ios" && !isApnsToken(activityToken)) {
 			return bodyError("invalid_body");
 		}
-		if (activityToken !== undefined) {
-			const owner = store.activityTokenOwner(activityToken);
-			if (owner === null) return error(403, "activity_token_unbound");
-			if (owner !== device.relayId) {
-				log(
-					`[push-relay] refused activity token of another device relay=${relayIdHint(device.relayId)}`,
-				);
-				return error(403, "activity_token_mismatch");
-			}
-		}
+		const owner = store.activityTokenOwner(activityToken);
+		if (owner === null) return error(403, "activity_token_unbound");
+		if (owner === device.relayId) return null;
+		log(
+			`[push-relay] refused activity token of another device relay=${relayIdHint(device.relayId)}`,
+		);
+		return error(403, "activity_token_mismatch");
+	};
 
+	/** Count a push against the budget of its relay id and of its push token.
+	 *  A caller can register many relay ids for one push token, so the token
+	 *  has the same budget as a relay id. */
+	const admitPush = (device: Device, kind: PushBody["kind"]) => {
 		const budget =
-			message.kind === "liveactivity" ? limiters.liveActivity : limiters.push;
-		const admission = admit(
+			kind === "liveactivity" ? limiters.liveActivity : limiters.push;
+		const tokenKey = `token:${hashSecret(device.pushToken)}`;
+		return admit(
 			[
 				[budget.minute, device.relayId],
 				[budget.day, device.relayId],
+				[budget.minute, tokenKey],
+				[budget.day, tokenKey],
 			],
 			now(),
 		);
-		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
+	};
 
-		const sender = device.platform === "ios" ? senders.ios : senders.android;
-		let result: DeliveryResult;
-		try {
-			result = await sender(device, message);
-		} catch (cause) {
-			log(
-				`[push-relay] send failed platform=${device.platform} relay=${relayIdHint(device.relayId)} error=${cause instanceof Error ? cause.message : "unknown"}`,
-			);
-			return error(502, "upstream_unreachable");
-		}
-
+	/** Change the store after APNs or FCM answered. */
+	const settle = (
+		device: Device,
+		message: PushBody,
+		result: DeliveryResult,
+	): void => {
+		const activityToken = message.liveActivity?.token;
 		if (result.outcome === "delivered" || result.outcome === "dry_run") {
 			store.touch(device.relayId, now());
 			// An end push closes the activity, so its token has no more use.
@@ -307,67 +322,73 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 				`[push-relay] refused platform=${device.platform} relay=${relayIdHint(device.relayId)} status=${result.status} reason=${result.reason}`,
 			);
 		}
+	};
+
+	const push = async (request: Request): Promise<Response> => {
+		const body = await readJsonBody(request, pushBody);
+		if (!body.ok) return bodyError(body.error);
+		const message = body.value;
+		const device = store.find(message.relayId);
+		if (!device) return error(404, "unknown_relay_id");
+		const fault = activityTokenFault(device, message.liveActivity?.token);
+		if (fault) return fault;
+		const admission = admitPush(device, message.kind);
+		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
+
+		const sender = device.platform === "ios" ? senders.ios : senders.android;
+		let result: DeliveryResult;
+		try {
+			result = await sender(device, message);
+		} catch (cause) {
+			log(
+				`[push-relay] send failed platform=${device.platform} relay=${relayIdHint(device.relayId)} error=${cause instanceof Error ? cause.message : "unknown"}`,
+			);
+			return error(502, "upstream_unreachable");
+		}
+		settle(device, message, result);
 		return pushResponse(result);
 	};
 
-	const DEVICE_PATH = /^\/v1\/devices\/([^/]+)$/;
-	const VERIFY_PATH = /^\/v1\/devices\/([^/]+)\/verify$/;
+	const notAllowed = () => error(405, "method_not_allowed");
+
+	/** The handler of a route, by method. */
+	const devicesRoute = (request: Request): Promise<Response> | Response => {
+		if (request.method === "POST") return register(request);
+		if (request.method === "PUT") return update(request);
+		if (request.method === "DELETE") return forget(request);
+		return notAllowed();
+	};
 
 	return async (request, socketAddress) => {
 		const { pathname } = new URL(request.url);
 		const method = request.method;
 
 		if (pathname === "/healthz") {
-			if (method !== "GET" && method !== "HEAD") {
-				return error(405, "method_not_allowed");
-			}
+			if (method !== "GET" && method !== "HEAD") return notAllowed();
 			return store.ping()
 				? new Response("ok", { status: 200 })
 				: new Response("database unavailable", { status: 503 });
 		}
 
-		const deviceMatch = DEVICE_PATH.exec(pathname);
-		const verifyMatch = VERIFY_PATH.exec(pathname);
-		const isDevices = pathname === "/v1/devices" || deviceMatch !== null;
-		if (!isDevices && verifyMatch === null && pathname !== "/v1/push") {
+		const isVerify = pathname === "/v1/devices/verify";
+		const isDevices = pathname === "/v1/devices";
+		if (!isDevices && !isVerify && pathname !== "/v1/push") {
 			return error(404, "not_found");
 		}
 
 		const address = addressOf(request, socketAddress);
 		// A verify has its own limits. The farmer server makes all of them from
 		// one address, so the device limit for an address must not count them.
-		const byAddress = verifyMatch
+		const byAddress = isVerify
 			? limiters.verifyByAddress
 			: isDevices
 				? limiters.deviceByAddress
 				: limiters.pushByAddress;
-		const checks: Array<readonly [FixedWindowLimiter, string]> = [
-			[byAddress, address],
-		];
-		if (verifyMatch && method === "POST") {
-			checks.push([limiters.verifyByRelayId, verifyMatch[1] ?? ""]);
-		}
-		const admission = admit(checks, now());
+		const admission = admit([[byAddress, address]], now());
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
 
-		if (pathname === "/v1/push") {
-			return method === "POST"
-				? push(request)
-				: error(405, "method_not_allowed");
-		}
-		if (pathname === "/v1/devices") {
-			return method === "POST"
-				? register(request)
-				: error(405, "method_not_allowed");
-		}
-		if (verifyMatch) {
-			return method === "POST"
-				? verify(request, verifyMatch[1] ?? "")
-				: error(405, "method_not_allowed");
-		}
-		const relayId = deviceMatch?.[1] ?? "";
-		if (method === "PUT") return update(request, relayId);
-		if (method === "DELETE") return forget(request, relayId);
-		return error(405, "method_not_allowed");
+		if (isDevices) return devicesRoute(request);
+		if (method !== "POST") return notAllowed();
+		return isVerify ? verify(request, address) : push(request);
 	};
 };

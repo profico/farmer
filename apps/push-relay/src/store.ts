@@ -128,6 +128,15 @@ export class DeviceStore {
 			});
 	}
 
+	/** The number of registered devices. */
+	count(): number {
+		return (
+			this.#db
+				.query<{ total: number }, []>("SELECT COUNT(*) AS total FROM device")
+				.get()?.total ?? 0
+		);
+	}
+
 	find(relayId: string): Device | null {
 		const row = this.#db
 			.query<DeviceRow, { relayId: string }>(

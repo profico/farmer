@@ -65,7 +65,7 @@ an organization for each message and checks the membership first.
 - **The phone proves that it holds the relay id.** The body has a
   `relayProof`: an HMAC of the relay id and the public key, made from the
   relay's `deviceSecret` (`@farmer/push-crypto/binding`). The service sends it
-  to `POST /v1/devices/:relayId/verify` on the relay when the installation has
+  to `POST /v1/devices/verify` on the relay when the installation has
   no row, or when the relay id or the key differs from its row. A wrong proof
   is refused, and no row changes. A relay that does not answer refuses a new
   binding. An unchanged registration, as on each foreground, makes no relay
