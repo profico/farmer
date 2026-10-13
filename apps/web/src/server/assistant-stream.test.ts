@@ -101,7 +101,12 @@ describe("turnStream heartbeat", () => {
 			if (chunk === null || chunk === TIMED_OUT) break;
 		}
 		expect(chunks.at(-1)).toBeNull();
-		expect(chunks.some((chunk) => chunk?.includes('"done"'))).toBe(true);
+		expect(
+			chunks.some(
+				(chunk) =>
+					chunk !== null && chunk !== TIMED_OUT && chunk.includes('"done"'),
+			),
+		).toBe(true);
 
 		const timer = set.mock.results.at(-1)?.value;
 		expect(clear.mock.calls.some(([handle]) => handle === timer)).toBe(true);
