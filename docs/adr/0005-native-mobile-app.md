@@ -99,14 +99,14 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   `redirect_uri`), a state with no stored URL, and a query that it cannot
   parse (an overlong value, a repeated parameter, no `authorizationURL`).
   Before this change, a query that the guard could not parse skipped every
-  check. A one-time `proxyToken` was tried first and removed: the attacker
-  starts the flow, so the attacker holds the token.
+  check. An earlier commit added a one-time `proxyToken`. This change
+  removes it: the attacker starts the flow, so the attacker holds the token.
 - **Partly resolved, 13 October 2026: a person confirms a sign-in before
   the code goes to the app.** Anybody can start a flow and send the proxy
   link to another person. Before this change, that person signed in and
   the browser went straight to `farmer://` with a code that was bound to
   the challenge of the person who started the flow. Now the callback sends
-  the browser to a server page (`auth/mobile-confirm.ts`, RFC 8252 §8.6).
+  the browser to a server page (`auth/mobile-confirm.ts`, RFC 8252 section 8.6).
   The page names the account and the server. Only a POST from the same
   session, with the one-time id of the page, makes the code.
   - **Closed:** a modified authorization URL, and a sign-in from a link
@@ -118,7 +118,7 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
     a custom scheme can stop this.
   - **Later:** an https callback on one fixed domain that Profico owns,
     with an `apple-app-site-association` file and an `assetlinks.json` file
-    (RFC 8252 §7.2). Then the OS gives the link only to the verified app.
+    (RFC 8252 section 7.2). Then the OS gives the link only to the verified app.
     On iOS 17.4 or later, `expo-web-browser` can use this
     (`preferUniversalLinks`). Android needs Chrome Auth Tab, or a test on a
     real device before the change ships.

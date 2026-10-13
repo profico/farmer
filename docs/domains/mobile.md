@@ -293,8 +293,9 @@ cookie from that URL. `packages/core/src/auth/mobile-sign-in.ts` guards it:
   (`mobile-proxy:<sha256 of the state>`) and lives 5 minutes.
 - The guard spends that row with one delete and compares the whole
   `authorizationURL` with it. A URL with another `client_id` or
-  `redirect_uri` is refused, and so is a state with no row. The checks of
-  the provider origin, of the live state and of the app callback stay.
+  `redirect_uri` gets a refusal, and so does a state with no row. The
+  checks of the provider origin, of the live state and of the app callback
+  stay.
 - The guard does not bind the proxy link to one browser. A person who gets
   the link can open it. The confirmation page is the step for that case.
 
@@ -313,7 +314,7 @@ The page asks: "Sign in to the Farmer app on this phone as <email> at
   cookie of the callback, and the session must be the session of the row.
 - The POST spends the row first, with one delete. Then it checks that the
   session cookie names the session of the row. A used id, an expired id,
-  no session or another session gives a 400 page, and the id is burned.
+  no session or another session gives a 400 page, and the POST burns the id.
 - Continue makes the exchange code and redirects to the `farmer://` link
   with `code`. Cancel deletes the session and redirects with
   `error=access_denied`.
