@@ -7,6 +7,7 @@ import { View } from "react-native";
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
 import { signInOrigin } from "../src/session/server-address";
+import { isServerConfirmed } from "../src/session/server-confirmation";
 import { type SignInFlow, useSignInFlow } from "../src/session/sign-in-flow";
 import {
 	BrowserCard,
@@ -41,9 +42,12 @@ type Meta = UseQueryResult<Awaited<ReturnType<typeof fetchMeta>>>;
  */
 export default function SignInScreen() {
 	const params = useLocalSearchParams<{ server?: string }>();
-	// A deep link can set the parameter too, so it gets the Server screen's
-	// checks: the address, and then `/meta` with `assertUsable`.
-	const server = signInOrigin(params.server);
+	// A deep link can set the parameter too. It must be an address that the
+	// person confirmed on the Server screen, and then it gets that screen's
+	// checks: `/meta` with `assertUsable`. Any other address goes back to the
+	// Server screen, where the person taps Continue.
+	const requested = signInOrigin(params.server);
+	const server = isServerConfirmed(requested) ? requested : null;
 	const meta = useQuery({
 		queryKey: ["farmer", server ?? "", "meta", "usable"],
 		queryFn: async () => {
