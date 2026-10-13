@@ -9,6 +9,7 @@ import {
 	errorTextFor,
 	FLOW_LIFETIME_MS,
 	FlowKeeper,
+	proxyUrlFor,
 	readCallback,
 	redirectPrefixFor,
 } from "./auth-flow";
@@ -226,6 +227,25 @@ describe("the redirect prefix", () => {
 	test("is the start of the callback URL", () => {
 		expect(callbackUrlFor(flow, "c").startsWith(redirectPrefixFor(flow))).toBe(
 			true,
+		);
+	});
+});
+
+describe("proxyUrlFor", () => {
+	test("carries the authorization URL and the token", () => {
+		const url = new URL(
+			proxyUrlFor(
+				"https://farmer.example.com",
+				"https://accounts.google.com/o/oauth2/v2/auth?state=s&client_id=c",
+				"tok-1",
+			),
+		);
+		expect(url.origin + url.pathname).toBe(
+			"https://farmer.example.com/api/auth/expo-authorization-proxy",
+		);
+		expect(url.searchParams.get("token")).toBe("tok-1");
+		expect(url.searchParams.get("authorizationURL")).toBe(
+			"https://accounts.google.com/o/oauth2/v2/auth?state=s&client_id=c",
 		);
 	});
 });

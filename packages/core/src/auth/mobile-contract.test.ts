@@ -125,8 +125,7 @@ describe("the device flow client ids", () => {
 });
 
 // The callback check itself is not here: better-auth skips the origin check
-// under NODE_ENV=test. `scripts/mobile-sign-in-spike.ts` covers it against a
-// running server.
+// under NODE_ENV=test. `mobile-exchange.test.ts` covers the exchange.
 describe("the Expo sign-in", () => {
 	const ORIGIN = "http://localhost:3000";
 	const APP = "farmer://auth-callback";
@@ -156,20 +155,32 @@ describe("the Expo sign-in", () => {
 			GOOGLE_CLIENT_SECRET: "client-secret",
 		});
 
+	const startAnswer = z.object({ url: z.string(), proxyToken: z.string() });
+
+	const startedFlow = async (callbackURL = APP) => {
+		const started = await startGoogle(callbackURL);
+		expect(started.status).toBe(200);
+		return startAnswer.parse(await started.json());
+	};
+
 	test("starts a sign-in that returns to the app", async () => {
 		googleConfigured();
-		const started = await startGoogle(APP);
-		expect(started.status).toBe(200);
-		const { url } = z.object({ url: z.string() }).parse(await started.json());
-		const sent = await proxy({ authorizationURL: url });
+		const { url, proxyToken } = await startedFlow();
+		const sent = await proxy({ authorizationURL: url, token: proxyToken });
 		expect(sent.status).toBe(302);
 		expect(sent.headers.get("location")).toBe(url);
 	});
 
+	const expectRefused = async (response: Response) => {
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			code: "INVALID_AUTHORIZATION_URL",
+		});
+	};
+
 	test("the proxy sends a browser only to a configured provider", async () => {
 		googleConfigured();
-		const started = await startGoogle(APP);
-		const { url } = z.object({ url: z.string() }).parse(await started.json());
+		const { url, proxyToken } = await startedFlow();
 		const state = new URL(url).searchParams.get("state") ?? "";
 		const queries: Record<string, string>[] = [
 			{ authorizationURL: `https://evil.example/?state=${state}` },
@@ -180,18 +191,71 @@ describe("the Expo sign-in", () => {
 			},
 		];
 		for (const query of queries) {
-			const sent = await proxy(query);
-			expect(sent.status).toBe(400);
-			expect(await sent.json()).toMatchObject({
-				code: "INVALID_AUTHORIZATION_URL",
-			});
+			await expectRefused(await proxy({ ...query, token: proxyToken }));
 		}
 	});
 
-	test("the proxy refuses a web sign-in's state", async () => {
+	test("the proxy refuses a call without the token of the flow", async () => {
 		googleConfigured();
-		const started = await startGoogle("/");
-		const { url } = z.object({ url: z.string() }).parse(await started.json());
-		expect((await proxy({ authorizationURL: url })).status).toBe(400);
+		const first = await startedFlow();
+		const second = await startedFlow();
+		await expectRefused(await proxy({ authorizationURL: first.url }));
+		await expectRefused(
+			await proxy({ authorizationURL: first.url, token: "" }),
+		);
+		await expectRefused(
+			await proxy({ authorizationURL: first.url, token: "forged" }),
+		);
+		// The token of another flow does not open this flow's URL.
+		await expectRefused(
+			await proxy({ authorizationURL: first.url, token: second.proxyToken }),
+		);
+	});
+
+	test("a proxy token works once", async () => {
+		googleConfigured();
+		const { url, proxyToken } = await startedFlow();
+		const query = { authorizationURL: url, token: proxyToken };
+		expect((await proxy(query)).status).toBe(302);
+		await expectRefused(await proxy(query));
+	});
+
+	test("a refused call burns the token", async () => {
+		googleConfigured();
+		const { url, proxyToken } = await startedFlow();
+		const other = new URL(url);
+		other.searchParams.set("client_id", "attacker-client");
+		await expectRefused(
+			await proxy({ authorizationURL: other.toString(), token: proxyToken }),
+		);
+		await expectRefused(
+			await proxy({ authorizationURL: url, token: proxyToken }),
+		);
+	});
+
+	test("the proxy refuses a URL that the server did not make", async () => {
+		googleConfigured();
+		for (const [name, value] of [
+			["client_id", "attacker-client"],
+			["redirect_uri", "https://evil.example/callback"],
+		] as const) {
+			const { url, proxyToken } = await startedFlow();
+			const changed = new URL(url);
+			changed.searchParams.set(name, value);
+			await expectRefused(
+				await proxy({
+					authorizationURL: changed.toString(),
+					token: proxyToken,
+				}),
+			);
+		}
+	});
+
+	test("the proxy refuses a flow that does not return to the app", async () => {
+		googleConfigured();
+		const { url, proxyToken } = await startedFlow("/");
+		await expectRefused(
+			await proxy({ authorizationURL: url, token: proxyToken }),
+		);
 	});
 });

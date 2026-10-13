@@ -78,6 +78,7 @@ import {
 	assertExpoProxyTarget,
 	EXPO_PROXY_PATH,
 	expoProxyQuery,
+	mobileProxyToken,
 	MOBILE_TRUSTED_ORIGINS,
 } from "./mobile-sign-in";
 import {
@@ -1099,6 +1100,9 @@ const buildAuth = () => {
 			// After `expo()`: it turns the session in the `farmer://` link into a
 			// one-time code. See `./mobile-exchange.ts`.
 			mobileExchange(),
+			// Adds the one-time token that the proxy asks for to the answer of a
+			// sign-in start. See `./mobile-sign-in.ts`.
+			mobileProxyToken(),
 			// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 			tanstackStartCookies(),
 		],
