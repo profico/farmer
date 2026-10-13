@@ -390,6 +390,44 @@ const appPhonesForSlackKinds = async (
 	return notifiableDevices(to.userId);
 };
 
+type AttemptChannel = (
+	channel: NotifyChannel,
+	devices?: NotifiableDevice[],
+) => Promise<ChannelResult>;
+
+/** The app instead of Slack, and Slack again for this one message when every
+ *  push to the person failed. With `appOnly`, Slack is not tried. */
+const sendToApp = async (
+	attempt: AttemptChannel,
+	appPhones: NotifiableDevice[],
+	appOnly: boolean,
+): Promise<NotifyOutcome> => {
+	const native = await attempt("native", appPhones);
+	if (native === true) return { ...NOTHING_SENT, native };
+	const slack = appOnly ? false : await attempt("slack");
+	// The native push failed, and the failure may be only a relay error or a
+	// timeout. "No Slack match" then does not close the matter: a retry can
+	// still reach the phone. A timeout is ambiguous (the push may have
+	// arrived), so that retry may send a duplicate. `retryable` tells the
+	// job to keep the retry open.
+	const outcome: NotifyOutcome = {
+		...NOTHING_SENT,
+		native,
+		slack: slack === "unreachable" ? false : slack,
+	};
+	if (slack !== true) outcome.retryable = true;
+	return outcome;
+};
+
+/** Whether the app takes the Slack kinds for this person: the relay is on,
+ *  the person did not ask for Slack, and a phone allows notifications. */
+export const reachableByApp = async (to: NotifyRecipient): Promise<boolean> =>
+	(await appPhonesForSlackKinds(to)).length > 0;
+
+/** How `notify` sends. `appOnly` is for a workspace with no Slack: a Slack
+ *  kind then goes to the app or nowhere, and Slack is never tried. */
+export type NotifyOptions = { appOnly?: boolean };
+
 /**
  * Tell one member of one organization one thing.
  *
@@ -400,6 +438,7 @@ const appPhonesForSlackKinds = async (
 export const notify = async (
 	to: NotifyRecipient,
 	event: NotifyEvent,
+	options: NotifyOptions = {},
 ): Promise<NotifyOutcome> => {
 	const kind = KINDS[event.kind];
 
@@ -444,22 +483,9 @@ export const notify = async (
 			error,
 		});
 	}
+	if (options.appOnly && appPhones.length === 0) return { ...NOTHING_SENT };
 	if (appPhones.length > 0) {
-		const native = await attempt("native", appPhones);
-		if (native === true) return { ...NOTHING_SENT, native };
-		const slack = await attempt("slack");
-		// The native push failed, and the failure may be only a relay error or a
-		// timeout. "No Slack match" then does not close the matter: a retry can
-		// still reach the phone. A timeout is ambiguous (the push may have
-		// arrived), so that retry may send a duplicate. `retryable` tells the
-		// job to keep the retry open.
-		const outcome: NotifyOutcome = {
-			...NOTHING_SENT,
-			native,
-			slack: slack === "unreachable" ? false : slack,
-		};
-		if (slack !== true) outcome.retryable = true;
-		return outcome;
+		return sendToApp(attempt, appPhones, options.appOnly === true);
 	}
 
 	const results = await Promise.all(

@@ -5,9 +5,11 @@ import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
+import { orgHasNotifiablePhone } from "../services/native-push";
 import {
 	deliveryBlocks,
 	notify,
+	reachableByApp,
 	wasDelivered,
 	wasUnreachable,
 } from "../services/notify";
@@ -62,6 +64,12 @@ export type SlackReminderSummary = {
 // is on the row (`attempts`), so a restart does not start it again. A
 // permanent refusal keeps its claim and counts as neither sent nor failed:
 // counting it would add three failures a day per deactivated account.
+//
+// A workspace with no Slack installation is still run when one of its people
+// has a phone that allows notifications. The pass then sends through the app
+// channel only (`notify` with `appOnly`), and never tries Slack. A person
+// without such a phone is skipped before the claim, so a phone that registers
+// later today, or a Slack install, still reaches them the same day.
 //
 // A refused bot token is neither case: it is about the credential, and every
 // send after it fails the same way. `sendDm` records it on the installation
@@ -151,6 +159,63 @@ const markForRetry = async (key: ClaimKey): Promise<void> => {
 export const isLastWorkingDayOfMonth = (ctx: Ctx, dayKey: string) =>
 	isMonthEndDay(ctx, dayKey, 0);
 
+type SendResult = "delivered" | "unreachable" | "failed";
+
+type SendTarget = {
+	org: { id: string };
+	entry: (typeof SLACK_KINDS)[number];
+	recipient: { userId: string; event: Parameters<typeof notify>[1] };
+	appOnly: boolean;
+};
+
+/** One reminder to one person, and what came of it. Never throws. */
+const sendOne = async ({
+	org,
+	entry,
+	recipient,
+	appOnly,
+}: SendTarget): Promise<SendResult> => {
+	try {
+		const outcome = await notify(
+			{ organizationId: org.id, userId: recipient.userId },
+			recipient.event,
+			{ appOnly },
+		);
+		if (wasDelivered(outcome)) return "delivered";
+		if (wasUnreachable(outcome)) return "unreachable";
+		// The native push failed and Slack has no match. A retry can still
+		// reach the phone, so the claim must not settle.
+		if (outcome.retryable) return "failed";
+		// No Slack identity is not a failure a retry can fix: keep the claim,
+		// as before.
+		const slackId = await slackService.slackIdFor(org.id, recipient.userId);
+		return slackId ? "failed" : "unreachable";
+	} catch (error) {
+		console.error("[slack-reminders] send failed", {
+			organizationId: org.id,
+			userId: recipient.userId,
+			kind: entry.kind,
+			error,
+		});
+		return "failed";
+	}
+};
+
+/** Without Slack, only a person the app can reach is sent to. */
+const reachableRecipients = async <T extends { userId: string }>(
+	orgId: string,
+	recipients: T[],
+	appOnly: boolean,
+): Promise<T[]> => {
+	if (!appOnly) return recipients;
+	const reach = await Promise.all(
+		recipients.map((r) =>
+			reachableByApp({ organizationId: orgId, userId: r.userId }),
+		),
+	);
+	return recipients.filter((_, i) => reach[i]);
+};
+
 export const runSlackRemindersOnce = async (
 	opts: { now?: Date } = {},
 ): Promise<SlackReminderSummary> => {
@@ -179,7 +244,9 @@ export const runSlackRemindersOnce = async (
 		// No Slack workspace connected = nothing this job can do, and no reason to
 		// run the (fairly expensive) compliance queries for that org at all.
 		const installation = await slackService.installationFor(org.id);
-		if (!installation) continue;
+		// Without Slack, the pass still runs for an org with a phone to tell.
+		const appOnly = !installation;
+		if (appOnly && !(await orgHasNotifiablePhone(org.id))) continue;
 		summary.organizations++;
 
 		// The job runs unattended, so it needs a ctx to satisfy the service
@@ -205,12 +272,16 @@ export const runSlackRemindersOnce = async (
 			const dashboard = dashboardLoader(ctx, settings, now);
 			const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
 			for (const entry of due) {
-				const recipients = await reminderRecipients(
-					ctx,
-					settings,
-					entry.kind,
-					moment,
-					dashboard,
+				const recipients = await reachableRecipients(
+					org.id,
+					await reminderRecipients(
+						ctx,
+						settings,
+						entry.kind,
+						moment,
+						dashboard,
+					),
+					appOnly,
 				);
 				// `notify` applies these gates anyway. Asking first keeps a held-back
 				// person from spending the day's claim, so turning "include people
@@ -232,42 +303,13 @@ export const runSlackRemindersOnce = async (
 					};
 					const attempt = await claim(key);
 					if (attempt === null) continue;
-					let result: "delivered" | "unreachable" | "failed";
-					try {
-						const outcome = await notify(
-							{ organizationId: org.id, userId: recipient.userId },
-							recipient.event,
-						);
-						if (wasDelivered(outcome)) result = "delivered";
-						else if (wasUnreachable(outcome)) result = "unreachable";
-						else if (outcome.retryable) {
-							// The native push failed and Slack has no match. A retry can
-							// still reach the phone, so the claim must not settle.
-							result = "failed";
-						} else {
-							// No Slack identity is not a failure a retry can fix: keep the
-							// claim, as before.
-							const slackId = await slackService.slackIdFor(
-								org.id,
-								recipient.userId,
-							);
-							result = slackId ? "failed" : "unreachable";
-						}
-					} catch (error) {
-						console.error("[slack-reminders] send failed", {
-							organizationId: org.id,
-							userId: recipient.userId,
-							kind: entry.kind,
-							error,
-						});
-						result = "failed";
-					}
+					const result = await sendOne({ org, entry, recipient, appOnly });
 
 					if (result === "delivered") summary[entry.counter]++;
 					if (result !== "failed") continue;
 
 					summary.failed++;
-					slackLost = !(await slackService.installationFor(org.id));
+					slackLost = !appOnly && !(await slackService.installationFor(org.id));
 					// Out of attempts: the claim stays settled, and the day gets no more.
 					if (attempt < MAX_SEND_ATTEMPTS) {
 						try {

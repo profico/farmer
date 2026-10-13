@@ -71,6 +71,13 @@ default).
   address. The relay's origin must accept traffic only through the proxy that
   sets this header. Else a caller sets the header and picks its own bucket.
   An IPv6 caller gets its /64 prefix as its bucket.
+- A reminder can arrive twice. If the relay times out after it delivered the
+  push, the server cannot know, so the Slack reminder job tries again. The
+  duplicate is accepted: a lost reminder is worse than a repeated one.
+  `native-push.test.ts` pins this.
+- The reminder job also runs for a workspace with no Slack installation when
+  a person there has a phone that allows notifications. It then sends through
+  the app only and never tries Slack.
 - A new kind of notification must name its channels in the `KINDS` table, as
   before. Native push is one more channel, not a second mechanism.
 

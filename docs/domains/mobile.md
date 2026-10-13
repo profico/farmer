@@ -103,6 +103,17 @@ goes as a native push when all of these are true:
    It is a column of `notification_settings`, so it is set for each workspace.
 3. A live phone of the person has `notifications_allowed`.
 
+The default is `app`, so a person who has a registered phone moves off Slack
+for these three kinds when the phone registers. A person without a phone stays
+on Slack.
+
+**A workspace with no Slack installation is still served.** The Slack reminder
+job runs for such a workspace when one of its people has a live phone that
+allows notifications. It sends only through the app (`notify` with
+`appOnly`) and never tries Slack. It skips, and does not claim, a person
+whom the app cannot reach. A reminder can arrive twice when the relay times out
+after it delivered the push (ADR 0006).
+
 When every native push to the person fails, that message goes to Slack. The
 outcome then reports `native: false` and the Slack result.
 
@@ -227,8 +238,6 @@ opens the sealed payload with the phone's private key. Use
 - ADR 0005 makes `@better-auth/expo` the main sign-in, and the device flow the
   fallback. The phone routes take the session only as a bearer token. The app
   must send it so, or the routes must learn to read the cookie on a write.
-- The Slack reminder job skips a workspace with no Slack installation, so the
-  Slack kinds do not reach the app in such a workspace.
 
 ## The sign-in exchange
 

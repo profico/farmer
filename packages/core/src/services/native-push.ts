@@ -29,7 +29,7 @@ import {
 import { and, eq, gt, ne, or } from "drizzle-orm";
 
 import { db } from "../db";
-import { session } from "../db/schema/auth";
+import { member, session } from "../db/schema/auth";
 import { mobileDevice } from "../db/schema/mobile";
 import {
 	type LiveActivityEvent,
@@ -224,6 +224,29 @@ export const notifiableDevices = async (
 	return (await liveDevices(userId)).filter(
 		(device) => device.notificationsAllowed,
 	);
+};
+
+/** Whether any member of the organization has a live phone that allows
+ *  notifications. The relay must be on. The reminder job reads this to decide
+ *  if a workspace with no Slack still has someone to remind. */
+export const orgHasNotifiablePhone = async (
+	organizationId: string,
+): Promise<boolean> => {
+	if (!pushRelayUrl()) return false;
+	const [row] = await db
+		.select({ id: mobileDevice.id })
+		.from(mobileDevice)
+		.innerJoin(session, eq(session.id, mobileDevice.sessionId))
+		.innerJoin(member, eq(member.userId, mobileDevice.userId))
+		.where(
+			and(
+				eq(member.organizationId, organizationId),
+				eq(mobileDevice.notificationsAllowed, true),
+				gt(session.expiresAt, new Date()),
+			),
+		)
+		.limit(1);
+	return row !== undefined;
 };
 
 /** What the person's phones can do for a reminder: whether the relay is on,
