@@ -53,6 +53,30 @@ private final class WatchTasks: @unchecked Sendable {
   }
 }
 
+/// Runs the work that changes the activities one item after another, in the
+/// order of the calls. `show` and `endAll` use it, so that a `show` that comes
+/// after an `endAll` reads the activities when the ends are done, and two
+/// fast calls of `show` cannot both request an activity.
+///
+/// An actor is not enough here: an actor lets another call run at each
+/// `await`, and the work awaits the end of an activity.
+private final class SerialQueue: @unchecked Sendable {
+  private let lock = NSLock()
+  private var last: Task<Void, Never>?
+
+  /// Adds the work after the work that is queued now. The call returns at
+  /// once. The lock keeps the order of the calls.
+  func enqueue(_ work: @escaping @Sendable () async -> Void) {
+    lock.lock()
+    defer { lock.unlock() }
+    let previous = last
+    last = Task {
+      await previous?.value
+      await work()
+    }
+  }
+}
+
 /// The timer's Live Activity, for the app (`modules/live-activity/index.ts`).
 ///
 /// The app keeps at most one activity. `show` updates the activity whose
@@ -61,6 +85,7 @@ private final class WatchTasks: @unchecked Sendable {
 /// JavaScript, which gives them to the Server.
 public class FarmerLiveActivityModule: Module {
   private let tasks = WatchTasks()
+  private let queue = SerialQueue()
 
   public func definition() -> ModuleDefinition {
     Name("FarmerLiveActivity")
@@ -83,7 +108,10 @@ public class FarmerLiveActivityModule: Module {
       Activity<TimerAttributes>.pushToStartToken.map(hex)
     }
 
-    Function("show") { (labels: LabelsRecord, record: ContentStateRecord) -> String? in
+    // The change is queued and made after the changes before it. The call
+    // returns at once, and JavaScript does not read an activity id from it:
+    // the id comes with the token event.
+    Function("show") { (labels: LabelsRecord, record: ContentStateRecord) in
       self.show(labels: labels, record: record)
     }
 
@@ -97,17 +125,16 @@ public class FarmerLiveActivityModule: Module {
     }
 
     Function("endAll") {
-      let activities = Activity<TimerAttributes>.activities
-      Task {
-        for activity in activities {
+      self.queue.enqueue {
+        for activity in Activity<TimerAttributes>.activities {
           await activity.end(nil, dismissalPolicy: .immediate)
         }
       }
     }
   }
 
-  private func show(labels: LabelsRecord, record: ContentStateRecord) -> String? {
-    guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
+  private func show(labels: LabelsRecord, record: ContentStateRecord) {
+    guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
     let state = TimerAttributes.ContentState(
       state: record.state == "running" ? "running" : "held",
       runningSinceMs: record.state == "running" ? record.runningSinceMs : nil,
@@ -115,40 +142,53 @@ public class FarmerLiveActivityModule: Module {
       workspace: record.workspace
     )
     let content = ActivityContent(state: state, staleDate: nil)
-    let activities = Activity<TimerAttributes>.activities.filter {
-      $0.activityState == .active || $0.activityState == .stale
-    }
-    let match = activities.first {
-      $0.attributes.project == labels.project
-        && $0.attributes.task == labels.task
-        && $0.attributes.workspaceName == labels.workspaceName
-    }
-    let others = activities.filter { $0.id != match?.id }
-    Task {
-      for other in others {
-        await other.end(nil, dismissalPolicy: .immediate)
-      }
-      if let match {
-        await match.update(content)
-      }
-    }
-    if let match { return match.id }
-
     let attributes = TimerAttributes(
       version: 1,
       workspaceName: labels.workspaceName,
       project: labels.project,
       task: labels.task
     )
+    queue.enqueue { [weak self] in
+      await self?.apply(attributes: attributes, content: content)
+    }
+  }
+
+  /// Ends every active activity but the one with the same labels, then
+  /// updates that one, or requests a new one. It runs in the queue, so it
+  /// reads the activities after the earlier changes are done.
+  private func apply(
+    attributes: TimerAttributes,
+    content: ActivityContent<TimerAttributes.ContentState>
+  ) async {
+    let activities = Activity<TimerAttributes>.activities.filter {
+      $0.activityState == .active || $0.activityState == .stale
+    }
+    let match = activities.first {
+      $0.attributes.project == attributes.project
+        && $0.attributes.task == attributes.task
+        && $0.attributes.workspaceName == attributes.workspaceName
+    }
+    for other in activities where other.id != match?.id {
+      await other.end(nil, dismissalPolicy: .immediate)
+    }
+    if let match {
+      await match.update(content)
+      return
+    }
+    request(attributes: attributes, content: content)
+  }
+
+  private func request(
+    attributes: TimerAttributes,
+    content: ActivityContent<TimerAttributes.ContentState>
+  ) {
     do {
       let activity = try Activity.request(attributes: attributes, content: content, pushType: .token)
       watchToken(of: activity)
-      return activity.id
     } catch {
       // Without the push entitlement a request for a token fails. The
       // activity still counts on the phone without remote updates.
-      let activity = try? Activity.request(attributes: attributes, content: content, pushType: nil)
-      return activity?.id
+      _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
     }
   }
 

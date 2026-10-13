@@ -31,12 +31,12 @@ export type LiveActivityLabels = {
 type NativeLiveActivity = {
 	areActivitiesEnabled(): boolean;
 	/** Start an activity, or update the one that exists with the same
-	 *  labels. Ends every other activity. Returns the activity id. */
-	show(
-		labels: LiveActivityLabels,
-		state: LiveActivityContentState,
-	): string | null;
-	/** End every activity of the timer, at once. */
+	 *  labels. Ends every other activity. The change is queued after the
+	 *  changes before it, and the call returns at once: the activity id
+	 *  comes with the `onActivityPushToken` event. */
+	show(labels: LiveActivityLabels, state: LiveActivityContentState): void;
+	/** End every activity of the timer. Queued like `show`, so a `show` after
+	 *  it sees the activities as they are when the ends are done. */
 	endAll(): void;
 	pushToStartToken(): string | null;
 	/** The push token of the activity that runs now, or null. */
