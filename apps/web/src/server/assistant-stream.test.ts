@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import { turnStream } from "./assistant-stream.ts";
+import { assistantService, type Ctx } from "@farmer/core/services";
+
+import { SSE_HEARTBEAT_MS } from "#/lib/sse-heartbeat.ts";
+
+import { streamAssistantTurn, turnStream } from "./assistant-stream.ts";
 
 // The wiring of the heartbeat in the stream of a turn. The turn is a fake:
 // it waits for a signal the test controls.
@@ -110,5 +114,31 @@ describe("turnStream heartbeat", () => {
 
 		const timer = set.mock.results.at(-1)?.value;
 		expect(clear.mock.calls.some(([handle]) => handle === timer)).toBe(true);
+	});
+});
+
+describe("streamAssistantTurn heartbeat", () => {
+	test("starts the heartbeat at the 20 s interval", async () => {
+		const set = spyOn(globalThis, "setInterval");
+		const run = spyOn(assistantService, "run").mockImplementation(
+			() => new Promise<void>(() => undefined),
+		);
+		spies.push(set, run);
+		const { request: req, controller } = request();
+		// SAFETY: the stubbed `run` never reads the context, and the route
+		// only sets `actor` and reads `userId`.
+		const ctx = {
+			organizationId: "org-heartbeat-test",
+			userId: "user-heartbeat-test",
+		} as Ctx;
+		// SAFETY: the stubbed `run` never reads the input.
+		const input = {} as Parameters<typeof streamAssistantTurn>[1];
+
+		const response = await streamAssistantTurn(ctx, input, req);
+
+		expect(SSE_HEARTBEAT_MS).toBe(20_000);
+		expect(set.mock.calls.some(([, ms]) => ms === 20_000)).toBe(true);
+		controller.abort();
+		await response.body?.cancel();
 	});
 });

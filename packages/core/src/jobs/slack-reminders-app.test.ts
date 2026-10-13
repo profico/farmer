@@ -9,6 +9,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -26,6 +27,7 @@ import {
 import { mobileDevice } from "../db/schema/mobile";
 import { notificationSettings } from "../db/schema/notifications";
 import { slackReminderLog } from "../db/schema/slack";
+import * as nativePush from "../services/native-push";
 import { settleNativePushForTests } from "../services/native-push";
 import {
 	type NotifyAdapter,
@@ -201,6 +203,30 @@ describe("a workspace with no Slack installation", () => {
 			.from(slackReminderLog)
 			.where(eq(slackReminderLog.recipientUserId, WITH_PHONE));
 		expect(claim?.retry).toBe(true);
+	});
+
+	test("does not run the phone query when no reminder is due", async () => {
+		const phoneQuery = spyOn(nativePush, "orgHasNotifiablePhone");
+		try {
+			// A Wednesday: not a nudge day, not the digest day, not month end.
+			const summary = await runSlackRemindersOnce({
+				now: new Date("2026-10-14T10:00:00Z"),
+			});
+			expect(summary.organizations).toBe(0);
+			expect(phoneQuery).not.toHaveBeenCalled();
+		} finally {
+			phoneQuery.mockRestore();
+		}
+	});
+
+	test("runs the phone query when a reminder is due", async () => {
+		const phoneQuery = spyOn(nativePush, "orgHasNotifiablePhone");
+		try {
+			await runSlackRemindersOnce({ now: TUESDAY });
+			expect(phoneQuery).toHaveBeenCalled();
+		} finally {
+			phoneQuery.mockRestore();
+		}
 	});
 
 	test("sends nothing while the relay is off", async () => {
