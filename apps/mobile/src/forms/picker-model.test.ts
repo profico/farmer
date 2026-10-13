@@ -16,11 +16,13 @@ const project = (
 	name: string,
 	client: string,
 	code: string | null = null,
+	status: Project["status"] = "active",
 ): Project => {
-	const base: Pick<Project, "id" | "name" | "code" | "client"> = {
+	const base: Pick<Project, "id" | "name" | "code" | "client" | "status"> = {
 		id,
 		name,
 		code,
+		status,
 		client: { id: client, name: client },
 	};
 	// SAFETY: the picker reads only id, name, code and client of a project.
@@ -46,6 +48,21 @@ const projects = [
 ];
 
 describe("projectSections", () => {
+	test("hides an archived project, except the chosen one", () => {
+		const list = [
+			project("1", "Live", "Acme"),
+			project("2", "Old", "Acme", null, "archived"),
+		];
+		const names = (chosenId: string | null) =>
+			projectSections(list, "", false, chosenId).flatMap((section) =>
+				section.data.map((item) =>
+					item.kind === "project" ? item.project.name : "",
+				),
+			);
+		expect(names(null)).toEqual(["Live"]);
+		expect(names("2")).toEqual(["Live", "Old"]);
+	});
+
 	test("sorts the clients and the projects with no regard to case", () => {
 		const sections = projectSections(projects, "", false);
 		expect(titles(sections)).toEqual(["Alpha", "alpha", "beta"]);

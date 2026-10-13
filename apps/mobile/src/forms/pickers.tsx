@@ -108,7 +108,7 @@ export function ProjectPicker({
 				placeholder="Search projects"
 				search={search}
 				onSearch={setSearch}
-				sections={projectSections(projects.data, search, allowNone)}
+				sections={projectSections(projects.data, search, allowNone, value)}
 				keyExtractor={(item) =>
 					item.kind === "none" ? "none" : item.project.id
 				}

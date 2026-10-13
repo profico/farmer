@@ -37,16 +37,24 @@ export const showsNoProject = (search: string) => {
 	return !needle || "no project".includes(needle);
 };
 
+/** A project is offered when it is active. The chosen project always shows,
+ *  so that a person can see and clear it after it is archived. */
+export const isOffered = (project: Project, chosenId: string | null) =>
+	project.status === "active" || project.id === chosenId;
+
 /** The projects by client. The clients and the projects in each client are
  *  sorted by name, with no regard to case. With `allowNone`, the "No project"
- *  row comes first. */
+ *  row comes first. A project that is not active shows only when it is the
+ *  chosen project. */
 export function projectSections(
 	projects: Project[],
 	search: string,
 	allowNone: boolean,
+	chosenId: string | null = null,
 ): PickerSection<ProjectItem>[] {
 	const clients = new Map<string, { name: string; projects: Project[] }>();
 	for (const project of projects) {
+		if (!isOffered(project, chosenId)) continue;
 		if (!matchesProject(project, search)) continue;
 		const client = clients.get(project.client.id) ?? {
 			name: project.client.name,
