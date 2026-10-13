@@ -102,11 +102,25 @@ const readOrIdle = async (
 	}
 };
 
+/** The events in some payloads. Gives true when the last one ended the turn. */
+function* eventsIn(
+	payloads: string[],
+): Generator<AssistantEvent, boolean, undefined> {
+	for (const data of payloads) {
+		const event = parseAssistantEvent(data);
+		if (!event) continue;
+		yield event;
+		if (isLast(event)) return true;
+	}
+	return false;
+}
+
 /**
  * The events of one assistant turn, in order, until `done` or `error`. With
  * a fetch that streams (`expo/fetch`), each event arrives as the server
  * writes it. Without one, the body is read as a whole, and the events arrive
- * together at the end.
+ * together at the end. A stream with no byte for `idleMs` ends with an error
+ * event.
  */
 export async function* readAssistantEvents(
 	response: FetchResponse,
@@ -116,12 +130,7 @@ export async function* readAssistantEvents(
 	const body = response.body;
 	if (!body) {
 		const text = await response.text();
-		for (const data of [...decoder.push(text), ...decoder.end()]) {
-			const event = parseAssistantEvent(data);
-			if (!event) continue;
-			yield event;
-			if (isLast(event)) return;
-		}
+		if (yield* eventsIn([...decoder.push(text), ...decoder.end()])) return;
 		yield CUT_OFF;
 		return;
 	}
@@ -139,12 +148,7 @@ export async function* readAssistantEvents(
 			const payloads = done
 				? [...decoder.push(text.decode()), ...decoder.end()]
 				: decoder.push(text.decode(value, { stream: true }));
-			for (const data of payloads) {
-				const event = parseAssistantEvent(data);
-				if (!event) continue;
-				yield event;
-				if (isLast(event)) return;
-			}
+			if (yield* eventsIn(payloads)) return;
 			if (done) break;
 		}
 	} finally {

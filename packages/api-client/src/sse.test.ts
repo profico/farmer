@@ -4,7 +4,6 @@ import { describe, expect, test } from "bun:test";
 
 import type { AssistantEvent } from "./schemas-assistant";
 import { readAssistantEvents } from "./sse";
-import type { FetchResponse } from "./transport";
 
 const encoder = new TextEncoder();
 
@@ -20,7 +19,7 @@ const liveResponse = () => {
 			cancelled = true;
 		},
 	});
-	const response = { body } as unknown as FetchResponse;
+	const response = new Response(body);
 	return {
 		response,
 		send: (text: string) => controller.enqueue(encoder.encode(text)),
