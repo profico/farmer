@@ -1,7 +1,34 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 
-import { adminGate, isAdminRoute } from "./admin-routes";
+import {
+	ADMIN_SECTIONS,
+	adminGate,
+	isAdminRoute,
+	MEMBER_SECTIONS,
+} from "./admin-routes";
+
+describe("the route files of the workspace", () => {
+	test("every section is classified as admin or member", () => {
+		const dir = join(import.meta.dir, "../../app/workspace");
+		const sections = readdirSync(dir, { withFileTypes: true })
+			.map((entry) => entry.name.replace(/\.tsx?$/, ""))
+			.filter((name) => name !== "_layout");
+		expect(sections.length).toBeGreaterThan(0);
+		for (const section of sections) {
+			const known = ADMIN_SECTIONS.has(section) || MEMBER_SECTIONS.has(section);
+			if (!known) throw new Error(`Unclassified workspace section: ${section}`);
+		}
+	});
+
+	test("no section is both admin and member", () => {
+		for (const section of ADMIN_SECTIONS) {
+			expect(MEMBER_SECTIONS.has(section)).toBe(false);
+		}
+	});
+});
 
 describe("isAdminRoute", () => {
 	test("the admin sections and their screens", () => {

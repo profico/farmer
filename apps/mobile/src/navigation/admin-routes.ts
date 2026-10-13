@@ -7,7 +7,7 @@
  * `clients` is not here: a person who leads a project may open the list, and
  * the client sheet checks for an admin itself. `assistant` only redirects.
  */
-const ADMIN_SECTIONS: ReadonlySet<string> = new Set([
+export const ADMIN_SECTIONS: ReadonlySet<string> = new Set([
 	"audit-log",
 	"hour-fund",
 	"integrations",
@@ -16,6 +16,13 @@ const ADMIN_SECTIONS: ReadonlySet<string> = new Set([
 	"reminders",
 	"tasks",
 	"webhooks",
+]);
+
+/** The workspace sections that every member may open. A new section must be
+ *  in this set or in `ADMIN_SECTIONS`: a test fails for a section in none. */
+export const MEMBER_SECTIONS: ReadonlySet<string> = new Set([
+	"assistant",
+	"clients",
 ]);
 
 /** The route is an admin screen of the workspace. `segments` are the segments

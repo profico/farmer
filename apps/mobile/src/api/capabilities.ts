@@ -44,6 +44,10 @@ export const useServerFeatures = (): ServerFeatures => {
 export type Access = Capabilities & {
 	/** False until `meta` and `whoami` are both read. */
 	ready: boolean;
+	/** The error of the read that failed, else null. */
+	error: Error | null;
+	/** Read again what failed. */
+	retry: () => void;
 } & ServerFeatures;
 
 /**
@@ -59,6 +63,11 @@ export const useAccess = (): Access => {
 		...capabilities,
 		...features,
 		ready: meta.data !== undefined && whoami.data !== undefined,
+		error: whoami.error ?? meta.error ?? null,
+		retry: () => {
+			if (whoami.isError) void whoami.refetch();
+			if (meta.isError) void meta.refetch();
+		},
 	};
 };
 

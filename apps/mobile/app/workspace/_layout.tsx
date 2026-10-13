@@ -1,5 +1,5 @@
 import { Redirect, Stack, useSegments } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
 import { adminGate } from "../../src/navigation/admin-routes";
@@ -8,6 +8,8 @@ import {
 	useStackOptions,
 } from "../../src/navigation/section-stack";
 import { useSignedIn } from "../../src/session/session";
+import { ErrorState } from "../../src/ui/components";
+import { usePalette } from "../../src/ui/theme";
 
 /** The forms of the workspace screens. Each opens over its list. */
 const FORMS = [
@@ -30,13 +32,33 @@ const FORMS = [
  */
 export default function WorkspaceLayout() {
 	const { workspace } = useSignedIn();
+	if (!workspace) return <Redirect href="/" />;
+	return <GatedStack />;
+}
+
+/** The inner part reads the capabilities, which need a workspace. */
+function GatedStack() {
 	const options = useStackOptions();
 	const form = useFormOptions({ headerShown: Platform.OS === "ios" });
+	const palette = usePalette();
 	const access = useAccess();
 	const segments = useSegments();
 	const gate = adminGate(segments, access);
-	if (!workspace || gate === "redirect") return <Redirect href="/" />;
-	if (gate === "wait") return null;
+	if (gate === "redirect") return <Redirect href="/" />;
+	if (gate === "wait") {
+		if (!access.error) return null;
+		return (
+			<View
+				style={{
+					flex: 1,
+					justifyContent: "center",
+					backgroundColor: palette.background,
+				}}
+			>
+				<ErrorState error={access.error} onRetry={access.retry} />
+			</View>
+		);
+	}
 	return (
 		<Stack screenOptions={options}>
 			{FORMS.map((name) => (
