@@ -39,7 +39,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 						projects,
 					] = await Promise.all([
 						ctxAccess(ctx),
-						membersService.list(ctx),
+						membersService.list(ctx, { userId: ctx.userId }),
 						workingHoursService.list(ctx),
 						ctxTimezone(ctx),
 						ctxWeekStartsOn(ctx),
