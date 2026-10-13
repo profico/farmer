@@ -652,7 +652,7 @@ describe("rate limits", () => {
 		expect(store.find(third.relayId)).not.toBeNull();
 	});
 
-	test("a successful verify call proves a device against the prune", async () => {
+	test("a successful verify call does not prove a device against the prune", async () => {
 		const { call, advance, store } = setup({ maxDevices: 2 });
 		const body = { platform: "android", pushToken: ANDROID_TOKEN };
 		const verified = await register(call, body);
@@ -673,8 +673,9 @@ describe("rate limits", () => {
 		expect(verify.status).toBe(204);
 		advance(UNPROVEN_DEVICE_MS * 2);
 		expect((await call("POST", "/v1/devices", body)).status).toBe(201);
-		expect(store.find(verified.relayId)).not.toBeNull();
-		expect(store.find(junk.relayId)).toBeNull();
+		// The oldest row goes, verified or not. Only a push proves a row.
+		expect(store.find(verified.relayId)).toBeNull();
+		expect(store.find(junk.relayId)).not.toBeNull();
 	});
 
 	test("a row moved onto a victim's token does not become its oldest registration", async () => {

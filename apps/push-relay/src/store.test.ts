@@ -109,11 +109,17 @@ describe("DeviceStore column migration", () => {
 		old.run(
 			`INSERT INTO device VALUES ('push-relay-id-012345678', 'android', 'tok-0123456789', NULL, NULL, 'h', 2, 2, 7, 5)`,
 		);
+		old.run(
+			`INSERT INTO device VALUES ('junk-relay-id-01234567', 'android', 'tok-junk', NULL, NULL, 'h', 3, 3, 3, NULL)`,
+		);
 		old.close();
 
 		const store = DeviceStore.open(path);
-		// The row with no push has its last_seen_at as proof, so it stays.
-		expect(store.pruneUnprovenOldest(10, 10)).toBe(0);
+		// A row seen after its registration gets last_seen_at as proof. A row
+		// never seen after it (last_seen_at = created_at) stays unproven.
+		expect(store.pruneUnprovenOldest(10, 10)).toBe(1);
+		expect(store.find("junk-relay-id-01234567")).toBeNull();
+		expect(store.find("old-relay-id-0123456789")).not.toBeNull();
 		expect(
 			store.holdsOldestRegistration(
 				"old-relay-id-0123456789",

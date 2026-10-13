@@ -63,12 +63,14 @@ export const MAX_ACTIVITY_TOKENS = 4;
  * new table appears on the next start. A later column in an old table needs
  * an `ALTER TABLE` that checks `PRAGMA table_info` first (see `ADDED_COLUMNS`).
  *
- * `proven_at` is the time of the last proof of a real device: a push that
- * the platform delivered, or a successful verify call from the server of the
- * person. It is NULL for a row with no proof. A registration alone proves
- * nothing, so a row with no proof is the first to go when the relay is full.
- * A row from before this column has its `last_seen_at` as the proof, so the
- * first prune does not treat every old phone as junk.
+ * `proven_at` is the time of the last push that the platform delivered. It
+ * is NULL for a row with no such push. Only a delivered push proves a row,
+ * because the caller of a registration holds the device secret and can make
+ * any other call (a verify call, a token update) for its own junk rows. A
+ * row with no proof is the first to go when the relay is full. A real phone
+ * that never got a push can go too, and it registers again on its next
+ * launch. A row from before this column gets `last_seen_at` as the proof
+ * only if the row was seen after its registration, so old junk is not proven.
  *
  * `token_bound_at` is the time when the row got its current push token: the
  * registration, or the last update that changed the token. The oldest
@@ -132,7 +134,7 @@ export class DeviceStore {
 					this.#db.run("ALTER TABLE device ADD COLUMN proven_at INTEGER");
 				}
 				this.#db.run(
-					"UPDATE device SET proven_at = last_seen_at WHERE proven_at IS NULL",
+					"UPDATE device SET proven_at = last_seen_at WHERE proven_at IS NULL AND last_seen_at > created_at",
 				);
 			}
 			if (!present.has("token_bound_at")) {
@@ -242,14 +244,6 @@ export class DeviceStore {
 				 WHERE relay_id = $relayId`,
 			)
 			.run({ relayId, now, delivered });
-	}
-
-	/** Record a proof of the device that is not a push: a successful verify
-	 *  call, made with the secret that only the phone holds. */
-	markProven(relayId: string, now: number): void {
-		this.#db
-			.query("UPDATE device SET proven_at = $now WHERE relay_id = $relayId")
-			.run({ relayId, now });
 	}
 
 	/** Delete at most `limit` devices that have no proof and were registered

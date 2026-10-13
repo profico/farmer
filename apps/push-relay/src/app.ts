@@ -144,7 +144,9 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		if (store.count() >= deps.maxDevices) {
 			// A registration has no proof, so junk can fill the cap. Free only
 			// the room that this registration needs, from the oldest rows with
-			// no proof, before a real phone gets a 503.
+			// no delivered push, before a real phone gets a 503. A real phone
+			// that never got a push can go too (older than 3 days). It
+			// registers again: its next PUT gets 401 and the app registers.
 			const room = store.count() - deps.maxDevices + 1;
 			const freed = store.pruneUnprovenOldest(now() - UNPROVEN_DEVICE_MS, room);
 			if (freed > 0) log(`[push-relay] full: pruned ${freed} unproven devices`);
@@ -273,8 +275,9 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 			body.value.publicKey,
 		);
 		if (!device || !matches) return error(401, "unauthorized");
-		// Only the phone can make a good proof, so it counts as a sign of life.
-		store.markProven(device.relayId, now());
+		// A verify call is not a proof of a real phone: the registrant holds
+		// the device secret and can verify its own junk rows. Only a
+		// delivered push sets `proven_at`.
 		return new Response(null, { status: 204 });
 	};
 
