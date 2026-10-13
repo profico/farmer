@@ -11,6 +11,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
+import { settleAll } from "./invalidation";
 import { refreshTime, scope, useWorkspace, type Workspace } from "./queries";
 
 /**
@@ -175,7 +176,7 @@ export const useAttachActivity = () => {
 	const w = useWorkspace();
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: async ({
+		mutationFn: ({
 			id,
 			commits,
 			pullRequests,
@@ -183,20 +184,28 @@ export const useAttachActivity = () => {
 			id: string;
 			commits: AttachCommits["commits"];
 			pullRequests: AttachPullRequests["pullRequests"];
-		}) => {
-			if (commits.length > 0) {
-				const attached = await w.client.attachCommits(w.slug, id, {
-					commits,
-				});
-				queryClient.setQueryData(attachedCommitsKey(w, id), attached);
-			}
-			if (pullRequests.length > 0) {
-				const attached = await w.client.attachPullRequests(w.slug, id, {
-					pullRequests,
-				});
-				queryClient.setQueryData(attachedPullRequestsKey(w, id), attached);
-			}
-		},
+		}) =>
+			// Two calls that do not depend on each other: a failed commits call
+			// must not keep the pull requests from attaching.
+			settleAll([
+				commits.length > 0
+					? w.client
+							.attachCommits(w.slug, id, { commits })
+							.then((attached) =>
+								queryClient.setQueryData(attachedCommitsKey(w, id), attached),
+							)
+					: Promise.resolve(),
+				pullRequests.length > 0
+					? w.client
+							.attachPullRequests(w.slug, id, { pullRequests })
+							.then((attached) =>
+								queryClient.setQueryData(
+									attachedPullRequestsKey(w, id),
+									attached,
+								),
+							)
+					: Promise.resolve(),
+			]),
 		onSettled: () => refreshTime(queryClient, w),
 	});
 };
