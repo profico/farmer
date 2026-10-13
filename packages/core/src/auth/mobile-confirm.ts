@@ -41,7 +41,7 @@ import {
 const CONFIRM_STYLE =
 	"body{font-family:system-ui,sans-serif;margin:0;padding:24px;line-height:1.5;color:#1c1c1c;background:#fafafa}" +
 	"main{max-width:28rem;margin:0 auto}h1{font-size:1.25rem}" +
-	"strong{word-break:break-all}form{display:flex;gap:12px;margin-top:24px}" +
+	"strong{overflow-wrap:anywhere}form{display:flex;gap:12px;margin-top:24px}" +
 	"button{flex:1;font:inherit;padding:12px;border-radius:8px;border:1px solid #888;background:#fff;color:#1c1c1c}" +
 	"button[value=continue]{background:#1c1c1c;color:#fff;border-color:#1c1c1c}";
 
