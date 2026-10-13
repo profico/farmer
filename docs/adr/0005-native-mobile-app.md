@@ -92,14 +92,36 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
   OIDC source, so a source whose authorization endpoint is on a different
   host fails closed.
-- **Resolved, 13 October 2026: the proxy needs a one-time token.** Anybody
-  can start a flow and get a valid `state`, so a check of the state alone
-  let an attacker send a victim to the proxy with the attacker's state. The
-  start answer now holds `proxyToken` for the app. The proxy needs it,
-  spends it once (it lives 5 minutes, and the server keeps only its hash),
-  and compares the whole `authorizationURL` with the one that the server
-  made for it. The token is not bound to one browser: a person who gets the
-  full link can open it.
+- **Resolved, 13 October 2026: the proxy accepts only the URL that the
+  server made, and it fails closed.** At each app start, the server stores
+  the authorization URL that it made, under the hash of the `state`. The
+  proxy refuses a URL that is not exactly that URL (another `client_id` or
+  `redirect_uri`), a state with no stored URL, and a query that it cannot
+  parse (an overlong value, a repeated parameter, no `authorizationURL`).
+  Before this change, a query that the guard could not parse skipped every
+  check. A one-time `proxyToken` was tried first and removed: the attacker
+  starts the flow, so the attacker holds the token.
+- **Partly resolved, 13 October 2026: a person confirms a sign-in before
+  the code goes to the app.** Anybody can start a flow and send the proxy
+  link to another person. Before this change, that person signed in and
+  the browser went straight to `farmer://` with a code that was bound to
+  the challenge of the person who started the flow. Now the callback sends
+  the browser to a server page (`auth/mobile-confirm.ts`, RFC 8252 §8.6).
+  The page names the account and the server. Only a POST from the same
+  session, with the one-time id of the page, makes the code.
+  - **Closed:** a modified authorization URL, and a sign-in from a link
+    that the person did not start, unless the person confirms it on the
+    page.
+  - **Open:** an app on the phone that impersonates Farmer and claims
+    `farmer://`. The page is a consent step, not a binding. A person who
+    continues sends the code to the app that owns the scheme. No check on
+    a custom scheme can stop this.
+  - **Later:** an https callback on one fixed domain that Profico owns,
+    with an `apple-app-site-association` file and an `assetlinks.json` file
+    (RFC 8252 §7.2). Then the OS gives the link only to the verified app.
+    On iOS 17.4 or later, `expo-web-browser` can use this
+    (`preferUniversalLinks`). Android needs Chrome Auth Tab, or a test on a
+    real device before the change ships.
 - **Resolved, 6 October 2026: the link carries a one-time code, not the
   session.** The session in the `farmer://` link could reach another Android
   app that claims the same scheme, and a self-hosted server cannot use
@@ -107,8 +129,9 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   the browser opens, the app makes a random verifier and puts only its
   challenge in the `callbackURL` (`cc`). After the provider callback, a
   better-auth plugin (`auth/mobile-exchange.ts`) runs after `expo()`. It
-  removes the cookie and `cc` from the redirect and adds a random code that
-  lives 60 seconds. The server keeps only the hash of the code, with the
+  removes the cookie and `cc` from the redirect. Since 13 October 2026, the
+  browser goes to the confirmation page first (see above), and the server
+  adds a random code that lives 60 seconds only after the person continues. The server keeps only the hash of the code, with the
   challenge and the session id, in the `verification` table. The app sends
   the code and the verifier to `POST /api/auth/mobile/exchange` and gets the
   session token. A hostile app that reads the link has the code and the

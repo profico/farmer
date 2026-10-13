@@ -251,11 +251,15 @@ link carries a one-time code, not the session (ADR 0005). The code is in
 2. `expo()` adds `cookie=<Set-Cookie>` to the redirect. The `mobile-exchange`
    plugin comes after `expo()` in the plugin list, so its after hook sees
    that link. The hook runs on the same paths as the hook of `expo()`. It
-   removes `cookie` and `cc`, and adds `code`. A `cc` that is not a
-   43-character challenge, no `cc`, or a callback with no new session, gives
-   `error=exchange_failed` and no cookie. A callback that has an `error`
-   already (a refused sign-in) keeps that error, with no cookie and no code.
-3. The app calls `POST /api/auth/mobile/exchange` with `{ code, verifier }`
+   removes `cookie` and `cc`. It does not add a code. It sends the browser
+   to the confirmation page (see "The confirmation page"). A `cc` that is
+   not a 43-character challenge, no `cc`, or a callback with no new session,
+   gives `error=exchange_failed` and no cookie. A callback that has an
+   `error` already (a refused sign-in) keeps that error, with no cookie and
+   no code. These two cases go straight to the app.
+3. The person selects Continue on the page. The server makes `code` and
+   redirects to the `farmer://` link.
+4. The app calls `POST /api/auth/mobile/exchange` with `{ code, verifier }`
    and gets `{ token }`, the session token.
 
 - **The code lives 60 seconds and works once.** The row is in `verification`,
@@ -274,25 +278,58 @@ link carries a one-time code, not the session (ADR 0005). The code is in
 - The password sign-in, the device flow and API tokens do not use the link
   and did not change.
 
-### The proxy token
+### The proxy guard
 
 The app opens `GET /api/auth/expo-authorization-proxy` in the system browser.
 The plugin's endpoint redirects to any https URL and sets a signed `state`
 cookie from that URL. `packages/core/src/auth/mobile-sign-in.ts` guards it:
 
-- The `mobileProxyToken` plugin adds `proxyToken` to the answer of
-  `/sign-in/social` and `/sign-in/oauth2` for a request with the header
-  `expo-origin`. The server keeps the SHA-256 of the token in `verification`
-  (`mobile-proxy:<hash>`), with the authorization URL that it made. The row
-  lives 5 minutes.
-- The app sends `token` with `authorizationURL` (`proxyUrlFor` in
-  `auth-flow.ts`). The guard spends the token first, with one delete, so the
-  token works once and a refused call burns it.
-- The guard compares the whole `authorizationURL` with the stored one. A URL
-  with another `client_id` or `redirect_uri` is refused. The checks of the
-  provider origin, of the live state and of the app callback stay.
-- The token is a secret of the app that started the flow. It does not bind
-  the proxy link to one browser: a person who gets the full link can open it.
+- The guard fails closed. It refuses a query that it cannot parse: no
+  `authorizationURL`, an `authorizationURL` of more than 4,096 characters,
+  or a parameter that occurs two times.
+- The `mobileProxyUrl` plugin stores the authorization URL of each
+  `/sign-in/social` and `/sign-in/oauth2` answer for a request with the
+  header `expo-origin`. The row is in `verification`
+  (`mobile-proxy:<sha256 of the state>`) and lives 5 minutes.
+- The guard spends that row with one delete and compares the whole
+  `authorizationURL` with it. A URL with another `client_id` or
+  `redirect_uri` is refused, and so is a state with no row. The checks of
+  the provider origin, of the live state and of the app callback stay.
+- The guard does not bind the proxy link to one browser. A person who gets
+  the link can open it. The confirmation page is the step for that case.
+
+### The confirmation page
+
+`packages/core/src/auth/mobile-confirm.ts` serves
+`GET /api/auth/mobile/confirm?id=<id>` and `POST /api/auth/mobile/confirm`.
+The page asks: "Sign in to the Farmer app on this phone as <email> at
+<server>?" It has a Continue button and a Cancel button in one POST form.
+
+- The callback stores a pending confirmation in `verification`
+  (`mobile-confirm:<sha256 of the id>`), with the session id, the challenge
+  and the `farmer://` link. The row lives 5 minutes. The id is 32 random
+  bytes and only the browser gets it.
+- A GET shows the page and changes nothing. The page needs the session
+  cookie of the callback, and the session must be the session of the row.
+- The POST spends the row first, with one delete. Then it checks that the
+  session cookie names the session of the row. A used id, an expired id,
+  no session or another session gives a 400 page, and the id is burned.
+- Continue makes the exchange code and redirects to the `farmer://` link
+  with `code`. Cancel deletes the session and redirects with
+  `error=access_denied`.
+- The page has no script. Its headers are
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+  (with a hash for the style), `X-Frame-Options: DENY` and
+  `Cache-Control: no-store`. The policy has no `form-action`, because
+  browsers apply it to the redirect to `farmer://`. `Referrer-Policy` is
+  `same-origin`, not `no-referrer`, because with `no-referrer` the POST
+  sends `Origin: null` and better-auth refuses it.
+- The page is a consent step, not a binding. A person who selects Continue
+  sends the code to the app that owns `farmer://` on the phone. ADR 0005
+  names the later fix: an https callback with verified app links.
+- The system auth session (ASWebAuthenticationSession on iOS, a Custom Tab
+  on Android) waits for the first `farmer://` link. It does not care how
+  many pages come before it, so the app did not change.
 
 ## Builds
 
