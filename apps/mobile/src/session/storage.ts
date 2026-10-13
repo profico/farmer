@@ -5,6 +5,12 @@ import { z } from "zod";
  *  and one write keeps the server and its token together. */
 export const SESSION_KEY = "farmer.session";
 
+/** "This device only": a backup restore onto a second phone must not carry
+ *  the session of the first phone. */
+const options: SecureStore.SecureStoreOptions = {
+	keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
 const storedSession = z.object({
 	origin: z.string().min(1),
 	token: z.string().min(1),
@@ -13,7 +19,7 @@ const storedSession = z.object({
 export type StoredSession = z.output<typeof storedSession>;
 
 export const readSession = async (): Promise<StoredSession | null> => {
-	const raw = await SecureStore.getItemAsync(SESSION_KEY);
+	const raw = await SecureStore.getItemAsync(SESSION_KEY, options);
 	if (!raw) return null;
 	try {
 		const parsed = storedSession.safeParse(JSON.parse(raw));
@@ -24,6 +30,20 @@ export const readSession = async (): Promise<StoredSession | null> => {
 };
 
 export const writeSession = (session: StoredSession) =>
-	SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
+	SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session), options);
 
 export const wipeSession = () => SecureStore.deleteItemAsync(SESSION_KEY);
+
+/** Write the session again, so that a session from an earlier build gets the
+ *  "this device only" accessibility. A write over an existing item changes
+ *  the value only, so the item is deleted first. Never throws. */
+export const migrateSession = async (): Promise<void> => {
+	try {
+		const raw = await SecureStore.getItemAsync(SESSION_KEY, options);
+		if (raw === null) return;
+		await SecureStore.deleteItemAsync(SESSION_KEY, options);
+		await SecureStore.setItemAsync(SESSION_KEY, raw, options);
+	} catch {
+		// The session keeps its old accessibility.
+	}
+};

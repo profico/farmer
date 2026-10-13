@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const kv = new Map<string, string>();
 const deleted: string[] = [];
+const migrated: string[] = [];
 const platform = { OS: "ios" };
 
 mock.module("react-native", () => ({ Platform: platform }));
@@ -21,7 +22,10 @@ mock.module("expo-secure-store", () => ({
 	deleteItemAsync: async (key: string) => {
 		deleted.push(key);
 	},
-	getItemAsync: async () => null,
+	getItemAsync: async (key: string) => {
+		migrated.push(key);
+		return null;
+	},
 	setItemAsync: async () => undefined,
 }));
 
@@ -31,13 +35,18 @@ mock.module("../push/storage", () => ({
 	deleteAllPushItems: async () => {
 		deleted.push("push-items");
 	},
+	migratePushItems: async () => {
+		migrated.push("push-items");
+	},
 }));
 
-const { wipeIfFirstLaunch } = await import("./first-launch");
+const { migrateKeychainAccessibility, wipeIfFirstLaunch } =
+	await import("./first-launch");
 
 beforeEach(() => {
 	kv.clear();
 	deleted.length = 0;
+	migrated.length = 0;
 	platform.OS = "ios";
 });
 
@@ -60,5 +69,24 @@ describe("wipeAfterReinstall", () => {
 		await wipeIfFirstLaunch();
 		expect(deleted).toEqual([]);
 		expect(kv.has("farmer.installed")).toBe(false);
+	});
+});
+
+describe("migrateKeychainAccessibility", () => {
+	test("writes the session and the push items again one time", async () => {
+		await migrateKeychainAccessibility();
+		expect(migrated).toContain("farmer.session");
+		expect(migrated).toContain("push-items");
+		expect(kv.get("farmer.keychain-device-only")).toBe("1");
+		migrated.length = 0;
+		await migrateKeychainAccessibility();
+		expect(migrated).toEqual([]);
+	});
+
+	test("Android does nothing", async () => {
+		platform.OS = "android";
+		await migrateKeychainAccessibility();
+		expect(migrated).toEqual([]);
+		expect(kv.has("farmer.keychain-device-only")).toBe(false);
 	});
 });

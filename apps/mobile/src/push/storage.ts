@@ -10,7 +10,9 @@ import { z } from "zod";
  * `group.com.profico.farmer`, so that the Notification Service Extension and
  * the Live Activity widget can read them. They are readable after the first
  * unlock: a push arrives on a locked phone, and an item that is readable only
- * while the phone is unlocked would not open then.
+ * while the phone is unlocked would not open then. Every item is "this device
+ * only": a backup restore onto a second phone must not carry the identity of
+ * the first phone.
  */
 
 /** The app group, which is also the Keychain access group of the shared
@@ -24,7 +26,7 @@ const SERVICE = "farmer.push";
 
 const local: SecureStore.SecureStoreOptions = {
 	keychainService: SERVICE,
-	keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+	keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
 };
 
 const shared: SecureStore.SecureStoreOptions =
@@ -63,6 +65,22 @@ export const deleteAllPushItems = async (): Promise<void> => {
 	await Promise.all(
 		Object.values(KEYS).map((key) => deleteItem(key).catch(() => undefined)),
 	);
+};
+
+/** Write every push item again, so that an item from an earlier build gets
+ *  the "this device only" accessibility. A write over an existing item
+ *  changes the value only, so the item is deleted first. Never throws. */
+export const migratePushItems = async (): Promise<void> => {
+	for (const key of Object.values(KEYS)) {
+		try {
+			const value = await readItem(key);
+			if (value === null) continue;
+			await deleteItem(key);
+			await writeItem(key, value);
+		} catch {
+			// The next launch does not retry. The item keeps its old accessibility.
+		}
+	}
 };
 
 /** The relay registration of this installation. */

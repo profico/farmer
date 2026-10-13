@@ -2,8 +2,8 @@ import * as SecureStore from "expo-secure-store";
 import Storage from "expo-sqlite/kv-store";
 import { Platform } from "react-native";
 
-import { deleteAllPushItems } from "../push/storage";
-import { SESSION_KEY } from "./storage";
+import { deleteAllPushItems, migratePushItems } from "../push/storage";
+import { migrateSession, SESSION_KEY } from "./storage";
 
 /**
  * iOS keeps Keychain items after the app is deleted. A new install would thus
@@ -20,6 +20,10 @@ import { SESSION_KEY } from "./storage";
  * A later launch reads one value synchronously and does nothing more.
  */
 const INSTALLED_FLAG = "farmer.installed";
+
+/** Set after the items got the "this device only" accessibility. An item from
+ *  an earlier build keeps its old accessibility until it is written again. */
+const DEVICE_ONLY_FLAG = "farmer.keychain-device-only";
 
 let done: Promise<void> | null = null;
 
@@ -43,9 +47,22 @@ export const wipeIfFirstLaunch = async (): Promise<void> => {
 	}
 };
 
+/** Write the Keychain items again with the "this device only" accessibility,
+ *  one time. Never throws. */
+export const migrateKeychainAccessibility = async (): Promise<void> => {
+	if (Platform.OS !== "ios") return;
+	try {
+		if (Storage.getItemSync(DEVICE_ONLY_FLAG)) return;
+		await Promise.all([migrateSession(), migratePushItems()]);
+		Storage.setItemSync(DEVICE_ONLY_FLAG, "1");
+	} catch {
+		// The next launch tries again.
+	}
+};
+
 /** Delete the Keychain items of an earlier install, one time. Call it before
  *  the first read of the session. Never throws. */
 export const wipeAfterReinstall = (): Promise<void> => {
-	done ??= wipeIfFirstLaunch();
+	done ??= wipeIfFirstLaunch().then(migrateKeychainAccessibility);
 	return done;
 };
