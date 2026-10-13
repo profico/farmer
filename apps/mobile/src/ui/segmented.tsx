@@ -2,6 +2,7 @@ import { Pressable, View } from "react-native";
 
 import { Text } from "./components";
 import { usePalette } from "./theme";
+import { MIN_TARGET } from "./touch-target";
 import { SPACE } from "./type";
 
 export type SegmentOption<T extends string> = { value: T; label: string };
@@ -45,6 +46,8 @@ export function SegmentedControl<T extends string>({
 						style={{
 							flex: 1,
 							alignItems: "center",
+							minHeight: MIN_TARGET,
+							justifyContent: "center",
 							paddingVertical: SPACE.s,
 							backgroundColor: selected
 								? palette.secondaryContainer

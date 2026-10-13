@@ -1,8 +1,12 @@
 import { MenuView } from "@expo/ui/community/menu";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { usePalette } from "../../ui/theme";
+import { minTargetFor } from "../../ui/touch-target";
 import { MoreIcon } from "./more-icon";
+
+/** The anchor is a touch target: 48 dp on Android, 44 pt on iOS. */
+const TARGET = minTargetFor(Platform.OS);
 
 export type MoreAction = {
 	id: string;
@@ -39,8 +43,8 @@ export function MoreMenu({
 				accessibilityRole="button"
 				accessibilityLabel={label}
 				style={{
-					width: 40,
-					height: 40,
+					width: TARGET,
+					height: TARGET,
 					alignItems: "center",
 					justifyContent: "center",
 				}}

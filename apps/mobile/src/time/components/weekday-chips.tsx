@@ -1,9 +1,17 @@
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 
 import { Text } from "../../ui/components";
 import { usePalette } from "../../ui/theme";
+import { minTargetFor, verticalSlop } from "../../ui/touch-target";
 import { SPACE } from "../../ui/type";
 import { orderedWeekdays, weekdayName } from "../calendar";
+
+const CHIP_HEIGHT = 40;
+
+/** The chip is 40 high. The `hitSlop` grows the touch target to the minimum
+ *  of the platform without a change of what the chip draws. Seven chips fill
+ *  the width, so the slop is vertical only. */
+const SLOP = verticalSlop(CHIP_HEIGHT, minTargetFor(Platform.OS));
 
 /** The days of the week to repeat on, in the workspace's order. Each chip
  *  is a check box for a screen reader. */
@@ -35,9 +43,10 @@ export function WeekdayChips({
 									: [...value, day].sort((a, b) => a - b),
 							)
 						}
+						hitSlop={SLOP}
 						style={{
 							flex: 1,
-							height: 40,
+							height: CHIP_HEIGHT,
 							borderRadius: 20,
 							alignItems: "center",
 							justifyContent: "center",
