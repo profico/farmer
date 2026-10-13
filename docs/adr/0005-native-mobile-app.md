@@ -69,9 +69,9 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   writes needs `recordAudit` and a line in `audit-coverage.test.ts`.
 - The platform admin screens (`settings/instance/*` and the platform admins)
   and the Harvest import stay on the web. The app links to them.
-- The app sends product analytics to the server's own PostHog, and nothing in
-  development. Crash reports go to a Profico project with no timesheet
-  content, and a switch in the app turns them off.
+- The app sends no analytics and no crash reports yet. Nothing in the app
+  sends them. A later change must add an off switch in the app before it
+  sends any.
 - A change to the API contract needs a store build. EAS Update can send only
   a JS change that keeps the contract.
 - The OIDC path of `@better-auth/expo` (`signIn.oauth2`) has no documented
