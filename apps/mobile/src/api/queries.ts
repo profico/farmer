@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useSignedIn } from "../session/session";
+import { afterTimeChange } from "./invalidation";
 
 const MINUTE = 60_000;
 
@@ -33,22 +34,7 @@ export const scope = (w: Workspace) => ["farmer", w.origin, w.slug] as const;
  * reads its project, task and note live from the entry (#133).
  */
 export const refreshTime = (queryClient: QueryClient, w: Workspace) =>
-	Promise.all(
-		[
-			"entries",
-			"unfiled",
-			"tracking",
-			"home",
-			"reports",
-			"projects",
-			"timer",
-		].map((key) =>
-			queryClient.invalidateQueries({
-				queryKey: [...scope(w), key],
-				exact: key === "timer",
-			}),
-		),
-	);
+	afterTimeChange(queryClient, scope(w));
 
 export const useMe = () => {
 	const { origin, client } = useSignedIn();

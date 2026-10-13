@@ -26,6 +26,13 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
+import {
+	afterClientChange,
+	afterOrganizationChange,
+	afterPeopleChange,
+	afterSlackDisconnect,
+	afterTaskChange,
+} from "./invalidation";
 import { scope, useWorkspace, type Workspace } from "./queries";
 
 // The queries and the changes of the workspace administration screens
@@ -89,7 +96,7 @@ export const useInvitations = () => {
 };
 
 /** A change to a person changes the list, the profile, the reports that
- *  count them and the capabilities of `whoami`. */
+ *  count them and the capabilities of `whoami`: the whole workspace. */
 const usePeopleChange = <Vars, Result>(
 	mutationFn: (w: Workspace, vars: Vars) => Promise<Result>,
 ) => {
@@ -97,14 +104,7 @@ const usePeopleChange = <Vars, Result>(
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (vars: Vars) => mutationFn(w, vars),
-		onSuccess: () =>
-			invalidate(
-				queryClient,
-				w,
-				["admin", "people"],
-				["admin", "invitations"],
-				["whoami"],
-			),
+		onSuccess: () => afterPeopleChange(queryClient, scope(w)),
 	});
 };
 
@@ -172,16 +172,7 @@ const useClientChange = <Vars, Result>(
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (vars: Vars) => mutationFn(w, vars),
-		// `["clients"]` is the list of the project form and of the projects
-		// screen (`api/projects.ts`), apart from the admin list.
-		onSuccess: () =>
-			invalidate(
-				queryClient,
-				w,
-				["admin", "clients"],
-				["clients"],
-				["projects"],
-			),
+		onSuccess: () => afterClientChange(queryClient, scope(w)),
 	});
 };
 
@@ -218,7 +209,7 @@ const useTaskChange = <Vars, Result>(
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (vars: Vars) => mutationFn(w, vars),
-		onSuccess: () => invalidate(queryClient, w, ["admin", "tasks"], ["tasks"]),
+		onSuccess: () => afterTaskChange(queryClient, scope(w)),
 	});
 };
 
@@ -310,13 +301,10 @@ export const useUpdateOrganization = () => {
 			w.client.updateOrganization(w.slug, body),
 		onSuccess: async (settings) => {
 			queryClient.setQueryData(key(w, "organization"), settings);
-			// `whoami` carries the timezone and the first day of the week, and
-			// `/me` carries the name in the workspace switcher.
-			await Promise.all([
-				invalidate(queryClient, w, ["whoami"]),
-				queryClient.invalidateQueries({
-					queryKey: ["farmer", w.origin, "me"],
-				}),
+			await afterOrganizationChange(queryClient, scope(w), [
+				"farmer",
+				w.origin,
+				"me",
 			]);
 		},
 	});
@@ -439,8 +427,9 @@ export const useDisconnectSlack = () => {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: () => w.client.disconnectSlack(w.slug),
-		onSuccess: (status) => {
+		onSuccess: async (status) => {
 			queryClient.setQueryData(key(w, "slack"), status);
+			await afterSlackDisconnect(queryClient, scope(w));
 		},
 	});
 };
