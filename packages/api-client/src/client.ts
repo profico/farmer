@@ -166,6 +166,7 @@ import {
 	type FetchResponse,
 	type HttpMethod,
 	openStream,
+	SLOW_REQUEST_TIMEOUT_MS,
 	readJson,
 	send,
 	type Transport,
@@ -1104,6 +1105,8 @@ export class FarmerClient {
 			"POST",
 			orgPath(slug, "/workspace-integrations/slack/match-people"),
 			slackMatchSchema,
+			undefined,
+			{ timeoutMs: SLOW_REQUEST_TIMEOUT_MS },
 		);
 	}
 
@@ -1267,6 +1270,7 @@ export class FarmerClient {
 			orgPath(slug, "/audit-log/export"),
 			auditExportSchema,
 			body,
+			{ timeoutMs: SLOW_REQUEST_TIMEOUT_MS },
 		);
 	}
 
@@ -1708,6 +1712,8 @@ export class FarmerClient {
 			"POST",
 			orgPath(slug, "/workspace-integrations/github/repositories/refresh"),
 			availableRepositoriesSchema,
+			undefined,
+			{ timeoutMs: SLOW_REQUEST_TIMEOUT_MS },
 		);
 	}
 
@@ -1840,12 +1846,14 @@ export class FarmerClient {
 		path: string,
 		schema: S,
 		body?: Body,
+		options: { timeoutMs?: number } = {},
 	): Promise<z.output<S>> {
 		const response = await send(this.#transport, {
 			method,
 			path,
 			token: this.#token,
 			body: body === undefined ? undefined : JSON.stringify(body),
+			timeoutMs: options.timeoutMs,
 		});
 		if (!response.ok) throw await this.#failure(response, path);
 		const parsed = schema.safeParse(await readJson(response));

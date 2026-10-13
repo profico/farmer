@@ -7,6 +7,9 @@ export type FetchInit = {
 	headers: Headers;
 	body?: string;
 	signal: AbortSignal;
+	/** The client never follows a redirect: a hop to another origin drops the
+	 *  bearer token, and the answer would read as "signed out". */
+	redirect: "manual";
 };
 
 /** The part of a `Response` the client reads. `expo/fetch` answers its own
@@ -51,6 +54,9 @@ export type SendOptions = {
 };
 
 const REQUEST_TIMEOUT_MS = 20_000;
+/** For a call that does slow work on the server: a Slack match, a read of
+ *  the repositories from GitHub, an audit export. */
+export const SLOW_REQUEST_TIMEOUT_MS = 60_000;
 /** A wait up to this long is sat out; a longer one is reported. */
 const MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 const MAX_RATE_LIMIT_RETRIES = 2;
@@ -67,17 +73,46 @@ export const retryAfterSeconds = (
 	return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - nowMs) / 1000));
 };
 
+const timedOut = (transport: Transport, timeoutMs: number) =>
+	new ApiClientError(
+		"unreachable",
+		`${transport.origin} did not answer within ${Math.round(timeoutMs / 1000)} seconds. The server may be busy: try again in a moment.`,
+	);
+
+/** A 3xx answer. The client does not follow it, and names it. */
+const redirected = (transport: Transport, response: FetchResponse) =>
+	new ApiClientError(
+		"unreachable",
+		`${transport.origin} redirects to ${response.headers.get("location") ?? "another address"} (status ${response.status}). Use that address, and check the proxy of the server.`,
+		{ status: response.status },
+	);
+
+const isRedirect = (response: FetchResponse) =>
+	response.status >= 300 && response.status < 400;
+
 const fetchWithTimeout = async (
 	transport: Transport,
 	url: string,
-	init: Omit<FetchInit, "signal">,
+	init: Omit<FetchInit, "signal" | "redirect">,
 	timeoutMs: number,
 ): Promise<FetchResponse> => {
 	// `AbortSignal.timeout` is not in React Native, so the timer is our own.
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	let expired = false;
+	const timer = setTimeout(() => {
+		expired = true;
+		controller.abort();
+	}, timeoutMs);
 	try {
-		return await transport.fetch(url, { ...init, signal: controller.signal });
+		return await transport.fetch(url, {
+			...init,
+			signal: controller.signal,
+			redirect: "manual",
+		});
+	} catch (error) {
+		throw expired
+			? timedOut(transport, timeoutMs)
+			: unreachable(transport, error instanceof Error ? error : String(error));
 	} finally {
 		clearTimeout(timer);
 	}
@@ -116,20 +151,13 @@ export const send = async (
 	const headers = headersFor(transport, options, "application/json");
 
 	for (let attempt = 0; ; attempt++) {
-		let response: FetchResponse;
-		try {
-			response = await fetchWithTimeout(
-				transport,
-				`${transport.origin}${options.path}`,
-				{ method: options.method, headers, body: options.body },
-				options.timeoutMs ?? REQUEST_TIMEOUT_MS,
-			);
-		} catch (error) {
-			throw unreachable(
-				transport,
-				error instanceof Error ? error : String(error),
-			);
-		}
+		const response = await fetchWithTimeout(
+			transport,
+			`${transport.origin}${options.path}`,
+			{ method: options.method, headers, body: options.body },
+			options.timeoutMs ?? REQUEST_TIMEOUT_MS,
+		);
+		if (isRedirect(response)) throw redirected(transport, response);
 		if (response.status !== 429) return response;
 
 		const wait = retryAfterSeconds(
@@ -153,6 +181,19 @@ export const send = async (
 	}
 };
 
+/** What `openStream` throws for a failed request. The caller's own stop is
+ *  its own result, not a network failure to report. */
+const streamFailure = (
+	transport: Transport,
+	error: Error | string,
+	state: { callerStopped: boolean; expired: boolean; timeoutMs: number },
+) => {
+	if (error instanceof ApiClientError) return error;
+	if (state.callerStopped) return error;
+	if (state.expired) return timedOut(transport, state.timeoutMs);
+	return unreachable(transport, error);
+};
+
 /**
  * A request for a streamed answer (`text/event-stream`). The timeout covers
  * only the wait for the headers: after them, the stream can stay open as long
@@ -167,22 +208,32 @@ export const openStream = async (
 	const stop = () => controller.abort();
 	if (options.signal?.aborted) stop();
 	options.signal?.addEventListener("abort", stop, { once: true });
-	const timer = setTimeout(stop, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
+	const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+	let expired = false;
+	const timer = setTimeout(() => {
+		expired = true;
+		stop();
+	}, timeoutMs);
 	const fetcher = transport.streamFetch ?? transport.fetch;
 	try {
-		return await fetcher(`${transport.origin}${options.path}`, {
+		const response = await fetcher(`${transport.origin}${options.path}`, {
 			method: options.method,
 			headers: headersFor(transport, options, "text/event-stream"),
 			body: options.body,
 			signal: controller.signal,
+			redirect: "manual",
 		});
+		if (isRedirect(response)) throw redirected(transport, response);
+		return response;
 	} catch (error) {
-		// The caller stopped the request: that is its own result, not a
-		// network failure to report.
-		if (options.signal?.aborted) throw error;
-		throw unreachable(
+		throw streamFailure(
 			transport,
 			error instanceof Error ? error : String(error),
+			{
+				callerStopped: options.signal?.aborted === true,
+				expired,
+				timeoutMs,
+			},
 		);
 	} finally {
 		clearTimeout(timer);
