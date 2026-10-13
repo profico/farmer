@@ -16,31 +16,40 @@ import type { components } from "./openapi.gen";
 
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** `GET /meta`. */
+/**
+ * `GET /meta`. A server from before the mobile contract answers `app`,
+ * `cliEnabled` and `minCliVersion` only, so every later field has a default.
+ * The reply then parses, and `assertUsable` refuses the server with one clear
+ * "update the server" message instead of "does not look like a Farmer
+ * server". A missing `apiVersion` reads as 0: a server that predates the
+ * version contract.
+ */
 export const metaSchema = z.object({
 	app: z.literal("farmer"),
 	cliEnabled: z.boolean(),
 	minCliVersion: z.string(),
-	apiVersion: z.number().int().positive(),
-	minMobileVersion: z.string(),
+	apiVersion: z.number().int().nonnegative().default(0),
+	minMobileVersion: z.string().default(""),
 	/** The provider buttons, in the order of the login page. `kind` is an
 	 *  open set: a client draws a kind it does not know as an OpenID Connect
 	 *  source. */
-	signInMethods: z.array(
-		z.object({ id: z.string(), name: z.string(), kind: z.string() }),
-	),
+	signInMethods: z
+		.array(z.object({ id: z.string(), name: z.string(), kind: z.string() }))
+		.default([]),
 	/** True when the server offers an email and password form. */
-	passwordSignIn: z.boolean(),
+	passwordSignIn: z.boolean().default(false),
 	/** The server sends native push through this relay. */
-	pushRelay: z.object({
-		enabled: z.boolean(),
-		url: z.string().nullable(),
-	}),
+	pushRelay: z
+		.object({
+			enabled: z.boolean(),
+			url: z.string().nullable(),
+		})
+		.default({ enabled: false, url: null }),
 	/** The server stores images (`uploadImage`). */
-	uploadsEnabled: z.boolean(),
+	uploadsEnabled: z.boolean().default(false),
 	/** A person may make a workspace (`createOrganization`). False in
 	 *  single-org mode. */
-	organizationCreation: z.boolean(),
+	organizationCreation: z.boolean().default(false),
 });
 export type Meta = z.output<typeof metaSchema>;
 export type SignInMethod = Meta["signInMethods"][number];
@@ -101,7 +110,7 @@ export type Whoami = z.output<typeof whoamiSchema>;
 const clientRef = z.object({ id: z.string(), name: z.string() });
 
 /** The calendar event of a synced meeting changed after the person edited
- *  the entry. API version 3. */
+ *  the entry. */
 export const calendarChangeSchema = z.object({
 	/** An instant, ISO 8601. */
 	changedAt: z.string(),
@@ -136,8 +145,7 @@ export const timeEntrySchema = z.object({
 			client: clientRef,
 		})
 		.nullable(),
-	/** Null when there is nothing to choose. Absent on a server from before
-	 *  API version 3. */
+	/** Null when there is nothing to choose. */
 	calendarChange: calendarChangeSchema.nullable().optional(),
 });
 export type TimeEntry = z.output<typeof timeEntrySchema>;

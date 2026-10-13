@@ -4,7 +4,7 @@
  * workspace. The rules of `schemas.ts` apply.
  *
  * The writes here need a session credential (`farmer login` or the mobile
- * sign-in). An API token gets 403. Each route needs API version 3.
+ * sign-in). An API token gets 403.
  */
 
 import { z } from "zod";

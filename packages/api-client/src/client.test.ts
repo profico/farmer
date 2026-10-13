@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { FarmerClient } from "./client";
 import { ApiClientError } from "./errors";
-import { assertUsable, fetchMeta } from "./meta";
+import { assertUsable, fetchMeta, REQUIRED_API_VERSION } from "./meta";
 import { ORIGIN, jsonReply, scriptedServer } from "./test-server";
 
 const me = {
@@ -142,6 +142,30 @@ describe("fetchMeta", () => {
 		expect(() => assertUsable(meta, ORIGIN, "0.2.0")).not.toThrow(
 			ApiClientError,
 		);
+	});
+
+	test("a reply of a server before the contract parses and is refused", async () => {
+		const { transport } = scriptedServer([
+			jsonReply(200, {
+				app: "farmer",
+				cliEnabled: true,
+				minCliVersion: "0.1.0",
+			}),
+		]);
+		const meta = await fetchMeta(transport);
+		expect(meta.apiVersion).toBe(0);
+		expect(meta.signInMethods).toEqual([]);
+		expect(() => assertUsable(meta, ORIGIN, "0.1.0")).toThrow(
+			"Ask the administrator to update the server",
+		);
+	});
+
+	test("a server at the required version is usable", async () => {
+		const { transport } = scriptedServer([
+			jsonReply(200, { ...META, apiVersion: REQUIRED_API_VERSION }),
+		]);
+		const meta = await fetchMeta(transport);
+		expect(() => assertUsable(meta, ORIGIN, "0.1.0")).not.toThrow();
 	});
 
 	test("a server with the API off is refused", () => {

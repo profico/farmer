@@ -1529,9 +1529,8 @@ export class FarmerClient {
 	/** One assistant turn as a stream of events. A non-2xx answer throws
 	 *  before the first event, as every other call does. */
 
-	// API version 3: the Day view's helpers, GitHub on an entry and on a
-	// project, images, the organization's policy, and the steps of a person
-	// before a workspace.
+	// The Day view's helpers, GitHub on an entry and on a project, images,
+	// the organization's policy, and the steps of a person before a workspace.
 
 	/** Suggest the entries that the day is missing, from the calendar and
 	 *  GitHub. */

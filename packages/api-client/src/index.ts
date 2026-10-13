@@ -20,7 +20,7 @@ export {
 	type ApiIssue,
 	isSignedOut,
 } from "./errors";
-export { assertUsable, fetchMeta } from "./meta";
+export { assertUsable, fetchMeta, REQUIRED_API_VERSION } from "./meta";
 export { normalizeOrigin } from "./origin";
 export * from "./bodies";
 export { type JsonValue, jsonValueSchema } from "./json";

@@ -1,4 +1,4 @@
-// The routes of API version 3: the Day view's helpers, GitHub on an entry,
+// The routes of the Day view's helpers, GitHub on an entry,
 // the admin's policy and images, and the steps before a workspace. Each test
 // checks the path and the body the client sends, and that the answer parses.
 
@@ -73,7 +73,7 @@ describe("the Day view's helpers", () => {
 		);
 	});
 
-	test("an entry from before API version 3 has no calendar notice", async () => {
+	test("an entry from an older server has no calendar notice", async () => {
 		const { transport } = scriptedServer([
 			jsonReply(200, timeEntry),
 			jsonReply(200, {

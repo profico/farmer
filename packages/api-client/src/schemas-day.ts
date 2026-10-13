@@ -3,8 +3,6 @@
  * my day", the calendar meetings, and the GitHub commits and pull requests on
  * an entry and on a project. The rules of `schemas.ts` apply: an unknown
  * field is dropped, and a value from an open set is read as a string.
- *
- * Each route here needs API version 3 (`meta.apiVersion`).
  */
 
 import { z } from "zod";

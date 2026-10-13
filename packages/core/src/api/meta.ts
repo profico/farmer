@@ -19,10 +19,12 @@ export const MIN_CLI_VERSION = "0.1.0";
 
 /**
  * The version of the `/api/v1` contract. The CLI does not read it. The mobile
- * app reads it to know that the routes it needs exist.
+ * app reads it to know that the routes it needs exist. A server from before
+ * this field answers no `apiVersion`, and the client reads that as 0.
  *
- * Raise it when a route group is added that the mobile app must find, and
- * add a gate in the app for a server below that version.
+ * Raise it when a route group is added that the mobile app must find. Raise
+ * `REQUIRED_API_VERSION` in `packages/api-client/src/meta.ts` to the same
+ * number when the app needs that group.
  */
 export const API_VERSION = 1;
 
