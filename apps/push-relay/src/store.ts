@@ -63,9 +63,16 @@ export const MAX_ACTIVITY_TOKENS = 4;
  * new table appears on the next start. A later column in an old table needs
  * an `ALTER TABLE` that checks `PRAGMA table_info` first (see `ADDED_COLUMNS`).
  *
- * `last_push_ok_at` is the time of the last push that the platform
- * delivered, or NULL. A registration has no proof of a real device, so a row
- * that never received a push is the first to go when the relay is full.
+ * `proven_at` is the time of the last proof of a real device: a push that
+ * the platform delivered, or a successful verify call from the server of the
+ * person. It is NULL for a row with no proof. A registration alone proves
+ * nothing, so a row with no proof is the first to go when the relay is full.
+ * A row from before this column has its `last_seen_at` as the proof, so the
+ * first prune does not treat every old phone as junk.
+ *
+ * `token_bound_at` is the time when the row got its current push token: the
+ * registration, or the last update that changed the token. The oldest
+ * binding of a token owns the token (see `holdsOldestRegistration`).
  *
  * `live_activity_token` binds a per-activity token to one device. The token
  * is unique, so no second device can claim it. The foreign key removes the
@@ -84,7 +91,6 @@ CREATE TABLE IF NOT EXISTS device (
 	last_seen_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS device_last_seen_at ON device (last_seen_at);
-CREATE INDEX IF NOT EXISTS device_push_token ON device (push_token, created_at);
 CREATE TABLE IF NOT EXISTS live_activity_token (
 	token TEXT PRIMARY KEY,
 	relay_id TEXT NOT NULL REFERENCES device (relay_id) ON DELETE CASCADE,
@@ -93,11 +99,6 @@ CREATE TABLE IF NOT EXISTS live_activity_token (
 CREATE INDEX IF NOT EXISTS live_activity_token_relay_id
 	ON live_activity_token (relay_id, created_at);
 `;
-
-/** The columns that came after the first schema, as `[name, definition]`. */
-const ADDED_COLUMNS: readonly (readonly [string, string])[] = [
-	["last_push_ok_at", "INTEGER"],
-];
 
 export class DeviceStore {
 	readonly #db: Database;
@@ -108,22 +109,41 @@ export class DeviceStore {
 		this.#db.run("PRAGMA busy_timeout = 5000;");
 		this.#db.run("PRAGMA foreign_keys = ON;");
 		this.#db.run(SCHEMA);
-		this.#addMissingColumns();
+		this.#migrate();
 	}
 
-	/** Add a column that an old database does not have yet. */
-	#addMissingColumns(): void {
+	/** Bring a database from an older schema up to date. Each step checks
+	 *  `PRAGMA table_info` first, so a second start changes nothing. */
+	#migrate(): void {
 		const present = new Set(
 			this.#db
 				.query<{ name: string }, []>("PRAGMA table_info(device)")
 				.all()
 				.map((column) => column.name),
 		);
-		for (const [name, definition] of ADDED_COLUMNS) {
-			if (!present.has(name)) {
-				this.#db.run(`ALTER TABLE device ADD COLUMN ${name} ${definition}`);
+		this.#db.transaction(() => {
+			if (!present.has("proven_at")) {
+				// `last_push_ok_at` was the first name of this column.
+				if (present.has("last_push_ok_at")) {
+					this.#db.run(
+						"ALTER TABLE device RENAME COLUMN last_push_ok_at TO proven_at",
+					);
+				} else {
+					this.#db.run("ALTER TABLE device ADD COLUMN proven_at INTEGER");
+				}
+				this.#db.run(
+					"UPDATE device SET proven_at = last_seen_at WHERE proven_at IS NULL",
+				);
 			}
-		}
+			if (!present.has("token_bound_at")) {
+				this.#db.run("ALTER TABLE device ADD COLUMN token_bound_at INTEGER");
+				this.#db.run("UPDATE device SET token_bound_at = created_at");
+			}
+			this.#db.run("DROP INDEX IF EXISTS device_push_token");
+			this.#db.run(
+				"CREATE INDEX IF NOT EXISTS device_push_token_bound ON device (push_token, token_bound_at)",
+			);
+		})();
 	}
 
 	/** Open the file at `path`, and make its directory first. `:memory:`
@@ -137,9 +157,11 @@ export class DeviceStore {
 		this.#db
 			.query(
 				`INSERT INTO device (relay_id, platform, push_token, apns_environment,
-					live_activity_start_token, secret_hash, created_at, updated_at, last_seen_at)
+					live_activity_start_token, secret_hash, created_at, updated_at, last_seen_at,
+					token_bound_at)
 				 VALUES ($relayId, $platform, $pushToken, $apnsEnvironment,
-					$liveActivityStartToken, $secretHash, $createdAt, $updatedAt, $lastSeenAt)`,
+					$liveActivityStartToken, $secretHash, $createdAt, $updatedAt, $lastSeenAt,
+					$createdAt)`,
 			)
 			.run({
 				relayId: device.relayId,
@@ -176,7 +198,10 @@ export class DeviceStore {
 		if (!current) return;
 		this.#db
 			.query(
-				`UPDATE device SET push_token = $pushToken,
+				`UPDATE device SET
+					token_bound_at = CASE WHEN push_token = $pushToken
+						THEN token_bound_at ELSE $updatedAt END,
+					push_token = $pushToken,
 					apns_environment = $apnsEnvironment,
 					live_activity_start_token = $liveActivityStartToken,
 					updated_at = $updatedAt,
@@ -207,33 +232,56 @@ export class DeviceStore {
 	}
 
 	/** Record that the device was seen: an accepted push. `delivered` is true
-	 *  when the platform really delivered it, not a dry run. */
+	 *  when the platform really delivered it, not a dry run, and then it is
+	 *  also a proof of the device. */
 	touch(relayId: string, now: number, delivered = false): void {
 		this.#db
 			.query(
 				`UPDATE device SET last_seen_at = $now,
-					last_push_ok_at = CASE WHEN $delivered THEN $now ELSE last_push_ok_at END
+					proven_at = CASE WHEN $delivered THEN $now ELSE proven_at END
 				 WHERE relay_id = $relayId`,
 			)
 			.run({ relayId, now, delivered });
 	}
 
-	/** Delete every device that never received a push and was registered
-	 *  before `cutoff`. Returns the count. */
-	pruneNeverPushedSince(cutoff: number): number {
-		return this.#db
-			.query(
-				"DELETE FROM device WHERE last_push_ok_at IS NULL AND created_at < $cutoff",
-			)
-			.run({ cutoff }).changes;
+	/** Record a proof of the device that is not a push: a successful verify
+	 *  call, made with the secret that only the phone holds. */
+	markProven(relayId: string, now: number): void {
+		this.#db
+			.query("UPDATE device SET proven_at = $now WHERE relay_id = $relayId")
+			.run({ relayId, now });
 	}
 
-	/** Whether the device is the oldest registration of its push token. */
+	/** Delete at most `limit` devices that have no proof and were registered
+	 *  before `cutoff`, the oldest first. Returns the count. */
+	pruneUnprovenOldest(cutoff: number, limit: number): number {
+		if (limit < 1) return 0;
+		return this.#db
+			.query(
+				`DELETE FROM device WHERE relay_id IN (
+					SELECT relay_id FROM device
+					WHERE proven_at IS NULL AND created_at < $cutoff
+					ORDER BY created_at, rowid LIMIT $limit)`,
+			)
+			.run({ cutoff, limit }).changes;
+	}
+
+	/**
+	 * Whether the device holds the oldest binding of its push token. The age
+	 * is the time when the row got the token (`token_bound_at`), not the age
+	 * of the row: an update can move a row onto another token, and a row
+	 * that keeps its old age would then win the token of a victim.
+	 *
+	 * One gap stays. If the victim's row is deleted and the victim registers
+	 * the token again, an older binding of the same token wins. To make that
+	 * binding, a caller needs the victim's push token, and that token reaches
+	 * the caller only after the phone registered it. The relay accepts this.
+	 */
 	holdsOldestRegistration(relayId: string, pushToken: string): boolean {
 		const oldest = this.#db
 			.query<{ relay_id: string }, { pushToken: string }>(
 				`SELECT relay_id FROM device WHERE push_token = $pushToken
-				 ORDER BY created_at, rowid LIMIT 1`,
+				 ORDER BY token_bound_at, rowid LIMIT 1`,
 			)
 			.get({ pushToken });
 		return oldest?.relay_id === relayId;

@@ -112,8 +112,18 @@ const pushResponse = (result: DeliveryResult): Response => {
 export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	const { store, senders, limiters, log, now } = deps;
 
-	const addressOf = (request: Request, socketAddress: string | null) =>
-		clientAddress(request.headers, deps.trustedIpHeader, socketAddress);
+	let warnedMissingHeader = false;
+	const addressOf = (request: Request, socketAddress: string | null) => {
+		const header = deps.trustedIpHeader;
+		if (header && !warnedMissingHeader && !request.headers.has(header)) {
+			// A wrong header name puts every phone in one bucket. Say it once.
+			warnedMissingHeader = true;
+			log(
+				`[push-relay] a request has no ${header} header: check TRUSTED_IP_HEADER and the proxy`,
+			);
+		}
+		return clientAddress(request.headers, header, socketAddress);
+	};
 
 	/** The device that `relayId` names, when the bearer secret is its own. */
 	const authorizedDevice = (request: Request): Device | null => {
@@ -132,9 +142,11 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		const body = await readJsonBody(request, registerDeviceBody);
 		if (!body.ok) return bodyError(body.error);
 		if (store.count() >= deps.maxDevices) {
-			// A registration has no proof, so junk can fill the cap. Free the
-			// rows that never received a push before a real phone gets a 503.
-			const freed = store.pruneNeverPushedSince(now() - UNPROVEN_DEVICE_MS);
+			// A registration has no proof, so junk can fill the cap. Free only
+			// the room that this registration needs, from the oldest rows with
+			// no proof, before a real phone gets a 503.
+			const room = store.count() - deps.maxDevices + 1;
+			const freed = store.pruneUnprovenOldest(now() - UNPROVEN_DEVICE_MS, room);
 			if (freed > 0) log(`[push-relay] full: pruned ${freed} unproven devices`);
 		}
 		if (store.count() >= deps.maxDevices) {
@@ -260,9 +272,10 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 			relayId,
 			body.value.publicKey,
 		);
-		return device && matches
-			? new Response(null, { status: 204 })
-			: error(401, "unauthorized");
+		if (!device || !matches) return error(401, "unauthorized");
+		// Only the phone can make a good proof, so it counts as a sign of life.
+		store.markProven(device.relayId, now());
+		return new Response(null, { status: 204 });
 	};
 
 	/** The refusal for a Live Activity token that this device may not use, or

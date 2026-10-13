@@ -27,7 +27,7 @@ accounts exist.
 |---|---|---|
 | `PORT` | `3000` | The HTTP port. |
 | `RELAY_DB_PATH` | `./data/relay.sqlite` | The SQLite file. The relay makes the directory on start. The image sets `/data/relay.sqlite` on the `/data` volume. |
-| `TRUSTED_IP_HEADER` | (required in production) | The one header that the proxy in front of the relay sets with the client address. When `NODE_ENV=production` (the Docker image sets it), the relay refuses to start if this is unset or empty. Set `none` for a relay with no proxy in front: the relay then uses the socket address only and trusts no header. Behind Cloudflare, set `cf-connecting-ip`. With a proxy and `none`, every caller shares the proxy's bucket. For `x-forwarded-for` the relay reads the last entry. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. The relay logs the choice at start. |
+| `TRUSTED_IP_HEADER` | (required in production) | The one header that the proxy in front of the relay sets with the client address. When `NODE_ENV=production` (the Docker image sets it), the relay refuses to start if this is unset or empty. Set `none` for a relay with no proxy in front: the relay then uses the socket address only and trusts no header. Behind Cloudflare, set `cf-connecting-ip`. With a proxy and `none`, every caller shares the proxy's bucket. For `x-forwarded-for` the relay reads the last entry. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. The relay refuses to start if the value is not a header name. The relay logs the choice at start, and logs one warning when a request has no such header. |
 | `RELAY_MAX_DEVICES` | `100000` | The most devices that the relay holds. A registration past it gets `503 relay_full`. |
 | `APNS_KEY_P8` | (none) | The `.p8` key from Apple, as PEM. Literal `\n` sequences count as line breaks. |
 | `APNS_KEY_ID` | (none) | The key id of the `.p8` key. |
@@ -251,15 +251,17 @@ limit for each address, so one caller cannot use up the limit of the real
 server. An unknown id counts against the address only.
 
 The relay holds at most `RELAY_MAX_DEVICES` devices. When the relay is full,
-it first deletes the devices that never received a delivered push and are
-older than 3 days (`UNPROVEN_DEVICE_MS` in `src/prune.ts`), because a
-registration has no proof and junk can fill the cap. If the relay is still
+it first deletes the oldest devices that have no proof and are older than
+3 days (`UNPROVEN_DEVICE_MS` in `src/prune.ts`). It deletes only as many as
+the new registration needs. A proof is a delivered push or a successful
+verify call. A registration alone has no proof, and junk can fill the cap.
+If the relay is still
 full, a registration gets `503 relay_full` with `Retry-After`, and the relay
 logs one line. A phone that the prune removed registers again when its relay
 id is unknown.
 
 A caller can mint relay ids, so the push token limits and this cap bound the
-abuse. The oldest registration of a push token counts only against its own
+abuse. The oldest binding of a push token (the time when a device got the token, not the time of its first registration) counts only against its own
 relay id limit. The younger registrations of the same token share the token
 limit. A caller who knows a victim's push token can thus use up the token
 limit, but not the limit of the victim's own registration.

@@ -636,6 +636,74 @@ describe("rate limits", () => {
 		expect(logs.some((line) => line.includes("pruned 1 unproven"))).toBe(true);
 	});
 
+	test("a full relay deletes only as many unproven devices as it needs", async () => {
+		const { call, advance, store } = setup({ maxDevices: 3 });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const first = await register(call, body);
+		advance(1_000);
+		const second = await register(call, body);
+		advance(1_000);
+		const third = await register(call, body);
+		advance(UNPROVEN_DEVICE_MS * 2);
+		expect((await call("POST", "/v1/devices", body)).status).toBe(201);
+		expect(store.count()).toBe(3);
+		expect(store.find(first.relayId)).toBeNull();
+		expect(store.find(second.relayId)).not.toBeNull();
+		expect(store.find(third.relayId)).not.toBeNull();
+	});
+
+	test("a successful verify call proves a device against the prune", async () => {
+		const { call, advance, store } = setup({ maxDevices: 2 });
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const verified = await register(call, body);
+		const junk = await register(call, body);
+		const key = "A".repeat(87);
+		const verify = await call(
+			"POST",
+			`/v1/devices/${verified.relayId}/verify`,
+			{
+				publicKey: key,
+				proof: bindingProof(
+					hashSecret(verified.deviceSecret),
+					verified.relayId,
+					key,
+				),
+			},
+		);
+		expect(verify.status).toBe(204);
+		advance(UNPROVEN_DEVICE_MS * 2);
+		expect((await call("POST", "/v1/devices", body)).status).toBe(201);
+		expect(store.find(verified.relayId)).not.toBeNull();
+		expect(store.find(junk.relayId)).toBeNull();
+	});
+
+	test("a row moved onto a victim's token does not become its oldest registration", async () => {
+		const { call, advance, store } = setup();
+		const attacker = await register(call, {
+			platform: "android",
+			pushToken: "attacker-own-fcm-token-0123456",
+		});
+		advance(1_000);
+		const victim = await register(call, {
+			platform: "android",
+			pushToken: ANDROID_TOKEN,
+		});
+		advance(1_000);
+		const moved = await call(
+			"PUT",
+			`/v1/devices/${attacker.relayId}`,
+			{ pushToken: ANDROID_TOKEN },
+			{ authorization: `Bearer ${attacker.deviceSecret}` },
+		);
+		expect(moved.status).toBe(200);
+		expect(store.holdsOldestRegistration(victim.relayId, ANDROID_TOKEN)).toBe(
+			true,
+		);
+		expect(store.holdsOldestRegistration(attacker.relayId, ANDROID_TOKEN)).toBe(
+			false,
+		);
+	});
+
 	test("a full relay of proven devices still refuses a registration", async () => {
 		const { call, advance } = setup({ maxDevices: 1 });
 		const body = { platform: "android", pushToken: ANDROID_TOKEN };
@@ -700,6 +768,29 @@ describe("rate limits", () => {
 			ciphertext: CIPHERTEXT,
 		};
 		expect((await call("POST", "/v1/push", push)).status).toBe(200);
+	});
+
+	test("a request with no trusted header logs one warning", async () => {
+		const { call, logs } = setup();
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		await call("POST", "/v1/devices", body);
+		await call("POST", "/v1/devices", body);
+		await call("POST", "/v1/devices", body, {
+			"cf-connecting-ip": "203.0.113.9",
+		});
+		const warnings = logs.filter((line) => line.includes("cf-connecting-ip"));
+		expect(warnings).toHaveLength(1);
+	});
+
+	test("with the trusted header present, no warning is logged", async () => {
+		const { call, logs } = setup();
+		await call(
+			"POST",
+			"/v1/devices",
+			{ platform: "android", pushToken: ANDROID_TOKEN },
+			{ "cf-connecting-ip": "203.0.113.9" },
+		);
+		expect(logs.some((line) => line.includes("TRUSTED_IP_HEADER"))).toBe(false);
 	});
 
 	test("with TRUSTED_IP_HEADER none, a caller's header does not pick its bucket", async () => {

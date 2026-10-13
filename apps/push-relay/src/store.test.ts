@@ -87,7 +87,7 @@ describe("pruneStaleDevices", () => {
 });
 
 describe("DeviceStore column migration", () => {
-	test("adds last_push_ok_at to a database from before the column", () => {
+	test("renames last_push_ok_at and backfills the proof and the token time", () => {
 		directory = mkdtempSync(join(tmpdir(), "push-relay-"));
 		const path = join(directory, "relay.sqlite");
 		const old = new Database(path, { create: true });
@@ -100,16 +100,26 @@ describe("DeviceStore column migration", () => {
 			secret_hash TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
-			last_seen_at INTEGER NOT NULL
+			last_seen_at INTEGER NOT NULL,
+			last_push_ok_at INTEGER
 		) STRICT`);
 		old.run(
-			`INSERT INTO device VALUES ('old-relay-id-0123456789', 'android', 'tok-0123456789', NULL, NULL, 'h', 1, 1, 1)`,
+			`INSERT INTO device VALUES ('old-relay-id-0123456789', 'android', 'tok-0123456789', NULL, NULL, 'h', 1, 1, 7, NULL)`,
+		);
+		old.run(
+			`INSERT INTO device VALUES ('push-relay-id-012345678', 'android', 'tok-0123456789', NULL, NULL, 'h', 2, 2, 7, 5)`,
 		);
 		old.close();
 
 		const store = DeviceStore.open(path);
-		expect(store.pruneNeverPushedSince(10)).toBe(1);
-		expect(store.find("old-relay-id-0123456789")).toBeNull();
+		// The row with no push has its last_seen_at as proof, so it stays.
+		expect(store.pruneUnprovenOldest(10, 10)).toBe(0);
+		expect(
+			store.holdsOldestRegistration(
+				"old-relay-id-0123456789",
+				"tok-0123456789",
+			),
+		).toBe(true);
 		store.close();
 		// A second open finds the column and adds nothing.
 		DeviceStore.open(path).close();
@@ -134,7 +144,7 @@ describe("DeviceStore column migration", () => {
 			});
 		}
 		store.touch("proven-relay-id-0123456", 5, true);
-		expect(store.pruneNeverPushedSince(10)).toBe(1);
+		expect(store.pruneUnprovenOldest(10, 10)).toBe(1);
 		expect(store.find("proven-relay-id-0123456")).not.toBeNull();
 		store.close();
 	});
