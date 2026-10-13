@@ -85,6 +85,42 @@ export const showsCalendarPicker = (
 	systemKey === "meeting" &&
 	calendarConnected;
 
+/** Worked time needs a note. Time off, a break and a rest-of-day block do
+ *  not. This is `descriptionRequiredFor` of the core package, which the
+ *  server applies at save: the mobile app cannot import it. With no task
+ *  picked, nothing is required yet. */
+export const noteRequired = (input: {
+	hasTask: boolean;
+	absence: boolean;
+	systemKey: string | null | undefined;
+	isFill: boolean;
+}) =>
+	input.hasTask &&
+	!input.isFill &&
+	!input.absence &&
+	input.systemKey !== "break";
+
+/** The note is required and empty. */
+export const noteMissing = (required: boolean, note: string) =>
+	required && note.trim() === "";
+
+/** Whether the note is required, and whether it is required and empty. */
+export const noteStateOf = (input: {
+	taskId: string | null;
+	absence: boolean;
+	task: { systemKey?: string | null } | undefined;
+	isFill: boolean;
+	note: string;
+}) => {
+	const required = noteRequired({
+		hasTask: input.taskId !== null,
+		absence: input.absence,
+		systemKey: input.task?.systemKey,
+		isFill: input.isFill,
+	});
+	return { required, missing: noteMissing(required, input.note) };
+};
+
 export type EntryValues = {
 	date: string;
 	taskId: string;

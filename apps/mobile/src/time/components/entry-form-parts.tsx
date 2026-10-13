@@ -16,8 +16,8 @@ import { WeekdayChips } from "./weekday-chips";
 
 const FILL_NOTE =
 	"This block fills the rest of the day: your working hours, less everything else logged on the day. Its time follows the day.";
-const NOTE_HINT =
-	"Most tasks need a note. The server says when one is missing.";
+const REQUIRED_NOTE = "This task needs a note.";
+const NOTE_HINT = "Most tasks need a note. Time off and breaks do not.";
 
 type DayPartProps = {
 	repeats: boolean;
@@ -147,16 +147,27 @@ export function TaskCluster({
 export function NoteCluster({
 	note,
 	onNote,
+	required,
+	missing,
 }: {
 	note: string;
 	onNote: (note: string) => void;
+	/** The task needs a note. */
+	required: boolean;
+	/** The task needs a note and there is none. Save is off. */
+	missing: boolean;
 }) {
+	const hint = required ? REQUIRED_NOTE : NOTE_HINT;
 	return (
 		<FormCluster>
-			<FormPart groupFooter={NOTE_HINT}>
+			<FormPart
+				footerError={missing}
+				groupFooter={missing ? REQUIRED_NOTE : hint}
+			>
 				<Field
 					label="Note"
-					hint={NOTE_HINT}
+					hint={hint}
+					error={missing ? REQUIRED_NOTE : null}
 					value={note}
 					onChangeText={onNote}
 					placeholder="What did you work on?"

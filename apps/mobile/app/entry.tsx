@@ -30,6 +30,7 @@ import {
 	type EntryValues,
 	findTask,
 	meetingLinkOf,
+	noteStateOf,
 	repeatPayload,
 	showsCalendarPicker,
 	startOf,
@@ -268,6 +269,14 @@ function EntryForm({
 		task?.systemKey,
 		integrations.data?.googleCalendar.connected === true,
 	);
+	const noteState = noteStateOf({
+		taskId,
+		absence,
+		task,
+		isFill,
+		note,
+	});
+	const blocked = !taskId || repeatInvalid || noteState.missing;
 	const meetingLink = meetingLinkOf(picked, derived, absence);
 	const github = useEntryGithub({
 		entryId: entry?.id ?? null,
@@ -294,7 +303,7 @@ function EntryForm({
 	};
 
 	const save = () => {
-		if (!taskId || repeatInvalid) return;
+		if (blocked || !taskId) return;
 		const values = {
 			date,
 			taskId,
@@ -338,7 +347,7 @@ function EntryForm({
 			actionLabel="Save"
 			onAction={save}
 			busy={busy}
-			actionDisabled={!taskId || repeatInvalid}
+			actionDisabled={blocked}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
 			{entry ? (
@@ -372,7 +381,12 @@ function EntryForm({
 					setAbsence(next.isAbsence);
 				}}
 			/>
-			<NoteCluster note={note} onNote={setNote} />
+			<NoteCluster
+				note={note}
+				onNote={setNote}
+				required={noteState.required}
+				missing={noteState.missing}
+			/>
 			{showCalendarPicker ? (
 				<CalendarSection
 					open={calendarOpen}
