@@ -69,6 +69,39 @@ const CUT_OFF: AssistantEvent = {
 		"The connection closed before the answer was complete. Open the conversation again to see the rest.",
 };
 
+/** The event when no byte arrives for `STREAM_IDLE_TIMEOUT_MS`. */
+const STALLED: AssistantEvent = {
+	type: "error",
+	message:
+		"The connection to the server went quiet. Check your connection, then open the conversation again to see the rest.",
+};
+
+/**
+ * How long a stream may stay without a byte. The server writes a
+ * `: heartbeat` comment every 20 seconds (`lib/sse-heartbeat.ts`), so three
+ * missed beats mean a dead connection. The comment is not an event, but its
+ * bytes reset this timer.
+ */
+export const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+const IDLE = Symbol("idle");
+
+/** The next chunk, or `IDLE` when none arrives within `idleMs`. */
+const readOrIdle = async (
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	idleMs: number,
+) => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const idle = new Promise<typeof IDLE>((resolve) => {
+		timer = setTimeout(() => resolve(IDLE), idleMs);
+	});
+	try {
+		return await Promise.race([reader.read(), idle]);
+	} finally {
+		clearTimeout(timer);
+	}
+};
+
 /**
  * The events of one assistant turn, in order, until `done` or `error`. With
  * a fetch that streams (`expo/fetch`), each event arrives as the server
@@ -77,6 +110,7 @@ const CUT_OFF: AssistantEvent = {
  */
 export async function* readAssistantEvents(
 	response: FetchResponse,
+	idleMs = STREAM_IDLE_TIMEOUT_MS,
 ): AsyncGenerator<AssistantEvent, void, undefined> {
 	const decoder = new SseDecoder();
 	const body = response.body;
@@ -96,7 +130,12 @@ export async function* readAssistantEvents(
 	const text = new TextDecoder();
 	try {
 		for (;;) {
-			const { done, value } = await reader.read();
+			const result = await readOrIdle(reader, idleMs);
+			if (result === IDLE) {
+				yield STALLED;
+				return;
+			}
+			const { done, value } = result;
 			const payloads = done
 				? [...decoder.push(text.decode()), ...decoder.end()]
 				: decoder.push(text.decode(value, { stream: true }));
@@ -109,9 +148,9 @@ export async function* readAssistantEvents(
 			if (done) break;
 		}
 	} finally {
-		// Also runs when the caller stops early: it frees the connection.
-		reader.releaseLock();
-		await body.cancel().catch(() => undefined);
+		// Also runs when the caller stops early: it frees the connection. Not
+		// awaited, because a dead connection can leave the cancel pending.
+		void reader.cancel().catch(() => undefined);
 	}
 	yield CUT_OFF;
 }
