@@ -48,7 +48,12 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { ABORTED, OpenRouterStreamCutError } from "../lib/openrouter-client";
+import type { JsonRecord } from "../lib/json";
+import {
+	ABORTED,
+	OpenRouterStreamCutError,
+	streamChatCompletion,
+} from "../lib/openrouter-client";
 import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
 import { isSealed, openSecret } from "../lib/secret-box";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
@@ -60,10 +65,13 @@ import {
 	type AssistantEvent,
 	AssistantNotConfiguredError,
 	assistantService,
+	type ChatModelPort,
+	chatModel,
 	setChatModelForTests,
 	userFacingAssistantError,
 } from "./assistant.service";
 import { clientsService } from "./clients.service";
+import { hourFundService } from "./hour-fund.service";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
 
@@ -1039,6 +1047,50 @@ describe("approval, on the tier that asks for it", () => {
 		expect(script).toHaveLength(0);
 	});
 
+	test("a tool that the caller is not offered gets a plain card", async () => {
+		// The card is built by the tool's `summarize`, and the hour fund read has
+		// no role check of its own. A model can name a tool that was never
+		// offered (a stale thread, or text in a tool result). The card still asks
+		// and the approval is still refused, but the card shows no figure.
+		const chat = await startChat(ctxFor(ADMIN));
+		await hourFundService.set(ctxFor(ADMIN), {
+			year: 2031,
+			month: 3,
+			fundSeconds: 168 * 3600,
+		});
+		const fundCall = {
+			id: "call-fund",
+			name: "clear_hour_fund",
+			arguments: JSON.stringify({ year: 2031, month: 3 }),
+		};
+		script = [turn({ toolCalls: [fundCall] })];
+		const adminCard = (
+			await collect(ctxFor(ADMIN), {
+				conversationId: chat.id,
+				message: "clear the March fund",
+			})
+		).find((e) => e.type === "approval_required");
+		expect(adminCard?.summary).toMatch(/168/);
+
+		const memberChat = await startChat(ctxFor(WORKER));
+		script = [turn({ toolCalls: [fundCall] })];
+		const memberCard = (
+			await collect(ctxFor(WORKER), {
+				conversationId: memberChat.id,
+				message: "clear the March fund",
+			})
+		).find((e) => e.type === "approval_required");
+		expect(memberCard?.summary).toBe("clear hour fund");
+		expect(memberCard?.summary).not.toMatch(/168/);
+
+		script = [turn({ content: "That is for Admins." })];
+		await collect(ctxFor(WORKER), {
+			conversationId: memberChat.id,
+			resolve: { toolCallId: "call-fund", decision: "approved" },
+		});
+		expect(await hourFundService.get(ctxFor(ADMIN), 2031, 3)).toBe(168 * 3600);
+	});
+
 	test("approving executes exactly once and the loop continues", async () => {
 		const entry = await seedEntry();
 		const chat = await startChat(ctxFor(WORKER));
@@ -1341,6 +1393,11 @@ describe("approval tiers", () => {
 			"copy_week",
 			"create_recurring_block_rule",
 			"update_recurring_block_rule",
+			"link_github_repo",
+			"update_integration_settings",
+			"set_hour_fund",
+			"update_filing_rule",
+			"remember_filing_rule",
 		]) {
 			const tool = present(findTool(name), name);
 			expect(tool.kind).toBe("write");
@@ -1931,7 +1988,8 @@ describe("a stream that ends without a finish reason", () => {
 
 	test("an empty cut is a failed turn, not a done", async () => {
 		const chat = await startChat(ctxFor(WORKER));
-		script = [cut()];
+		// An empty cut is retried once, and the retry is cut too.
+		script = [cut(), cut()];
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "how was March?",
@@ -1947,8 +2005,8 @@ describe("a stream that ends without a finish reason", () => {
 			"kept working",
 		);
 		expect((await rowsOf(chat.id)).map((row) => row.role)).toEqual(["user"]);
-		// One model call: the loop did not retry or take another step.
-		expect(seen).toHaveLength(1);
+		// Two model calls: the first and its one retry. No other step ran.
+		expect(seen).toHaveLength(2);
 	});
 
 	test("a timeout tells the person to narrow the question, and keeps the text", async () => {
@@ -1982,13 +2040,14 @@ describe("a stream that ends without a finish reason", () => {
 
 	test("the cut is reported as an error with a clear string", async () => {
 		const chat = await startChat(ctxFor(WORKER));
-		script = [cut({ promptTokens: 900, completionTokens: 0, costUsd: 0.01 })];
+		const billed = { promptTokens: 900, completionTokens: 0, costUsd: 0.01 };
+		script = [cut(billed), cut(billed)];
 		await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "how was March?",
 		});
 
-		expect(reported).toHaveLength(1);
+		expect(reported).toHaveLength(2);
 		expect(reported[0]?.error).toBe("stream ended without a finish reason");
 		// What the organization was billed for is still counted.
 		expect(reported[0]?.inputTokens).toBe(900);
@@ -2075,6 +2134,7 @@ describe("a stream that ends without a finish reason", () => {
 				finishReason: "tool_calls",
 			}),
 			cut(),
+			cut(),
 		];
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
@@ -2085,6 +2145,7 @@ describe("a stream that ends without a finish reason", () => {
 		expect(events.at(-1)?.type).toBe("error");
 		expect(reported.map((event) => event.error)).toEqual([
 			null,
+			"stream ended without a finish reason",
 			"stream ended without a finish reason",
 		]);
 		// The tool call and its result stay paired, so the next request is valid.
@@ -2104,7 +2165,13 @@ describe("a stream that ends without a finish reason", () => {
 
 	test("repeated cuts each fail, and a later good turn still works", async () => {
 		const chat = await startChat(ctxFor(WORKER));
-		script = [cut(), cut(), turn({ content: "Fine.", finishReason: "stop" })];
+		script = [
+			cut(),
+			cut(),
+			cut(),
+			cut(),
+			turn({ content: "Fine.", finishReason: "stop" }),
+		];
 		for (const message of ["one", "two"]) {
 			const events = await collect(ctxFor(WORKER), {
 				conversationId: chat.id,
@@ -2118,6 +2185,8 @@ describe("a stream that ends without a finish reason", () => {
 		});
 		expect(events.at(-1)?.type).toBe("done");
 		expect(reported.map((event) => event.error === null)).toEqual([
+			false,
+			false,
 			false,
 			false,
 			true,
@@ -2195,12 +2264,13 @@ describe("a stream that ends without a finish reason", () => {
 
 	test("a cut is not followed by a title call", async () => {
 		const chat = await assistantService.conversations.create(ctxFor(WORKER));
-		script = [cut(), turn({ content: "A title" })];
+		script = [cut(), cut(), turn({ content: "A title" })];
 		await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "hi",
 		});
-		expect(seen).toHaveLength(1);
+		// The first call and its retry, and no title call.
+		expect(seen).toHaveLength(2);
 		expect(script).toHaveLength(1);
 	});
 
@@ -2969,5 +3039,317 @@ describe("what an error that ends a turn may say", () => {
 				new OpenRouterStreamCutError(turn(), null, true),
 			),
 		).toMatch(/took too long/);
+	});
+});
+
+// ── a stalled model call ─────────────────────────────────────────────────────
+//
+// The real client runs here over a fake `fetch`, with a stall limit of a few
+// milliseconds. In production a call stalled for 180 s with no tokens and the
+// person's turn died. The loop now retries that call once, on the same model
+// unless ASSISTANT_FALLBACK_MODEL names another, but only when nothing had
+// streamed, and it never repeats a tool.
+
+describe("a stalled model call", () => {
+	const STALL_MS = 40;
+	const realFetch = globalThis.fetch;
+	let scripted: ChatModelPort;
+	const enc = new TextEncoder();
+	let requested: string[] = [];
+	let savedFallback: string | undefined;
+
+	/** One request's behavior, chosen by the requested model. */
+	type Behavior =
+		| { kind: "stall"; before?: string }
+		| { kind: "reject" }
+		| { kind: "status"; status: number }
+		| { kind: "reset"; before?: string }
+		| { kind: "answer"; text: string; model?: string };
+
+	const frame = (payload: JsonRecord) =>
+		enc.encode(`data: ${JSON.stringify(payload)}\n\n`);
+
+	const fakeFetch = (behaviors: Behavior[]) => {
+		// SAFETY: a test stub for `fetch`. It reads the request body and signal
+		// and answers one shape: the streamed completion the client asks for.
+		globalThis.fetch = (async (
+			_input: string | URL | Request,
+			init?: RequestInit,
+		) => {
+			// SAFETY: the body is the JSON string the client built.
+			const body = JSON.parse(String(init?.body)) as { model: string };
+			requested.push(body.model);
+			const behavior = behaviors.shift();
+			if (!behavior) throw new Error("fake fetch ran out of behaviors");
+			if (behavior.kind === "reject")
+				throw new TypeError("unknown certificate verification error");
+			if (behavior.kind === "status")
+				return Response.json(
+					{ error: { code: behavior.status, message: "Rate limited" } },
+					{ status: behavior.status },
+				);
+			let resetNext = false;
+			return new Response(
+				new ReadableStream<Uint8Array>({
+					pull(controller) {
+						if (resetNext) controller.error(new TypeError("terminated"));
+					},
+					start(controller) {
+						if (behavior.kind === "reset") {
+							if (behavior.before)
+								controller.enqueue(
+									frame({ choices: [{ delta: { content: behavior.before } }] }),
+								);
+							// Failing at once would discard the queued frame. Fail on the
+							// next pull, after the reader has taken it.
+							resetNext = true;
+							if (!behavior.before)
+								controller.error(new TypeError("terminated"));
+							return;
+						}
+						if (behavior.kind === "stall") {
+							controller.enqueue(enc.encode(": OPENROUTER PROCESSING\n\n"));
+							if (behavior.before)
+								controller.enqueue(
+									frame({ choices: [{ delta: { content: behavior.before } }] }),
+								);
+							init?.signal?.addEventListener("abort", () => {
+								controller.error(new DOMException("aborted", "AbortError"));
+							});
+							return;
+						}
+						controller.enqueue(
+							frame({
+								model: behavior.model ?? body.model,
+								provider: "TestProvider",
+								choices: [{ delta: { content: behavior.text } }],
+							}),
+						);
+						controller.enqueue(
+							frame({ choices: [{ delta: {}, finish_reason: "stop" }] }),
+						);
+						controller.close();
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
+			);
+		}) as typeof globalThis.fetch;
+	};
+
+	const reported: AiGeneration[] = [];
+	beforeEach(() => {
+		scripted = chatModel();
+		requested = [];
+		reported.length = 0;
+		savedFallback = process.env.ASSISTANT_FALLBACK_MODEL;
+		delete process.env.ASSISTANT_FALLBACK_MODEL;
+		setChatModelForTests({
+			...scripted,
+			streamChatCompletion: (opts) =>
+				streamChatCompletion({ ...opts, stallTimeoutMs: STALL_MS }),
+		});
+		setAiTelemetrySink({
+			generation: (event) => reported.push(event),
+			span: () => {},
+		});
+	});
+	afterEach(() => {
+		globalThis.fetch = realFetch;
+		setChatModelForTests(scripted);
+		setAiTelemetrySink(null);
+		if (savedFallback === undefined)
+			delete process.env.ASSISTANT_FALLBACK_MODEL;
+		else process.env.ASSISTANT_FALLBACK_MODEL = savedFallback;
+	});
+
+	const ask = async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		return collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+	};
+
+	test("a stall with no output is retried once on the same model", async () => {
+		fakeFetch([
+			{ kind: "stall" },
+			{
+				kind: "answer",
+				text: "March was fine.",
+				model: "test/model-20261001",
+			},
+		]);
+		const events = await ask();
+
+		expect(events.at(-1)?.type).toBe("done");
+		expect(events.some((event) => event.type === "error")).toBe(false);
+		// No admin chose another model, so the conversation goes to no other.
+		expect(requested).toEqual(["test/model", "test/model"]);
+		// Each attempt is its own billed call in telemetry.
+		expect(reported).toHaveLength(2);
+		const first = present(reported[0], "the first generation");
+		const second = present(reported[1], "the retry generation");
+		expect(first).toMatchObject({
+			model: "test/model",
+			attempt: 1,
+			retryReason: null,
+			firstProgressMs: null,
+		});
+		expect(first.error).toContain("stalled");
+		expect(second).toMatchObject({
+			model: "test/model",
+			servedModel: "test/model-20261001",
+			provider: "TestProvider",
+			attempt: 2,
+			retryReason: "stall",
+			error: null,
+		});
+		expect(second.firstProgressMs).toBeGreaterThanOrEqual(0);
+	});
+
+	test("a TLS fault before the headers is retried", async () => {
+		fakeFetch([{ kind: "reject" }, { kind: "answer", text: "Fine." }]);
+		const events = await ask();
+		expect(events.at(-1)?.type).toBe("done");
+		expect(requested).toHaveLength(2);
+		expect(reported.map((event) => event.retryReason)).toEqual([
+			null,
+			"network",
+		]);
+	});
+
+	test("content and then a stall is not retried and fails cleanly", async () => {
+		fakeFetch([
+			{ kind: "stall", before: "March looks " },
+			{ kind: "answer", text: "never asked" },
+		]);
+		const events = await ask();
+
+		expect(requested).toEqual(["test/model"]);
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/connection.*closed/i,
+		);
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.outputText).toBe("March looks ");
+	});
+
+	test("a body reset with no output is retried once", async () => {
+		fakeFetch([{ kind: "reset" }, { kind: "answer", text: "Fine." }]);
+		const events = await ask();
+		expect(events.at(-1)?.type).toBe("done");
+		expect(requested).toEqual(["test/model", "test/model"]);
+		expect(reported.map((event) => event.retryReason)).toEqual([
+			null,
+			"network",
+		]);
+	});
+
+	test("a body reset after output fails with the fixed line", async () => {
+		fakeFetch([
+			{ kind: "reset", before: "March looks " },
+			{ kind: "answer", text: "never asked" },
+		]);
+		const events = await ask();
+		expect(requested).toEqual(["test/model"]);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/connection.*closed/i,
+		);
+		expect(failure?.type === "error" && failure.message).not.toContain(
+			"terminated",
+		);
+	});
+
+	// An HTTP 429 is usually the rate limit of the organization's key, and an
+	// immediate retry hits the same limit.
+	test("an HTTP 429 is not retried, and a 503 is", async () => {
+		fakeFetch([
+			{ kind: "status", status: 429 },
+			{ kind: "answer", text: "never asked" },
+		]);
+		const limited = await ask();
+		expect(requested).toEqual(["test/model"]);
+		expect(limited.at(-1)?.type).toBe("error");
+
+		requested = [];
+		fakeFetch([
+			{ kind: "status", status: 503 },
+			{ kind: "answer", text: "Fine." },
+		]);
+		const unavailable = await ask();
+		expect(requested).toEqual(["test/model", "test/model"]);
+		expect(unavailable.at(-1)?.type).toBe("done");
+	});
+
+	test("two stalls fail the turn after one retry", async () => {
+		fakeFetch([{ kind: "stall" }, { kind: "stall" }]);
+		const events = await ask();
+		expect(requested).toHaveLength(2);
+		expect(events.at(-1)?.type).toBe("error");
+		expect(reported.map((event) => event.attempt)).toEqual([1, 2]);
+	});
+
+	test("an empty ASSISTANT_FALLBACK_MODEL asks the same model once more", async () => {
+		process.env.ASSISTANT_FALLBACK_MODEL = "  ";
+		fakeFetch([{ kind: "stall" }, { kind: "answer", text: "Fine." }]);
+		const events = await ask();
+		expect(events.at(-1)?.type).toBe("done");
+		expect(requested).toEqual(["test/model", "test/model"]);
+	});
+
+	test("ASSISTANT_FALLBACK_MODEL names the retry model", async () => {
+		process.env.ASSISTANT_FALLBACK_MODEL = "vendor/other-model";
+		fakeFetch([{ kind: "stall" }, { kind: "answer", text: "Fine." }]);
+		await ask();
+		expect(requested).toEqual(["test/model", "vendor/other-model"]);
+	});
+
+	test("a retry does not run an earlier step's tool again", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [{ id: "call-a", name: "list_projects", arguments: "{}" }],
+				finishReason: "tool_calls",
+			}),
+		];
+		// Step 1 comes from the script. Step 2 stalls on the real client.
+		setChatModelForTests({
+			...scripted,
+			streamChatCompletion: (opts) =>
+				script.length > 0
+					? scripted.streamChatCompletion(opts)
+					: streamChatCompletion({ ...opts, stallTimeoutMs: STALL_MS }),
+		});
+		fakeFetch([{ kind: "stall" }, { kind: "answer", text: "One project." }]);
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects are there",
+		});
+		expect(events.at(-1)?.type).toBe("done");
+		expect(events.filter((event) => event.type === "tool_start")).toHaveLength(
+			1,
+		);
+		expect(requested).toHaveLength(2);
+		const toolRows = (
+			await db
+				.select()
+				.from(assistantMessage)
+				.where(eq(assistantMessage.conversationId, chat.id))
+		).filter((row) => row.role === "tool");
+		expect(toolRows).toHaveLength(1);
+	});
+
+	test("a network fault on both attempts ends with the fixed line", async () => {
+		fakeFetch([{ kind: "reject" }, { kind: "reject" }]);
+		const events = await ask();
+		expect(requested).toHaveLength(2);
+		const failure = events.at(-1);
+		expect(failure?.type).toBe("error");
+		// The fixed words of `OpenRouterNetworkError`, never the TLS cause.
+		expect(failure?.type === "error" && failure.message).toBe(
+			"The connection to OpenRouter failed before an answer started.",
+		);
 	});
 });

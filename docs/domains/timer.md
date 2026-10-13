@@ -139,8 +139,18 @@ A later change needs one hook that all writers of an entry share.
 
 ## What is deliberately absent
 
-- **No MCP tool and no assistant tool.** An agent should not start a wall clock
-  it cannot watch.
+- **No unattended clock.** The assistant and the MCP server have six timer
+  tools (`get_timer`, `start_timer`, `pause_timer`, `resume_timer`,
+  `stop_timer`, `discard_timer`), added at the owner's request. They are thin
+  adapters over `timersService` and run as the caller. Starting a clock was
+  once refused because an agent cannot watch it. Three things answer that:
+  nothing is logged until `stop_timer`, the cap drops a timer nobody stopped
+  and logs nothing, and the start tool tells the model to say that a clock is
+  running. `discard_timer` is `destructive`, so it has no approval over MCP.
+  Because `timersService.discard` deletes by person with no workspace in the
+  filter, the tool reads the timer first and refuses one that runs in another
+  workspace, as `pause` and `confirm` do. A dropped notice can be cleared from
+  any workspace.
 - **No webhook event of its own.** The entry it creates emits
   `time_entry.created`, as every entry does.
 - **No timer without a task.** A measurement filed against nothing is another

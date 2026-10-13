@@ -1,5 +1,5 @@
 {
-  "id": "0aff9c6b-e6c5-41f6-aac1-4c4be1d8724e",
+  "id": "56adc244-bda7-49fd-b598-d266f151c84c",
   "prevId": "1a882d90-c2c5-4cf0-bf98-d6bb52cecbe6",
   "version": "7",
   "dialect": "postgresql",
@@ -4275,163 +4275,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.mobile_device": {
-      "name": "mobile_device",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "installation_id": {
-          "name": "installation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "platform": {
-          "name": "platform",
-          "type": "mobile_platform",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "relay_id": {
-          "name": "relay_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "public_key": {
-          "name": "public_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "app_version": {
-          "name": "app_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "live_activity_token": {
-          "name": "live_activity_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "notifications_allowed": {
-          "name": "notifications_allowed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "mobile_device_session_idx": {
-          "name": "mobile_device_session_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "mobile_device_relay_idx": {
-          "name": "mobile_device_relay_idx",
-          "columns": [
-            {
-              "expression": "relay_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "mobile_device_user_id_user_id_fk": {
-          "name": "mobile_device_user_id_user_id_fk",
-          "tableFrom": "mobile_device",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "mobile_device_session_id_session_id_fk": {
-          "name": "mobile_device_session_id_session_id_fk",
-          "tableFrom": "mobile_device",
-          "tableTo": "session",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "mobile_device_user_installation_unq": {
-          "name": "mobile_device_user_installation_unq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "installation_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.notification_settings": {
       "name": "notification_settings",
       "schema": "",
@@ -4479,13 +4322,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "reminders_channel": {
-          "name": "reminders_channel",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'app'"
         },
         "created_at": {
           "name": "created_at",
@@ -4543,12 +4379,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "notification_settings_reminders_channel_check": {
-          "name": "notification_settings_reminders_channel_check",
-          "value": "\"notification_settings\".\"reminders_channel\" in ('app', 'slack')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.push_subscription": {
@@ -5283,6 +5114,94 @@
       },
       "isRLSEnabled": false
     },
+    "public.commit_detach_tombstone": {
+      "name": "commit_detach_tombstone",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha": {
+          "name": "sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "commit_detach_tombstone_organization_id_organization_id_fk": {
+          "name": "commit_detach_tombstone_organization_id_organization_id_fk",
+          "tableFrom": "commit_detach_tombstone",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "commit_detach_tombstone_user_id_user_id_fk": {
+          "name": "commit_detach_tombstone_user_id_user_id_fk",
+          "tableFrom": "commit_detach_tombstone",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "cdt_org_user_sha_unq": {
+          "name": "cdt_org_user_sha_unq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "user_id",
+            "sha"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.commit_fill_tombstone": {
       "name": "commit_fill_tombstone",
       "schema": "",
@@ -5930,6 +5849,94 @@
           "value": "\"org_settings\".\"tracking_tolerance_pct\" >= 0 and \"org_settings\".\"tracking_tolerance_pct\" <= 50"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.pull_request_event_detach_tombstone": {
+      "name": "pull_request_event_detach_tombstone",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pull_request_event_detach_tombstone_organization_id_organization_id_fk": {
+          "name": "pull_request_event_detach_tombstone_organization_id_organization_id_fk",
+          "tableFrom": "pull_request_event_detach_tombstone",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pull_request_event_detach_tombstone_user_id_user_id_fk": {
+          "name": "pull_request_event_detach_tombstone_user_id_user_id_fk",
+          "tableFrom": "pull_request_event_detach_tombstone",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "predt_org_user_event_unq": {
+          "name": "predt_org_user_event_unq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "user_id",
+            "event_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.pull_request_review_tombstone": {
@@ -7531,14 +7538,6 @@
         "started",
         "finished",
         "undone"
-      ]
-    },
-    "public.mobile_platform": {
-      "name": "mobile_platform",
-      "schema": "public",
-      "values": [
-        "ios",
-        "android"
       ]
     },
     "public.invitation_email_status": {

@@ -19,3 +19,13 @@ export const updateFilingRuleInput = z.object({
 	targetTaskId: z.uuid().nullable(),
 });
 export type UpdateFilingRuleInput = z.infer<typeof updateFilingRuleInput>;
+
+// A rule made from entries the person already filed. The entries name the
+// rule: the key is each entry's task and note, and the answer is the project
+// each entry is on. The caller sends no project, task or title of its own, so
+// it cannot make a rule for something that was not filed.
+export const MAX_REMEMBER_ENTRIES = 50;
+export const rememberFilingRuleInput = z.object({
+	timeEntryIds: z.array(z.uuid()).min(1).max(MAX_REMEMBER_ENTRIES),
+});
+export type RememberFilingRuleInput = z.infer<typeof rememberFilingRuleInput>;

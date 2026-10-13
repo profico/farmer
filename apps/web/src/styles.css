@@ -1050,6 +1050,92 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* The gray flash on a tap fights the app's own press states.
+   `text-size-adjust` stops the browser from making text larger in landscape. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* `manipulation` removes the double-tap zoom, and with it the short wait that a
+   browser adds to each click. Pinch zoom still works. */
+@layer base {
+  button,
+  a,
+  summary,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="checkbox"],
+  [role="switch"] {
+    touch-action: manipulation;
+  }
+}
+
+/* A long press on a control must not select its label or open the callout.
+   Do not add `body`, `a` or text content here: a person must be able to copy
+   that text. */
+@layer base {
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="switch"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/* iOS Safari zooms into any input with text under 16px, and it never zooms
+   back out. Only a touch screen needs this, so a mouse keeps 14px.
+
+   16px is a minimum, not a size: a larger field keeps its own size. So this
+   rule raises the three small text tokens on the field, not `font-size`. The
+   `text-*` utilities come from `@theme inline`, so `text-sm` on a field reads
+   `--fs-caption` from the field itself. An arbitrary `text-[30px]` reads no
+   token and does not change. A field with no text class takes the base rule.
+
+   `zoom` (see "Scale" above) multiplies every length, so at a scale under 1,
+   16px draws smaller than 16px. The `max()` keeps the drawn size at 16px or
+   more. Do not use `maximum-scale` in the viewport meta, because it blocks
+   pinch zoom. */
+@media (pointer: coarse) {
+  input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="color"],
+      [type="file"]
+    ),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    --fs-touch-field: max(16px, calc(16px / var(--ui-scale, 1)));
+    --fs-micro: var(--fs-touch-field);
+    --fs-caption: var(--fs-touch-field);
+    --fs-small: var(--fs-touch-field);
+  }
+  @layer base {
+    input:not(
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="color"],
+        [type="file"]
+      ),
+    textarea,
+    select,
+    [contenteditable="true"] {
+      font-size: var(--fs-small);
+    }
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

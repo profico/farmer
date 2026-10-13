@@ -30,7 +30,8 @@
 		"db:seed": "bun run src/db/seed.ts",
 		"db:seed-tasks": "bun run src/db/seed-tasks.ts",
 		"db:seed-assistant-ui": "bun run src/db/seed-assistant-ui.ts",
-		"settings:import-env": "bun run src/db/import-env-settings.ts"
+		"settings:import-env": "bun run src/db/import-env-settings.ts",
+		"bench:assistant": "bun run scripts/assistant-benchmark/run.ts"
 	},
 	"dependencies": {
 		"@better-auth/core": "1.6.23",

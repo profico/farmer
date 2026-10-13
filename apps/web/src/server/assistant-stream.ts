@@ -3,6 +3,7 @@ import type { RunAssistantInput } from "@farmer/core/schema";
 // static `@farmer/core/services` import the client-bundle rule forbids here.
 import type { AssistantEvent, Ctx } from "@farmer/core/services";
 
+import { SSE_HEARTBEAT, startHeartbeat } from "#/lib/sse-heartbeat.ts";
 import { admitAssistantTurn } from "#/server/assistant-rate-limit.ts";
 
 // One turn of the assistant, streamed as Server-Sent Events. The body of both
@@ -96,16 +97,24 @@ export const streamAssistantTurn = async (
 			request.signal.addEventListener("abort", () => abort.abort());
 
 			let closed = false;
-			const send = (event: AssistantEvent) => {
+			const write = (bytes: Uint8Array) => {
 				if (closed) return;
 				try {
-					controller.enqueue(frame(event));
+					controller.enqueue(bytes);
 				} catch {
 					// The consumer went away between the abort firing and the
 					// loop noticing. Nothing to do and nothing worth logging.
 					closed = true;
 				}
 			};
+			const send = (event: AssistantEvent) => write(frame(event));
+
+			// A turn can be silent for minutes (a model that thinks, a stall
+			// and its retry, a slow tool). `server.ts` closes a connection
+			// that is silent for 255 s, so a comment line goes out every
+			// 20 s. The `finally` below stops it on every exit path.
+			const stopHeartbeat = startHeartbeat(() => write(SSE_HEARTBEAT));
+			request.signal.addEventListener("abort", stopHeartbeat);
 
 			try {
 				await assistantService.run(ctx, input, send, abort.signal);
@@ -124,6 +133,7 @@ export const streamAssistantTurn = async (
 					message: message ?? "The assistant failed. Try again in a moment.",
 				});
 			} finally {
+				stopHeartbeat();
 				closed = true;
 				controller.close();
 			}

@@ -45,6 +45,7 @@ import {
 	webhookEndpoint,
 	webhookEvent,
 } from "../db/schema/webhooks";
+import { durationFromEnv } from "../lib/http";
 import { webhookSignatureHeader } from "../lib/webhook-signature";
 import { fetchWebhookTarget, resolveWebhookTarget } from "../lib/webhook-url";
 import { notify } from "../services/notify";
@@ -127,7 +128,7 @@ export type WebhookSender = (
 ) => Promise<WebhookSendResult>;
 
 const timeoutMs = (): number =>
-	Number(process.env.WEBHOOK_DELIVERY_TIMEOUT_MS ?? 10_000);
+	durationFromEnv(process.env.WEBHOOK_DELIVERY_TIMEOUT_MS, 10_000);
 
 /** Read at most `limit` characters of a response and abandon the rest, so a
  *  receiver answering with a 40 MB stack trace costs one small string. */

@@ -12,10 +12,37 @@
 // backstop for everything else that could be slow; this is the thing that
 // actually goes wrong.
 
+/**
+ * A duration in milliseconds from an environment variable.
+ *
+ * An unset, empty or invalid value gives `fallback`. `Number("")` is 0, so an
+ * empty variable in a compose file or a copied `.env.example` used to set a
+ * deadline of 0 ms, and every call failed at once. A negative value is invalid.
+ *
+ * 0 gives `fallback` too, because a deadline of 0 ms is never what an operator
+ * wants. Only a limit that 0 turns off passes `zero: "off"`, and then an
+ * explicit 0 is returned as 0. Two limits use it:
+ * `OPENROUTER_STALL_TIMEOUT_MS` (0 means no watchdog) and
+ * `SHUTDOWN_GRACE_MS` (0 is a valid grace: stop at once, with no wait).
+ */
+export const durationFromEnv = (
+	raw: string | undefined,
+	fallback: number,
+	zero: "off" | "fallback" = "fallback",
+): number => {
+	const trimmed = raw?.trim();
+	if (!trimmed) return fallback;
+	const value = Number(trimmed);
+	if (!Number.isFinite(value) || value < 0) return fallback;
+	if (value === 0) return zero === "off" ? 0 : fallback;
+	return value;
+};
+
 /** Long enough for a cold Google/GitHub page fetch on a bad day, short enough
  *  that a wedged socket costs one tick rather than every future one. */
-export const EXTERNAL_FETCH_TIMEOUT_MS = Number(
-	process.env.EXTERNAL_FETCH_TIMEOUT_MS ?? 15_000,
+export const EXTERNAL_FETCH_TIMEOUT_MS = durationFromEnv(
+	process.env.EXTERNAL_FETCH_TIMEOUT_MS,
+	15_000,
 );
 
 /**
