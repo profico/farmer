@@ -48,6 +48,76 @@ const frame = (event: AssistantEvent) =>
 	encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
 /**
+ * The body of the stream: the events of `runTurn`, and a heartbeat while the
+ * turn is silent. `userFacingMessage` words an error for the person, or
+ * answers null for an error that must not reach them. `heartbeatMs` is a
+ * seam for the tests.
+ */
+export const turnStream = (
+	request: Request,
+	runTurn: (
+		send: (event: AssistantEvent) => void,
+		signal: AbortSignal,
+	) => Promise<void>,
+	userFacingMessage: (error: Error) => string | null,
+	heartbeatMs?: number,
+): ReadableStream<Uint8Array> =>
+	new ReadableStream({
+		async start(controller) {
+			// The turn can outlive the client: a user who navigates away mid
+			// answer aborts the request, and without this the loop would keep
+			// calling OpenRouter (and keep billing) for a reader that is gone.
+			const abort = new AbortController();
+			request.signal.addEventListener("abort", () => abort.abort());
+
+			let closed = false;
+			const write = (bytes: Uint8Array) => {
+				if (closed) return;
+				try {
+					controller.enqueue(bytes);
+				} catch {
+					// The consumer went away between the abort firing and the
+					// loop noticing. Nothing to do and nothing worth logging.
+					closed = true;
+				}
+			};
+			const send = (event: AssistantEvent) => write(frame(event));
+
+			// A turn can be silent for minutes (a model that thinks, a stall
+			// and its retry, a slow tool). `server.ts` closes a connection
+			// that is silent for 255 s, so a comment line goes out every
+			// 20 s. The `finally` below stops it on every exit path.
+			const stopHeartbeat = startHeartbeat(
+				() => write(SSE_HEARTBEAT),
+				heartbeatMs,
+			);
+			request.signal.addEventListener("abort", stopHeartbeat);
+
+			try {
+				await runTurn(send, abort.signal);
+			} catch (error) {
+				// The stream has already returned 200 by this point, so an
+				// event is the only channel left. Errors the loop throws on
+				// purpose (not configured, conversation not found, a refusal)
+				// are worded for the person and go through as they are; any
+				// other message can carry SQL or a hostname, so it is logged
+				// here and the person gets a generic line.
+				const message =
+					error instanceof Error ? userFacingMessage(error) : null;
+				if (!message) console.error("[assistant] turn failed", error);
+				send({
+					type: "error",
+					message: message ?? "The assistant failed. Try again in a moment.",
+				});
+			} finally {
+				stopHeartbeat();
+				closed = true;
+				controller.close();
+			}
+		},
+	});
+
+/**
  * Run one turn for `ctx` and answer with the stream of its events.
  *
  * The caller has already authenticated the request and parsed `input`. The
@@ -88,57 +158,11 @@ export const streamAssistantTurn = async (
 		await import("@farmer/core/services");
 	await installAiTelemetry();
 
-	const stream = new ReadableStream({
-		async start(controller) {
-			// The turn can outlive the client: a user who navigates away mid
-			// answer aborts the request, and without this the loop would keep
-			// calling OpenRouter (and keep billing) for a reader that is gone.
-			const abort = new AbortController();
-			request.signal.addEventListener("abort", () => abort.abort());
-
-			let closed = false;
-			const write = (bytes: Uint8Array) => {
-				if (closed) return;
-				try {
-					controller.enqueue(bytes);
-				} catch {
-					// The consumer went away between the abort firing and the
-					// loop noticing. Nothing to do and nothing worth logging.
-					closed = true;
-				}
-			};
-			const send = (event: AssistantEvent) => write(frame(event));
-
-			// A turn can be silent for minutes (a model that thinks, a stall
-			// and its retry, a slow tool). `server.ts` closes a connection
-			// that is silent for 255 s, so a comment line goes out every
-			// 20 s. The `finally` below stops it on every exit path.
-			const stopHeartbeat = startHeartbeat(() => write(SSE_HEARTBEAT));
-			request.signal.addEventListener("abort", stopHeartbeat);
-
-			try {
-				await assistantService.run(ctx, input, send, abort.signal);
-			} catch (error) {
-				// The stream has already returned 200 by this point, so an
-				// event is the only channel left. Errors the loop throws on
-				// purpose (not configured, conversation not found, a refusal)
-				// are worded for the person and go through as they are; any
-				// other message can carry SQL or a hostname, so it is logged
-				// here and the person gets a generic line.
-				const message =
-					error instanceof Error ? userFacingAssistantError(error) : null;
-				if (!message) console.error("[assistant] turn failed", error);
-				send({
-					type: "error",
-					message: message ?? "The assistant failed. Try again in a moment.",
-				});
-			} finally {
-				stopHeartbeat();
-				closed = true;
-				controller.close();
-			}
-		},
-	});
+	const stream = turnStream(
+		request,
+		(send, signal) => assistantService.run(ctx, input, send, signal),
+		userFacingAssistantError,
+	);
 
 	return new Response(stream, {
 		headers: {

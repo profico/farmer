@@ -1,0 +1,109 @@
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+
+import { turnStream } from "./assistant-stream.ts";
+
+// The wiring of the heartbeat in the stream of a turn. The turn is a fake:
+// it waits for a signal the test controls.
+
+const decoder = new TextDecoder();
+const TIMED_OUT = Symbol("timed out");
+
+const request = () => {
+	const controller = new AbortController();
+	return {
+		controller,
+		request: new Request("http://localhost/stream", {
+			signal: controller.signal,
+		}),
+	};
+};
+
+/** The next chunk as text, `null` at the end of the stream, or `TIMED_OUT`
+ *  when nothing arrives within `ms`. */
+const nextChunk = async (
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	ms: number,
+): Promise<string | null | typeof TIMED_OUT> => {
+	const timeout = new Promise<typeof TIMED_OUT>((resolve) =>
+		setTimeout(() => resolve(TIMED_OUT), ms),
+	);
+	const read = reader
+		.read()
+		.then((chunk) => (chunk.done ? null : decoder.decode(chunk.value)));
+	return Promise.race([read, timeout]);
+};
+
+const spies: { mockRestore: () => void }[] = [];
+
+afterEach(() => {
+	for (const spy of spies.splice(0)) spy.mockRestore();
+});
+
+describe("turnStream heartbeat", () => {
+	test("sends a heartbeat comment while the turn is silent", async () => {
+		const { request: req, controller } = request();
+		const stream = turnStream(
+			req,
+			() => new Promise<void>(() => undefined),
+			() => null,
+			5,
+		);
+		const reader = stream.getReader();
+		expect(await nextChunk(reader, 500)).toBe(": heartbeat\n\n");
+		expect(await nextChunk(reader, 500)).toBe(": heartbeat\n\n");
+		controller.abort();
+	});
+
+	test("stops after the client aborts", async () => {
+		const { request: req, controller } = request();
+		const stream = turnStream(
+			req,
+			// A turn that ignores the abort and stays silent.
+			() => new Promise<void>(() => undefined),
+			() => null,
+			5,
+		);
+		const reader = stream.getReader();
+		expect(await nextChunk(reader, 500)).toBe(": heartbeat\n\n");
+
+		controller.abort();
+		// A beat that was already written may still be queued. Drain it.
+		while ((await nextChunk(reader, 30)) !== TIMED_OUT);
+		expect(await nextChunk(reader, 60)).toBe(TIMED_OUT);
+	});
+
+	test("stops and closes the stream when the turn ends", async () => {
+		const set = spyOn(globalThis, "setInterval");
+		const clear = spyOn(globalThis, "clearInterval");
+		spies.push(set, clear);
+		const { request: req } = request();
+		let finish: () => void = () => undefined;
+		const stream = turnStream(
+			req,
+			(send) =>
+				new Promise<void>((resolve) => {
+					finish = () => {
+						send({ type: "error", message: "done" });
+						resolve();
+					};
+				}),
+			() => null,
+			5,
+		);
+		const reader = stream.getReader();
+		expect(await nextChunk(reader, 500)).toBe(": heartbeat\n\n");
+
+		finish();
+		const chunks: (string | null | typeof TIMED_OUT)[] = [];
+		for (;;) {
+			const chunk = await nextChunk(reader, 500);
+			chunks.push(chunk);
+			if (chunk === null || chunk === TIMED_OUT) break;
+		}
+		expect(chunks.at(-1)).toBeNull();
+		expect(chunks.some((chunk) => chunk?.includes('"done"'))).toBe(true);
+
+		const timer = set.mock.results.at(-1)?.value;
+		expect(clear.mock.calls.some(([handle]) => handle === timer)).toBe(true);
+	});
+});
