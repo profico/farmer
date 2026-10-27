@@ -511,10 +511,20 @@ export const projectsService = {
 				projectId: input.projectId,
 				userId: input.userId,
 				role: input.role,
+				assignedByAdmin: access.isAdmin,
 			})
 			.onConflictDoUpdate({
 				target: [projectMember.projectId, projectMember.userId],
-				set: { role: input.role, active: true, updatedAt: new Date() },
+				set: {
+					role: input.role,
+					active: true,
+					// An Admin re-assign marks the row Admin-made. A non-admin keeps
+					// the flag of a live row, but a revived inactive row loses it.
+					assignedByAdmin: access.isAdmin
+						? true
+						: sql`${projectMember.assignedByAdmin} and ${projectMember.active}`,
+					updatedAt: new Date(),
+				},
 				// A conflicting row is on this project, which is this org's, so
 				// this never filters anything today. It keeps the write tenant-bound
 				// on its own terms rather than by inference from the project.
@@ -652,6 +662,7 @@ export const projectsService = {
 				projectId: row.id,
 				userId: ctx.userId,
 				role: "pm",
+				assignedByAdmin: access.isAdmin,
 			});
 
 			return row;
