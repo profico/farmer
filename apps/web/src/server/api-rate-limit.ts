@@ -191,7 +191,7 @@ const addressBucketFor = (
 };
 
 /** The address a request came from: the one header `TRUSTED_IP_HEADER` names
- *  (default `cf-connecting-ip`), else the socket address the production host
+ *  (default `none`), else the socket address the production host
  *  recorded, else `"unknown"`, one shared bucket. See `lib/client-address.ts`.
  *  The variable is read per call, because this module also ships to the
  *  browser, where `process.env` is not there to read at import. */
