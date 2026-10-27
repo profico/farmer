@@ -62,6 +62,12 @@ import {
 } from "./audit-hooks";
 import { deliverInvitation } from "./invitation-delivery";
 import {
+	ADMIN_REVOKE_PATHS,
+	adminTargetBody,
+	assertRefreshAllowed,
+	revokeMcpTokens,
+} from "./mcp-ban";
+import {
 	assertCodeConsented,
 	assertConsentCodeOwner,
 	CONSENT_COOKIE,
@@ -342,6 +348,12 @@ const buildAuth = () => {
 			// One round trip from the form to a session. The whole point is to stop
 			// bootstrapping from being a chore.
 			autoSignIn: true,
+			// The reset body names no user: the token does. This callback runs
+			// only after the endpoint accepted the token. A new password ends
+			// MCP access, like the other session revocations.
+			onPasswordReset: async ({ user }) => {
+				await revokeMcpTokens(user.id);
+			},
 		},
 		session: {
 			// better-auth guards unlink-account / session-management behind a "fresh
@@ -493,6 +505,20 @@ const buildAuth = () => {
 					// Not an object: the endpoint refuses it before it reads a code.
 					if (!request.success) return;
 					await assertCodeConsented(ctx.context.internalAdapter, request.data);
+					if (request.data.refresh) {
+						await assertRefreshAllowed(request.data.refreshToken);
+					}
+					return;
+				}
+				// Ending every session of a person also ends their MCP access. A
+				// plain sign-out of one browser does not. This runs before the
+				// endpoint, while the session still names the person.
+				if (
+					ctx.path === "/revoke-sessions" ||
+					ctx.path === "/revoke-other-sessions"
+				) {
+					const session = await getSessionFromCtx(ctx);
+					if (session) await revokeMcpTokens(session.user.id);
 					return;
 				}
 				if (ctx.path === OAUTH_CONSENT_PATH) {
@@ -520,6 +546,24 @@ const buildAuth = () => {
 			// says the password was wrong (or that password sign-in is closed for
 			// the account, which is also a sign-in that did not happen).
 			after: createAuthMiddleware(async (ctx) => {
+				// A ban or an admin revocation ends the person's MCP access. This
+				// runs only after the endpoint accepted the caller, because the body
+				// names any user.
+				if (
+					ctx.path in ADMIN_REVOKE_PATHS &&
+					!isAPIError(ctx.context.returned)
+				) {
+					const target = adminTargetBody.safeParse(ctx.body);
+					if (target.success) await revokeMcpTokens(target.data.userId);
+					return;
+				}
+				// A password change that revokes the other sessions starts a new
+				// session. `newSession` is set only on that success path.
+				if (ctx.path === "/change-password") {
+					const person = ctx.context.newSession?.user;
+					if (person) await revokeMcpTokens(person.id);
+					return;
+				}
 				if (ctx.path !== "/sign-in/email") return;
 				const returned = ctx.context.returned;
 				if (!isAPIError(returned)) return;

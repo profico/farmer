@@ -132,6 +132,17 @@ export const resolveMcpOrgContext = async (
 		(await auth.api.getMcpSession({ headers: request.headers }))?.userId;
 	if (!userId) return null;
 
+	// `getMcpSession` only checks that the token row exists. A banned person
+	// keeps the token unless the ban removed it, so ask here, as the CLI
+	// branch does.
+	const { db } = await import("@farmer/core/db");
+	const owner = await db.query.user.findFirst({
+		columns: { banned: true, banExpires: true },
+		where: (u, { eq }) => eq(u.id, userId),
+	});
+	const { isBanned } = await import("@farmer/core/lib/ban");
+	if (!owner || isBanned(owner)) return null;
+
 	const { orgContextService } = await import("@farmer/core/services");
 	return orgContextService.resolveBySlug(
 		userId,
