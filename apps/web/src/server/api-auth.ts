@@ -322,5 +322,6 @@ export const resolveCliOrgContext = async (
 	) {
 		return null;
 	}
+	if (cliUser.boundOrganizationId) ctx.boundToOrganization = true;
 	return { ctx, scope: cliUser.scope, via: cliUser.credential.kind };
 };
