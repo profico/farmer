@@ -142,7 +142,10 @@ const assertDeliverable = async (url: string): Promise<string> => {
 
 /** What the log calls an endpoint: its description, else host and path. Never
  *  the query string, which may carry a token. */
-const auditLabel = (endpoint: { url: string; description: string | null }) => {
+export const auditLabel = (endpoint: {
+	url: string;
+	description: string | null;
+}) => {
 	if (endpoint.description) return endpoint.description;
 	try {
 		const parsed = new URL(endpoint.url);
