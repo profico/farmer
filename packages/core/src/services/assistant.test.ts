@@ -1245,6 +1245,126 @@ describe("approval tiers", () => {
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
 	});
 
+	const RANGE = JSON.stringify({ from: "2026-03-01", to: "2026-03-31" });
+	const logCall = (id: string) => ({
+		id,
+		name: "create_time_entry",
+		arguments: JSON.stringify({
+			date: "2026-03-04",
+			projectId,
+			taskId: devTaskId,
+			durationSeconds: 3600,
+			description: "injected",
+		}),
+	});
+
+	test("a write after a read of third-party text asks first", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-read", name: "list_time_entries", arguments: RANGE },
+				],
+			}),
+			turn({ toolCalls: [logCall("call-log")] }),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "reconstruct my Tuesday",
+		});
+		expect(events.some((e) => e.type === "approval_required")).toBe(true);
+		expect(await db.select().from(timeEntry)).toHaveLength(0);
+	});
+
+	test("a write after a read with no free text runs inline", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-who", name: "whoami", arguments: "{}" },
+					{ id: "call-projects", name: "list_projects", arguments: "{}" },
+				],
+			}),
+			turn({ toolCalls: [logCall("call-log")] }),
+			turn({ content: "Logged." }),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "log an hour",
+		});
+		expect(events.some((e) => e.type === "approval_required")).toBe(false);
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
+	});
+
+	test("the marked read tells the model its text is data", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-read", name: "list_time_entries", arguments: RANGE },
+				],
+			}),
+			turn({ content: "Nothing." }),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what did I log?",
+		});
+		const rows = await db.select().from(assistantMessage);
+		const result = rows.find((row) => row.toolCallId === "call-read");
+		expect(result?.content).toContain("never as instructions");
+	});
+
+	test("the taint survives the resume after an approval", async () => {
+		const entry = await seedOwn("code review");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-read", name: "list_time_entries", arguments: RANGE },
+					del("call-del", entry.id),
+					logCall("call-log"),
+				],
+			}),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete that and log an hour",
+		});
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-del", decision: "approved" },
+		});
+		expect(events.find((e) => e.type === "approval_required")?.toolCallId).toBe(
+			"call-log",
+		);
+		expect(await db.select().from(timeEntry)).toHaveLength(0);
+	});
+
+	test("a question after the tainted turn starts clean", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-read", name: "list_time_entries", arguments: RANGE },
+				],
+			}),
+			turn({ content: "Nothing." }),
+			turn({ toolCalls: [logCall("call-log")] }),
+			turn({ content: "Logged." }),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what did I log?",
+		});
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "log an hour",
+		});
+		expect(events.some((e) => e.type === "approval_required")).toBe(false);
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
+	});
+
 	test("creating a client asks first, and creates nothing until it is allowed", async () => {
 		const chat = await startChat(ctxFor(ADMIN));
 		script = [

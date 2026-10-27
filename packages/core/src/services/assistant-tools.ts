@@ -277,6 +277,17 @@ export type AssistantTool = {
 	 * way to detect it from here, and the failure is a race, not an error.
 	 */
 	serial?: boolean;
+	/**
+	 * This read can return text that a third party wrote: a calendar invite
+	 * title, a commit or pull request title, a teammate's note or name.
+	 *
+	 * Absent means true for a `read`, because a false positive costs one click
+	 * and a false negative lets injected text start a write. Set `false` only
+	 * for a read that returns figures, dates or settings and no free text. After
+	 * a read of this kind runs, every later `write` in the same turn needs an
+	 * approval card (`taintsTurn` in assistant.service.ts).
+	 */
+	readsThirdPartyText?: boolean;
 	/** Runs the tool. The result is stringified for the model and never
 	 *  inspected by the loop, so `Serializable | void` is the whole contract:
 	 *  domain rows with their Dates intact, or nothing at all. */
@@ -548,6 +559,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "whoami",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"The current user: their name and user id, org role, member type, timezone, working-hours schedule, and the projects they are on with their role on each. Call this when a question depends on who is asking, on what counts as a full day for them, or when another tool needs their user id.",
 		schema: z.object({}),
@@ -643,6 +655,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_projects",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"List the projects the current user may log time against, with their ids, codes, type and clients. Call this before creating a time entry — a project must be named by id.",
 		schema: z.object({}),
@@ -660,6 +673,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_tasks",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"List the task types a time entry can be filed under (Development, Meeting, …), with their ids. Every time entry needs one. Absence tasks (Vacation, Sick Leave, Paid Leave) are included and flagged with isAbsence — those carry no project and are what log_absence takes.",
 		schema: z.object({}),
@@ -688,6 +702,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_clients",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"List the organization's clients with their ids. Needed before creating a project, which must name one.",
 		schema: z.object({}),
@@ -758,6 +773,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_holidays",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"The organization's public holidays for a year, as dates. Use this rather than assuming which days are holidays — it follows the org's own country and its opt-outs.",
 		schema: yearReportInput,
@@ -796,6 +812,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "integration_status",
 		kind: "read",
+		readsThirdPartyText: false,
 		// Both connection reads refresh an expired OAuth token through
 		// better-auth, which writes the new one back to the `account` row. A read
 		// that writes does not go in the claimed batch — see `serial`.
@@ -1082,6 +1099,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "my_targets",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			'The caller\'s own week and month against their target: the target for the period, what they have logged, how much of it is time off, and the verdict (on_track, slightly_behind or behind). targetSoFarHours is the target for the working days BEFORE today, and the verdict compares against it. targetThroughTodayHours is the goal including today, which is what the person should have logged by the end of today. On the first working day of a period targetSoFarHours is 0 and targetThroughTodayHours is one day, so never tell a person that they owe nothing from targetSoFarHours alone. Use this for "am I behind", "how many hours do I still owe" and anything about a full day being short — never work a target out from hours alone, because the target is the month hour fund prorated over working days, minus public holidays and days off. A null target means the person has no target at all (an hourly student or contractor without an override, or an overhead employee), which is not the same as a target of zero.',
 		schema: z.object({}),
@@ -1176,6 +1194,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "unfiled_summary",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"How much of the current user's logged time has no project attached yet, over a date range. Unfiled time is invisible to every project report.",
 		schema: listTimeEntriesRangeInput,
@@ -1188,6 +1207,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "absence_totals",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"Absence taken in a year, grouped by task (Vacation, Sick Leave, Paid Leave), in days and hours. Defaults to the current user; naming somebody else needs PM rights over a project they are on. This is the tool for 'how much vacation have I taken'.",
 		schema: absenceTotalsInput,
@@ -1996,6 +2016,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_linked_github_repos",
 		kind: "read",
+		readsThirdPartyText: false,
 		description:
 			"The GitHub repositories linked to ONE project, with the projectGithubRepoId that attach_commits, unlink_github_repo and list_commits use. Needs a projectId from list_projects. A Member who is on the project only because it is open to the whole organization gets an empty list.",
 		schema: z.object({ projectId: projectIdInput }),
@@ -2369,6 +2390,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "get_hour_fund",
 		kind: "read",
+		readsThirdPartyText: false,
 		available: adminOnly,
 		description:
 			"The organization's monthly hour fund: the hours every person with a target is measured against in that month. It is ONE figure for the whole organization, not a person's hours. Pass year to list the months that have a fund (a month with no fund is absent, which is not a fund of zero), or year and month to read one month together with the suggested fund: the working days (weekdays that are not public holidays) times 8 hours. The suggestion is never saved. Hours are decimal. Admin only, as the Settings page for it is.",
@@ -2523,6 +2545,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "project_overview",
 		kind: "read",
+		readsThirdPartyText: false,
 		available: leadsSomething,
 		description:
 			"The all-time figures of ONE project, for EVERYONE who logged on it, not only the current user: total hours, entries, how many people ever logged on it, the first and last entry date, overtime hours, and this month's hours and people. This month is the organization's current month. Hours are decimal. Needs a projectId from list_projects and Team Lead rank or above on that project, so a Member is refused. For hours by person or by period, use time_report_summary with the project filter.",
