@@ -676,11 +676,9 @@ export const runWebhookDeliveryOnce = async (
 				}
 
 				failed += 1;
-				// `coalesce` rather than a read-then-write: the first failure of a run
-				// starts the give-up clock and every later one must leave it alone.
-				// The raw template gets an ISO string, not a Date. The postgres-js
-				// driver cannot serialize a Date inside a raw sql template. PGLite
-				// can, so the tests do not show it.
+				// `coalesce`: only the first failure of a run starts the give-up
+				// clock. The raw template takes an ISO string: postgres-js cannot
+				// serialize a Date there, and PGLite can, so tests miss it.
 				await db
 					.update(webhookEndpoint)
 					.set({

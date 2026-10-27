@@ -49,10 +49,8 @@ const OTHER_PROXY_HEADERS = ["x-forwarded-for", "x-real-ip"];
 
 let warnedHeaderMissing = false;
 
-/** Warn one time when the trusted header is missing (or none is set) but
- *  another proxy's header is present. That is a deployment behind a proxy
- *  with the default: every caller shares the proxy's socket address, and so
- *  one rate limit, and nothing else says why. */
+/** Warn once when another proxy's header is present but the trusted one is
+ *  not. Behind a proxy every caller then shares one rate limit. */
 const warnIfMisconfigured = (
 	headers: Headers,
 	trustedHeader: string | null,

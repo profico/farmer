@@ -978,25 +978,18 @@ export const harvestImportService = {
 							`${email} is a member already. Match the person instead.`,
 						);
 					}
-					// Single-org mode only: an address that is not on the people
-					// list, and is somebody's real one, must not hand that person an
-					// old account. With several organizations no
-					// answer here may depend on `found`, or an admin could probe
-					// which addresses have an account. There an existing user is
-					// attached with a pending claim, like an address with no account.
+					// Single-org mode only. With several organizations no answer may
+					// depend on `found`, or an admin could probe which addresses
+					// have an account.
 					if (!multiOrg && !p.emailListed) {
 						throw new Error(
 							`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
 						);
 					}
-					// The address comes from this org's admin, so it is not the
-					// person's consent. With several organizations the membership
-					// carries a pending claim (`claimPendingSince` below): the
-					// person uses the org only after they accept it. In single-org
-					// mode every user came in through an invitation to the one
-					// organization, so a listed address attaches that user directly.
-					// Undo tells an attached user from a made one by the user row's
-					// age.
+					// The admin typed the address, which is not the person's consent.
+					// With several organizations the membership waits for a claim
+					// (`claimPendingSince` below). Single-org mode attaches directly.
+					// Undo tells an attached user from a made one by the row's age.
 					userId = found.id;
 				} else {
 					userId = generateId();
@@ -1018,12 +1011,9 @@ export const harvestImportService = {
 				if (!multiOrg)
 					directMembers.push({ userId, name: p.name, role: p.role });
 				const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
-				// With several organizations on the instance, a user the run made
-				// or found alike: whoever owns the address may sign up later, or
-				// has an account already. The org sees them now, but they use the
-				// org only after they accept it (`import-claims.service.ts`), so
-				// an admin of any workspace cannot make a stranger a member by
-				// importing their address.
+				// With several organizations, a made or found user alike must
+				// accept before they use the org (`import-claims.service.ts`). An
+				// admin cannot make a stranger a member by importing an address.
 				const claimPendingSince = multiOrg ? new Date() : null;
 				await tx
 					.insert(memberProfile)
