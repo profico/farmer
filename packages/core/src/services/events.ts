@@ -54,6 +54,7 @@ import type {
 import { user } from "../db/schema/auth";
 import { client, project, timeEntry } from "../db/schema/domain";
 import { webhookEndpoint, webhookEvent } from "../db/schema/webhooks";
+import { shownName } from "./claim-name";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -234,7 +235,11 @@ export const timeEntryWebhookPayloads = async (
 	if (rows.length === 0) return [];
 
 	const people = await db
-		.select({ id: user.id, name: user.name, email: user.email })
+		.select({
+			id: user.id,
+			name: shownName(ctx.organizationId),
+			email: user.email,
+		})
 		.from(user)
 		.where(inArray(user.id, [...new Set(rows.map((row) => row.userId))]));
 	const byUserId = new Map(people.map((person) => [person.id, person]));
@@ -336,7 +341,11 @@ export const memberWebhookPayload = async (
 	userId: string,
 ): Promise<{ member: WebhookMember } | null> => {
 	const [row] = await ctxDb(ctx)
-		.select({ id: user.id, name: user.name, email: user.email })
+		.select({
+			id: user.id,
+			name: shownName(ctx.organizationId),
+			email: user.email,
+		})
 		.from(user)
 		.where(eq(user.id, userId))
 		.limit(1);

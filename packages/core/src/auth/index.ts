@@ -40,6 +40,7 @@ import {
 	slugProblem,
 } from "../lib/slug";
 import { recordAudit, recordSecurityEvent } from "../services/audit";
+import { shownNameOf } from "../services/claim-name";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
@@ -829,23 +830,22 @@ const buildAuth = () => {
 							details: { role: cancelled.role },
 						});
 					},
-					afterRemoveMember: async ({
-						member: removed,
-						user,
-						organization: org,
-					}) => {
+					afterRemoveMember: async ({ member: removed, organization: org }) => {
 						const caller = await currentCaller();
 						await recordAudit(hookCtx(org.id, caller, null), {
 							kind: "member.removed",
 							subjectUserId: removed.userId,
-							target: { type: "member", id: removed.userId, label: user.name },
+							target: {
+								type: "member",
+								id: removed.userId,
+								label: await shownNameOf(db, org.id, removed.userId),
+							},
 							details: { role: removed.role },
 						});
 					},
 					afterUpdateMemberRole: async ({
 						member: updated,
 						previousRole,
-						user,
 						organization: org,
 					}) => {
 						if (previousRole === updated.role) return;
@@ -853,7 +853,11 @@ const buildAuth = () => {
 						await recordAudit(hookCtx(org.id, caller, null), {
 							kind: "member.role_changed",
 							subjectUserId: updated.userId,
-							target: { type: "member", id: updated.userId, label: user.name },
+							target: {
+								type: "member",
+								id: updated.userId,
+								label: await shownNameOf(db, org.id, updated.userId),
+							},
 							changes: { role: { from: previousRole, to: updated.role } },
 						});
 					},

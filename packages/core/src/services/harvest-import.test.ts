@@ -366,9 +366,20 @@ describe("harvest import", () => {
 		// can reach the user.
 		bad.people.splice(3, 1);
 		bad.projectMembers = [];
-		await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
-			"belongs to another user",
-		);
+		// Only the one organization of a single-org instance may be told that an
+		// address has an account: see harvest-import.invite.test.ts for the rest.
+		// The environment wins over the stored setting: see the next test.
+		const envSlug = process.env.SINGLE_ORG_SLUG;
+		delete process.env.SINGLE_ORG_SLUG;
+		setInstanceSettingsForTests({ SINGLE_ORG_SLUG: ORG });
+		try {
+			await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
+				"belongs to another user",
+			);
+		} finally {
+			setInstanceSettingsForTests(undefined);
+			if (envSlug !== undefined) process.env.SINGLE_ORG_SLUG = envSlug;
+		}
 	});
 
 	test("the snapshot does not say which addresses have an account elsewhere", async () => {

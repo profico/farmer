@@ -30,6 +30,7 @@ import type {
 	MemberTypeValue,
 } from "../schema/members";
 import { diffFields, recordAudit } from "./audit";
+import { shownImage, shownName, shownNameOf } from "./claim-name";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { emitEvent, memberWebhookPayload } from "./events";
 import { assertUserInOrg } from "./guards";
@@ -120,7 +121,21 @@ export const isNaggable = (type: MemberType) => type !== "employee_overhead";
 const whyEmailNotConfirmable = async (
 	ctx: Ctx,
 	userId: string,
-): Promise<"confirmed" | "signed-in" | "elsewhere" | null> => {
+): Promise<"confirmed" | "signed-in" | "elsewhere" | "pending" | null> => {
+	// A pending claim gets one answer. Any other would tell a made user from
+	// an existing account (issue #158).
+	const [pending] = await db
+		.select({ id: memberProfile.id })
+		.from(memberProfile)
+		.where(
+			and(
+				eq(memberProfile.organizationId, ctx.organizationId),
+				eq(memberProfile.userId, userId),
+				isNotNull(memberProfile.claimPendingSince),
+			),
+		)
+		.limit(1);
+	if (pending) return "pending";
 	const target = await db.query.user.findFirst({
 		where: eq(user.id, userId),
 		columns: { emailVerified: true },
@@ -152,13 +167,11 @@ const markEmailVerified = (userId: string) =>
 		.where(eq(user.id, userId));
 
 /** The audit target for a person: their name now, kept on the row. */
-const memberTarget = async (userId: string) => {
-	const row = await db.query.user.findFirst({
-		where: eq(user.id, userId),
-		columns: { name: true },
-	});
-	return { type: "member", id: userId, label: row?.name ?? null };
-};
+const memberTarget = async (ctx: Ctx, userId: string) => ({
+	type: "member",
+	id: userId,
+	label: await shownNameOf(db, ctx.organizationId, userId),
+});
 
 export const membersService = {
 	/** The caller's role in the org, or null when they may not enter it: no
@@ -238,13 +251,13 @@ export const membersService = {
 		return db
 			.select({
 				userId: member.userId,
-				name: user.name,
-				image: user.image,
+				name: shownName(ctx.organizationId),
+				image: shownImage(ctx.organizationId),
 			})
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
 			.where(eq(member.organizationId, ctx.organizationId))
-			.orderBy(asc(user.name));
+			.orderBy(asc(shownName(ctx.organizationId)));
 	},
 
 	/** Every membership row, oldest first.
@@ -260,9 +273,9 @@ export const membersService = {
 				userId: member.userId,
 				role: member.role,
 				createdAt: member.createdAt,
-				name: user.name,
+				name: shownName(ctx.organizationId),
 				email: user.email,
-				image: user.image,
+				image: shownImage(ctx.organizationId),
 			})
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
@@ -293,7 +306,7 @@ export const membersService = {
 		const rows = await db
 			.select({
 				userId: member.userId,
-				name: user.name,
+				name: shownName(ctx.organizationId),
 				email: user.email,
 				emailVerified: user.emailVerified,
 				orgRole: member.role,
@@ -325,7 +338,7 @@ export const membersService = {
 				),
 			)
 			.where(eq(member.organizationId, ctx.organizationId))
-			.orderBy(asc(user.name));
+			.orderBy(asc(shownName(ctx.organizationId)));
 
 		// Only the unverified few need the account check; everyone who signed in
 		// with Google is verified already.
@@ -360,7 +373,12 @@ export const membersService = {
 			orgRole: r.orgRole,
 			startDate: r.startDate ?? null,
 			archivedAt: r.archivedAt ?? null,
-			emailUnconfirmed: !r.emailVerified && !signedIn.has(r.userId),
+			// A pending claim shows a fixed value: the real flag tells a made
+			// user from an existing account (issue #158).
+			emailUnconfirmed:
+				r.claimPendingSince == null &&
+				!r.emailVerified &&
+				!signedIn.has(r.userId),
 			claimPending: r.claimPendingSince != null,
 			// A person with no history row yet is Billable — the default, and the
 			// right one: delivery people are the common case.
@@ -528,7 +546,7 @@ export const membersService = {
 		if (changes) {
 			await recordAudit(ctx, {
 				kind: "member.type_changed",
-				target: await memberTarget(input.userId),
+				target: await memberTarget(ctx, input.userId),
 				subjectUserId: input.userId,
 				changes,
 				details: { effectiveFrom: input.effectiveFrom },
@@ -584,7 +602,7 @@ export const membersService = {
 		if (archived && userId === ctx.userId) {
 			throw new Error("You cannot archive yourself");
 		}
-		const target = await memberTarget(userId);
+		const target = await memberTarget(ctx, userId);
 		const archivedAt = archived ? new Date() : null;
 		await db
 			.insert(memberProfile)
@@ -645,6 +663,10 @@ export const membersService = {
 		switch (await whyEmailNotConfirmable(ctx, userId)) {
 			case "confirmed":
 				throw new Error("This address is confirmed already");
+			case "pending":
+				throw new Error(
+					"This person has not accepted the workspace yet, so the address cannot be confirmed",
+				);
 			case "signed-in":
 				throw new Error(
 					"This person has signed in, so nothing is left to confirm",
@@ -657,7 +679,7 @@ export const membersService = {
 				await markEmailVerified(userId);
 				await recordAudit(ctx, {
 					kind: "member.email_confirmed",
-					target: await memberTarget(userId),
+					target: await memberTarget(ctx, userId),
 					subjectUserId: userId,
 				});
 				return { emailConfirmed: true };
@@ -685,7 +707,7 @@ export const membersService = {
 		if (changes) {
 			await recordAudit(ctx, {
 				kind: "member.start_date_changed",
-				target: await memberTarget(userId),
+				target: await memberTarget(ctx, userId),
 				subjectUserId: userId,
 				changes,
 			});

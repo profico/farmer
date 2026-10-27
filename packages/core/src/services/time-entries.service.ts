@@ -16,7 +16,7 @@ import {
 import postgres from "postgres";
 
 import { db } from "../db";
-import { member, user } from "../db/schema/auth";
+import { member } from "../db/schema/auth";
 import {
 	projectMember,
 	recurringBlockRuleSkip,
@@ -75,6 +75,7 @@ import type {
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
+import { shownNameOf } from "./claim-name";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import {
 	computeDayFillSeconds,
@@ -1403,17 +1404,17 @@ const recordAbsenceForPerson = async (
 	},
 ) => {
 	if (entry.personUserId === ctx.userId) return;
-	const [person] = await ctxDb(ctx)
-		.select({ name: user.name })
-		.from(user)
-		.where(eq(user.id, entry.personUserId))
-		.limit(1);
+	const personName = await shownNameOf(
+		ctxDb(ctx),
+		ctx.organizationId,
+		entry.personUserId,
+	);
 	await recordAudit(ctx, {
 		kind: entry.kind,
 		target: {
 			type: "member",
 			id: entry.personUserId,
-			label: person?.name ?? null,
+			label: personName,
 		},
 		subjectUserId: entry.personUserId,
 		changes: entry.changes ?? null,
