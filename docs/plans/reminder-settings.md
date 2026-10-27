@@ -12,7 +12,7 @@ number (see `services/reminder-recipients.ts`, `services/reminder-settings.servi
 `jobs/log-reminders.test.ts` and `settings/reminders.tsx`), so keep the section
 numbers stable.
 
-Why: the Harvest import (`docs/plans/harvest-import.md`) creates people who
+Why: the Harvest import (`docs/domains/harvest-import.md`) creates people who
 have never signed in. The owner asked for:
 
 1. a toggle that controls whether those people get reminders, off by default;

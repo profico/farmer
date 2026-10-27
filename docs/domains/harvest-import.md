@@ -1,7 +1,6 @@
 # The Harvest import
 
-An admin drops the Harvest CSV exports on Settings → Import (`settings/import.tsx`); `harvest-import.service.ts` writes them. The design and the owner's decisions are in `docs/plans/harvest-import.md`.
-
+An admin drops the Harvest CSV exports on Settings → Import (`settings/import.tsx`); `harvest-import.service.ts` writes them.
 - **Parsing and planning run in the browser, in a Web Worker** (`components/import/harvest.worker.ts`, on `packages/core/src/lib/harvest/`). A real export is ~240k rows: the Worker keeps the day chunks and the page holds only the review, because a structured clone of every row on each re-plan would freeze the tab. The server takes the plan in steps — `start` (clients, tasks, people, projects), `importDays` in chunks of `HARVEST_CHUNK_MAX_ROWS`, `removeDays`, `finish` — and every step is safe to repeat, so "Retry" continues from the cursor. `start` is made repeatable by a run id the browser generates once per attempt: a second `start` with the same id returns the run it already created.
 - **The unit is a person-day, compared by digest.** A day already imported unchanged is skipped, a changed one replaced, and a day somebody edited here is **kept**, never overwritten. A day the file no longer has is removed only when the admin confirms the file is a full export. That is what makes dropping the same files twice a no-op.
 - **`finish` moves `automationLockedThrough` to the day before the cutoff**, so no engine writes into imported history, and prefills the hour fund for every year with history, because Expected needs it.
@@ -17,4 +16,4 @@ An admin drops the Harvest CSV exports on Settings → Import (`settings/import.
 
 ---
 
-See also: `docs/plans/harvest-import.md` (the design and the owner's decisions), `packages/core/CLAUDE.md` (the ledger and the tasks an import writes against).
+See also: `packages/core/CLAUDE.md` (the ledger and the tasks an import writes against).

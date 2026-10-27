@@ -1,4 +1,4 @@
-// The Harvest import's write side (docs/plans/harvest-import.md). The browser
+// The Harvest import's write side (docs/domains/harvest-import.md). The browser
 // builds the plan; this file pins what the server does with one, and the
 // properties that matter are the ones a bad plan must not break:
 //
@@ -6,7 +6,7 @@
 //      fails, and a chunk naming a source key `start` never mapped fails.
 //   2. A MATCHED PERSON IS NOT CHANGED, except an empty start date.
 //   3. A GUESSED ADDRESS STAYS UNVERIFIED, and never attaches to a user that
-//      exists already (plan section 3.3). A LISTED ADDRESS attaches an
+//      exists already. A LISTED ADDRESS attaches an
 //      existing user only in single-org mode; with several organizations the
 //      user is invited instead (harvest-import.invite.test.ts).
 //   4. A SECOND IMPORT OF THE SAME DATA ADDS NOTHING; a changed day is

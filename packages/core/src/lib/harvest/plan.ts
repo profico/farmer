@@ -1,4 +1,4 @@
-// The import plan (docs/plans/harvest-import.md, sections 4, 5 and 6). Two
+// The import plan (docs/domains/harvest-import.md). Two
 // halves, because the browser re-plans on every choice the admin makes:
 //
 // - `parseHarvestFiles` is the slow, async half and runs ONCE per drop: it
@@ -91,7 +91,7 @@ const ABSENCE_BY_TASK = new Map<string, HarvestAbsenceKind>([
 	["paid leave", "paid_leave"],
 ]);
 
-/** Task aliases (plan section 4, "Tasks"): the canonical task, and whether
+/** Task aliases: the canonical task, and whether
  *  the row carries the overtime flag (D3, option A). */
 const TASK_ALIASES = new Map<string, { task: string; overtime: boolean }>([
 	["daily break", { task: "break", overtime: false }],
@@ -375,7 +375,7 @@ export interface ParsedHarvest {
 	candidateEmails: string[];
 }
 
-/** A Harvest task after the absence and alias rules of plan section 4. */
+/** A Harvest task after the absence and alias rules. */
 interface CanonicalTask {
 	key: string;
 	absence: HarvestAbsenceKind | null;
@@ -1610,7 +1610,7 @@ export function planHarvestImport(
 			override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
 		const emailListed = listedEmail !== null && email === listedEmail;
 		// An address the admin typed is not a guess: they vouch for it, as the
-		// people list does (plan section 3.3 keeps only a GUESS unverified).
+		// people list does. Only a GUESS stays unverified.
 		// Leaving it unverified made the person active but unable to sign in,
 		// with Restore on an archived row as the only way to confirm it.
 		const emailConfirmed = emailListed || override !== null;

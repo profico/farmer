@@ -1,4 +1,4 @@
-// The server half of the Harvest import (docs/plans/harvest-import.md).
+// The server half of the Harvest import (docs/domains/harvest-import.md).
 //
 // The browser parses the export and builds the plan (`lib/harvest/plan.ts`),
 // because the time report is 45 MB and a server function should not hold it.
@@ -980,7 +980,7 @@ export const harvestImportService = {
 					}
 					// Single-org mode only: an address that is not on the people
 					// list, and is somebody's real one, must not hand that person an
-					// old account (plan section 3.3). With several organizations no
+					// old account. With several organizations no
 					// answer here may depend on `found`, or an admin could probe
 					// which addresses have an account. There an existing user is
 					// attached with a pending claim, like an address with no account.
@@ -1196,7 +1196,7 @@ export const harvestImportService = {
 	},
 
 	/**
-	 * Writes one chunk of whole person-days (plan section 5.3):
+	 * Writes one chunk of whole person-days:
 	 *
 	 * - a day with no imported rows yet: insert them;
 	 * - the same key set as before: nothing;
@@ -1359,7 +1359,7 @@ export const harvestImportService = {
 
 	/**
 	 * Deletes the imported rows of person-days that are no longer in Harvest
-	 * (plan section 5.3). The browser only sends these after the admin says the
+	 * The browser only sends these after the admin says the
 	 * file is a full export. A day a person edited here stays.
 	 */
 	removeDays: async (ctx: Ctx, input: HarvestRemoveDaysInput) => {
@@ -1403,7 +1403,7 @@ export const harvestImportService = {
 	},
 
 	/**
-	 * Closes the run (plan section 6):
+	 * Closes the run:
 	 *
 	 * 1. `automationLockedThrough` moves up to the day before the cutoff, so no
 	 *    engine writes into the imported history. It never moves back.

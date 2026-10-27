@@ -1,4 +1,4 @@
-// The row key and the person-day key from plan section 5.3. Both are pure
+// The row key and the person-day key of the import. Both are pure
 // functions of the row's own fields — no database, no import run — so they
 // can run in the browser worker that also parses the file and produce the
 // same key a second run of the same file would produce.

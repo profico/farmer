@@ -81,7 +81,7 @@ export type PersonRow = ResolvedMemberType & {
 	 *  already appear in, and drop out of the forward-looking ones. */
 	archivedAt: Date | null;
 	/** Never signed in, and nobody has confirmed the address: a person an
-	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
+	 *  import made with a guessed email (docs/domains/harvest-import.md).
 	 *  Restoring them is where an admin confirms it. */
 	emailUnconfirmed: boolean;
 	/** A Harvest import added them and they have not joined yet
@@ -113,7 +113,7 @@ const DEFAULT_TYPE: ResolvedMemberType = {
 export const isNaggable = (type: MemberType) => type !== "employee_overhead";
 
 /** Why an admin of `ctx`'s org may not vouch for `userId`'s address, or null
- *  when they may (docs/plans/harvest-import.md, 3.3). An unverified address is
+ *  when they may (docs/domains/harvest-import.md). An unverified address is
  *  one a Google sign-in will not link to, and confirming it hands the account
  *  to whoever signs in as that address. So only for a user who has never
  *  signed in and whom no other org holds: one org's admin cannot vouch for an
