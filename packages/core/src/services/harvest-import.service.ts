@@ -226,6 +226,60 @@ const usersWithAccount = async (
 	return out;
 };
 
+/** Whether `userId` accepted the claim that `start` set in `org`. Multi-org
+ *  `start` writes `claimName` with the claim and nothing clears it. */
+const acceptedClaim = async (
+	tx: DbClient,
+	org: string,
+	userId: string,
+): Promise<boolean> => {
+	const [row] = await tx
+		.select({ id: memberProfile.id })
+		.from(memberProfile)
+		.innerJoin(
+			member,
+			and(
+				eq(member.organizationId, memberProfile.organizationId),
+				eq(member.userId, memberProfile.userId),
+			),
+		)
+		.where(
+			and(
+				eq(memberProfile.organizationId, org),
+				eq(memberProfile.userId, userId),
+				isNotNull(memberProfile.claimName),
+				isNull(memberProfile.claimPendingSince),
+			),
+		)
+		.limit(1);
+	return row !== undefined;
+};
+
+/** Whether `userId` has a row in an organization other than `org`. A foreign
+ *  key from each of these tables to `user` cascades, so deleting the user row
+ *  would delete that other organization's data. Invitations are read by
+ *  address: they hold no user id. */
+const heldElsewhere = async (
+	tx: DbClient,
+	org: string,
+	userId: string,
+): Promise<boolean> => {
+	const [row] = await tx
+		.select({
+			held: sql<boolean>`(
+				exists (select 1 from ${member} where ${member.userId} = ${userId} and ${member.organizationId} <> ${org})
+				or exists (select 1 from ${memberProfile} where ${memberProfile.userId} = ${userId} and ${memberProfile.organizationId} <> ${org})
+				or exists (select 1 from ${timeEntry} where ${timeEntry.userId} = ${userId} and ${timeEntry.organizationId} <> ${org})
+				or exists (select 1 from ${projectMember} where ${projectMember.userId} = ${userId} and ${projectMember.organizationId} <> ${org})
+				or exists (select 1 from ${importMapping} where ${importMapping.kind} = 'person' and ${importMapping.localId} = ${userId} and ${importMapping.organizationId} <> ${org})
+				or exists (select 1 from ${invitation} where lower(${invitation.email}) = (select lower(${user.email}) from ${user} where ${user.id} = ${userId}) and ${invitation.organizationId} <> ${org})
+			)`,
+		})
+		.from(user)
+		.where(eq(user.id, userId));
+	return row?.held === true;
+};
+
 /**
  * The people an earlier run of this org invited and who have not joined yet:
  * a person mapping to a user with no membership here, and a pending
@@ -1651,10 +1705,16 @@ export const harvestImportService = {
 				await tx.delete(task).where(inArray(task.id, batch));
 			}
 			for (const userId of userIds) {
-				if (madeUsers.has(userId)) {
+				// A made user that another organization holds rows for keeps the
+				// user row: the foreign keys cascade and would delete that data.
+				if (madeUsers.has(userId) && !(await heldElsewhere(tx, org, userId))) {
 					await tx.delete(user).where(eq(user.id, userId));
 					continue;
 				}
+				// An attached user who accepted the claim joined by choice. Their
+				// membership, profile and assignments are theirs now; only the
+				// run's entries and mappings go.
+				if (await acceptedClaim(tx, org, userId)) continue;
 				// An invited user: cancel the invitation the run sent, unless the
 				// person has joined. Then they are a member who chose to join, and
 				// their membership, profile and assignments are theirs now; only
