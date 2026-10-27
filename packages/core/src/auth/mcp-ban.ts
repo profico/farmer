@@ -20,10 +20,10 @@ import { isBanned } from "../lib/ban";
  * - `assertRefreshAllowed` refuses a refresh for a banned person.
  */
 /** The admin endpoints that end a person's access, and the body field they share. */
-export const ADMIN_REVOKE_PATHS: Record<string, true> = {
-	"/admin/ban-user": true,
-	"/admin/revoke-user-sessions": true,
-};
+export const ADMIN_REVOKE_PATHS = new Set([
+	"/admin/ban-user",
+	"/admin/revoke-user-sessions",
+]);
 export const adminTargetBody = z.object({ userId: z.string() });
 
 export const revokeMcpTokens = async (userId: string) => {

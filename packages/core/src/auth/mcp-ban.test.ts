@@ -40,7 +40,11 @@ const signUp = async (email: string) => {
 	return { id: String(body.user.id), cookie: cookiesOf(response) };
 };
 
-const post = (path: string, cookie: string, body: Record<string, string | boolean>) =>
+const post = (
+	path: string,
+	cookie: string,
+	body: Record<string, string | boolean>,
+) =>
 	auth.handler(
 		new Request(`${ORIGIN}/api/auth${path}`, {
 			method: "POST",

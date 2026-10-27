@@ -13,6 +13,7 @@ import { SESSION_REQUEST_HEADER } from "#/lib/api-session-header.ts";
 // Type-only, so it is erased and `posthog-node` never reaches the client graph
 // through this module. The values come from the deferred import in `serve`.
 import type { ApiCredentialKind, ApiRequestReport } from "#/lib/posthog-api.ts";
+import { safeError } from "#/lib/safe-error.ts";
 import {
 	type CliCredential,
 	requestActor,
@@ -229,7 +230,7 @@ const cookieUser = async (
  *    can carry SQL, a hostname or a file path. It is logged and answered with a
  *    generic 500.
  */
-const failure = async (error: Error): Promise<Response> => {
+const failure = async (error: Error, route: string): Promise<Response> => {
 	const { classifyServiceError } = await import("@farmer/core/services");
 	const verdict = classifyServiceError(error);
 	switch (verdict.kind) {
@@ -247,7 +248,8 @@ const failure = async (error: Error): Promise<Response> => {
 		case "not_found":
 			return refuse(404, { error: verdict.message, code: "not_found" });
 		case "unsafe":
-			console.error("[api] request failed", error);
+			// A database error holds the bound parameters, which can be a raw token.
+			console.error("[api] request failed", safeError(error, route));
 			return refuse(500, {
 				error: "The server failed. Try again in a moment.",
 				code: "server_error",
@@ -365,7 +367,8 @@ const serve = async <
 	try {
 		return finish(await handle(principal));
 	} catch (error) {
-		if (error instanceof Error) return finish(await failure(error), error);
+		if (error instanceof Error)
+			return finish(await failure(error, report.pathname), error);
 		console.error("[api] request failed", error);
 		return finish(
 			refuse(500, {

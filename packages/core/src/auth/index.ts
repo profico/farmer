@@ -558,7 +558,7 @@ const buildAuth = () => {
 				// runs only after the endpoint accepted the caller, because the body
 				// names any user.
 				if (
-					ctx.path in ADMIN_REVOKE_PATHS &&
+					ADMIN_REVOKE_PATHS.has(ctx.path) &&
 					!isAPIError(ctx.context.returned)
 				) {
 					const target = adminTargetBody.safeParse(ctx.body);

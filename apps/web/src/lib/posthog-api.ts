@@ -18,6 +18,7 @@
 // `posthog-node` at the top of this file would therefore ship to the browser.
 
 import { getPostHogClient } from "./posthog-server";
+import { safeError } from "./safe-error";
 
 /** A uuid, as the two `$id` routes carry it. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -133,10 +134,16 @@ export const captureApiFailure = (
 ): void => {
 	const posthog = getPostHogClient();
 	if (!posthog) return;
-	posthog.captureException(error, report.userId ?? ANONYMOUS, {
-		...propertiesOf(report),
-		// Error tracking groups on the exception itself, so the route has to be
-		// on the event to tell two failures of one message apart.
-		api_failed_route: routeTemplate(report.pathname),
-	});
+	// A database error holds the bound parameters, which can be a raw token.
+	const route = routeTemplate(report.pathname);
+	posthog.captureException(
+		safeError(error, route),
+		report.userId ?? ANONYMOUS,
+		{
+			...propertiesOf(report),
+			// Error tracking groups on the exception itself, so the route has to be
+			// on the event to tell two failures of one message apart.
+			api_failed_route: route,
+		},
+	);
 };
