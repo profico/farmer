@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
-import { toWeekStartsOn } from "../lib/time";
+import { isValidTimezone, safeTimezone, toWeekStartsOn } from "../lib/time";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
 import { diffFields, recordAudit } from "./audit";
 import { invalidateCtxOrgCalendar, requireAdmin } from "./context";
@@ -18,7 +18,7 @@ export const organizationService = {
 		return {
 			name: org.name,
 			country: org.country,
-			timezone: org.timezone,
+			timezone: safeTimezone(org.timezone),
 			weekStartsOn: toWeekStartsOn(org.weekStartsOn),
 			logo: org.logo,
 		};
@@ -36,14 +36,7 @@ export const organizationService = {
 			// Validate against the IANA database rather than trusting the client —
 			// an invalid zone here would silently corrupt every downstream time
 			// calculation (see lib/time.ts).
-			let isValidTimezone = false;
-			try {
-				new Intl.DateTimeFormat(undefined, { timeZone: input.timezone });
-				isValidTimezone = true;
-			} catch {
-				isValidTimezone = false;
-			}
-			if (!isValidTimezone) {
+			if (!isValidTimezone(input.timezone)) {
 				throw new Error("Invalid timezone");
 			}
 			patch.timezone = input.timezone;

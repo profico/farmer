@@ -4,7 +4,7 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
-import { formatDurationShort, timeKeyInTz } from "../lib/time";
+import { formatDurationShort, safeTimezone, timeKeyInTz } from "../lib/time";
 import { notify } from "../services/notify";
 import {
 	DEFAULT_TIMER_MAX_SECONDS,
@@ -100,7 +100,10 @@ export const runTimerSweepOnce = async (
 				);
 			summary.dropped += 1;
 
-			const startedAtLabel = timeKeyInTz(row.startedAt, row.timezone ?? "UTC");
+			const startedAtLabel = timeKeyInTz(
+				row.startedAt,
+				safeTimezone(row.timezone),
+			);
 			await notify(
 				{ organizationId: row.organizationId, userId: row.userId },
 				{

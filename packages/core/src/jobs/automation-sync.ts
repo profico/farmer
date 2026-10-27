@@ -6,6 +6,7 @@ import { recurringBlockRule } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { integrationSettings } from "../db/schema/settings";
 import { durationFromEnv, withTimeout } from "../lib/http";
+import { safeTimezone } from "../lib/time";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
 import type { SchedulerLogger } from "./scheduler";
@@ -142,7 +143,7 @@ const collectTargets = async (): Promise<Target[]> => {
 			// The day boundary is the ORG's midnight, not the server's and not the
 			// member's: one org, one answer to "what day is it", so two people in
 			// the same workspace never disagree about which day an entry lands on.
-			timezone: row.timezone ?? "UTC",
+			timezone: safeTimezone(row.timezone),
 		});
 	}
 	return [...byKey.values()];

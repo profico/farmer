@@ -39,6 +39,7 @@ import {
 	slugify,
 	slugProblem,
 } from "../lib/slug";
+import { isValidTimezone } from "../lib/time";
 import { recordAudit, recordSecurityEvent } from "../services/audit";
 import { shownNameOf } from "../services/claim-name";
 import {
@@ -296,6 +297,13 @@ const refreshGithubToken =
 		}
 		return tokens;
 	};
+
+/** `timezone` is a client-writable field of the organization endpoints. A bad
+ *  zone would break every time calculation of the organization. */
+const assertTimezone = (timezone: string | null | undefined) => {
+	if (timezone == null || isValidTimezone(timezone)) return;
+	throw new APIError("BAD_REQUEST", { message: "Invalid timezone" });
+};
 
 /** Every value `buildAuth` reads from the instance settings, as one string.
  *  When it changes, the instance is rebuilt. */
@@ -806,6 +814,7 @@ const buildAuth = () => {
 					// hand-made request sends it. better-auth checked the original slug for a duplicate before
 					// this hook, and `uniqueSlugFor` checks the replacement.
 					beforeCreateOrganization: async ({ organization: org }) => {
+						assertTimezone(org.timezone);
 						const slug = org.slug ?? "";
 						if (!isWellFormedSlug(slug)) {
 							throw new APIError("BAD_REQUEST", {
@@ -819,6 +828,7 @@ const buildAuth = () => {
 					// A rename names its slug on purpose, so a reserved one is refused
 					// rather than moved.
 					beforeUpdateOrganization: async ({ organization: org }) => {
+						assertTimezone(org.timezone);
 						if (org.slug === undefined) return;
 						const problem = slugProblem(org.slug);
 						if (problem)

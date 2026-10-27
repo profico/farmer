@@ -72,6 +72,33 @@ describe("an organization's slug", () => {
 		).rejects.toThrow(/page of this app/);
 	});
 
+	test("refuses an invalid timezone on create and on update", async () => {
+		await expect(
+			auth.api.createOrganization({
+				body: {
+					name: "zone",
+					slug: "zone",
+					timezone: "Not/AZone",
+					country: "US",
+					weekStartsOn: 1,
+				},
+				headers,
+			}),
+		).rejects.toThrow(/Invalid timezone/);
+		const acme = present(
+			await db.query.organization.findFirst({
+				where: eq(organization.slug, "acme"),
+			}),
+			"the acme organization",
+		);
+		await expect(
+			auth.api.updateOrganization({
+				body: { organizationId: acme.id, data: { timezone: "Not/AZone" } },
+				headers,
+			}),
+		).rejects.toThrow(/Invalid timezone/);
+	});
+
 	test("gives a sign-up's workspace a free slug when the name is a page", async () => {
 		const signedUp = await auth.api.signUpEmail({
 			body: { name: "Api", email: "api@example.com", password: PASSWORD },

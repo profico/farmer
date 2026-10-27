@@ -151,6 +151,19 @@ describe("orgContextService.organizationsFor", () => {
 		expect(await orgContextService.organizationsFor("u-nobody")).toEqual([]);
 	});
 
+	test("maps an invalid stored timezone to UTC", async () => {
+		await db
+			.update(organization)
+			.set({ timezone: "Not/AZone" })
+			.where(eq(organization.id, ORG));
+		const [org] = await orgContextService.organizationsFor("u-member");
+		await db
+			.update(organization)
+			.set({ timezone: "UTC" })
+			.where(eq(organization.id, ORG));
+		expect(org?.timezone).toBe("UTC");
+	});
+
 	// Oldest first, so the CLI's default is the same organization every time.
 	test("orders by membership age, oldest first", async () => {
 		expect(
