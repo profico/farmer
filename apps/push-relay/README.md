@@ -241,7 +241,8 @@ at most 50,000 keys.
 | Pushes from one address | 6,000 a minute |
 | Alert and data pushes for one push token (all relay ids that hold it, except the oldest) | 30 a minute, 500 a day |
 | Live Activity pushes for one push token (same rule) | 60 a minute, 2,000 a day |
-| Registrations, updates and removals from one address | 60 in 10 minutes |
+| Registrations, and updates or removals with a wrong secret, from one address | 60 in 10 minutes |
+| Updates and removals with the right secret, for one relay id from one address | 120 in 10 minutes |
 | Verify calls from one address | 6,000 a minute |
 | Verify calls for one known relay id from one address | 10 in 10 minutes |
 | Verify calls for an unknown relay id from one address | 60 in 10 minutes |

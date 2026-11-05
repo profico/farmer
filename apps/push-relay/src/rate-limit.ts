@@ -123,6 +123,10 @@ export type RelayLimits = {
 	pushPerAddressPerMinute: number;
 	/** Registrations, token updates and removals from one address. */
 	devicePerAddressPer10Minutes: number;
+	/** Token updates and removals that prove the device secret, for one relay
+	 *  id from one address. Higher than the address limit: many phones can
+	 *  sit behind one office address, and each has its own limit. */
+	deviceAuthPerRelayPer10Minutes: number;
 	/** Binding checks from one address. One farmer server is one address
 	 *  for all of its users, so this is high. */
 	verifyPerAddressPerMinute: number;
@@ -140,6 +144,7 @@ export const DEFAULT_LIMITS: RelayLimits = {
 	liveActivityPerDay: 2_000,
 	pushPerAddressPerMinute: 6_000,
 	devicePerAddressPer10Minutes: 60,
+	deviceAuthPerRelayPer10Minutes: 120,
 	verifyPerAddressPerMinute: 6_000,
 	verifyPerRelayPer10Minutes: 10,
 	verifyUnknownPerAddressPer10Minutes: 60,
@@ -150,6 +155,8 @@ export type RelayLimiters = {
 	liveActivity: { minute: FixedWindowLimiter; day: FixedWindowLimiter };
 	pushByAddress: FixedWindowLimiter;
 	deviceByAddress: FixedWindowLimiter;
+	/** Keyed on `relayId|address`. */
+	deviceAuthByRelayId: FixedWindowLimiter;
 	verifyByAddress: FixedWindowLimiter;
 	/** Keyed on `relayId|address`. */
 	verifyByRelayId: FixedWindowLimiter;
@@ -168,6 +175,10 @@ export const createLimiters = (limits: RelayLimits): RelayLimiters => ({
 	pushByAddress: new FixedWindowLimiter(limits.pushPerAddressPerMinute, MINUTE),
 	deviceByAddress: new FixedWindowLimiter(
 		limits.devicePerAddressPer10Minutes,
+		10 * MINUTE,
+	),
+	deviceAuthByRelayId: new FixedWindowLimiter(
+		limits.deviceAuthPerRelayPer10Minutes,
 		10 * MINUTE,
 	),
 	verifyByAddress: new FixedWindowLimiter(

@@ -596,6 +596,38 @@ describe("rate limits", () => {
 		expect(other.status).toBe(201);
 	});
 
+	test("updates with a good secret do not use the registration limit of the address", async () => {
+		const { call } = setup({
+			limits: {
+				devicePerAddressPer10Minutes: 2,
+				deviceAuthPerRelayPer10Minutes: 3,
+			},
+		});
+		const body = { platform: "android", pushToken: ANDROID_TOKEN };
+		const phone = await register(call, body);
+		const auth = { authorization: `Bearer ${phone.deviceSecret}` };
+		const update = () =>
+			call("PUT", `/v1/devices/${phone.relayId}`, { pushToken: ANDROID_TOKEN }, auth);
+		for (let i = 0; i < 3; i += 1) expect((await update()).status).toBe(200);
+		// The own limit of the device holds.
+		expect((await update()).status).toBe(429);
+		// A second phone at the same address still updates and registers.
+		const other = await register(call, body);
+		const otherUpdate = await call(
+			"PUT",
+			`/v1/devices/${other.relayId}`,
+			{ pushToken: ANDROID_TOKEN },
+			{ authorization: `Bearer ${other.deviceSecret}` },
+		);
+		expect(otherUpdate.status).toBe(200);
+		// Bad proofs count against the strict limit of the address.
+		const bad = () =>
+			call("PUT", `/v1/devices/${phone.relayId}`, { pushToken: ANDROID_TOKEN }, {
+				authorization: "Bearer wrong",
+			});
+		expect((await bad()).status).toBe(429);
+	});
+
 	test("a registration past the device cap is a 503 with a log line", async () => {
 		const { call, logs, store } = setup({ maxDevices: 2 });
 		const body = { platform: "android", pushToken: ANDROID_TOKEN };

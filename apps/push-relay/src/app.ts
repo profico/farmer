@@ -184,9 +184,10 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return json(201, { relayId, deviceSecret });
 	};
 
-	const update = async (request: Request): Promise<Response> => {
-		const device = authorizedDevice(request);
-		if (!device) return error(401, "unauthorized");
+	const update = async (
+		request: Request,
+		device: Device,
+	): Promise<Response> => {
 		const body = await readJsonBody(request, updateDeviceBody);
 		if (!body.ok) return bodyError(body.error);
 		const ios = device.platform === "ios";
@@ -239,9 +240,7 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return json(200, { status: "updated" });
 	};
 
-	const forget = (request: Request): Response => {
-		const device = authorizedDevice(request);
-		if (!device) return error(401, "unauthorized");
+	const forget = (device: Device): Response => {
 		store.delete(device.relayId);
 		log(`[push-relay] forgot relay=${relayIdHint(device.relayId)}`);
 		return new Response(null, { status: 204 });
@@ -386,10 +385,31 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 
 	const notAllowed = () => error(405, "method_not_allowed");
 
-	const devicesRoute = (request: Request): Promise<Response> | Response => {
-		if (request.method === "POST") return register(request);
-		if (request.method === "PUT") return update(request);
-		if (request.method === "DELETE") return forget(request);
+	/**
+	 * `PUT` and `DELETE` prove the device secret, so a good proof has its own
+	 * limit for each relay id and address. Many phones behind one office
+	 * address then do not share one budget. A call with a bad proof, `POST`
+	 * (a registration has no proof) and any other method count against the
+	 * strict limit of the address.
+	 */
+	const devicesRoute = async (
+		request: Request,
+		address: string,
+	): Promise<Response> => {
+		const { method } = request;
+		const proven =
+			method === "PUT" || method === "DELETE" ? authorizedDevice(request) : null;
+		const check: readonly [FixedWindowLimiter, string] = proven
+			? [limiters.deviceAuthByRelayId, `${proven.relayId}|${address}`]
+			: [limiters.deviceByAddress, address];
+		const admission = admit([check], now());
+		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
+
+		if (method === "POST") return register(request);
+		if (method === "PUT" || method === "DELETE") {
+			if (!proven) return error(401, "unauthorized");
+			return method === "PUT" ? update(request, proven) : forget(proven);
+		}
 		return notAllowed();
 	};
 
@@ -411,17 +431,15 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		}
 
 		const address = addressOf(request, socketAddress);
+		if (isDevices) return devicesRoute(request, address);
 		// A verify has its own limits. The farmer server makes all of them from
 		// one address, so the device limit for an address must not count them.
 		const byAddress = isVerify
 			? limiters.verifyByAddress
-			: isDevices
-				? limiters.deviceByAddress
-				: limiters.pushByAddress;
+			: limiters.pushByAddress;
 		const admission = admit([[byAddress, address]], now());
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
 
-		if (isDevices) return devicesRoute(request);
 		if (method !== "POST") return notAllowed();
 		return isVerify ? verify(request, address) : push(request);
 	};
