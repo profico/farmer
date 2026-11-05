@@ -227,11 +227,16 @@ jobs:
       # `~/.gradle/caches` also holds the Gradle build cache
       # (`build-cache-1`), so the compiled Kotlin and the other task outputs
       # come back with it. A cache entry cannot change after it is saved, so
-      # the key ends with the commit: each run saves a new entry, and
-      # `restore-keys` starts the next run from the newest one. The project
-      # is always at the same path on the runner, so the entries match.
-      - name: Cache Gradle
-        uses: actions/cache@v4
+      # the key ends with the commit, and `restore-keys` starts a run from the
+      # newest entry. The project is always at the same path on the runner,
+      # so the entries match.
+      #
+      # Every run restores. Only a push to main saves (the step "Save the
+      # Gradle cache"), because each entry is about 1.5 GB and the cache of
+      # the repository is limited. A branch reads the caches of main and of
+      # its own ref. Main never reads the caches of a branch.
+      - name: Restore the Gradle cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.gradle/caches
@@ -242,14 +247,15 @@ jobs:
             gradle-${{ runner.os }}-
 
       # The compiled C++ objects of the native modules, for ccache. The
-      # action installs ccache, restores the folder, and saves it at the end
-      # of the job with a new key.
+      # action installs ccache and restores the folder. It saves the folder at
+      # the end of the job only on a push to main, as the Gradle cache does.
       - name: Cache the C++ build
         uses: hendrikmuhs/ccache-action@33522472633dbd32578e909b315f5ee43ba878ce # v1.2.22
         with:
           key: android-${{ hashFiles('bun.lock') }}
           restore-keys: android-
           max-size: 1G
+          save: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
 
       # The user file `~/.gradle/gradle.properties` has a higher priority than
       # `android/gradle.properties`, which prebuild writes with a heap of 2 GB.
@@ -336,8 +342,10 @@ jobs:
       # so the two switch together. The ProGuard rules of `app.config.ts`
       # apply only when R8 runs.
       #
-      # `-x` skips the lint of the release build (`lintVital`). It does not
-      # change the APK, and it takes about 4 minutes in the 15 modules.
+      # `-x` skips the lint of the release build (`lintVital`) in the same
+      # builds. It does not change the APK, and it takes about 4 minutes in
+      # the 15 modules. Main, a tag and the AAB keep the lint, because it can
+      # fail a release build on a fatal error.
       - name: Build the APK
         working-directory: apps/mobile/android
         env:
@@ -349,14 +357,16 @@ jobs:
         # emulator cannot install this APK; build it locally for an emulator.
         run: |
           minify=false
+          skip_lint=(-x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease)
           if [ "$PUBLISH_TO_STORES" = true ] || [ "$GITHUB_REF" = refs/heads/main ]; then
             minify=true
+            skip_lint=()
           fi
           ./gradlew assembleRelease --no-daemon \
             -PreactNativeArchitectures=arm64-v8a \
             -Pandroid.enableMinifyInReleaseBuilds=$minify \
             -Pandroid.enableShrinkResourcesInReleaseBuilds=$minify \
-            -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease
+            "${skip_lint[@]}"
 
       - name: Name the APK and write its checksum
         env:
@@ -394,7 +404,7 @@ jobs:
           FARMER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           FARMER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           FARMER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew bundleRelease --no-daemon -x lintVitalAnalyzeRelease -x lintVitalReportRelease -x lintVitalRelease
+        run: ./gradlew bundleRelease --no-daemon
 
       - name: Name the AAB
         if: env.PUBLISH_TO_STORES == 'true' && steps.signing.outputs.release == 'true'
@@ -414,9 +424,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Only main saves the Gradle cache. The step runs after a good build.
+      - name: Save the Gradle cache
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}-${{ github.sha }}
+
       - name: Show the C++ cache result
         if: always()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache > /dev/null; then
+            ccache --show-stats
+          fi
 
   ios:
     name: Build the iOS app
