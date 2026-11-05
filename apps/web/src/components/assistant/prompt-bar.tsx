@@ -96,6 +96,7 @@ export function PromptBar({
 	disabled,
 	placeholder = "Ask about your time, or log some…",
 	autoFocus,
+	focusKey,
 }: {
 	/**
 	 * Sends the draft. Resolving FALSE means the message never reached the
@@ -107,6 +108,8 @@ export function PromptBar({
 	disabled?: boolean;
 	placeholder?: string;
 	autoFocus?: boolean;
+	/** Focus the input again each time this value changes. */
+	focusKey?: string | null;
 }) {
 	const [draft, setDraft] = useState("");
 	const [dismissed, setDismissed] = useState(false);
@@ -133,9 +136,12 @@ export function PromptBar({
 	// else costs a click on every visit — but the attribute focuses during
 	// hydration, before the page has settled, which on a slow load steals focus
 	// from wherever the reader had already moved.
+	// It runs again when `focusKey` changes (a different thread). An effect, not
+	// a `key` on the bar, so a switch keeps the unsent draft.
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- `focusKey` only triggers the effect, the body does not read it
 	useEffect(() => {
 		if (autoFocus) inputRef.current?.focus();
-	}, [autoFocus]);
+	}, [autoFocus, focusKey]);
 
 	// Reset the selection whenever the list underneath it changes, so the
 	// highlight can't sit on row 3 of a list that now has two rows.
