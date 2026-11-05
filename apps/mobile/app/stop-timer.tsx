@@ -81,6 +81,7 @@ export default function StopTimerSheet() {
 			timer={current}
 			today={whoami.data.today}
 			timeZone={whoami.data.timezone}
+			refreshing={timer.isFetching && saved === null}
 			onSaved={() => setSaved(current)}
 		/>
 	);
@@ -90,11 +91,15 @@ function StopForm({
 	timer,
 	today,
 	timeZone,
+	refreshing,
 	onSaved,
 }: {
 	timer: Timer;
 	today: string;
 	timeZone: string;
+	/** The timer is being read again. The cached figure can be minutes old
+	 *  when a notification opened this sheet, and Save logs the figure shown. */
+	refreshing: boolean;
 	onSaved: () => void;
 }) {
 	const palette = usePalette();
@@ -129,7 +134,7 @@ function StopForm({
 	const noteFooter = missingNote ? `${timer.task.name} needs a note.` : hint;
 
 	const save = () => {
-		if (missingNote) return;
+		if (missingNote || refreshing) return;
 		confirm.mutate(stopPayload({ timer, live, edits }));
 	};
 
@@ -139,7 +144,7 @@ function StopForm({
 			actionLabel="Save"
 			onAction={save}
 			busy={confirm.isPending || resume.isPending}
-			actionDisabled={missingNote}
+			actionDisabled={missingNote || refreshing}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
 			<Card tone="primary">
