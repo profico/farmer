@@ -45,9 +45,14 @@ describe("clientAddress", () => {
 	test("a header value that is not an IP address gives the socket address", () => {
 		let warned = 0;
 		const headers = new Headers({ "cf-connecting-ip": "attacker-bucket-17" });
-		const address = clientAddress(headers, "cf-connecting-ip", "10.0.1.6", () => {
-			warned += 1;
-		});
+		const address = clientAddress(
+			headers,
+			"cf-connecting-ip",
+			"10.0.1.6",
+			() => {
+				warned += 1;
+			},
+		);
 		expect(address).toBe("10.0.1.6");
 		expect(warned).toBe(1);
 		const forwarded = new Headers({ "x-forwarded-for": "1.2.3.4, not-an-ip" });

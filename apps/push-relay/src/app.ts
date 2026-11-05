@@ -407,7 +407,9 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	): Promise<Response> => {
 		const { method } = request;
 		const proven =
-			method === "PUT" || method === "DELETE" ? authorizedDevice(request) : null;
+			method === "PUT" || method === "DELETE"
+				? authorizedDevice(request)
+				: null;
 		const check: readonly [FixedWindowLimiter, string] = proven
 			? [limiters.deviceAuthByRelayId, `${proven.relayId}|${address}`]
 			: [limiters.deviceByAddress, address];

@@ -62,9 +62,7 @@ describe("createHttp2Transport", () => {
 			"The HTTP/2 request timed out.",
 		);
 		// Not twice the value, as `stream.setTimeout` does under Bun.
-		expect(Date.now() - started).toBeLessThan(
-			timing.requestTimeoutMs * 1.5,
-		);
+		expect(Date.now() - started).toBeLessThan(timing.requestTimeoutMs * 1.5);
 		expect((await call(transport, origin, "/b")).status).toBe(200);
 		expect(counts.sessions).toBe(1);
 	});

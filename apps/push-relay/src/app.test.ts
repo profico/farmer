@@ -628,7 +628,12 @@ describe("rate limits", () => {
 		const phone = await register(call, body);
 		const auth = { authorization: `Bearer ${phone.deviceSecret}` };
 		const update = () =>
-			call("PUT", `/v1/devices/${phone.relayId}`, { pushToken: ANDROID_TOKEN }, auth);
+			call(
+				"PUT",
+				`/v1/devices/${phone.relayId}`,
+				{ pushToken: ANDROID_TOKEN },
+				auth,
+			);
 		for (let i = 0; i < 3; i += 1) expect((await update()).status).toBe(200);
 		// The own limit of the device holds.
 		expect((await update()).status).toBe(429);
@@ -643,9 +648,14 @@ describe("rate limits", () => {
 		expect(otherUpdate.status).toBe(200);
 		// Bad proofs count against the strict limit of the address.
 		const bad = () =>
-			call("PUT", `/v1/devices/${phone.relayId}`, { pushToken: ANDROID_TOKEN }, {
-				authorization: "Bearer wrong",
-			});
+			call(
+				"PUT",
+				`/v1/devices/${phone.relayId}`,
+				{ pushToken: ANDROID_TOKEN },
+				{
+					authorization: "Bearer wrong",
+				},
+			);
 		expect((await bad()).status).toBe(429);
 	});
 
