@@ -25,6 +25,13 @@ export const openApproval = (url: string) =>
 		showTitle: true,
 	}).catch(() => undefined);
 
+/** The sign-in that runs. Android shows the spinner in its button. */
+export type SignInAction =
+	| `provider:${string}`
+	| "password"
+	| "browser"
+	| "token";
+
 /** What the sign-in handlers read and set. `attempt` has a number for each
  *  attempt. A poll stops once a newer attempt, a cancel or leaving the screen
  *  changed it. */
@@ -33,7 +40,7 @@ type Flow = {
 	signIn: (server: string, token: string) => Promise<void>;
 	attempt: RefObject<number>;
 	setCode: (code: DeviceCode | null) => void;
-	setBusy: (busy: boolean) => void;
+	setRunning: (running: SignInAction | null) => void;
 	setError: (message: string | null) => void;
 };
 
@@ -47,7 +54,7 @@ const fail = (flow: Flow, failure: Error) => {
 	flow.attempt.current += 1;
 	flow.setError(failure.message);
 	flow.setCode(null);
-	flow.setBusy(false);
+	flow.setRunning(null);
 };
 
 /** Finish, and show a failure on the screen. */
@@ -62,12 +69,12 @@ const finishOrFail = async (flow: Flow, candidate: string) => {
 /** The end of a provider or a password sign-in. */
 const settle = async (flow: Flow, outcome: SignInOutcome) => {
 	if (outcome.kind === "cancelled") {
-		flow.setBusy(false);
+		flow.setRunning(null);
 		return;
 	}
 	if (outcome.kind === "error") {
 		flow.setError(outcome.message);
-		flow.setBusy(false);
+		flow.setRunning(null);
 		return;
 	}
 	await finishOrFail(flow, outcome.token);
@@ -75,7 +82,7 @@ const settle = async (flow: Flow, outcome: SignInOutcome) => {
 
 const withProvider = async (flow: Flow, method: SignInMethod) => {
 	flow.setError(null);
-	flow.setBusy(true);
+	flow.setRunning(`provider:${method.id}`);
 	flow.attempt.current += 1;
 	await settle(flow, await signInWithProvider(flow.server, method));
 };
@@ -86,7 +93,7 @@ const withPassword = async (flow: Flow, email: string, password: string) => {
 		flow.setError("Enter your email and your password.");
 		return;
 	}
-	flow.setBusy(true);
+	flow.setRunning("password");
 	flow.attempt.current += 1;
 	await settle(
 		flow,
@@ -96,7 +103,7 @@ const withPassword = async (flow: Flow, email: string, password: string) => {
 
 const withBrowser = async (flow: Flow) => {
 	flow.setError(null);
-	flow.setBusy(true);
+	flow.setRunning("browser");
 	flow.attempt.current += 1;
 	const mine = flow.attempt.current;
 	const transport = transportFor(flow.server);
@@ -128,21 +135,21 @@ const withToken = async (flow: Flow, token: string) => {
 		flow.setError(`An API token starts with ${API_TOKEN_PREFIX}.`);
 		return;
 	}
-	flow.setBusy(true);
+	flow.setRunning("token");
 	await finishOrFail(flow, candidate);
 };
 
 const cancel = (flow: Flow) => {
 	flow.attempt.current += 1;
 	flow.setCode(null);
-	flow.setBusy(false);
+	flow.setRunning(null);
 };
 
 /** The state of the sign-in screen, and the ways to sign in. */
 export const useSignInFlow = (server: string) => {
 	const { signIn } = useSession();
 	const [code, setCode] = useState<DeviceCode | null>(null);
-	const [busy, setBusy] = useState(false);
+	const [running, setRunning] = useState<SignInAction | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [token, setToken] = useState("");
 	const [email, setEmail] = useState("");
@@ -161,12 +168,13 @@ export const useSignInFlow = (server: string) => {
 		signIn,
 		attempt,
 		setCode,
-		setBusy,
+		setRunning,
 		setError,
 	};
 	return {
 		code,
-		busy,
+		busy: running !== null,
+		running,
 		error,
 		token,
 		setToken,
