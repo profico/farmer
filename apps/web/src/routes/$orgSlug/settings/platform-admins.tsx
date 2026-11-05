@@ -169,7 +169,10 @@ function PlatformAdminsPage() {
 				</ul>
 			</PageSection>
 
-			<PageSection title="Add somebody">
+			<PageSection
+				title="Add somebody"
+				description="Search by name or email. Nobody is listed until you search."
+			>
 				<SearchInput
 					value={term}
 					onValueChange={setTerm}

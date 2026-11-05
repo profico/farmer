@@ -185,8 +185,9 @@ function GoogleSignInMethod() {
  * On a deployed instance Google is the *only* identity: there is no endpoint
  * that could set the password this section reports on, and disconnecting Google
  * is refused because it would be the account's last way in. Both rows were
- * therefore permanently "Not set" and permanently disabled — a section that
- * asks to be read and then offers nothing to do.
+ * therefore a Password row that is never set and a Disconnect button that is
+ * never usable — a section that asks to be read and then offers nothing to do.
+ * Without a password the Password row and the Disconnect button are not drawn.
  */
 function SignInMethodsSection() {
 	const orgSlug = useOrgSlug();
