@@ -732,7 +732,9 @@ describe("registration while it is closed", () => {
 		await mayRegister(email, true);
 		await db
 			.delete(member)
-			.where(and(eq(member.organizationId, ORG), eq(member.userId, placeholder)));
+			.where(
+				and(eq(member.organizationId, ORG), eq(member.userId, placeholder)),
+			);
 		await expect(mayRegister(email, true)).rejects.toThrow(CLOSED);
 	});
 
