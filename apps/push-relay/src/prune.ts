@@ -7,11 +7,6 @@ export const STALE_DEVICE_MS = 180 * 24 * 60 * 60_000;
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/** When the relay is full, a device that never received a push and is older
- *  than this is removed to make room. A registration has no proof, so the
- *  rows that never received a push are the likely junk. */
-export const UNPROVEN_DEVICE_MS = 3 * DAY_MS;
-
 /** Delete the devices unseen for `STALE_DEVICE_MS`, and log the count. */
 export const pruneStaleDevices = (
 	store: DeviceStore,

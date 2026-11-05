@@ -9,7 +9,6 @@ import {
 	relayIdHint,
 	secretMatches,
 } from "./ids";
-import { UNPROVEN_DEVICE_MS } from "./prune";
 import {
 	admit,
 	type FixedWindowLimiter,
@@ -144,12 +143,17 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		if (store.count() >= deps.maxDevices) {
 			// A registration has no proof, so junk can fill the cap. Free only
 			// the room that this registration needs, from the oldest rows with
-			// no delivered push, before a real phone gets a 503. A real phone
-			// that never got a push can go too (older than 3 days). It
-			// registers again: its next PUT gets 401 and the app registers.
+			// no delivered push (first in, first out, whatever their age), so
+			// junk cannot lock real phones out. A real phone that never got a
+			// push can go too. It registers again: its next PUT gets 401 and
+			// the app registers.
 			const room = store.count() - deps.maxDevices + 1;
-			const freed = store.pruneUnprovenOldest(now() - UNPROVEN_DEVICE_MS, room);
-			if (freed > 0) log(`[push-relay] full: pruned ${freed} unproven devices`);
+			const freed = store.pruneUnprovenOldest(room);
+			if (freed > 0) {
+				log(
+					`[push-relay] warning: full, evicted ${freed} unproven devices (oldest first)`,
+				);
+			}
 		}
 		if (store.count() >= deps.maxDevices) {
 			log(`[push-relay] full: refused a registration at ${deps.maxDevices}`);

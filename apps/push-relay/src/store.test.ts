@@ -117,7 +117,7 @@ describe("DeviceStore column migration", () => {
 		const store = DeviceStore.open(path);
 		// A row seen after its registration gets last_seen_at as proof. A row
 		// never seen after it (last_seen_at = created_at) stays unproven.
-		expect(store.pruneUnprovenOldest(10, 10)).toBe(1);
+		expect(store.pruneUnprovenOldest(10)).toBe(1);
 		expect(store.find("junk-relay-id-01234567")).toBeNull();
 		expect(store.find("old-relay-id-0123456789")).not.toBeNull();
 		expect(
@@ -150,7 +150,7 @@ describe("DeviceStore column migration", () => {
 			});
 		}
 		store.touch("proven-relay-id-0123456", 5, true);
-		expect(store.pruneUnprovenOldest(10, 10)).toBe(1);
+		expect(store.pruneUnprovenOldest(10)).toBe(1);
 		expect(store.find("proven-relay-id-0123456")).not.toBeNull();
 		store.close();
 	});

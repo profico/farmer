@@ -251,13 +251,14 @@ limit for each address, so one caller cannot use up the limit of the real
 server. An unknown id counts against the address only.
 
 The relay holds at most `RELAY_MAX_DEVICES` devices. When the relay is full,
-it first deletes the oldest devices that have no proof and are older than
-3 days (`UNPROVEN_DEVICE_MS` in `src/prune.ts`). It deletes only as many as
-the new registration needs. Only a delivered push is a proof. A
+it first deletes the oldest devices that have no proof, whatever their age
+(first in, first out), and logs a warning. It deletes only as many as
+the new registration needs. It never deletes a device with a proof. Only a
+delivered push is a proof. A
 registration, a verify call and a token update are not, because the
 registrant holds the device secret and can make them for junk rows. A real
-phone that never got a push can be pruned, but only when the relay is full
-and the row is older than 3 days. That phone registers again on its next
+phone that never got a push can be pruned, but only when the relay is full.
+That phone registers again on its next
 launch: its `PUT` gets `401` and the app registers (`registration.ts` in
 `apps/mobile/src/push`). If the relay is still
 full, a registration gets `503 relay_full` with `Retry-After`, and the relay

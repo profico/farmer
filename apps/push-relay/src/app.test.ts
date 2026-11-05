@@ -6,7 +6,6 @@ import { createRelay } from "./app";
 import { dryRunSender } from "./delivery/dry-run";
 import type { DeliveryResult, Sender } from "./delivery/types";
 import { bindingProof, hashSecret } from "./ids";
-import { UNPROVEN_DEVICE_MS } from "./prune";
 import { createLimiters, DEFAULT_LIMITS, type RelayLimits } from "./rate-limit";
 import type { PushBody } from "./schemas";
 import { type Device, DeviceStore } from "./store";
@@ -600,8 +599,15 @@ describe("rate limits", () => {
 	test("a registration past the device cap is a 503 with a log line", async () => {
 		const { call, logs, store } = setup({ maxDevices: 2 });
 		const body = { platform: "android", pushToken: ANDROID_TOKEN };
-		await register(call, body);
-		await register(call, body);
+		// Only proven devices are safe from eviction, so prove both.
+		for (let i = 0; i < 2; i += 1) {
+			const device = await register(call, body);
+			await call("POST", "/v1/push", {
+				relayId: device.relayId,
+				kind: "alert",
+				ciphertext: CIPHERTEXT,
+			});
+		}
 		const refused = await call("POST", "/v1/devices", body);
 		expect(refused.status).toBe(503);
 		expect(await errorOf(refused)).toBe("relay_full");
@@ -624,16 +630,13 @@ describe("rate limits", () => {
 		};
 		expect((await call("POST", "/v1/push", push)).status).toBe(200);
 
-		// Too young to prune: the cap holds.
-		advance(UNPROVEN_DEVICE_MS - 1_000);
-		expect((await call("POST", "/v1/devices", body)).status).toBe(503);
-
-		advance(2_000);
+		// A young unproven row goes too: junk cannot lock the relay.
+		advance(1_000);
 		const fresh = await call("POST", "/v1/devices", body);
 		expect(fresh.status).toBe(201);
 		expect(store.count()).toBe(2);
 		expect(store.find(proven.relayId)).not.toBeNull();
-		expect(logs.some((line) => line.includes("pruned 1 unproven"))).toBe(true);
+		expect(logs.some((line) => line.includes("evicted 1 unproven"))).toBe(true);
 	});
 
 	test("a full relay deletes only as many unproven devices as it needs", async () => {
@@ -644,7 +647,7 @@ describe("rate limits", () => {
 		const second = await register(call, body);
 		advance(1_000);
 		const third = await register(call, body);
-		advance(UNPROVEN_DEVICE_MS * 2);
+		advance(1_000);
 		expect((await call("POST", "/v1/devices", body)).status).toBe(201);
 		expect(store.count()).toBe(3);
 		expect(store.find(first.relayId)).toBeNull();
@@ -671,7 +674,7 @@ describe("rate limits", () => {
 			},
 		);
 		expect(verify.status).toBe(204);
-		advance(UNPROVEN_DEVICE_MS * 2);
+		advance(1_000);
 		expect((await call("POST", "/v1/devices", body)).status).toBe(201);
 		// The oldest row goes, verified or not. Only a push proves a row.
 		expect(store.find(verified.relayId)).toBeNull();
@@ -715,7 +718,7 @@ describe("rate limits", () => {
 			ciphertext: CIPHERTEXT,
 		};
 		expect((await call("POST", "/v1/push", push)).status).toBe(200);
-		advance(UNPROVEN_DEVICE_MS * 2);
+		advance(1_000);
 		expect((await call("POST", "/v1/devices", body)).status).toBe(503);
 	});
 

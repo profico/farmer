@@ -246,18 +246,18 @@ export class DeviceStore {
 			.run({ relayId, now, delivered });
 	}
 
-	/** Delete at most `limit` devices that have no proof and were registered
-	 *  before `cutoff`, the oldest first. Returns the count. */
-	pruneUnprovenOldest(cutoff: number, limit: number): number {
+	/** Delete at most `limit` devices that have no proof, the oldest first.
+	 *  A device with a proof is never deleted. Returns the count. */
+	pruneUnprovenOldest(limit: number): number {
 		if (limit < 1) return 0;
 		return this.#db
 			.query(
 				`DELETE FROM device WHERE relay_id IN (
 					SELECT relay_id FROM device
-					WHERE proven_at IS NULL AND created_at < $cutoff
+					WHERE proven_at IS NULL
 					ORDER BY created_at, rowid LIMIT $limit)`,
 			)
-			.run({ cutoff, limit }).changes;
+			.run({ limit }).changes;
 	}
 
 	/**
