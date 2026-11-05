@@ -78,7 +78,8 @@ export const updateDeviceBody = z
 	);
 export type UpdateDeviceBody = z.infer<typeof updateDeviceBody>;
 
-/** The body of `POST /v1/devices/:relayId/verify`: the proof that the app
+/** The body of `POST /v1/devices/verify`; the relay id is in the
+ *  `x-relay-id` header, not in the path. It holds the proof that the app
  *  made for its public key (`bindingProof` in `ids.ts`). The server sends
  *  it, and the relay says whether the device secret made it. */
 export const verifyDeviceBody = z.strictObject({
