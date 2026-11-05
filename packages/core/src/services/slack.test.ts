@@ -212,6 +212,21 @@ describe("sendDm", () => {
 		}
 	});
 
+	test("passes the blocks on to the post", async () => {
+		const post = spyOn(slackClient, "postMessage").mockImplementation(
+			async () => "sent",
+		);
+		try {
+			const blocks = [
+				{ type: "section", text: { type: "mrkdwn", text: "hi" } },
+			];
+			await slackService.sendDm(ORG, ARCHIVED, "hi", blocks);
+			expect(post.mock.calls[0]?.[3]).toEqual(blocks);
+		} finally {
+			post.mockRestore();
+		}
+	});
+
 	// A refused token is about the credential, not the person: the send says
 	// false, and the installation reads as gone until Slack is added again.
 	test("records a refused token and reads as no installation after it", async () => {

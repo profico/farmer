@@ -25,6 +25,7 @@ import {
 	type NotifyChannel,
 	notify,
 	setNotifyAdaptersForTests,
+	slackEventBlocks,
 	slackText,
 	wasDelivered,
 } from "./notify";
@@ -303,25 +304,50 @@ describe("the Slack text", () => {
 		);
 	});
 
-	test("ends with the deep link on the app's own origin", () => {
+	test("keeps the link out of the text", () => {
+		process.env.BETTER_AUTH_URL = "https://farmer.example";
+		expect(slackText({ kind: "compliance-nudge", body: "x", url: "/a" })).toBe(
+			"x",
+		);
+	});
+
+	test("sends the link as a URL button after the text section", () => {
 		process.env.BETTER_AUTH_URL = "https://farmer.example";
 		expect(
-			slackText({
+			slackEventBlocks({
 				kind: "compliance-nudge",
 				body: "x",
 				url: "/acme/reports?tab=overtime",
 				linkLabel: "Open Overtime",
 			}),
-		).toBe(
-			"x\n<https://farmer.example/acme/reports?tab=overtime|Open Overtime>",
-		);
+		).toEqual([
+			{ type: "section", text: { type: "mrkdwn", text: "x" } },
+			{
+				type: "actions",
+				elements: [
+					{
+						type: "button",
+						text: { type: "plain_text", text: "Open Overtime" },
+						url: "https://farmer.example/acme/reports?tab=overtime",
+					},
+				],
+			},
+		]);
 	});
 
-	test("leaves the link out when the origin is not configured", () => {
+	test("labels the button Open Farmer by default", () => {
+		process.env.BETTER_AUTH_URL = "https://farmer.example";
+		const blocks = slackEventBlocks({ kind: "test", body: "x", url: "/a" });
+		expect(JSON.stringify(blocks)).toContain('"text":"Open Farmer"');
+	});
+
+	test("sends no blocks without an origin or without a url", () => {
 		delete process.env.BETTER_AUTH_URL;
-		expect(slackText({ kind: "compliance-nudge", body: "x", url: "/a" })).toBe(
-			"x",
+		expect(slackEventBlocks({ kind: "test", body: "x", url: "/a" })).toEqual(
+			[],
 		);
+		process.env.BETTER_AUTH_URL = "https://farmer.example";
+		expect(slackEventBlocks({ kind: "test", body: "x" })).toEqual([]);
 	});
 
 	test("sends a mrkdwn form as it is, instead of the title and body", () => {

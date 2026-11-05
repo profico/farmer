@@ -1,14 +1,22 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import type { TrackingRow } from "@farmer/core/services";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import {
+	useMutation,
+	useQuery,
+	useQueryClient,
+	useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { MenuPath } from "#/components/menu-path.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
-import { trackingReportQuery } from "#/queries/compliance.ts";
+import { pingStatesQuery, trackingReportQuery } from "#/queries/compliance.ts";
+import { pingPerson } from "#/server/compliance.ts";
 
 import {
 	byNumber,
@@ -89,6 +97,88 @@ const Delta = ({ seconds }: { seconds: number }) => {
 	);
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+// "3 hours ago", for a ping that is under a day old.
+const hoursAgo = (at: Date, now: number) => {
+	const hours = Math.floor((now - at.getTime()) / 3_600_000);
+	return hours < 1 ? "just now" : relative.format(-hours, "hour");
+};
+
+// Asks a person who is behind to track their time, by Slack DM. Disabled for a
+// day after a ping (the service refuses a second one in that time).
+function PingButton({
+	userId,
+	pingedAt,
+	now,
+}: {
+	userId: string;
+	pingedAt: Date | null;
+	now: number;
+}) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const ping = useMutation({
+		mutationFn: () => pingPerson({ data: { userId } }),
+		onSuccess: () => toast.success("Ping sent on Slack"),
+		onError: (error) => toast.error(error.message),
+		onSettled: () =>
+			queryClient.invalidateQueries({
+				queryKey: pingStatesQuery(orgSlug).queryKey,
+			}),
+	});
+	const recent = pingedAt != null && now - pingedAt.getTime() < DAY_MS;
+	return (
+		<Button
+			variant="outline"
+			size="sm"
+			disabled={recent || ping.isPending}
+			onClick={() => ping.mutate()}
+		>
+			{recent ? `Pinged ${hoursAgo(pingedAt, now)}` : "Ping"}
+		</Button>
+	);
+}
+
+/**
+ * The Ping column's cell renderer, or null when the column is hidden.
+ *
+ * Who can be pinged: matched to Slack, in the caller's scope. The list is empty
+ * when Slack is not connected, which hides the column. The server judges only
+ * the org's current month, so the column shows for that month only. The states
+ * refetch every few minutes, and `dataUpdatedAt` is the clock for the
+ * cooldown, so the button enables again after the 24 hours end.
+ */
+function usePingCell(year: number, month: number, complete: boolean) {
+	const orgSlug = useOrgSlug();
+	const { data: states, dataUpdatedAt } = useQuery(pingStatesQuery(orgSlug));
+	const pingable = new Map(
+		(states?.people ?? []).map((p) => [p.userId, p.pingedAt]),
+	);
+	const show =
+		pingable.size > 0 &&
+		!complete &&
+		states?.year === year &&
+		states?.month === month;
+	if (!show) return null;
+	return (r: TrackingRow) => {
+		const behind = r.status === "behind" || r.status === "slightly_behind";
+		const pingedAt = pingable.get(r.userId);
+		return (
+			<div key="ping" className="flex justify-end">
+				{behind && pingedAt !== undefined && (
+					<PingButton
+						userId={r.userId}
+						pingedAt={pingedAt}
+						now={dataUpdatedAt}
+					/>
+				)}
+			</div>
+		);
+	};
+}
+
 export function ComplianceTab({
 	year,
 	month,
@@ -100,6 +190,7 @@ export function ComplianceTab({
 	const { data } = useSuspenseQuery(
 		trackingReportQuery(orgSlug, { year, month }),
 	);
+	const pingCell = usePingCell(year, month, data.complete);
 	// The report arrives worst first (status, then the biggest shortfall);
 	// that stays the default, and any column can take over — the delta column
 	// is the one people asked for, to find who is furthest ahead or behind.
@@ -172,6 +263,7 @@ export function ComplianceTab({
 					{ label: "Target so far", sortKey: "target", numeric: true },
 					{ label: "Δ", sortKey: "delta", numeric: true },
 					{ label: "Status", sortKey: "status" },
+					...(pingCell ? [{ label: "Ping" }] : []),
 				]}
 				sort={sort}
 				onSort={onSort}
@@ -202,6 +294,7 @@ export function ComplianceTab({
 									No target
 								</span>
 							),
+							...(pingCell ? [pingCell(r)] : []),
 						],
 						searchFields: [r.name, r.memberType],
 					};

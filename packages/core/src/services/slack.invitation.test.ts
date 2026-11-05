@@ -109,10 +109,22 @@ describe("slackService.sendInvitation", () => {
 
 		const post = calls[1]?.body;
 		expect(post?.get("channel")).toBe("U_BEN");
-		expect(post?.get("text")).toBe(
-			"*Ana &lt;Admin&gt; invited you to join Smith &amp; Co* as member.\n" +
-				"<https://farmer.example/accept-invite/inv-1?email=ben%40example.com|Accept the invitation>",
-		);
+		const text =
+			"*Ana &lt;Admin&gt; invited you to join Smith &amp; Co* as member.";
+		expect(post?.get("text")).toBe(text);
+		expect(JSON.parse(post?.get("blocks") ?? "[]")).toEqual([
+			{ type: "section", text: { type: "mrkdwn", text } },
+			{
+				type: "actions",
+				elements: [
+					{
+						type: "button",
+						text: { type: "plain_text", text: "Accept the invitation" },
+						url: "https://farmer.example/accept-invite/inv-1?email=ben%40example.com",
+					},
+				],
+			},
+		]);
 	});
 
 	test("sends nothing when the address is not in the workspace", async () => {
