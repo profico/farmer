@@ -14,7 +14,7 @@ import UserNotifications
 //
 // The extension also checks the freshness fields
 // (`packages/push-crypto/src/freshness.ts`): `pushKind` must be "alert",
-// `sentAt` must be less than 24 hours old and not more than 5 minutes in
+// `sentAt` must be less than 24 hours old and not more than 30 minutes in
 // the future, and the extension must not have seen `id` before. It keeps
 // each id until its payload is stale, and at most 500 ids, in the app
 // group's UserDefaults, because each push can start a new process. If the
