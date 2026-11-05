@@ -67,6 +67,50 @@ const csrfMiddleware = createCsrfMiddleware({
 	},
 });
 
+/**
+ * Send the unexpected failure of a server function to PostHog error tracking.
+ *
+ * The error is always rethrown as it came. TanStack hands the error of
+ * `next()` back to the client, so the capture must not change it, and a
+ * failure of the capture itself is dropped. Only a fault is captured: see
+ * `isServerFnFault`. The person is read from the session here because this
+ * middleware runs before `orgMiddleware`, so it has no `ctx`.
+ */
+const captureFailureMiddleware = createMiddleware({ type: "function" }).server(
+	async ({ next, serverFnMeta }) => {
+		try {
+			return await next();
+		} catch (error) {
+			try {
+				const { isServerFnFault, claimServerFnError, captureServerFnFailure } =
+					await import("./lib/posthog-api");
+				if (
+					error instanceof Error &&
+					(await isServerFnFault(error)) &&
+					claimServerFnError(error)
+				) {
+					const { auth } = await import("@farmer/core/auth");
+					const { getRequestHeaders } =
+						await import("@tanstack/react-start/server");
+					const session = await auth.api
+						.getSession({ headers: getRequestHeaders() })
+						.catch(() => null);
+					captureServerFnFailure(error, {
+						userId: session?.user.id ?? null,
+						organizationId: session?.session.activeOrganizationId ?? null,
+						fn: serverFnMeta.name,
+						file: serverFnMeta.filename,
+					});
+				}
+			} catch {
+				// A broken capture must not hide the error below.
+			}
+			throw error;
+		}
+	},
+);
+
 export const startInstance = createStart(() => ({
 	requestMiddleware: [csrfMiddleware, instanceSettingsMiddleware],
+	functionMiddleware: [captureFailureMiddleware],
 }));

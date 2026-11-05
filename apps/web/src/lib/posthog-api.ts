@@ -150,6 +150,64 @@ export const captureApiFailure = (
 	);
 };
 
+/**
+ * Whether a server function's error is a fault worth an `$exception`.
+ *
+ * Only the `unsafe` verdict of `classifyServiceError` is: a validation error,
+ * a refusal and an access error are answers the app gives on purpose. The
+ * caller passes only an `Error`, which keeps out the redirect and the
+ * not-found that TanStack throws as control flow (neither is an `Error`).
+ */
+export const isServerFnFault = async (error: Error): Promise<boolean> => {
+	// A better-auth 4xx (a refused role change, for example) is an expected
+	// answer. A 5xx is a fault, so it goes on to the check below.
+	const { isAPIError } = await import("better-auth/api");
+	if (isAPIError(error) && error.statusCode < 500) return false;
+	const { classifyServiceError } = await import("@farmer/core/services");
+	return classifyServiceError(error).kind === "unsafe";
+};
+
+const capturedErrors = new WeakSet<Error>();
+
+/**
+ * Claim an error for capture. Returns true only the first time.
+ *
+ * Server code calls server functions in-process, so the same error object
+ * can pass through the middleware of an inner and an outer function. Only
+ * the first one reports it.
+ */
+export const claimServerFnError = (error: Error): boolean => {
+	if (capturedErrors.has(error)) return false;
+	capturedErrors.add(error);
+	return true;
+};
+
+/** A server function that failed with an error not worded for the person.
+ *  The properties name the function, never its input. Scrubbed as
+ *  `captureApiFailure` is. */
+export const captureServerFnFailure = (
+	error: Error,
+	ctx: {
+		userId: string | null;
+		organizationId: string | null;
+		fn: string;
+		file: string;
+	},
+): void => {
+	const properties = {
+		organization_id: ctx.organizationId,
+		server_fn: ctx.fn,
+		// Two functions can share a name in different files.
+		server_fn_file: ctx.file,
+	};
+	getPostHogClient()?.captureException(
+		withoutQueryValues(error),
+		ctx.userId ?? "server-fn-anonymous",
+		// No person to attach to: do not mint a profile for the bucket id.
+		ctx.userId ? properties : { ...properties, $process_person_profile: false },
+	);
+};
+
 /** An assistant turn that failed with an error not worded for the person.
  *  The stream route answers it with a generic line, so without this the
  *  only record is the log line. Scrubbed as `captureApiFailure` is. */
