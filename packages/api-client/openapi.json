@@ -20462,7 +20462,8 @@
 						]
 					},
 					"color": {
-						"type": "string"
+						"type": "string",
+						"pattern": "^(#[0-9a-f]{6}|[a-z]{3,20})$"
 					},
 					"description": {
 						"type": "string",
@@ -20492,7 +20493,8 @@
 						]
 					},
 					"color": {
-						"type": "string"
+						"type": "string",
+						"pattern": "^(#[0-9a-f]{6}|[a-z]{3,20})$"
 					},
 					"description": {
 						"type": "string",

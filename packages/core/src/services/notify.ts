@@ -26,6 +26,7 @@ import { account, member } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
+import { loggableError } from "../lib/loggable-error";
 import { pushRelayUrl } from "../lib/push-relay";
 import { slackEscape, slackLink } from "../lib/slack-client";
 import {
@@ -464,7 +465,7 @@ export const notify = async (
 				kind: event.kind,
 				organizationId: to.organizationId,
 				userId: to.userId,
-				error,
+				error: loggableError(error),
 			});
 			return false;
 		}
@@ -480,7 +481,7 @@ export const notify = async (
 			kind: event.kind,
 			organizationId: to.organizationId,
 			userId: to.userId,
-			error,
+			error: loggableError(error),
 		});
 	}
 	if (options.appOnly && appPhones.length === 0) return { ...NOTHING_SENT };

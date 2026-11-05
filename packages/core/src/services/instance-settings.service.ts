@@ -16,6 +16,7 @@ import {
 	type SettingSource,
 	settingDefinition,
 } from "../lib/instance-settings";
+import { loggableError } from "../lib/loggable-error";
 import {
 	isSealedWithCurrentKey,
 	openSecret,
@@ -132,7 +133,10 @@ const healLater = (
 			isSealedWithCurrentKey(stored) ? undefined : write(sealSecret(plaintext)),
 		)
 		.catch((error: unknown) => {
-			console.error(`[instance-settings] resealing ${what} failed`, error);
+			console.error(
+				`[instance-settings] resealing ${what} failed`,
+				loggableError(error),
+			);
 		});
 };
 
@@ -247,7 +251,7 @@ export const refreshInstanceSettings = async (
 	}
 	inFlight = load()
 		.catch((error: unknown) => {
-			console.error("[instance-settings] refresh failed", error);
+			console.error("[instance-settings] refresh failed", loggableError(error));
 		})
 		.finally(() => {
 			attemptedAt = Date.now();

@@ -473,10 +473,8 @@ export function HarvestReview({
 							address you type here, can sign in with Google at once. A guessed
 							address stays unconfirmed: that person can sign in only after an
 							admin confirms it on the People page. On an instance with more
-							than one workspace, a person whose address already has an account
-							gets an invitation instead, and joins when they accept. Their
-							hours are imported either way. The import says who it invited when
-							it is done.
+							than one workspace, each imported person must accept before they
+							can open the workspace. Their hours are imported at once.
 						</p>
 						<Table>
 							<TableHeader>

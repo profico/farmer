@@ -4,6 +4,7 @@ import { type DbClient, db } from "../db";
 import { organization } from "../db/schema/auth";
 import {
 	DEFAULT_WEEK_STARTS_ON,
+	safeTimezone,
 	toWeekStartsOn,
 	type WeekStartsOn,
 } from "./time";
@@ -23,7 +24,7 @@ export const orgTimezone = async (
 	const org = await client.query.organization.findFirst({
 		where: eq(organization.id, organizationId),
 	});
-	return org?.timezone ?? "UTC";
+	return safeTimezone(org?.timezone);
 };
 
 /** The day the org's weeks start on. Takes the client for the same reason as

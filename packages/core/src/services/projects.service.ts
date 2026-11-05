@@ -25,6 +25,7 @@ import type {
 } from "../schema/projects";
 import { AccessError, type Access, accessService } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
+import { shownName } from "./claim-name";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { emitEvent, projectWebhookPayload } from "./events";
 import {
@@ -176,7 +177,7 @@ const loadProjectStats = async (
 					.select({
 						projectId: projectMember.projectId,
 						userId: projectMember.userId,
-						name: user.name,
+						name: shownName(ctx.organizationId),
 					})
 					.from(projectMember)
 					.innerJoin(user, eq(projectMember.userId, user.id))
@@ -187,7 +188,7 @@ const loadProjectStats = async (
 							eq(projectMember.active, true),
 						),
 					)
-					.orderBy(user.name),
+					.orderBy(shownName(ctx.organizationId)),
 	]);
 
 	for (const row of totals) {
@@ -344,7 +345,7 @@ export const projectsService = {
 			db
 				.select({
 					userId: projectMember.userId,
-					name: user.name,
+					name: shownName(ctx.organizationId),
 					email: user.email,
 					role: projectMember.role,
 					active: projectMember.active,
@@ -357,7 +358,7 @@ export const projectsService = {
 						eq(projectMember.projectId, projectId),
 					),
 				)
-				.orderBy(user.name),
+				.orderBy(shownName(ctx.organizationId)),
 			// What each of them ever logged here — the Team page reads it beside
 			// the role, so "who is this and do they still work here" is one look.
 			db
@@ -511,10 +512,20 @@ export const projectsService = {
 				projectId: input.projectId,
 				userId: input.userId,
 				role: input.role,
+				assignedByAdmin: access.isAdmin,
 			})
 			.onConflictDoUpdate({
 				target: [projectMember.projectId, projectMember.userId],
-				set: { role: input.role, active: true, updatedAt: new Date() },
+				set: {
+					role: input.role,
+					active: true,
+					// An Admin re-assign marks the row Admin-made. A non-admin keeps
+					// the flag of a live row, but a revived inactive row loses it.
+					assignedByAdmin: access.isAdmin
+						? true
+						: sql`${projectMember.assignedByAdmin} and ${projectMember.active}`,
+					updatedAt: new Date(),
+				},
 				// A conflicting row is on this project, which is this org's, so
 				// this never filters anything today. It keeps the write tenant-bound
 				// on its own terms rather than by inference from the project.
@@ -526,7 +537,10 @@ export const projectsService = {
 		invalidateCtxAccess(ctx);
 
 		const [named] = await db
-			.select({ projectName: project.name, personName: user.name })
+			.select({
+				projectName: project.name,
+				personName: shownName(ctx.organizationId),
+			})
 			.from(project)
 			.innerJoin(user, eq(user.id, input.userId))
 			.where(eq(project.id, input.projectId));
@@ -595,7 +609,10 @@ export const projectsService = {
 
 		if (removed) {
 			const [named] = await db
-				.select({ projectName: project.name, personName: user.name })
+				.select({
+					projectName: project.name,
+					personName: shownName(ctx.organizationId),
+				})
 				.from(project)
 				.innerJoin(user, eq(user.id, input.userId))
 				.where(eq(project.id, input.projectId));
@@ -652,6 +669,7 @@ export const projectsService = {
 				projectId: row.id,
 				userId: ctx.userId,
 				role: "pm",
+				assignedByAdmin: access.isAdmin,
 			});
 
 			return row;
@@ -785,11 +803,15 @@ export const projectsService = {
 		access.assertCanManageProjectMembers(projectId);
 		const archived = await membersService.archivedUserIds(ctx);
 		const rows = await db
-			.select({ userId: user.id, name: user.name, email: user.email })
+			.select({
+				userId: user.id,
+				name: shownName(ctx.organizationId),
+				email: user.email,
+			})
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
 			.where(eq(member.organizationId, ctx.organizationId))
-			.orderBy(asc(user.name));
+			.orderBy(asc(shownName(ctx.organizationId)));
 		return rows.filter((r) => !archived.has(r.userId));
 	},
 };

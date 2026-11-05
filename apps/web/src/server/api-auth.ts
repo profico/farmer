@@ -132,6 +132,17 @@ export const resolveMcpOrgContext = async (
 		(await auth.api.getMcpSession({ headers: request.headers }))?.userId;
 	if (!userId) return null;
 
+	// `getMcpSession` only checks that the token row exists. A banned person
+	// keeps the token unless the ban removed it, so ask here, as the CLI
+	// branch does.
+	const { db } = await import("@farmer/core/db");
+	const owner = await db.query.user.findFirst({
+		columns: { banned: true, banExpires: true },
+		where: (u, { eq }) => eq(u.id, userId),
+	});
+	const { isBanned } = await import("@farmer/core/lib/ban");
+	if (!owner || isBanned(owner)) return null;
+
 	const { orgContextService } = await import("@farmer/core/services");
 	return orgContextService.resolveBySlug(
 		userId,
@@ -262,7 +273,12 @@ export const resolveCliUser = async (
 				updatedAt: new Date(now),
 			});
 		} catch (error) {
-			console.error("[api] could not refresh a CLI session", error);
+			// The update holds the session token in its WHERE clause.
+			const { loggableError } = await import("@farmer/core/lib/loggable-error");
+			console.error(
+				"[api] could not refresh a CLI session",
+				loggableError(error),
+			);
 		}
 	}
 
@@ -323,6 +339,7 @@ export const resolveCliOrgContext = async (
 	) {
 		return null;
 	}
+	if (cliUser.boundOrganizationId) ctx.boundToOrganization = true;
 	return {
 		ctx,
 		scope: cliUser.scope,

@@ -34,7 +34,7 @@
  *                                        (default: off; see lib/webhook-url.ts)
  */
 
-import { and, asc, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import type { WebhookEnvelope, WebhookEventKind } from "../api/webhooks";
 import { WEBHOOK_HEADERS, WEBHOOK_PAYLOAD_VERSION } from "../api/webhooks";
@@ -49,6 +49,7 @@ import { durationFromEnv } from "../lib/http";
 import { webhookSignatureHeader } from "../lib/webhook-signature";
 import { fetchWebhookTarget, resolveWebhookTarget } from "../lib/webhook-url";
 import { notify } from "../services/notify";
+import { auditLabel } from "../services/webhooks.service";
 
 /**
  * How long to wait before each attempt after the first.
@@ -307,6 +308,20 @@ type ClaimedDelivery = {
 	attempt: number;
 };
 
+/** How long a claim holds before another tick may take the row again. A tick
+ *  sends `SEND_BATCH` rows `SEND_CONCURRENCY` at a time, and one send may take
+ *  the request timeout twice (the POST, then the write). So the last row waits
+ *  for every batch before it. Shorter than this, a live delivery goes out twice. */
+const claimTtlMs = (): number =>
+	Math.ceil(SEND_BATCH / SEND_CONCURRENCY) * 2 * timeoutMs() + 60_000;
+
+/** Not claimed, or claimed so long ago that the tick which took it is dead. */
+const claimable = (now: Date) =>
+	or(
+		isNull(webhookDelivery.claimedAt),
+		lt(webhookDelivery.claimedAt, new Date(now.getTime() - claimTtlMs())),
+	);
+
 /** Take the due rows, in a way two processes can both do at once. */
 const claimDue = async (now: Date): Promise<ClaimedDelivery[]> => {
 	const due = await db
@@ -315,7 +330,7 @@ const claimDue = async (now: Date): Promise<ClaimedDelivery[]> => {
 		.where(
 			and(
 				isNull(webhookDelivery.attemptedAt),
-				isNull(webhookDelivery.claimedAt),
+				claimable(now),
 				lte(webhookDelivery.nextAttemptAt, now),
 			),
 		)
@@ -334,7 +349,8 @@ const claimDue = async (now: Date): Promise<ClaimedDelivery[]> => {
 					webhookDelivery.id,
 					due.map((row) => row.id),
 				),
-				isNull(webhookDelivery.claimedAt),
+				isNull(webhookDelivery.attemptedAt),
+				claimable(now),
 			),
 		)
 		.returning({
@@ -346,16 +362,32 @@ const claimDue = async (now: Date): Promise<ClaimedDelivery[]> => {
 		});
 };
 
-/** Run `work` over `items`, `limit` at a time. */
+/** Run `work` over `items`, `limit` at a time. One item that throws is logged
+ *  and does not stop the others: a stopped tick strands every claimed row. */
 const inBatches = async <T>(
 	items: T[],
 	limit: number,
 	work: (item: T) => Promise<void>,
+	logger: Logger,
 ): Promise<void> => {
 	for (let index = 0; index < items.length; index += limit) {
-		await Promise.all(items.slice(index, index + limit).map(work));
+		const results = await Promise.allSettled(
+			items.slice(index, index + limit).map(work),
+		);
+		for (const result of results) {
+			if (result.status === "rejected") {
+				const cause = result.reason;
+				logger.warn(
+					`Webhook delivery failed to record: ${cause instanceof Error ? cause.name : "unknown error"}`,
+				);
+			}
+		}
 	}
 };
+
+/** Postgres refuses U+0000 in a text column, and a receiver controls the text. */
+const withoutNul = (text: string | null): string | null =>
+	text === null ? null : text.replaceAll("\0", "");
 
 /** The secrets a payload is signed with: the current one, plus the rolled
  *  predecessor while its day is still running. */
@@ -438,8 +470,9 @@ const giveUpOnDeadEndpoints = async (
 				},
 			);
 		}
+		// The id and the host and path only: the query string can hold a secret.
 		logger.warn(
-			`Webhook endpoint disabled after repeated failures: ${endpoint.url}`,
+			`Webhook endpoint ${endpoint.id} disabled after repeated failures: ${auditLabel({ url: endpoint.url, description: null })}`,
 		);
 	}
 	return dead.length;
@@ -558,116 +591,119 @@ export const runWebhookDeliveryOnce = async (
 		const eventById = new Map(events.map((row) => [row.id, row]));
 		const orgById = new Map(organizations.map((row) => [row.id, row]));
 
-		await inBatches(claimed, SEND_CONCURRENCY, async (delivery) => {
-			const endpoint = endpointById.get(delivery.endpointId);
-			const event = eventById.get(delivery.eventId);
-			const org = orgById.get(delivery.organizationId);
+		await inBatches(
+			claimed,
+			SEND_CONCURRENCY,
+			async (delivery) => {
+				const endpoint = endpointById.get(delivery.endpointId);
+				const event = eventById.get(delivery.eventId);
+				const org = orgById.get(delivery.organizationId);
 
-			const refuse = async (reason: string) => {
-				failed += 1;
+				const refuse = async (reason: string) => {
+					failed += 1;
+					await db
+						.update(webhookDelivery)
+						.set({ attemptedAt: now, error: reason, durationMs: 0 })
+						.where(eq(webhookDelivery.id, delivery.id));
+				};
+
+				if (!endpoint || !event || !org) {
+					await refuse("The endpoint or the event is gone");
+					return;
+				}
+				if (endpoint.disabledAt) {
+					await refuse("The endpoint was switched off before this was sent");
+					return;
+				}
+				if (!event.data) {
+					await refuse("The payload had already been deleted");
+					return;
+				}
+
+				// SAFETY: `kind` and `data` are written together by `emitEvent`, which
+				// takes the kind as a literal and the payload the same literal selects.
+				// The column is text because Postgres has no enum of these twelve.
+				const kind = event.kind as WebhookEventKind;
+				const { kind: _tag, ...data } = event.data;
+				const envelope: WebhookEnvelope = {
+					id: event.id,
+					version: WEBHOOK_PAYLOAD_VERSION,
+					kind,
+					createdAt: event.occurredAt.toISOString(),
+					organization: { id: org.id, slug: org.slug, name: org.name },
+					data,
+				};
+				const body = JSON.stringify(envelope);
+				const timestampSeconds = Math.floor(now.getTime() / 1000);
+
+				const result = await sender({
+					url: endpoint.url,
+					headers: {
+						"Content-Type": "application/json",
+						"User-Agent": "Farmer-Webhooks/1.0",
+						[WEBHOOK_HEADERS.signature]: webhookSignatureHeader(
+							liveSecrets(endpoint, now),
+							body,
+							timestampSeconds,
+						),
+						[WEBHOOK_HEADERS.event]: event.id,
+						[WEBHOOK_HEADERS.delivery]: delivery.id,
+						[WEBHOOK_HEADERS.endpoint]: endpoint.id,
+						[WEBHOOK_HEADERS.attempt]: String(delivery.attempt),
+					},
+					body,
+				});
+
+				const ok = result.error === null;
 				await db
 					.update(webhookDelivery)
-					.set({ attemptedAt: now, error: reason, durationMs: 0 })
+					.set({
+						attemptedAt: now,
+						statusCode: result.statusCode,
+						error: withoutNul(result.error),
+						responseSample: withoutNul(result.responseSample),
+						durationMs: result.durationMs,
+					})
 					.where(eq(webhookDelivery.id, delivery.id));
-			};
 
-			if (!endpoint || !event || !org) {
-				await refuse("The endpoint or the event is gone");
-				return;
-			}
-			if (endpoint.disabledAt) {
-				await refuse("The endpoint was switched off before this was sent");
-				return;
-			}
-			if (!event.data) {
-				await refuse("The payload had already been deleted");
-				return;
-			}
+				if (ok) {
+					succeeded += 1;
+					await db
+						.update(webhookEndpoint)
+						.set({ lastSuccessAt: now, failingSince: null, updatedAt: now })
+						.where(eq(webhookEndpoint.id, endpoint.id));
+					return;
+				}
 
-			// SAFETY: `kind` and `data` are written together by `emitEvent`, which
-			// takes the kind as a literal and the payload the same literal selects.
-			// The column is text because Postgres has no enum of these twelve.
-			const kind = event.kind as WebhookEventKind;
-			const { kind: _tag, ...data } = event.data;
-			const envelope: WebhookEnvelope = {
-				id: event.id,
-				version: WEBHOOK_PAYLOAD_VERSION,
-				kind,
-				createdAt: event.occurredAt.toISOString(),
-				organization: { id: org.id, slug: org.slug, name: org.name },
-				data,
-			};
-			const body = JSON.stringify(envelope);
-			const timestampSeconds = Math.floor(now.getTime() / 1000);
-
-			const result = await sender({
-				url: endpoint.url,
-				headers: {
-					"Content-Type": "application/json",
-					"User-Agent": "Farmer-Webhooks/1.0",
-					[WEBHOOK_HEADERS.signature]: webhookSignatureHeader(
-						liveSecrets(endpoint, now),
-						body,
-						timestampSeconds,
-					),
-					[WEBHOOK_HEADERS.event]: event.id,
-					[WEBHOOK_HEADERS.delivery]: delivery.id,
-					[WEBHOOK_HEADERS.endpoint]: endpoint.id,
-					[WEBHOOK_HEADERS.attempt]: String(delivery.attempt),
-				},
-				body,
-			});
-
-			const ok = result.error === null;
-			await db
-				.update(webhookDelivery)
-				.set({
-					attemptedAt: now,
-					statusCode: result.statusCode,
-					error: result.error,
-					responseSample: result.responseSample,
-					durationMs: result.durationMs,
-				})
-				.where(eq(webhookDelivery.id, delivery.id));
-
-			if (ok) {
-				succeeded += 1;
+				failed += 1;
+				// `coalesce`: only the first failure of a run starts the give-up
+				// clock. The raw template takes an ISO string: postgres-js cannot
+				// serialize a Date there, and PGLite can, so tests miss it.
 				await db
 					.update(webhookEndpoint)
-					.set({ lastSuccessAt: now, failingSince: null, updatedAt: now })
+					.set({
+						failingSince: sql`coalesce(${webhookEndpoint.failingSince}, ${now.toISOString()}::timestamptz)`,
+						updatedAt: now,
+					})
 					.where(eq(webhookEndpoint.id, endpoint.id));
-				return;
-			}
 
-			failed += 1;
-			// `coalesce` rather than a read-then-write: the first failure of a run
-			// starts the give-up clock and every later one must leave it alone.
-			// The raw template gets an ISO string, not a Date. The postgres-js
-			// driver cannot serialize a Date inside a raw sql template. PGLite
-			// can, so the tests do not show it.
-			await db
-				.update(webhookEndpoint)
-				.set({
-					failingSince: sql`coalesce(${webhookEndpoint.failingSince}, ${now.toISOString()}::timestamptz)`,
-					updatedAt: now,
-				})
-				.where(eq(webhookEndpoint.id, endpoint.id));
-
-			const delay = WEBHOOK_RETRY_DELAYS_MS[delivery.attempt - 1];
-			if (delay === undefined) return;
-			await db
-				.insert(webhookDelivery)
-				.values({
-					organizationId: delivery.organizationId,
-					endpointId: delivery.endpointId,
-					eventId: delivery.eventId,
-					attempt: delivery.attempt + 1,
-					nextAttemptAt: new Date(now.getTime() + delay),
-				})
-				// A doubled tick that somehow claimed the same row twice must not
-				// queue the same retry twice.
-				.onConflictDoNothing();
-		});
+				const delay = WEBHOOK_RETRY_DELAYS_MS[delivery.attempt - 1];
+				if (delay === undefined) return;
+				await db
+					.insert(webhookDelivery)
+					.values({
+						organizationId: delivery.organizationId,
+						endpointId: delivery.endpointId,
+						eventId: delivery.eventId,
+						attempt: delivery.attempt + 1,
+						nextAttemptAt: new Date(now.getTime() + delay),
+					})
+					// A doubled tick that somehow claimed the same row twice must not
+					// queue the same retry twice.
+					.onConflictDoNothing();
+			},
+			logger,
+		);
 	}
 
 	const disabled = await giveUpOnDeadEndpoints(now, logger);

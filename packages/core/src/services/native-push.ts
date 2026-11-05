@@ -31,6 +31,7 @@ import { and, eq, gt, ne, or } from "drizzle-orm";
 import { db } from "../db";
 import { member, session } from "../db/schema/auth";
 import { mobileDevice } from "../db/schema/mobile";
+import { loggableError } from "../lib/loggable-error";
 import {
 	type LiveActivityEvent,
 	pushRelayUrl,
@@ -304,7 +305,10 @@ export const sendNativeAlert = async (
 				outcome.status === "fulfilled" && outcome.value.kind === "delivered",
 		);
 	} catch (error) {
-		console.error("[native-push] alert failed", { userId, error });
+		console.error("[native-push] alert failed", {
+			userId,
+			error: loggableError(error),
+		});
 		return false;
 	}
 };
@@ -492,7 +496,10 @@ export const publishTimerChange = (
 	const next = previous
 		.then(() => publishNow(userId, change))
 		.catch((error: unknown) => {
-			console.error("[native-push] timer change failed", { userId, error });
+			console.error("[native-push] timer change failed", {
+				userId,
+				error: loggableError(error),
+			});
 		});
 	queues.set(userId, next);
 	void next.finally(() => {

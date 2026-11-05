@@ -5,6 +5,7 @@ import { member, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
 import { setting } from "../lib/instance-settings";
+import { loggableError } from "../lib/loggable-error";
 import { signOrgState } from "../lib/oauth-state";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import {
@@ -201,7 +202,7 @@ export const slackService = {
 			console.error("[slack] could not match new member", {
 				organizationId,
 				userId,
-				error,
+				error: loggableError(error),
 			});
 			return false;
 		}
@@ -432,7 +433,7 @@ export const slackService = {
 		} catch (error) {
 			console.error("[slack] could not send invitation", {
 				organizationId,
-				error,
+				error: loggableError(error),
 			});
 			return false;
 		}

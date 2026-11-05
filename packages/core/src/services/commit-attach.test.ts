@@ -27,7 +27,7 @@ import {
 	test,
 } from "bun:test";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -372,6 +372,43 @@ describe("where the commit engine attaches", () => {
 		expect(created?.fillsDay).toBe(true);
 		expect(created?.taskId).toBe(devTaskId);
 		expect(await commitsAttachedTo(created?.id ?? "")).toHaveLength(1);
+	});
+
+	test("to the fill block another run filed first, when the insert loses the race", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		// The other run's block lands between the engine's read and its insert.
+		// A trigger files it as the engine's own insert starts, so the unique
+		// index turns that insert into "nothing returned".
+		await db.execute(sql`
+			create function race_fill() returns trigger as $$
+			begin
+				if new.fills_day and new.description <> 'Other run' then
+					insert into time_entry
+						(organization_id, user_id, task_id, date, description,
+						 duration_seconds, fills_day)
+					values
+						(new.organization_id, new.user_id, new.task_id, new.date,
+						 'Other run', 3600, true);
+				end if;
+				return new;
+			end;
+			$$ language plpgsql`);
+		await db.execute(sql`
+			create trigger race_fill before insert on time_entry
+			for each row execute function race_fill()`);
+
+		try {
+			await runAutomations();
+		} finally {
+			await db.execute(sql`drop trigger race_fill on time_entry`);
+			await db.execute(sql`drop function race_fill()`);
+		}
+
+		const entries = await entriesOn(YESTERDAY);
+		expect(entries).toHaveLength(1);
+		const [theirs] = entries;
+		expect(theirs?.description).toBe("Other run");
+		expect(await commitsAttachedTo(theirs?.id ?? "")).toHaveLength(1);
 	});
 
 	test("never overwrites a description somebody wrote", async () => {

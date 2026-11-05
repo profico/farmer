@@ -135,6 +135,8 @@ and the Harvest import).
 
 **`lib/http.ts` (`externalFetch`) puts a deadline on every outbound call** (15s by default, `EXTERNAL_FETCH_TIMEOUT_MS`). `fetch` has no default timeout, and the sweep refuses a new tick while one is in flight, so one wedged socket would stop all syncing until a restart. `withTimeout` is the same idea one layer up.
 
+**Never log a raw caught error.** Log `loggableError(error)` (`lib/loggable-error.ts`), or `loggableErrorLine(error)` for a string. A Drizzle error holds the query parameters in its message and its stack: a session token, an email, a relay id. The helper keeps the class, the code and the constraint, and drops the rest for a database error. Give PostHog `withoutQueryValues(error)` for the same reason.
+
 
 ## Testing
 

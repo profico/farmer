@@ -6,6 +6,8 @@ import { recurringBlockRule } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { integrationSettings } from "../db/schema/settings";
 import { durationFromEnv, withTimeout } from "../lib/http";
+import { loggableErrorLine } from "../lib/loggable-error";
+import { safeTimezone } from "../lib/time";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
 import type { SchedulerLogger } from "./scheduler";
@@ -142,7 +144,7 @@ const collectTargets = async (): Promise<Target[]> => {
 			// The day boundary is the ORG's midnight, not the server's and not the
 			// member's: one org, one answer to "what day is it", so two people in
 			// the same workspace never disagree about which day an entry lands on.
-			timezone: row.timezone ?? "UTC",
+			timezone: safeTimezone(row.timezone),
 		});
 	}
 	return [...byKey.values()];
@@ -272,7 +274,7 @@ export const runAutomationSyncOnce = async (
 			// something outside them broke for this person, or the pass timed out.
 			failed++;
 			logger.error(
-				`[automation-sync] pass failed for ${target.organizationId}/${target.userId}: ${String(error)}`,
+				`[automation-sync] pass failed for ${target.organizationId}/${target.userId}: ${loggableErrorLine(error)}`,
 			);
 		}
 	};

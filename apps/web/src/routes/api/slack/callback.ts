@@ -67,7 +67,9 @@ export const Route = createFileRoute("/api/slack/callback")({
 						code,
 					);
 				} catch (error) {
-					console.error("[slack] oauth callback failed", error);
+					const { loggableError } =
+						await import("@farmer/core/lib/loggable-error");
+					console.error("[slack] oauth callback failed", loggableError(error));
 					return redirectTo(`${back}?slack=failed`);
 				}
 

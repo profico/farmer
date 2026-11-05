@@ -74,6 +74,8 @@ docker build -t farmer .
 docker run -p 3000:3000 --env-file .env farmer
 ```
 
+Farmer rate-limits the MCP server and the CLI API per client address. By default it uses the socket address, so a caller cannot choose it. Behind a reverse proxy, every caller then shares the proxy's address. Set `TRUSTED_IP_HEADER` to the header that your proxy writes, for example `x-forwarded-for` (Farmer reads the last entry) or `x-real-ip`. Do this only when the origin is reachable through the proxy alone. See `.env.example`.
+
 On every start the image applies pending migrations and seeds the built-in tasks (`RUN_MIGRATIONS` / `RUN_SEED` turn these off).
 
 The jobs — automation sync, log reminders, Slack reminders, the upload sweep and the audit sweep — assume a single instance. To run them apart from the web host, set `AUTOMATION_SYNC_ENABLED`, `LOG_REMINDERS_ENABLED`, `SLACK_REMINDERS_ENABLED`, `UPLOAD_SWEEP_ENABLED` and `AUDIT_SWEEP_ENABLED` to `false` there and run exactly one `bun run worker` (from `packages/core`). `ASSISTANT_ENABLED=false`, `MCP_ENABLED=false` and `CLI_ENABLED=false` remove those features from a deployment.

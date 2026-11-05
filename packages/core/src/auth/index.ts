@@ -28,6 +28,7 @@ import { memberProfile } from "../db/schema/people";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
 import { externalFetch } from "../lib/http";
+import { loggableError } from "../lib/loggable-error";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
@@ -40,7 +41,9 @@ import {
 	slugify,
 	slugProblem,
 } from "../lib/slug";
+import { isValidTimezone } from "../lib/time";
 import { recordAudit, recordSecurityEvent } from "../services/audit";
+import { shownNameOf } from "../services/claim-name";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
@@ -61,6 +64,12 @@ import {
 	signInMethodLabel,
 } from "./audit-hooks";
 import { deliverInvitation } from "./invitation-delivery";
+import {
+	ADMIN_REVOKE_PATHS,
+	adminTargetBody,
+	assertRefreshAllowed,
+	revokeMcpTokens,
+} from "./mcp-ban";
 import {
 	assertCodeConsented,
 	assertConsentCodeOwner,
@@ -304,6 +313,13 @@ const refreshGithubToken =
 		return tokens;
 	};
 
+/** `timezone` is a client-writable field of the organization endpoints. A bad
+ *  zone would break every time calculation of the organization. */
+const assertTimezone = (timezone: string | null | undefined) => {
+	if (timezone == null || isValidTimezone(timezone)) return;
+	throw new APIError("BAD_REQUEST", { message: "Invalid timezone" });
+};
+
 /** Every value `buildAuth` reads from the instance settings, as one string.
  *  When it changes, the instance is rebuilt. */
 const authInputs = () =>
@@ -357,6 +373,12 @@ const buildAuth = () => {
 			// One round trip from the form to a session. The whole point is to stop
 			// bootstrapping from being a chore.
 			autoSignIn: true,
+			// The reset body names no user: the token does. This callback runs
+			// only after the endpoint accepted the token. A new password ends
+			// MCP access, like the other session revocations.
+			onPasswordReset: async ({ user }) => {
+				await revokeMcpTokens(user.id);
+			},
 		},
 		session: {
 			// better-auth guards unlink-account / session-management behind a "fresh
@@ -489,7 +511,10 @@ const buildAuth = () => {
 							});
 						}
 					} catch (error) {
-						console.error("[audit] could not record a sign-out", error);
+						console.error(
+							"[audit] could not record a sign-out",
+							loggableError(error),
+						);
 					}
 					return;
 				}
@@ -520,6 +545,20 @@ const buildAuth = () => {
 					// Not an object: the endpoint refuses it before it reads a code.
 					if (!request.success) return;
 					await assertCodeConsented(ctx.context.internalAdapter, request.data);
+					if (request.data.refresh) {
+						await assertRefreshAllowed(request.data.refreshToken);
+					}
+					return;
+				}
+				// Ending every session of a person also ends their MCP access. A
+				// plain sign-out of one browser does not. This runs before the
+				// endpoint, while the session still names the person.
+				if (
+					ctx.path === "/revoke-sessions" ||
+					ctx.path === "/revoke-other-sessions"
+				) {
+					const session = await getSessionFromCtx(ctx);
+					if (session) await revokeMcpTokens(session.user.id);
 					return;
 				}
 				if (ctx.path === OAUTH_CONSENT_PATH) {
@@ -547,6 +586,24 @@ const buildAuth = () => {
 			// says the password was wrong (or that password sign-in is closed for
 			// the account, which is also a sign-in that did not happen).
 			after: createAuthMiddleware(async (ctx) => {
+				// A ban or an admin revocation ends the person's MCP access. This
+				// runs only after the endpoint accepted the caller, because the body
+				// names any user.
+				if (
+					ADMIN_REVOKE_PATHS.has(ctx.path) &&
+					!isAPIError(ctx.context.returned)
+				) {
+					const target = adminTargetBody.safeParse(ctx.body);
+					if (target.success) await revokeMcpTokens(target.data.userId);
+					return;
+				}
+				// A password change that revokes the other sessions starts a new
+				// session. `newSession` is set only on that success path.
+				if (ctx.path === "/change-password") {
+					const person = ctx.context.newSession?.user;
+					if (person) await revokeMcpTokens(person.id);
+					return;
+				}
 				if (ctx.path !== "/sign-in/email") return;
 				const returned = ctx.context.returned;
 				if (!isAPIError(returned)) return;
@@ -732,7 +789,10 @@ const buildAuth = () => {
 								},
 							});
 						} catch (error) {
-							console.error("[audit] could not record a linked account", error);
+							console.error(
+								"[audit] could not record a linked account",
+								loggableError(error),
+							);
 						}
 					},
 				},
@@ -789,6 +849,7 @@ const buildAuth = () => {
 					// hand-made request sends it. better-auth checked the original slug for a duplicate before
 					// this hook, and `uniqueSlugFor` checks the replacement.
 					beforeCreateOrganization: async ({ organization: org }) => {
+						assertTimezone(org.timezone);
 						const slug = org.slug ?? "";
 						if (!isWellFormedSlug(slug)) {
 							throw new APIError("BAD_REQUEST", {
@@ -802,6 +863,7 @@ const buildAuth = () => {
 					// A rename names its slug on purpose, so a reserved one is refused
 					// rather than moved.
 					beforeUpdateOrganization: async ({ organization: org }) => {
+						assertTimezone(org.timezone);
 						if (org.slug === undefined) return;
 						const problem = slugProblem(org.slug);
 						if (problem)
@@ -885,23 +947,22 @@ const buildAuth = () => {
 							details: { role: cancelled.role },
 						});
 					},
-					afterRemoveMember: async ({
-						member: removed,
-						user,
-						organization: org,
-					}) => {
+					afterRemoveMember: async ({ member: removed, organization: org }) => {
 						const caller = await currentCaller();
 						await recordAudit(hookCtx(org.id, caller, null), {
 							kind: "member.removed",
 							subjectUserId: removed.userId,
-							target: { type: "member", id: removed.userId, label: user.name },
+							target: {
+								type: "member",
+								id: removed.userId,
+								label: await shownNameOf(db, org.id, removed.userId),
+							},
 							details: { role: removed.role },
 						});
 					},
 					afterUpdateMemberRole: async ({
 						member: updated,
 						previousRole,
-						user,
 						organization: org,
 					}) => {
 						if (previousRole === updated.role) return;
@@ -909,7 +970,11 @@ const buildAuth = () => {
 						await recordAudit(hookCtx(org.id, caller, null), {
 							kind: "member.role_changed",
 							subjectUserId: updated.userId,
-							target: { type: "member", id: updated.userId, label: user.name },
+							target: {
+								type: "member",
+								id: updated.userId,
+								label: await shownNameOf(db, org.id, updated.userId),
+							},
 							changes: { role: { from: previousRole, to: updated.role } },
 						});
 					},

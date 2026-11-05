@@ -23,6 +23,8 @@ import {
 	test,
 } from "bun:test";
 
+import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { account, member, organization, user } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
@@ -154,6 +156,35 @@ describe("people notify would hold back", () => {
 		);
 		await logAt(TUESDAY, "17:00");
 		expect([...reached].sort()).toEqual([ADMIN, NEVER].sort());
+	});
+});
+
+describe("an organization with a stored timezone that is not valid", () => {
+	test("does not stop the run for the other organizations", async () => {
+		const BAD = "org-log-rem-bad";
+		await db.insert(organization).values({
+			id: BAD,
+			name: "Bad zone",
+			slug: BAD,
+			timezone: "Not/AZone",
+			country: "US",
+			createdAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: "m-bad",
+			organizationId: BAD,
+			userId: ADMIN,
+			role: "member",
+			createdAt: new Date(),
+		});
+		try {
+			const summary = await logAt(TUESDAY, "17:00");
+			expect(reached).toContain(ADMIN);
+			expect(summary.sent).toBeGreaterThanOrEqual(1);
+		} finally {
+			await db.delete(member).where(eq(member.id, "m-bad"));
+			await db.delete(organization).where(eq(organization.id, BAD));
+		}
 	});
 });
 

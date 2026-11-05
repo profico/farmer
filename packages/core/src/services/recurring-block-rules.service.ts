@@ -24,6 +24,7 @@ import {
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { automationWriteWindow } from "../lib/automation-window";
+import { loggableError } from "../lib/loggable-error";
 import {
 	datesBetween,
 	dayKeyInTz,
@@ -94,7 +95,10 @@ const materializeNow = async (ctx: Ctx) => {
 			window.to,
 		);
 	} catch (error) {
-		console.error("[recurring-blocks] immediate materialize failed", error);
+		console.error(
+			"[recurring-blocks] immediate materialize failed",
+			loggableError(error),
+		);
 	}
 };
 
@@ -196,6 +200,334 @@ const rulesStillWritable = async (
 		if (allowed) usable.add(rule.id);
 	}
 	return usable;
+};
+
+type Rule = typeof recurringBlockRule.$inferSelect;
+
+/** The active rules of one person whose reach touches [from, to]. */
+const rulesInReach = (ctx: Ctx, from: string, to: string) =>
+	db.query.recurringBlockRule.findMany({
+		where: and(
+			eq(recurringBlockRule.organizationId, ctx.organizationId),
+			eq(recurringBlockRule.userId, ctx.userId),
+			eq(recurringBlockRule.active, true),
+			or(
+				isNull(recurringBlockRule.effectiveFrom),
+				lte(recurringBlockRule.effectiveFrom, to),
+			),
+			or(
+				isNull(recurringBlockRule.effectiveUntil),
+				gte(recurringBlockRule.effectiveUntil, from),
+			),
+		),
+	});
+
+/** The (rule, day) pairs a person deleted, as "ruleId:date" keys. */
+const loadSkipSet = async (rules: Rule[]) => {
+	const skips = await db.query.recurringBlockRuleSkip.findMany({
+		where: inArray(
+			recurringBlockRuleSkip.ruleId,
+			rules.map((r) => r.id),
+		),
+	});
+	return new Set(skips.map((s) => `${s.ruleId}:${s.date}`));
+};
+
+/** What the day already holds, so a rule cannot put a second copy of its own
+ *  block on it. `onConflictDoNothing` on the insert only recognises an entry
+ *  THIS rule generated — so a break that arrived any other way (the day
+ *  assembler carving one, "copy from previous day" bringing one forward, or
+ *  someone logging one by hand) was invisible to it, and the rule added a
+ *  second break to a day that plainly already had one. The day assembler has
+ *  always made this check before proposing its break; the materializer never
+ *  did. */
+const loadHeldEntries = (ctx: Ctx, from: string, to: string) =>
+	db.query.timeEntry.findMany({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			gte(timeEntry.date, from),
+			lte(timeEntry.date, to),
+		),
+		columns: {
+			date: true,
+			taskId: true,
+			projectId: true,
+			durationSeconds: true,
+			fillsDay: true,
+		},
+		with: { task: { columns: { isAbsence: true } } },
+	});
+
+type HeldEntry = Awaited<ReturnType<typeof loadHeldEntries>>[number];
+
+/** What each day already holds, by the same count `assertDayHasRoom` uses for a
+ *  hand-made write: everything but the fill block, which is sized from the
+ *  rest and shrinks around a new block. A rule never takes a day past
+ *  `MAX_DAY_SECONDS`; the day simply gets no block, as it would on a day off.
+ *  That service imports this one, so the count is shared through
+ *  `spokenForSeconds` rather than by calling it. */
+const spokenForByDate = (held: HeldEntry[]) => {
+	const spokenFor = new Map<string, number>();
+	for (const date of new Set(held.map((e) => e.date))) {
+		spokenFor.set(date, spokenForSeconds(held.filter((e) => e.date === date)));
+	}
+	return spokenFor;
+};
+
+/** Takes back the blocks the rules wrote on days that are now days off.
+ *
+ *  A block this pass wrote before the absence was booked (absence booked for
+ *  today, or for a past day still inside the window) is taken back. No skip
+ *  row is written for it, because the person did not delete it: cancel the day
+ *  off and the next pass writes the block again. A block that holds GitHub
+ *  evidence stays, since its attachments would cascade with it. */
+const takeBackFromDaysOff = (ctx: Ctx, rules: Rule[], daysOff: string[]) =>
+	db
+		.delete(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				inArray(
+					timeEntry.generatedFromRuleId,
+					rules.map((r) => r.id),
+				),
+				inArray(timeEntry.date, daysOff),
+				notExists(
+					db
+						.select({ one: sql`1` })
+						.from(timeEntryGithubCommit)
+						.where(eq(timeEntryGithubCommit.timeEntryId, timeEntry.id)),
+				),
+				notExists(
+					db
+						.select({ one: sql`1` })
+						.from(timeEntryGithubPrActivity)
+						.where(eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id)),
+				),
+			),
+		)
+		.returning({ date: timeEntry.date });
+
+/** The "is this block already here?" question, with its two answers.
+ *
+ *  A rule WITH a project is project-specific: two rules for the same task on
+ *  different projects are different blocks and a day may legitimately hold
+ *  both, so it only recognises its own project's entry.
+ *
+ *  A rule with NO project — every break rule, since a break is time off the
+ *  clock that nobody can attribute to a client — matches on the task alone. It
+ *  has to: this key used to be project-qualified in both directions, so a
+ *  break someone had already logged against a project was invisible to the
+ *  break rule, and the rule filed a second, project-less one next to it. That
+ *  is not two blocks, it is one break counted twice, and it is what the
+ *  materializer's own guard was added to prevent. */
+const dayBlockIndex = (held: HeldEntry[]) => {
+	const taskKey = (e: { date: string; taskId: string }) =>
+		`${e.date}|${e.taskId}`;
+	const projectKey = (e: {
+		date: string;
+		taskId: string;
+		projectId: string | null;
+	}) => `${taskKey(e)}|${e.projectId ?? ""}`;
+	const dayHasTask = new Set(held.map(taskKey));
+	const dayHasTaskOnProject = new Set(held.map(projectKey));
+	return {
+		has: (rule: { taskId: string; projectId: string | null }, date: string) =>
+			rule.projectId
+				? dayHasTaskOnProject.has(projectKey({ ...rule, date }))
+				: dayHasTask.has(taskKey({ ...rule, date })),
+		// Claimed as this batch goes, so two rules for the same block on the same
+		// weekday produce one entry rather than racing each other. Both sets, so
+		// the claim is visible to whichever question the next rule asks.
+		claim: (
+			rule: { taskId: string; projectId: string | null },
+			date: string,
+		) => {
+			dayHasTask.add(taskKey({ date, taskId: rule.taskId }));
+			dayHasTaskOnProject.add(
+				projectKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
+			);
+		},
+	};
+};
+
+/** The first day a rule may write to.
+ *
+ *  A rule never writes to a day before it was switched on. Without this floor,
+ *  turning the daily break on wrote one onto every past day the time page was
+ *  scrolled back to — silently editing months of already-filed timesheets,
+ *  including closed ones.
+ *
+ *  `effectiveFrom` narrows further but cannot widen: it is how you say "start
+ *  next month", not a way back into the past. Nothing offers backfill, because
+ *  nobody asked for their history to be rewritten. */
+const ruleStartsOn = (rule: Rule, tz: string) => {
+	const activeSince = dayKeyInTz(rule.activeSince, tz);
+	return rule.effectiveFrom && rule.effectiveFrom > activeSince
+		? rule.effectiveFrom
+		: activeSince;
+};
+
+/** True when the rule's own settings let it write on the day: its reach, its
+ *  weekdays and its skip rows. */
+const ruleCoversDay = (
+	rule: Rule,
+	date: string,
+	startsOn: string,
+	weekday: number | undefined,
+	skipSet: Set<string>,
+) =>
+	date >= startsOn &&
+	!(rule.effectiveUntil && date > rule.effectiveUntil) &&
+	rule.daysOfWeek.includes(weekday ?? -1) &&
+	!skipSet.has(`${rule.id}:${date}`);
+
+/** What the rules would write, as insert rows. It reads the day state and
+ *  claims as it goes, and it writes nothing. */
+const planRuleRows = (
+	ctx: Ctx,
+	rules: Rule[],
+	days: {
+		dates: string[];
+		weekdayByDate: Map<string, number>;
+		isDayOff: Set<string>;
+		spokenFor: Map<string, number>;
+		blocks: ReturnType<typeof dayBlockIndex>;
+		skipSet: Set<string>;
+		tz: string;
+	},
+) => {
+	const rows: (typeof timeEntry.$inferInsert)[] = [];
+	for (const rule of rules) {
+		const startsOn = ruleStartsOn(rule, days.tz);
+		for (const date of days.dates) {
+			const weekday = days.weekdayByDate.get(date);
+			if (!ruleCoversDay(rule, date, startsOn, weekday, days.skipSet)) continue;
+			if (days.isDayOff.has(date)) continue;
+			if (days.blocks.has(rule, date)) continue;
+			const dayHolds = days.spokenFor.get(date) ?? 0;
+			if (dayHolds + rule.durationSeconds > MAX_DAY_SECONDS) continue;
+			days.spokenFor.set(date, dayHolds + rule.durationSeconds);
+			days.blocks.claim(rule, date);
+			rows.push({
+				organizationId: ctx.organizationId,
+				userId: ctx.userId,
+				projectId: rule.projectId,
+				taskId: rule.taskId,
+				description: rule.description,
+				date,
+				durationSeconds: rule.durationSeconds,
+				generatedFromRuleId: rule.id,
+				generatedForDate: date,
+			});
+		}
+	}
+	return rows;
+};
+
+const insertRuleRows = (rows: (typeof timeEntry.$inferInsert)[]) =>
+	db
+		.insert(timeEntry)
+		.values(rows)
+		.onConflictDoNothing({
+			target: [timeEntry.generatedFromRuleId, timeEntry.generatedForDate],
+			where: sql`${timeEntry.generatedFromRuleId} is not null`,
+		})
+		.returning({ date: timeEntry.date });
+
+/** A block that just landed on a day claims part of that day, so the day's fill
+ *  block — which by definition is "whatever is left" — is now too long. Every
+ *  hand-written path recomputes; this one did not, so turning the daily break
+ *  on for a day already covered by a rest-of-day block left the day at 8h30
+ *  against an 8h target.
+ *
+ *  It used to self-correct, but only by accident and only sometimes: the read
+ *  path rewrote fill blocks for whatever range you happened to open. That is
+ *  now bounded to the automation window, and reports read the ledger directly
+ *  rather than through `listRange` — so a day nobody reopened simply stayed
+ *  over-allocated.
+ *
+ *  Best-effort and outside the insert: failing to resize a fill block must not
+ *  cost the person the blocks that were just materialized. A block taken back
+ *  from a day off frees the same time, so that day is recomputed too. */
+const recomputeTouchedDays = async (
+	ctx: Ctx,
+	tz: string,
+	changed: { date: string }[],
+) => {
+	for (const date of new Set(changed.map((row) => row.date))) {
+		try {
+			await recomputeDayFill(ctx, date, tz);
+		} catch (error) {
+			console.error("[recurring-blocks] fill recompute failed", {
+				date,
+				error: loggableError(error),
+			});
+		}
+	}
+};
+
+/** The columns an update changes. `update` is partial, so only the fields the
+ *  caller sent are in the patch. */
+const buildRulePatch = (
+	input: UpdateRecurringBlockRuleInput,
+	existing: Rule,
+) => {
+	const patch: Partial<typeof recurringBlockRule.$inferInsert> = {
+		updatedAt: new Date(),
+	};
+	if (input.taskId !== undefined) patch.taskId = input.taskId;
+	if (input.projectId !== undefined) patch.projectId = input.projectId;
+	if (input.description !== undefined) patch.description = input.description;
+	if (input.daysOfWeek !== undefined) patch.daysOfWeek = input.daysOfWeek;
+	if (input.duration !== undefined) {
+		patch.durationSeconds = parseRuleDuration(input.duration);
+	}
+	if (input.effectiveFrom !== undefined) {
+		patch.effectiveFrom = input.effectiveFrom;
+	}
+	if (input.effectiveUntil !== undefined) {
+		patch.effectiveUntil = input.effectiveUntil;
+	}
+	if (input.active !== undefined) {
+		patch.active = input.active;
+		// Resuming is switching on: the floor moves to today rather than
+		// refilling every day the rule spent paused.
+		if (input.active && !existing.active) patch.activeSince = new Date();
+	}
+	return patch;
+};
+
+/** The checks an edit to the task, the project or the note must pass again. */
+const recheckEditedRule = async (
+	ctx: Ctx,
+	input: UpdateRecurringBlockRuleInput,
+	existing: Rule,
+) => {
+	const retargeted =
+		input.taskId !== undefined || input.projectId !== undefined;
+	if (!retargeted && input.description === undefined) return;
+	const nextProjectId =
+		(input.projectId !== undefined ? input.projectId : existing.projectId) ??
+		null;
+	// Re-checked on update, not just on create: repointing an existing rule at
+	// another project is the same write by a slower route.
+	if (retargeted) await assertMayScheduleOn(ctx, nextProjectId);
+	const taskRow = await assertTaskAvailable(
+		ctx,
+		input.taskId ?? existing.taskId,
+		nextProjectId ?? undefined,
+	);
+	// The note rule follows the task, so a task change and a note change are
+	// both occasions to re-ask it. Asked against the MERGED rule — `update` is
+	// partial and either half may be absent — and this is the only place update
+	// asks. A second check used to re-ask it keyed on "does the rule name a
+	// project", left over from when that was the rule; once every task sat on
+	// every project it was wrong both ways, and it made a Break block on a
+	// project unsaveable with the empty note its own label calls optional.
+	assertDescribed(taskRow, input.description ?? existing.description);
 };
 
 export const recurringBlockRulesService = {
@@ -304,54 +636,9 @@ export const recurringBlockRulesService = {
 		});
 		if (!existing) throw new Error("Recurring block rule not found");
 
-		const retargeted =
-			input.taskId !== undefined || input.projectId !== undefined;
-		if (retargeted || input.description !== undefined) {
-			const nextProjectId =
-				(input.projectId !== undefined
-					? input.projectId
-					: existing.projectId) ?? null;
-			// Re-checked on update, not just on create: repointing an existing rule
-			// at another project is the same write by a slower route.
-			if (retargeted) await assertMayScheduleOn(ctx, nextProjectId);
-			const taskRow = await assertTaskAvailable(
-				ctx,
-				input.taskId ?? existing.taskId,
-				nextProjectId ?? undefined,
-			);
-			// The note rule follows the task, so a task change and a note change
-			// are both occasions to re-ask it. Asked against the MERGED rule —
-			// `update` is partial and either half may be absent — and this is the
-			// only place update asks. A second check below used to re-ask it keyed
-			// on "does the rule name a project", left over from when that was the
-			// rule; once every task sat on every project it was wrong both ways,
-			// and it made a Break block on a project unsaveable with the empty note
-			// its own label calls optional.
-			assertDescribed(taskRow, input.description ?? existing.description);
-		}
+		await recheckEditedRule(ctx, input, existing);
 
-		const patch: Partial<typeof recurringBlockRule.$inferInsert> = {
-			updatedAt: new Date(),
-		};
-		if (input.taskId !== undefined) patch.taskId = input.taskId;
-		if (input.projectId !== undefined) patch.projectId = input.projectId;
-		if (input.description !== undefined) patch.description = input.description;
-		if (input.daysOfWeek !== undefined) patch.daysOfWeek = input.daysOfWeek;
-		if (input.duration !== undefined) {
-			patch.durationSeconds = parseRuleDuration(input.duration);
-		}
-		if (input.effectiveFrom !== undefined) {
-			patch.effectiveFrom = input.effectiveFrom;
-		}
-		if (input.effectiveUntil !== undefined) {
-			patch.effectiveUntil = input.effectiveUntil;
-		}
-		if (input.active !== undefined) {
-			patch.active = input.active;
-			// Resuming is switching on: the floor moves to today rather than
-			// refilling every day the rule spent paused.
-			if (input.active && !existing.active) patch.activeSince = new Date();
-		}
+		const patch = buildRulePatch(input, existing);
 
 		const [updated] = await db
 			.update(recurringBlockRule)
@@ -380,73 +667,16 @@ export const recurringBlockRulesService = {
 	// Idempotently ensures a real time_entry row exists for every (rule, date)
 	// pair in [from, to] that the rule applies to and hasn't been skipped.
 	materializeRange: async (ctx: Ctx, from: string, to: string) => {
-		const rules = await db.query.recurringBlockRule.findMany({
-			where: and(
-				eq(recurringBlockRule.organizationId, ctx.organizationId),
-				eq(recurringBlockRule.userId, ctx.userId),
-				eq(recurringBlockRule.active, true),
-				or(
-					isNull(recurringBlockRule.effectiveFrom),
-					lte(recurringBlockRule.effectiveFrom, to),
-				),
-				or(
-					isNull(recurringBlockRule.effectiveUntil),
-					gte(recurringBlockRule.effectiveUntil, from),
-				),
-			),
-		});
+		const rules = await rulesInReach(ctx, from, to);
 		if (rules.length === 0) return;
 		const writable = await rulesStillWritable(ctx, rules);
-
-		const skips = await db.query.recurringBlockRuleSkip.findMany({
-			where: inArray(
-				recurringBlockRuleSkip.ruleId,
-				rules.map((r) => r.id),
-			),
-		});
-		const skipSet = new Set(skips.map((s) => `${s.ruleId}:${s.date}`));
+		const skipSet = await loadSkipSet(rules);
 
 		const tz = await ctxTimezone(ctx);
 		const dates = datesBetween(from, to);
 		const weekdayByDate = new Map(dates.map((d) => [d, weekdayInTz(d, tz)]));
-
-		// What the day already holds, so a rule cannot put a second copy of its own
-		// block on it. `onConflictDoNothing` below only recognises an entry THIS
-		// rule generated — so a break that arrived any other way (the day assembler
-		// carving one, "copy from previous day" bringing one forward, or someone
-		// logging one by hand) was invisible to it, and the rule added a second
-		// break to a day that plainly already had one. The day assembler has always
-		// made this check before proposing its break; the materializer never did.
-		const existing = await db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				gte(timeEntry.date, from),
-				lte(timeEntry.date, to),
-			),
-			columns: {
-				date: true,
-				taskId: true,
-				projectId: true,
-				durationSeconds: true,
-				fillsDay: true,
-			},
-			with: { task: { columns: { isAbsence: true } } },
-		});
-
-		// What each day already holds, by the same count `assertDayHasRoom` uses
-		// for a hand-made write: everything but the fill block, which is sized
-		// from the rest and shrinks around a new block. A rule never takes a day
-		// past `MAX_DAY_SECONDS`; the day simply gets no block, as it would on a
-		// day off. That service imports this one, so the count is shared through
-		// `spokenForSeconds` rather than by calling it.
-		const spokenFor = new Map<string, number>();
-		for (const date of new Set(existing.map((e) => e.date))) {
-			spokenFor.set(
-				date,
-				spokenForSeconds(existing.filter((e) => e.date === date)),
-			);
-		}
+		const held = await loadHeldEntries(ctx, from, to);
+		const spokenFor = spokenForByDate(held);
 
 		// A day off takes no block. A rule is "on these weekdays", and a weekday
 		// somebody spends on vacation or sick leave is not a day they take a break
@@ -455,171 +685,28 @@ export const recurringBlockRulesService = {
 		//
 		// Any absence counts, not only a full day of it: the materializer has no
 		// way to tell which half of a half day was worked.
-		//
-		// A block this pass wrote before the absence was booked (absence booked for
-		// today, or for a past day still inside the window) is taken back. No skip
-		// row is written for it, because the person did not delete it: cancel the
-		// day off and the next pass writes the block again. A block that holds
-		// GitHub evidence stays, since its attachments would cascade with it.
 		const daysOff = [
-			...new Set(existing.filter((e) => e.task.isAbsence).map((e) => e.date)),
+			...new Set(held.filter((e) => e.task.isAbsence).map((e) => e.date)),
 		];
 		const takenBack =
 			daysOff.length === 0
 				? []
-				: await db
-						.delete(timeEntry)
-						.where(
-							and(
-								eq(timeEntry.organizationId, ctx.organizationId),
-								eq(timeEntry.userId, ctx.userId),
-								inArray(
-									timeEntry.generatedFromRuleId,
-									rules.map((r) => r.id),
-								),
-								inArray(timeEntry.date, daysOff),
-								notExists(
-									db
-										.select({ one: sql`1` })
-										.from(timeEntryGithubCommit)
-										.where(eq(timeEntryGithubCommit.timeEntryId, timeEntry.id)),
-								),
-								notExists(
-									db
-										.select({ one: sql`1` })
-										.from(timeEntryGithubPrActivity)
-										.where(
-											eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
-										),
-								),
-							),
-						)
-						.returning({ date: timeEntry.date });
-		const isDayOff = new Set(daysOff);
-		// Two keys, because "is this block already here?" has two answers depending
-		// on whether the rule names a project.
-		//
-		// A rule WITH a project is project-specific: two rules for the same task on
-		// different projects are different blocks and a day may legitimately hold
-		// both, so it only recognises its own project's entry.
-		//
-		// A rule with NO project — every break rule, since a break is time off the
-		// clock that nobody can attribute to a client — matches on the task alone.
-		// It has to: this key used to be project-qualified in both directions, so a
-		// break someone had already logged against a project was invisible to the
-		// break rule, and the rule filed a second, project-less one next to it. That
-		// is not two blocks, it is one break counted twice, and it is what the
-		// materializer's own guard was added to prevent.
-		const taskKey = (e: { date: string; taskId: string }) =>
-			`${e.date}|${e.taskId}`;
-		const projectKey = (e: {
-			date: string;
-			taskId: string;
-			projectId: string | null;
-		}) => `${taskKey(e)}|${e.projectId ?? ""}`;
-		const dayHasTask = new Set(existing.map(taskKey));
-		const dayHasTaskOnProject = new Set(existing.map(projectKey));
-		const dayAlreadyHas = (
-			rule: {
-				taskId: string;
-				projectId: string | null;
+				: await takeBackFromDaysOff(ctx, rules, daysOff);
+
+		const rows = planRuleRows(
+			ctx,
+			rules.filter((rule) => writable.has(rule.id)),
+			{
+				dates,
+				weekdayByDate,
+				isDayOff: new Set(daysOff),
+				spokenFor,
+				blocks: dayBlockIndex(held),
+				skipSet,
+				tz,
 			},
-			date: string,
-		) =>
-			rule.projectId
-				? dayHasTaskOnProject.has(projectKey({ ...rule, date }))
-				: dayHasTask.has(taskKey({ ...rule, date }));
-
-		const rows: (typeof timeEntry.$inferInsert)[] = [];
-		for (const rule of rules) {
-			if (!writable.has(rule.id)) continue;
-			// A rule never writes to a day before it was switched on. Without this
-			// floor, turning the daily break on wrote one onto every past day the
-			// time page was scrolled back to — silently editing months of
-			// already-filed timesheets, including closed ones.
-			//
-			// `effectiveFrom` narrows further but cannot widen: it is how you say
-			// "start next month", not a way back into the past. Nothing offers
-			// backfill, because nobody asked for their history to be rewritten.
-			const activeSince = dayKeyInTz(rule.activeSince, tz);
-			const startsOn =
-				rule.effectiveFrom && rule.effectiveFrom > activeSince
-					? rule.effectiveFrom
-					: activeSince;
-			for (const date of dates) {
-				if (date < startsOn) continue;
-				if (rule.effectiveUntil && date > rule.effectiveUntil) continue;
-				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
-				if (skipSet.has(`${rule.id}:${date}`)) continue;
-				if (isDayOff.has(date)) continue;
-				if (dayAlreadyHas(rule, date)) continue;
-				const dayHolds = spokenFor.get(date) ?? 0;
-				if (dayHolds + rule.durationSeconds > MAX_DAY_SECONDS) continue;
-				spokenFor.set(date, dayHolds + rule.durationSeconds);
-
-				// Claimed as this batch goes, so two rules for the same block on the
-				// same weekday produce one entry rather than racing each other. Both
-				// sets, so the claim is visible to whichever question the next rule asks.
-				dayHasTask.add(taskKey({ date, taskId: rule.taskId }));
-				dayHasTaskOnProject.add(
-					projectKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
-				);
-				rows.push({
-					organizationId: ctx.organizationId,
-					userId: ctx.userId,
-					projectId: rule.projectId,
-					taskId: rule.taskId,
-					description: rule.description,
-					date,
-					durationSeconds: rule.durationSeconds,
-					generatedFromRuleId: rule.id,
-					generatedForDate: date,
-				});
-			}
-		}
-		const inserted =
-			rows.length === 0
-				? []
-				: await db
-						.insert(timeEntry)
-						.values(rows)
-						.onConflictDoNothing({
-							target: [
-								timeEntry.generatedFromRuleId,
-								timeEntry.generatedForDate,
-							],
-							where: sql`${timeEntry.generatedFromRuleId} is not null`,
-						})
-						.returning({ date: timeEntry.date });
-
-		// A block that just landed on a day claims part of that day, so the day's
-		// fill block — which by definition is "whatever is left" — is now too long.
-		// Every hand-written path recomputes; this one did not, so turning the
-		// daily break on for a day already covered by a rest-of-day block left the
-		// day at 8h30 against an 8h target.
-		//
-		// It used to self-correct, but only by accident and only sometimes: the
-		// read path rewrote fill blocks for whatever range you happened to open.
-		// That is now bounded to the automation window, and reports read the ledger
-		// directly rather than through `listRange` — so a day nobody reopened
-		// simply stayed over-allocated.
-		//
-		// Best-effort and outside the insert: failing to resize a fill block must
-		// not cost the person the blocks that were just materialized.
-		// A block taken back from a day off frees the same time, so that day is
-		// recomputed too.
-		const touched = [
-			...new Set([...takenBack, ...inserted].map((row) => row.date)),
-		];
-		for (const date of touched) {
-			try {
-				await recomputeDayFill(ctx, date, tz);
-			} catch (error) {
-				console.error("[recurring-blocks] fill recompute failed", {
-					date,
-					error,
-				});
-			}
-		}
+		);
+		const inserted = rows.length === 0 ? [] : await insertRuleRows(rows);
+		await recomputeTouchedDays(ctx, tz, [...takenBack, ...inserted]);
 	},
 };

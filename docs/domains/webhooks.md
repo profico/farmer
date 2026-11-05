@@ -90,6 +90,11 @@ that syncs holidays wants one and not the other. An **edit** is always
 Headers: `Farmer-Signature`, `Farmer-Event` (the event id, same as `id`),
 `Farmer-Delivery` (unique per attempt), `Farmer-Webhook-Id`, `Farmer-Attempt`.
 
+**Delivery is at-least-once.** If the POST succeeds but the write of the result
+fails, the row is claimed again after the claim deadline. The receiver then gets
+a second POST with the same `Farmer-Delivery` header. A receiver must dedupe on
+that header (or on the event `id`).
+
 **Order is not guaranteed and never will be.** Guaranteeing it costs a queue per
 organization in which every event waits behind a dead endpoint's retries. Use
 `id` to drop a duplicate and `createdAt` to decide which of two events about one
@@ -153,7 +158,9 @@ credentials to whoever asks from inside.
 10.0.0.5 then would win. `fetchWebhookTarget` swaps the host for a checked
 address and sends the name only as the `Host` header and the TLS server name,
 which is what the certificate is verified against. A refusal names the host and
-never the address it resolved to, so the URL field cannot read out internal DNS.
+never the address it resolved to. A name that does not resolve and a name that
+resolves to a private address give one text, so the URL field cannot read out
+internal DNS. The specific cause goes to the server log only.
 
 **A host with both an A and an AAAA record still gets delivered to** on a box
 with no IPv6 route. `fetchWebhookTarget` moves to the next checked address only
@@ -178,6 +185,9 @@ One tick of `jobs/webhook-delivery.ts`:
    `(endpoint, event, attempt)` is the second lock on the same door.
 2. **Claim** the due rows with an `update … returning`, which is what makes two
    processes running this job safe rather than merely unlikely.
+   A claim older than `claimTtlMs` with no attempt (a dead tick) is claimable
+   again. The receiver's text is stripped of U+0000 before it is stored, and
+   one failed write is logged and does not stop the tick.
 3. **Send**, five at a time, each with its own deadline.
 4. **Schedule the retry**, or give up on the endpoint.
 5. **Sweep** the retention windows.

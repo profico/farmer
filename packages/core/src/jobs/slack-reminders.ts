@@ -3,7 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
-import { dayKeyInTz, timeKeyInTz } from "../lib/time";
+import { loggableError } from "../lib/loggable-error";
+import { dayKeyInTz, safeTimezone, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
 import { orgHasNotifiablePhone } from "../services/native-push";
 import {
@@ -162,47 +163,14 @@ const markForRetry = async (key: ClaimKey): Promise<void> => {
 export const isLastWorkingDayOfMonth = (ctx: Ctx, dayKey: string) =>
 	isMonthEndDay(ctx, dayKey, 0);
 
+type SlackKind = (typeof SLACK_KINDS)[number];
+type Settings = Awaited<ReturnType<typeof reminderSettingsService.get>>;
+type Recipient = Awaited<ReturnType<typeof reminderRecipients>>[number];
+type Moment = Parameters<typeof reminderRecipients>[3];
+type Dashboard = ReturnType<typeof dashboardLoader>;
+type OrgRow = { id: string; slug: string; timezone: string | null };
 type SendResult = "delivered" | "unreachable" | "failed";
-
-type SendTarget = {
-	org: { id: string };
-	entry: (typeof SLACK_KINDS)[number];
-	recipient: { userId: string; event: Parameters<typeof notify>[1] };
-	appOnly: boolean;
-};
-
-/** One reminder to one person, and what came of it. Never throws. */
-const sendOne = async ({
-	org,
-	entry,
-	recipient,
-	appOnly,
-}: SendTarget): Promise<SendResult> => {
-	try {
-		const outcome = await notify(
-			{ organizationId: org.id, userId: recipient.userId },
-			recipient.event,
-			{ appOnly },
-		);
-		if (wasDelivered(outcome)) return "delivered";
-		if (wasUnreachable(outcome)) return "unreachable";
-		// The native push failed and Slack has no match. A retry can still
-		// reach the phone, so the claim must not settle.
-		if (outcome.retryable) return "failed";
-		// No Slack identity is not a failure a retry can fix: keep the claim,
-		// as before.
-		const slackId = await slackService.slackIdFor(org.id, recipient.userId);
-		return slackId ? "failed" : "unreachable";
-	} catch (error) {
-		console.error("[slack-reminders] send failed", {
-			organizationId: org.id,
-			userId: recipient.userId,
-			kind: entry.kind,
-			error,
-		});
-		return "failed";
-	}
-};
+type FailureOutcome = { retryLater: boolean; slackLost: boolean };
 
 /** Without Slack, only a person the app can reach is sent to. */
 const reachableRecipients = async <T extends { userId: string }>(
@@ -217,6 +185,196 @@ const reachableRecipients = async <T extends { userId: string }>(
 		),
 	);
 	return recipients.filter((_, i) => reach[i]);
+};
+
+/** The kinds that are due now, in order. The fast check runs before any
+ *  compliance query: what this process already finished today, then the send
+ *  time, then the day. Only the month-end day costs a query (the holiday
+ *  calendar), and it runs last. Most ticks end here. */
+const dueKinds = async (
+	ctx: Ctx,
+	orgId: string,
+	settings: Settings,
+	today: string,
+	timeKey: string,
+): Promise<SlackKind[]> => {
+	const due: SlackKind[] = [];
+	for (const entry of SLACK_KINDS) {
+		if (finishedRuns.get(`${orgId}:${entry.kind}`) === today) continue;
+		if (!sendTimeReached(settings, entry.kind, timeKey)) continue;
+		if (await reminderDayCheck(ctx, settings, entry.kind, today)) continue;
+		due.push(entry);
+	}
+	return due;
+};
+
+/** Sends one reminder. A person with no Slack identity is "unreachable", not
+ *  a failure a retry can fix. */
+const sendReminder = async (
+	orgId: string,
+	recipient: Recipient,
+	kind: ReminderKind,
+	appOnly: boolean,
+): Promise<SendResult> => {
+	try {
+		const outcome = await notify(
+			{ organizationId: orgId, userId: recipient.userId },
+			recipient.event,
+			{ appOnly },
+		);
+		if (wasDelivered(outcome)) return "delivered";
+		if (wasUnreachable(outcome)) return "unreachable";
+		// The native push failed and Slack has no match. A retry can still
+		// reach the phone, so the claim must not settle.
+		if (outcome.retryable) return "failed";
+		const slackId = await slackService.slackIdFor(orgId, recipient.userId);
+		return slackId ? "failed" : "unreachable";
+	} catch (error) {
+		console.error("[slack-reminders] send failed", {
+			organizationId: orgId,
+			userId: recipient.userId,
+			kind,
+			error: loggableError(error),
+		});
+		return "failed";
+	}
+};
+
+/** After a failed send: asks whether the org still has Slack, and marks the
+ *  claim for a retry while attempts are left. */
+const handleFailedSend = async (
+	key: ClaimKey,
+	attempt: number,
+	orgId: string,
+	kind: ReminderKind,
+	appOnly: boolean,
+): Promise<FailureOutcome> => {
+	const slackLost = !appOnly && !(await slackService.installationFor(orgId));
+	let retryLater = false;
+	// Out of attempts: the claim stays settled, and the day gets no more.
+	if (attempt < MAX_SEND_ATTEMPTS) {
+		try {
+			await markForRetry(key);
+			retryLater = true;
+		} catch (error) {
+			// The claim stays settled, so this is a miss, never a duplicate.
+			console.error("[slack-reminders] could not mark a retry", {
+				organizationId: orgId,
+				userId: key.recipientUserId,
+				kind,
+				error: loggableError(error),
+			});
+		}
+	}
+	return { retryLater, slackLost };
+};
+
+/** One kind's pass over its recipients. Stops at the first send that loses
+ *  Slack; `retryLater` says a claim was marked and the pass must run again. */
+const runKindPass = async (
+	ctx: Ctx,
+	org: OrgRow,
+	entry: SlackKind,
+	moment: Moment,
+	dashboard: Dashboard,
+	settings: Settings,
+	summary: SlackReminderSummary,
+	appOnly: boolean,
+): Promise<FailureOutcome> => {
+	const recipients = await reachableRecipients(
+		org.id,
+		await reminderRecipients(ctx, settings, entry.kind, moment, dashboard),
+		appOnly,
+	);
+	// `notify` applies these gates anyway. Asking first keeps a held-back
+	// person from spending the day's claim, so turning "include people
+	// who never signed in" on still reaches them the same day.
+	const blocks = await deliveryBlocks(
+		org.id,
+		recipients.map((r) => r.userId),
+		entry.kind,
+	);
+	let retryLater = false;
+	for (const recipient of recipients) {
+		if (blocks.has(recipient.userId)) continue;
+		const key: ClaimKey = {
+			organizationId: org.id,
+			recipientUserId: recipient.userId,
+			kind: entry.claim,
+			dayKey: moment.dayKey,
+		};
+		const attempt = await claim(key);
+		if (attempt === null) continue;
+		const result = await sendReminder(org.id, recipient, entry.kind, appOnly);
+		if (result === "delivered") summary[entry.counter]++;
+		if (result !== "failed") continue;
+
+		summary.failed++;
+		const failure = await handleFailedSend(
+			key,
+			attempt,
+			org.id,
+			entry.kind,
+			appOnly,
+		);
+		retryLater ||= failure.retryLater;
+		if (failure.slackLost) return { retryLater, slackLost: true };
+	}
+	return { retryLater, slackLost: false };
+};
+
+/** One org's tick. Does nothing when no kind is due. */
+const runOrgPass = async (
+	org: OrgRow,
+	now: Date,
+	summary: SlackReminderSummary,
+	appOnly: boolean,
+): Promise<void> => {
+	const tz = safeTimezone(org.timezone);
+	const today = dayKeyInTz(now, tz);
+	const timeKey = timeKeyInTz(now, tz);
+
+	// The job runs unattended, so it needs a ctx to satisfy the service
+	// signatures; nothing below checks a caller, because there is none.
+	const ctx: Ctx = { organizationId: org.id, userId: "" };
+
+	try {
+		const settings = await reminderSettingsService.get(ctx);
+		const due = await dueKinds(ctx, org.id, settings, today, timeKey);
+		if (due.length === 0) return;
+
+		// The phone check is a query, so it runs after the cheap exit above.
+		if (appOnly) {
+			if (!(await orgHasNotifiablePhone(org.id))) return;
+			summary.organizations++;
+		}
+
+		const dashboard = dashboardLoader(ctx, settings, now);
+		const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
+		for (const entry of due) {
+			const pass = await runKindPass(
+				ctx,
+				org,
+				entry,
+				moment,
+				dashboard,
+				settings,
+				summary,
+				appOnly,
+			);
+			// No Slack left to send with: stop the org, and leave every kind
+			// unfinished so a new install today still sends.
+			if (pass.slackLost) break;
+			// A claim marked for a retry needs this kind's pass to run again.
+			if (!pass.retryLater) finishedRuns.set(`${org.id}:${entry.kind}`, today);
+		}
+	} catch (error) {
+		summary.failed++;
+		console.error("[slack-reminders] org run failed", {
+			organizationId: org.id,
+			error: loggableError(error),
+		});
+	}
 };
 
 export const runSlackRemindersOnce = async (
@@ -240,114 +398,13 @@ export const runSlackRemindersOnce = async (
 	};
 
 	for (const org of orgs) {
-		const tz = org.timezone ?? "UTC";
-		const today = dayKeyInTz(now, tz);
-		const timeKey = timeKeyInTz(now, tz);
-
 		// No Slack workspace connected = nothing this job can do, and no reason to
 		// run the (fairly expensive) compliance queries for that org at all.
 		const installation = await slackService.installationFor(org.id);
 		// Without Slack, the pass still runs for an org with a phone to tell.
 		const appOnly = !installation;
 		if (!appOnly) summary.organizations++;
-
-		// The job runs unattended, so it needs a ctx to satisfy the service
-		// signatures; nothing below checks a caller, because there is none.
-		const ctx: Ctx = { organizationId: org.id, userId: "" };
-
-		try {
-			const settings = await reminderSettingsService.get(ctx);
-
-			// The fast check, before any compliance query: what this process
-			// already finished today, then the send time, then the day. Only the
-			// month-end day costs a query (the holiday calendar), and it runs
-			// last. Most ticks end here.
-			const due: (typeof SLACK_KINDS)[number][] = [];
-			for (const entry of SLACK_KINDS) {
-				if (finishedRuns.get(`${org.id}:${entry.kind}`) === today) continue;
-				if (!sendTimeReached(settings, entry.kind, timeKey)) continue;
-				if (await reminderDayCheck(ctx, settings, entry.kind, today)) continue;
-				due.push(entry);
-			}
-			if (due.length === 0) continue;
-
-			// The phone check is a query, so it runs after the cheap exit above.
-			if (appOnly) {
-				if (!(await orgHasNotifiablePhone(org.id))) continue;
-				summary.organizations++;
-			}
-
-			const dashboard = dashboardLoader(ctx, settings, now);
-			const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
-			for (const entry of due) {
-				const recipients = await reachableRecipients(
-					org.id,
-					await reminderRecipients(
-						ctx,
-						settings,
-						entry.kind,
-						moment,
-						dashboard,
-					),
-					appOnly,
-				);
-				// `notify` applies these gates anyway. Asking first keeps a held-back
-				// person from spending the day's claim, so turning "include people
-				// who never signed in" on still reaches them the same day.
-				const blocks = await deliveryBlocks(
-					org.id,
-					recipients.map((r) => r.userId),
-					entry.kind,
-				);
-				let retryLater = false;
-				let slackLost = false;
-				for (const recipient of recipients) {
-					if (blocks.has(recipient.userId)) continue;
-					const key: ClaimKey = {
-						organizationId: org.id,
-						recipientUserId: recipient.userId,
-						kind: entry.claim,
-						dayKey: today,
-					};
-					const attempt = await claim(key);
-					if (attempt === null) continue;
-					const result = await sendOne({ org, entry, recipient, appOnly });
-
-					if (result === "delivered") summary[entry.counter]++;
-					if (result !== "failed") continue;
-
-					summary.failed++;
-					slackLost = !appOnly && !(await slackService.installationFor(org.id));
-					// Out of attempts: the claim stays settled, and the day gets no more.
-					if (attempt < MAX_SEND_ATTEMPTS) {
-						try {
-							await markForRetry(key);
-							retryLater = true;
-						} catch (error) {
-							// The claim stays settled, so this is a miss, never a duplicate.
-							console.error("[slack-reminders] could not mark a retry", {
-								organizationId: org.id,
-								userId: recipient.userId,
-								kind: entry.kind,
-								error,
-							});
-						}
-					}
-					if (slackLost) break;
-				}
-				// No Slack left to send with: stop the org, and leave every kind
-				// unfinished so a new install today still sends.
-				if (slackLost) break;
-				// A claim marked for a retry needs this kind's pass to run again.
-				if (!retryLater) finishedRuns.set(`${org.id}:${entry.kind}`, today);
-			}
-		} catch (error) {
-			summary.failed++;
-			console.error("[slack-reminders] org run failed", {
-				organizationId: org.id,
-				error,
-			});
-		}
+		await runOrgPass(org, now, summary, appOnly);
 	}
 
 	return summary;

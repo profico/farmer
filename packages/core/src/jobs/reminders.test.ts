@@ -579,6 +579,101 @@ describe("an undelivered Slack reminder", () => {
 			await db.update(slackInstallation).set({ tokenRejectedAt: null });
 		}
 	});
+
+	// The last attempt marks no retry. The pass must stay unfinished all the
+	// same, or a reconnect on the same day reaches nobody that the pass did not
+	// try before Slack went away.
+	test("leaves the pass unfinished when Slack goes on the last attempt", async () => {
+		await db.insert(memberSlackIdentity).values([
+			{ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" },
+			{ organizationId: ORG, userId: SLOW, slackUserId: "U0SLOW" },
+		]);
+		await db.insert(slackReminderLog).values(
+			[SILENT, SLOW].map((recipientUserId) => ({
+				organizationId: ORG,
+				recipientUserId,
+				kind: "nudge",
+				dayKey: TUESDAY,
+				attempts: 2,
+				retry: true,
+			})),
+		);
+		const record = recorder("slack");
+		let tries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				tries++;
+				if (tries > 1) return record(to, event);
+				const installation = present(
+					await slackService.installationFor(ORG),
+					"the Slack installation",
+				);
+				await slackService.rejectToken(installation);
+				return false;
+			},
+		});
+
+		try {
+			const first = await slackAt(TUESDAY, "09:00");
+			expect(tries).toBe(1);
+			expect(first.failed).toBe(1);
+
+			await db.update(slackInstallation).set({ tokenRejectedAt: null });
+			const second = await slackAt(TUESDAY, "09:15");
+			expect(second.nudges).toBe(1);
+			expect(second.digests).toBe(1);
+			expect(
+				[...(await claimsFor(SILENT)), ...(await claimsFor(SLOW))].map(
+					({ attempts, retry }) => ({ attempts, retry }),
+				),
+			).toEqual([
+				{ attempts: 3, retry: false },
+				{ attempts: 3, retry: false },
+			]);
+		} finally {
+			await db.update(slackInstallation).set({ tokenRejectedAt: null });
+		}
+	});
+
+	// A pass with a claim marked for a retry must run again on the next tick.
+	// A person who becomes eligible in the meantime then gets the reminder too.
+	test("runs the pass again on the next tick while a claim waits for a retry", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					if (silentTries === 1) return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		await slackAt(TUESDAY, "09:00");
+		expect(reached("compliance-nudge")).not.toContain(NEVER);
+
+		await configure({ includeNeverSignedIn: true });
+		await slackAt(TUESDAY, "09:15");
+		expect(reached("compliance-nudge")).toContain(NEVER);
+	});
+
+	// A pass with no retry is finished for the day: the next tick does not
+	// run it again, so a person who becomes eligible later waits for the next
+	// reminder day.
+	test("does not run a finished pass again on the same day", async () => {
+		await slackAt(TUESDAY, "09:00");
+		expect(reached("compliance-nudge")).not.toContain(NEVER);
+
+		await configure({ includeNeverSignedIn: true });
+		await slackAt(TUESDAY, "09:15");
+		expect(reached("compliance-nudge")).not.toContain(NEVER);
+	});
 });
 
 describe("the digest mentions people", () => {

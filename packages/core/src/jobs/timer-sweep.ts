@@ -4,7 +4,8 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
-import { formatDurationShort, timeKeyInTz } from "../lib/time";
+import { loggableError } from "../lib/loggable-error";
+import { formatDurationShort, safeTimezone, timeKeyInTz } from "../lib/time";
 import { publishTimerChange } from "../services/native-push";
 import { notify } from "../services/notify";
 import {
@@ -112,7 +113,10 @@ export const runTimerSweepOnce = async (
 			// The phone's Live Activity ends now. It returns at once.
 			publishTimerChange(row.userId, { type: "end" });
 
-			const startedAtLabel = timeKeyInTz(row.startedAt, row.timezone ?? "UTC");
+			const startedAtLabel = timeKeyInTz(
+				row.startedAt,
+				safeTimezone(row.timezone),
+			);
 			await notify(
 				{ organizationId: row.organizationId, userId: row.userId },
 				{
@@ -125,7 +129,10 @@ export const runTimerSweepOnce = async (
 			);
 		} catch (error) {
 			summary.failed += 1;
-			console.error("[timer-sweep] failed to drop a timer", error);
+			console.error(
+				"[timer-sweep] failed to drop a timer",
+				loggableError(error),
+			);
 		}
 	}
 

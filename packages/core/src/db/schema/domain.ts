@@ -234,6 +234,11 @@ export const projectMember = pgTable(
 			.references(() => user.id, { onDelete: "cascade" }),
 		role: projectRole("role").notNull().default("member"),
 		active: boolean("active").notNull().default(true),
+		// Whether an Admin made this assignment. Only an Admin-made row gives
+		// a PM authority over this person's absence and people scope. The
+		// default is true: a row made before this column existed keeps its
+		// authority.
+		assignedByAdmin: boolean("assigned_by_admin").notNull().default(true),
 		...stamps,
 	},
 	(t) => [

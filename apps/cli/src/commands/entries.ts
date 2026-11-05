@@ -312,6 +312,69 @@ export const log: Command = {
 const EDIT_USAGE =
 	"farmer edit [n | id] [-d date] [--duration <d> | --add <d>] [-m text] [-p project] [-t task] [--move <date>] [--overtime | --no-overtime]";
 
+/** Sets the duration fields of a patch from a `--duration` value or a typed
+ *  answer. `fill` makes the entry a fill block. */
+const setDurationPatch = (patch: TimeEntryPatch, duration: string) => {
+	if (duration.trim().toLowerCase() === "fill") {
+		patch.fillsDay = true;
+		return;
+	}
+	patch.durationSeconds = parseQuarterHours(duration);
+	patch.fillsDay = false;
+};
+
+/** Copies the edit flags that need no lookup into the patch. */
+const applyEditFlags = (
+	values: {
+		duration?: string;
+		message?: string;
+		overtime?: boolean;
+		"no-overtime"?: boolean;
+	},
+	patch: TimeEntryPatch,
+) => {
+	if (values.duration !== undefined) setDurationPatch(patch, values.duration);
+	if (values.message !== undefined) patch.description = values.message;
+	if (values.overtime) patch.overtime = true;
+	if (values["no-overtime"]) patch.overtime = false;
+};
+
+/** Looks up the project and the task that the edit flags name. */
+const resolveEditTargets = async (
+	out: Output,
+	session: Session,
+	scope: OrgScope,
+	values: { project?: string; task?: string },
+	patch: TimeEntryPatch,
+) => {
+	if (values.project !== undefined) {
+		const projects = await session.api.get<ApiProject[]>(
+			scope.path("/projects"),
+		);
+		patch.projectId = (await chooseProject(out, projects, values.project)).id;
+	}
+	if (values.task !== undefined) {
+		const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
+		patch.taskId = (
+			await chooseTask(out, taskList.tasks, values.task, "-t")
+		).id;
+	}
+};
+
+/** Asks for a new duration and a new description. A changed answer goes into
+ *  the patch. */
+const askEditChanges = async (entry: ApiTimeEntry, patch: TimeEntryPatch) => {
+	const current = entry.fillsDay
+		? "fill"
+		: formatDurationInput(entry.durationSeconds);
+	const duration = (await askText("Duration", current)).trim();
+	if (duration && duration !== current) setDurationPatch(patch, duration);
+	const description = await askText("Description", entry.description);
+	if (description !== entry.description) {
+		patch.description = description;
+	}
+};
+
 export const edit: Command = {
 	name: "edit",
 	usage: EDIT_USAGE,
@@ -357,35 +420,14 @@ export const edit: Command = {
 		}
 
 		const patch: TimeEntryPatch = {};
-		if (values.duration !== undefined) {
-			if (values.duration.trim().toLowerCase() === "fill") {
-				patch.fillsDay = true;
-			} else {
-				patch.durationSeconds = parseQuarterHours(values.duration);
-				patch.fillsDay = false;
-			}
-		}
-		if (values.message !== undefined) patch.description = values.message;
-		if (values.overtime) patch.overtime = true;
-		if (values["no-overtime"]) patch.overtime = false;
+		applyEditFlags(values, patch);
 
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const day = parseDay(values.date ?? "today", scope.clock);
 		if (values.move !== undefined) {
 			patch.date = parseDay(values.move, scope.clock);
 		}
-		if (values.project !== undefined) {
-			const projects = await session.api.get<ApiProject[]>(
-				scope.path("/projects"),
-			);
-			patch.projectId = (await chooseProject(out, projects, values.project)).id;
-		}
-		if (values.task !== undefined) {
-			const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
-			patch.taskId = (
-				await chooseTask(out, taskList.tasks, values.task, "-t")
-			).id;
-		}
+		await resolveEditTargets(out, session, scope, values, patch);
 
 		const entries = await listEntries(session, scope, { from: day, to: day });
 		const { id, entry } = await selectEntry(
@@ -419,21 +461,7 @@ export const edit: Command = {
 				out,
 				`Say what to change: --duration, --add, -m, -p, -t, --move or --overtime.\nUsage: ${EDIT_USAGE}`,
 			);
-			const current = entry.fillsDay
-				? "fill"
-				: formatDurationInput(entry.durationSeconds);
-			const duration = (await askText("Duration", current)).trim();
-			if (duration && duration !== current) {
-				if (duration.toLowerCase() === "fill") patch.fillsDay = true;
-				else {
-					patch.durationSeconds = parseQuarterHours(duration);
-					patch.fillsDay = false;
-				}
-			}
-			const description = await askText("Description", entry.description);
-			if (description !== entry.description) {
-				patch.description = description;
-			}
+			await askEditChanges(entry, patch);
 		}
 
 		if (Object.keys(patch).length === 0) {

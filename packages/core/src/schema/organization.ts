@@ -1,18 +1,9 @@
 import { z } from "zod";
 
+import { isValidTimezone } from "../lib/time";
 import { dayKeySchema } from "./day-key";
 import { httpUrlSchema } from "./http-url";
 import { uploadedFilePath } from "./uploads";
-
-/** True for a timezone name that the IANA database knows. */
-export const isIanaTimezone = (name: string): boolean => {
-	try {
-		new Intl.DateTimeFormat(undefined, { timeZone: name });
-		return true;
-	} catch {
-		return false;
-	}
-};
 
 // A new workspace, from `POST /api/v1/me/organizations`. better-auth makes
 // it (`onboarding.createOrganization`), with the fields that the org
@@ -27,7 +18,7 @@ export const createOrganizationInput = z.object({
 		.trim()
 		.min(1)
 		.max(100)
-		.refine(isIanaTimezone, "Not an IANA timezone")
+		.refine(isValidTimezone, "Not an IANA timezone")
 		.default("UTC"),
 	country: z.string().length(2).default("US"),
 	weekStartsOn: z.union([z.literal(0), z.literal(1)]).default(1),

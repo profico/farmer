@@ -156,7 +156,15 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 		.leftJoin(timeEntry, eq(timeEntry.id, runningTimer.timeEntryId))
 		.innerJoin(task, eq(task.id, taskIdOf))
 		.leftJoin(project, eq(project.id, projectIdOf))
-		.where(eq(runningTimer.userId, userId))
+		.where(
+			and(
+				eq(runningTimer.userId, userId),
+				// A bound principal sees only its own workspace's timer.
+				ctx.boundToOrganization
+					? eq(runningTimer.organizationId, ctx.organizationId)
+					: undefined,
+			),
+		)
 		.limit(1);
 
 const viewOf = (
@@ -245,6 +253,18 @@ const assertDrivable = async (
 	return running;
 };
 
+/** A bound principal's read hides a timer in another workspace. The unique
+ *  index would still refuse the insert, so refuse it here, with no name. */
+const assertNoHiddenTimer = async (ctx: Ctx): Promise<void> => {
+	if (!ctx.boundToOrganization) return;
+	const [other] = await ctxDb(ctx)
+		.select({ id: runningTimer.id })
+		.from(runningTimer)
+		.where(eq(runningTimer.userId, ctx.userId))
+		.limit(1);
+	if (other) throw new Error("A timer is already running. Stop it first.");
+};
+
 export const timersService = {
 	get: async (ctx: Ctx, opts: { now?: Date } = {}): Promise<TimerView | null> =>
 		read(ctx, opts.now ?? new Date()),
@@ -275,6 +295,7 @@ export const timersService = {
 	): Promise<TimerView> => {
 		const now = opts.now ?? new Date();
 		const running = await read(ctx, now);
+		if (!running) await assertNoHiddenTimer(ctx);
 		if (running) {
 			throw new Error(
 				running.droppedAt
@@ -625,7 +646,15 @@ export const timersService = {
 	discard: async (ctx: Ctx): Promise<void> => {
 		const cleared = await ctxDb(ctx)
 			.delete(runningTimer)
-			.where(eq(runningTimer.userId, ctx.userId))
+			.where(
+				and(
+					eq(runningTimer.userId, ctx.userId),
+					// Only a session may clear a notice from another workspace.
+					ctx.boundToOrganization
+						? eq(runningTimer.organizationId, ctx.organizationId)
+						: undefined,
+				),
+			)
 			.returning({ droppedAt: runningTimer.droppedAt });
 		// A dropped timer's activity ended when the sweep dropped it.
 		if (cleared.some((row) => row.droppedAt === null)) {

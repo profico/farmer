@@ -424,7 +424,87 @@ describe("the retry schedule", () => {
 	});
 });
 
+describe("a receiver that breaks the write", () => {
+	test("a NUL byte in the response does not stop the other deliveries", async () => {
+		const { endpoint } = await anEndpoint(adminCtx, "https://8.8.8.8/hook");
+		setWebhookSenderForTests(() =>
+			Promise.resolve({
+				statusCode: 500,
+				error: "bad\0error",
+				responseSample: "a\0b",
+				durationMs: 1,
+			}),
+		);
+		await emitEvent(adminCtx, "client.created", () => ({
+			client: { id: "client-nul-1", name: "Acme" },
+		}));
+		await emitEvent(adminCtx, "client.created", () => ({
+			client: { id: "client-nul-2", name: "Acme" },
+		}));
+		const summary = await runWebhookDeliveryOnce();
+		expect(summary.attempted).toBe(2);
+		const rows = await deliveriesFor(endpoint.id);
+		const first = at(rows, 0);
+		expect(first.attemptedAt).not.toBeNull();
+		expect(first.responseSample).toBe("ab");
+		expect(first.error).toBe("baderror");
+	});
+
+	test("a row stranded by a dead tick is sent again, a live claim is not", async () => {
+		const { endpoint } = await anEndpoint(adminCtx, "https://8.8.8.8/hook");
+		const sent = recorder(200);
+		await emitEvent(adminCtx, "client.created", () => ({
+			client: { id: "client-strand", name: "Acme" },
+		}));
+		await runWebhookDeliveryOnce({ now: new Date(Date.now() - 1000) });
+		await db
+			.update(webhookDelivery)
+			.set({ attemptedAt: null, claimedAt: new Date() })
+			.where(eq(webhookDelivery.endpointId, endpoint.id));
+		sent.length = 0;
+
+		// Claimed a moment ago: another tick may still be sending it.
+		await runWebhookDeliveryOnce();
+		expect(sent).toHaveLength(0);
+
+		const longAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+		await db
+			.update(webhookDelivery)
+			.set({ claimedAt: longAgo })
+			.where(eq(webhookDelivery.endpointId, endpoint.id));
+		await runWebhookDeliveryOnce();
+		expect(sent).toHaveLength(1);
+	});
+});
+
 describe("giving up on an endpoint", () => {
+	test("logs the id and the host and path, never the query", async () => {
+		const { endpoint } = await anEndpoint(
+			adminCtx,
+			"https://8.8.8.8/hook?token=s3cret",
+		);
+		await db
+			.update(webhookEndpoint)
+			.set({
+				failingSince: new Date(
+					Date.now() - (WEBHOOK_GIVE_UP_DAYS + 1) * 24 * 60 * 60 * 1000,
+				),
+			})
+			.where(eq(webhookEndpoint.id, endpoint.id));
+		setNotifyAdaptersForTests({
+			slack: () => Promise.resolve(true),
+			push: () => Promise.resolve(true),
+		});
+		const lines: string[] = [];
+		await runWebhookDeliveryOnce({
+			logger: { warn: (line) => lines.push(line) },
+		});
+		const line = at(lines, 0);
+		expect(line).toContain(endpoint.id);
+		expect(line).toContain("8.8.8.8/hook");
+		expect(line).not.toContain("s3cret");
+	});
+
 	test("switches it off and tells the admins", async () => {
 		const { endpoint } = await anEndpoint(adminCtx, "https://8.8.8.8/hook");
 		const told: string[] = [];

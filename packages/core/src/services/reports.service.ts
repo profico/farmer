@@ -10,6 +10,7 @@ import type {
 	TimeReportSummaryInput,
 } from "../schema/reports";
 import { type Access, accessService } from "./access.service";
+import { shownName } from "./claim-name";
 import { ctxAccess } from "./context";
 import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerWhere } from "./ledger";
@@ -232,7 +233,11 @@ export const reportsService = {
 				? { id: client.id, name: client.name }
 				: input.tab === "projects"
 					? { id: project.id, name: project.name }
-					: { id: user.id, name: user.name };
+					: {
+							id: user.id,
+							// An aggregate, so the group key stays the id alone.
+							name: sql<string>`max(${shownName(ctx.organizationId)})`,
+						};
 		// The second figure each tab shows beside the hours: how many projects a
 		// client had time on, how many people a project had, how many projects a
 		// person touched.
@@ -253,7 +258,7 @@ export const reportsService = {
 			.innerJoin(client, eq(project.clientId, client.id))
 			.innerJoin(user, eq(timeEntry.userId, user.id))
 			.where(where)
-			.groupBy(grouping.id, grouping.name)
+			.groupBy(grouping.id)
 			.orderBy(desc(sql`sum(${timeEntry.durationSeconds})`));
 
 		// The Projects tab reads the project itself — code, client, whether it is
@@ -363,7 +368,7 @@ export const reportsService = {
 					taskName: task.name,
 					description: timeEntry.description,
 					userId: user.id,
-					userName: user.name,
+					userName: shownName(ctx.organizationId),
 					overtime: timeEntry.overtime,
 					durationSeconds: timeEntry.durationSeconds,
 				})
@@ -375,7 +380,11 @@ export const reportsService = {
 				.where(where)
 				// One fixed order — the Breakdown regroups on the client and keeps
 				// this order inside every group.
-				.orderBy(asc(timeEntry.date), asc(user.name), asc(timeEntry.id))
+				.orderBy(
+					asc(timeEntry.date),
+					asc(shownName(ctx.organizationId)),
+					asc(timeEntry.id),
+				)
 				.limit(MAX_DETAIL_ROWS),
 			db
 				.select({
@@ -417,7 +426,7 @@ export const reportsService = {
 				id: timeEntry.id,
 				date: timeEntry.date,
 				userId: timeEntry.userId,
-				userName: user.name,
+				userName: shownName(ctx.organizationId),
 				projectName: project.name,
 				projectCode: project.code,
 				taskName: task.name,
@@ -515,7 +524,7 @@ export const reportsService = {
 					id: timeEntry.id,
 					date: timeEntry.date,
 					userId: timeEntry.userId,
-					userName: user.name,
+					userName: shownName(ctx.organizationId),
 					taskId: task.id,
 					taskKey: task.systemKey,
 					taskName: task.name,

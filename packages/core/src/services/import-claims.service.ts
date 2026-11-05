@@ -20,7 +20,7 @@
 // `ctx.organizationId` the organization whose claim they answer. No `Access`
 // is resolved, because `resolve` refuses exactly these callers.
 
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { type DbClient, db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -58,7 +58,11 @@ const pendingMembership = async (
 	ctx: Ctx,
 ): Promise<{ role: string; name: string }> => {
 	const [row] = await client
-		.select({ role: member.role, name: user.name })
+		// The org reads this name in the decline audit row: the import's name.
+		.select({
+			role: member.role,
+			name: sql<string>`coalesce(${memberProfile.claimName}, ${user.name})`,
+		})
 		.from(memberProfile)
 		.innerJoin(
 			member,
@@ -84,6 +88,9 @@ const pendingMembership = async (
 const clearClaim = (client: DbClient, ctx: Ctx) =>
 	client
 		.update(memberProfile)
+		// `claimName` stays: undo reads it to tell a person who accepted from
+		// one a single-org import attached. Nothing shows it once the claim is
+		// accepted.
 		.set({ claimPendingSince: null, updatedAt: new Date() })
 		.where(
 			and(

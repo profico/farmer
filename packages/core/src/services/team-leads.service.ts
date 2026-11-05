@@ -6,6 +6,7 @@ import { memberProfile, teamLeadPerson } from "../db/schema/people";
 import type { SetTeamLeadPeopleInput } from "../schema/team-leads";
 import { AccessError } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
+import { shownName, shownNameOf } from "./claim-name";
 import { ctxAccess, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
@@ -23,7 +24,7 @@ export const teamLeadsService = {
 		return db
 			.select({
 				userId: teamLeadPerson.personUserId,
-				name: user.name,
+				name: shownName(ctx.organizationId),
 				email: user.email,
 			})
 			.from(teamLeadPerson)
@@ -34,7 +35,7 @@ export const teamLeadsService = {
 					eq(teamLeadPerson.leadUserId, leadUserId),
 				),
 			)
-			.orderBy(asc(user.name));
+			.orderBy(asc(shownName(ctx.organizationId)));
 	},
 
 	/** How many people each lead has — one number per lead, leads only. */
@@ -117,16 +118,17 @@ export const teamLeadsService = {
 			["people"],
 		);
 		if (changes) {
-			const lead = await db.query.user.findFirst({
-				where: eq(user.id, input.leadUserId),
-				columns: { name: true },
-			});
+			const leadName = await shownNameOf(
+				db,
+				ctx.organizationId,
+				input.leadUserId,
+			);
 			await recordAudit(ctx, {
 				kind: "team_lead.people_changed",
 				target: {
 					type: "member",
 					id: input.leadUserId,
-					label: lead?.name ?? null,
+					label: leadName,
 				},
 				subjectUserId: input.leadUserId,
 				changes,

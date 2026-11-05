@@ -16,8 +16,8 @@ const spoofed = {
 };
 
 describe("trustedIpHeader", () => {
-	test("defaults to Cloudflare's header", () => {
-		expect(trustedIpHeader(undefined)).toBe("cf-connecting-ip");
+	test("defaults to no header, the socket address", () => {
+		expect(trustedIpHeader(undefined)).toBeNull();
 	});
 
 	test("reads the configured name, and none or empty as no header", () => {
@@ -56,6 +56,14 @@ describe("clientAddress", () => {
 		expect(clientAddress(new Headers(spoofed), null)).toBe("10.0.0.2");
 	});
 
+	test("does not let a caller choose its address with the default", () => {
+		const headers = new Headers({
+			"cf-connecting-ip": "203.0.113.99",
+			[SOCKET_ADDRESS_HEADER]: "10.0.0.2",
+		});
+		expect(clientAddress(headers, trustedIpHeader(undefined))).toBe("10.0.0.2");
+	});
+
 	test("unmaps the IPv4 a dual-stack socket reports as IPv6", () => {
 		const headers = new Headers({
 			"cf-connecting-ip": "::ffff:203.0.113.7",
@@ -88,6 +96,21 @@ describe("a missing trusted header", () => {
 			});
 			expect(clientAddress(headers, "cf-connecting-ip")).toBe("10.0.0.2");
 			expect(clientAddress(headers, "cf-connecting-ip")).toBe("10.0.0.2");
+			expect(warn).toHaveBeenCalledTimes(1);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	test("warns when no header is trusted and a forwarding header is present", () => {
+		resetClientAddressWarningForTests();
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const headers = new Headers({
+				"x-forwarded-for": "198.51.100.2",
+				[SOCKET_ADDRESS_HEADER]: "10.0.0.2",
+			});
+			expect(clientAddress(headers, null)).toBe("10.0.0.2");
 			expect(warn).toHaveBeenCalledTimes(1);
 		} finally {
 			warn.mockRestore();

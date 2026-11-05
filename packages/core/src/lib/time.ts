@@ -279,6 +279,20 @@ export const monthBounds = (year: number, month: number): DayKeyRange => {
 	return { from, to: endOfMonthKey(from) };
 };
 
+/** Whether the IANA database knows this zone. A bad zone makes `TZDate` throw. */
+export const isValidTimezone = (tz: string): boolean => {
+	try {
+		new Intl.DateTimeFormat(undefined, { timeZone: tz });
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+/** The zone to compute with: a stored zone that is not valid falls back to UTC. */
+export const safeTimezone = (tz: string | null | undefined): string =>
+	tz && isValidTimezone(tz) ? tz : "UTC";
+
 export const dayKeyInTz = (instant: Date, ianaTz: string): string =>
 	format(new TZDate(instant, ianaTz), "yyyy-MM-dd");
 

@@ -24,6 +24,7 @@ import {
 	GithubTokenInvalidError,
 } from "../lib/github-client";
 import { setting } from "../lib/instance-settings";
+import { loggableError } from "../lib/loggable-error";
 import { signOrgState } from "../lib/oauth-state";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
@@ -281,7 +282,7 @@ const readAccessToken = async (ctx: Ctx): Promise<string | null> => {
 	} catch (error) {
 		console.error("[github] getAccessToken failed", {
 			userId: ctx.userId,
-			error,
+			error: loggableError(error),
 		});
 		return null;
 	}
