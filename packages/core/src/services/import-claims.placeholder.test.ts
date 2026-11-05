@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { and, asc, count, eq, is } from "drizzle-orm";
+import { and, asc, count, eq, is, or } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 
 import { assertMayRegister } from "../auth/registration";
@@ -556,6 +556,42 @@ describe("a claim", () => {
 		expect(profile.startDate).toBe("2024-01-01");
 		expect(profile.claimPendingSince).toBeNull();
 		expect(await importClaimsService.pendingFor(caller.userId)).toEqual([]);
+	});
+
+	test("accept drops a lead link between the caller and the placeholder", async () => {
+		for (const [email, callerLeads] of [
+			["lead.of@example.com", true],
+			["lead.by@example.com", false],
+		] as const) {
+			const { placeholder } = await importPerson(email);
+			const caller = await signUp(email, true);
+			await db.insert(member).values({
+				id: `m-${caller.userId}`,
+				organizationId: ORG,
+				userId: caller.userId,
+				role: "member",
+				createdAt: new Date(),
+			});
+			await db.insert(teamLeadPerson).values({
+				organizationId: ORG,
+				leadUserId: callerLeads ? caller.userId : placeholder,
+				personUserId: callerLeads ? placeholder : caller.userId,
+			});
+
+			await importClaimsService.accept(caller);
+
+			expect(
+				await db
+					.select()
+					.from(teamLeadPerson)
+					.where(
+						or(
+							eq(teamLeadPerson.leadUserId, caller.userId),
+							eq(teamLeadPerson.personUserId, caller.userId),
+						),
+					),
+			).toEqual([]);
+		}
 	});
 
 	test("decline keeps the history, and the offer does not return", async () => {

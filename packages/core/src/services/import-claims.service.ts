@@ -27,6 +27,7 @@ import {
 	inArray,
 	isNotNull,
 	isNull,
+	or,
 	sql,
 } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -359,6 +360,23 @@ const adoptPlaceholder = async (
 		.from(member)
 		.where(and(eq(member.organizationId, org), eq(member.userId, ctx.userId)));
 	const overCap = await daysOverCap(tx, org, placeholder.userId, ctx.userId);
+	// A lead link between the caller and the placeholder would become a
+	// caller-to-caller row, which the self-lead check refuses.
+	await tx.delete(teamLeadPerson).where(
+		and(
+			eq(teamLeadPerson.organizationId, org),
+			or(
+				and(
+					eq(teamLeadPerson.leadUserId, ctx.userId),
+					eq(teamLeadPerson.personUserId, placeholder.userId),
+				),
+				and(
+					eq(teamLeadPerson.leadUserId, placeholder.userId),
+					eq(teamLeadPerson.personUserId, ctx.userId),
+				),
+			),
+		),
+	);
 	for (const m of MOVES) {
 		await moveRows(tx, m, org, placeholder.userId, ctx.userId);
 	}
