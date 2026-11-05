@@ -144,9 +144,13 @@ USER bun
 EXPOSE 3000
 
 # Liveness/readiness: the server must answer HTTP, not just have a live process.
-# The start period is the budget for a slow migration and seed. During it,
-# --start-interval probes every 2s and a failed probe does not count.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --start-interval=2s --retries=3 \
+# Coolify copies these values and sleeps the whole start period before its
+# first look, then looks once per interval. Traefik routes to the container as
+# soon as Docker marks it healthy, so until Coolify looks, the old and the new
+# build both take requests and each asks for assets that only the other has.
+# Keep the start period and the interval short. The budget for a slow
+# migration and seed is retries x interval (150s).
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --start-interval=2s --retries=30 \
 	CMD bun -e "fetch('http://localhost:'+(process.env.PORT??3000)).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
