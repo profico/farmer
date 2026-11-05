@@ -4,6 +4,7 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
+import { loggableError } from "../lib/loggable-error";
 import { formatDurationShort, safeTimezone, timeKeyInTz } from "../lib/time";
 import { notify } from "../services/notify";
 import {
@@ -116,7 +117,10 @@ export const runTimerSweepOnce = async (
 			);
 		} catch (error) {
 			summary.failed += 1;
-			console.error("[timer-sweep] failed to drop a timer", error);
+			console.error(
+				"[timer-sweep] failed to drop a timer",
+				loggableError(error),
+			);
 		}
 	}
 

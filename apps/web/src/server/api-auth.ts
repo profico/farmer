@@ -23,8 +23,6 @@ import {
 } from "@farmer/core/lib/client-address";
 import type { ApiTokenPrincipal, CtxActor } from "@farmer/core/services";
 
-import { safeError } from "#/lib/safe-error.ts";
-
 /**
  * The door a request came through, for the audit log: which surface, the
  * operator behind an impersonated session, and the client's address and
@@ -274,12 +272,11 @@ export const resolveCliUser = async (
 				updatedAt: new Date(now),
 			});
 		} catch (error) {
-			// The error holds the bound parameters, and one is the raw token.
+			// The update holds the session token in its WHERE clause.
+			const { loggableError } = await import("@farmer/core/lib/loggable-error");
 			console.error(
 				"[api] could not refresh a CLI session",
-				error instanceof Error
-					? safeError(error, new URL(request.url).pathname)
-					: "unknown error",
+				loggableError(error),
 			);
 		}
 	}

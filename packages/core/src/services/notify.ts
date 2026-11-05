@@ -26,6 +26,7 @@ import { account, member } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
+import { loggableError } from "../lib/loggable-error";
 import { slackEscape, slackLink } from "../lib/slack-client";
 import { notificationsService } from "./notifications.service";
 import { slackService } from "./slack.service";
@@ -337,7 +338,7 @@ export const notify = async (
 					kind: event.kind,
 					organizationId: to.organizationId,
 					userId: to.userId,
-					error,
+					error: loggableError(error),
 				});
 				return [channel, false] as const;
 			}

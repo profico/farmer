@@ -59,6 +59,7 @@ import {
 	DEFAULT_AUDIT_RETENTION_DAYS,
 } from "../lib/audit";
 import type { JsonRecord } from "../lib/json";
+import { loggableError } from "../lib/loggable-error";
 import { addDaysToKey, dayBoundsInTz } from "../lib/time";
 import {
 	AUDIT_PAGE_SIZE,
@@ -139,7 +140,7 @@ export const recordAudit = async (
 		console.error("[audit] could not write an audit event", {
 			kind: entry.kind,
 			organizationId: ctx.organizationId,
-			error,
+			error: loggableError(error),
 		});
 	}
 };
@@ -209,7 +210,7 @@ export const recordSecurityEvent = async (
 		console.error("[audit] could not write a security event", {
 			kind: event.kind,
 			userId: event.subjectUserId,
-			error,
+			error: loggableError(error),
 		});
 	}
 };

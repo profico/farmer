@@ -1,1 +1,0 @@
-ALTER TABLE "member_profile" ADD COLUMN "claim_name" text;

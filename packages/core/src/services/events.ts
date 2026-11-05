@@ -54,6 +54,7 @@ import type {
 import { user } from "../db/schema/auth";
 import { client, project, timeEntry } from "../db/schema/domain";
 import { webhookEndpoint, webhookEvent } from "../db/schema/webhooks";
+import { loggableError } from "../lib/loggable-error";
 import { shownName } from "./claim-name";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
@@ -160,7 +161,7 @@ export const emitEvent = async <K extends WebhookEventKind>(
 		console.error("[events] could not write webhook event", {
 			kind,
 			organizationId: ctx.organizationId,
-			error,
+			error: loggableError(error),
 		});
 	}
 };

@@ -1,1 +1,0 @@
-ALTER TABLE "project_member" ADD COLUMN "assigned_by_admin" boolean DEFAULT true NOT NULL;

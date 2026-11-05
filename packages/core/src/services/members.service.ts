@@ -23,6 +23,7 @@ import {
 	memberTypeHistory,
 	teamLeadPerson,
 } from "../db/schema/people";
+import { loggableError } from "../lib/loggable-error";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type {
 	InviteMemberInput,
@@ -742,7 +743,7 @@ export const membersService = {
 			console.error("[members] could not record invitation email", {
 				invitationId,
 				status,
-				error: writeError,
+				error: loggableError(writeError),
 			});
 		}
 	},

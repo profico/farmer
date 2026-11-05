@@ -30,6 +30,7 @@ import { member, organization, user } from "../db/schema/auth";
 import { runAutomationSyncForCtx } from "../jobs/automation-sync";
 import { withTimeout } from "../lib/http";
 import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
+import { loggableError } from "../lib/loggable-error";
 import { foldForSearch } from "../lib/search";
 import {
 	absenceReportInput,
@@ -1593,7 +1594,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					const message =
 						error instanceof Error ? safeErrorMessage(error) : null;
 					if (message === null) {
-						console.error("[assistant] unlink_commits failed", error);
+						console.error(
+							"[assistant] unlink_commits failed",
+							loggableError(error),
+						);
 					}
 					results.push({
 						attachmentId,
@@ -1674,7 +1678,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					const message =
 						error instanceof Error ? safeErrorMessage(error) : null;
 					if (message === null) {
-						console.error("[assistant] unlink_pull_requests failed", error);
+						console.error(
+							"[assistant] unlink_pull_requests failed",
+							loggableError(error),
+						);
 					}
 					results.push({
 						activityId,

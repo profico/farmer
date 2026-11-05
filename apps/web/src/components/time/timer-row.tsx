@@ -18,6 +18,20 @@ import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
 
 import {
+	cardEyebrowClass,
+	cardFigureClass,
+	railAction,
+	railAriaLabel,
+	railFigureClass,
+	railTagClass,
+	railTagText,
+	taskLine,
+	type TimerStateLabel,
+	timerStateLabel,
+	timerStatusText,
+	type TimerView,
+} from "./timer-card-view.ts";
+import {
 	DiscardTimerDialog,
 	DroppedTimerDialog,
 	type RunningTimer,
@@ -99,10 +113,13 @@ function TimerCardBody({
 	const [discardOpen, setDiscardOpen] = useState(false);
 	const [droppedOpen, setDroppedOpen] = useState(false);
 
-	const dropped = timer.droppedAt != null;
-	const elsewhere = !timer.here;
+	const view: TimerView = {
+		dropped: timer.droppedAt != null,
+		elsewhere: !timer.here,
+		paused: timer.paused,
+	};
 	const figure = formatStopwatch(elapsedSeconds);
-	const state = dropped ? "Dropped" : timer.paused ? "Paused" : "Running";
+	const state = timerStateLabel(view);
 
 	// Stopping holds the clock first, so the figure in the form is the figure on
 	// the card. The dialog's own Resume hands it back.
@@ -115,47 +132,20 @@ function TimerCardBody({
 		<>
 			<div className="timer-card -mx-2 border-y border-line2 bg-muted/40">
 				<div className="timer-card-body flex flex-col justify-center gap-1.5 px-3">
-					<div className="flex items-baseline justify-between gap-2">
-						<span
-							className={cn(
-								"eyebrow truncate",
-								dropped && "text-warn",
-								!dropped && !elsewhere && !timer.paused && "text-ok",
-							)}
-						>
-							{elsewhere ? `${state} in ${timer.organizationName}` : state}
-						</span>
-						<span className="shrink-0 text-2xs text-muted-foreground">
-							since {timeKeyInTz(timer.startedAt, timezone)}
-						</span>
-					</div>
-
-					<div className="min-w-0">
-						<div className="truncate text-sm font-medium text-foreground">
-							{timer.projectName ?? "No project"}
-						</div>
-						<div className="truncate text-xs text-muted-foreground">
-							{timer.taskName}
-							{timer.entryDate &&
-								` · adds to ${formatDateKeyShort(timer.entryDate)}`}
-						</div>
-					</div>
-
+					<CardHeader
+						view={view}
+						state={state}
+						timer={timer}
+						timezone={timezone}
+					/>
+					<CardProject timer={timer} />
 					<div className="flex items-center justify-between gap-2">
-						<span
-							className={cn(
-								"mono truncate text-xl tabular-nums",
-								dropped && "text-warn",
-								!dropped && timer.paused && "text-muted-foreground",
-							)}
-						>
-							{figure}
-						</span>
+						<span className={cardFigureClass(view)}>{figure}</span>
 						{/* A dropped timer logged nothing, so the only thing left to do
 						    with it is read the notice and clear it. A timer running
 						    elsewhere is a notice too: its controls are in the workspace it
 						    belongs to. */}
-						{dropped ? (
+						{view.dropped ? (
 							<Button
 								type="button"
 								variant="outline"
@@ -166,48 +156,20 @@ function TimerCardBody({
 							>
 								Dismiss
 							</Button>
-						) : elsewhere ? null : (
-							<span className="flex shrink-0 items-center gap-1.5">
-								<CardButton
-									label={timer.paused ? "Resume the timer" : "Pause the timer"}
-									hint={
-										timer.paused ? "Continue" : "Let's pause for a second..."
-									}
-									variant="outline"
-									size="icon-sm"
-									disabled={pause.isPending || resume.isPending}
-									onClick={() => {
-										if (timer.paused) resume.mutate();
-										else pause.mutate();
-									}}
-								>
-									{timer.paused ? (
-										<PlayIcon weight="fill" className="size-3.5" />
-									) : (
-										<PauseIcon weight="fill" className="size-3.5" />
-									)}
-								</CardButton>
-								<CardButton
-									label="Discard the timer"
-									hint="Throw the measurement away"
-									variant="outline"
-									size="icon-sm"
-									onClick={() => {
-										setDiscardOpen(true);
-									}}
-								>
-									<TrashIcon weight="regular" className="size-3.5" />
-								</CardButton>
-								<CardButton
-									label={`Stop the timer — ${figure} on ${timer.taskName}`}
-									hint="Hammer time"
-
-									size="icon"
-									onClick={openStop}
-								>
-									<StopIcon weight="fill" className="size-4" />
-								</CardButton>
-							</span>
+						) : view.elsewhere ? null : (
+							<CardControls
+								paused={timer.paused}
+								busy={pause.isPending || resume.isPending}
+								stopLabel={`Stop the timer — ${figure} on ${timer.taskName}`}
+								onToggle={() => {
+									if (timer.paused) resume.mutate();
+									else pause.mutate();
+								}}
+								onDiscard={() => {
+									setDiscardOpen(true);
+								}}
+								onStop={openStop}
+							/>
 						)}
 					</div>
 				</div>
@@ -217,68 +179,188 @@ function TimerCardBody({
 				    somebody looks at the column to see. */}
 				<button
 					type="button"
-					aria-label={
-						dropped
-							? "Your timer was dropped"
-							: elsewhere
-								? `A timer is ${state.toLowerCase()} in ${timer.organizationName}`
-								: `Stop the timer — ${figure} on ${timer.taskName}`
-					}
+					aria-label={railAriaLabel(
+						view,
+						state,
+						timer.organizationName,
+						figure,
+						timer.taskName,
+					)}
 					onClick={() => {
-						if (dropped) setDroppedOpen(true);
-						else if (!elsewhere) openStop();
+						const action = railAction(view);
+						if (action === "dismiss") setDroppedOpen(true);
+						else if (action === "stop") openStop();
 					}}
 					className="timer-card-rail flex flex-col items-center justify-center gap-0.5"
 				>
-					<span
-						className={cn(
-							"eyebrow",
-							dropped && "text-warn",
-							!dropped && !elsewhere && !timer.paused && "text-ok",
-						)}
-					>
-						{dropped ? "Drop" : timer.paused ? "Held" : "Run"}
-					</span>
-					<span
-						className={cn(
-							"mono text-2xs tabular-nums",
-							dropped && "text-warn",
-							!dropped && timer.paused && "text-muted-foreground",
-						)}
-					>
+					<span className={railTagClass(view)}>{railTagText(view)}</span>
+					<span className={railFigureClass(view)}>
 						{formatCompact(elapsedSeconds)}
 					</span>
 				</button>
 			</div>
 
-			{dropped ? (
-				<DroppedTimerDialog
-					orgSlug={orgSlug}
-					timezone={timezone}
-					timer={timer}
-					open={droppedOpen}
-					onOpenChange={setDroppedOpen}
-				/>
-			) : (
-				!elsewhere && (
-					<>
-						<StopTimerDialog
-							orgSlug={orgSlug}
-							timezone={timezone}
-							timer={timer}
-							open={stopOpen}
-							onOpenChange={setStopOpen}
-						/>
-						<DiscardTimerDialog
-							orgSlug={orgSlug}
-							measured={figure}
-							continuing={timer.timeEntryId != null}
-							open={discardOpen}
-							onOpenChange={setDiscardOpen}
-						/>
-					</>
-				)
-			)}
+			<CardDialogs
+				view={view}
+				orgSlug={orgSlug}
+				timezone={timezone}
+				timer={timer}
+				figure={figure}
+				stopOpen={stopOpen}
+				onStopOpenChange={setStopOpen}
+				discardOpen={discardOpen}
+				onDiscardOpenChange={setDiscardOpen}
+				droppedOpen={droppedOpen}
+				onDroppedOpenChange={setDroppedOpen}
+			/>
+		</>
+	);
+}
+
+function CardHeader({
+	view,
+	state,
+	timer,
+	timezone,
+}: {
+	view: TimerView;
+	state: TimerStateLabel;
+	timer: RunningTimer;
+	timezone: string;
+}) {
+	return (
+		<div className="flex items-baseline justify-between gap-2">
+			<span className={cardEyebrowClass(view)}>
+				{timerStatusText(state, view.elsewhere, timer.organizationName)}
+			</span>
+			<span className="shrink-0 text-2xs text-muted-foreground">
+				since {timeKeyInTz(timer.startedAt, timezone)}
+			</span>
+		</div>
+	);
+}
+
+function CardProject({ timer }: { timer: RunningTimer }) {
+	return (
+		<div className="min-w-0">
+			<div className="truncate text-sm font-medium text-foreground">
+				{timer.projectName ?? "No project"}
+			</div>
+			<div className="truncate text-xs text-muted-foreground">
+				{taskLine(
+					timer.taskName,
+					timer.entryDate ? formatDateKeyShort(timer.entryDate) : null,
+				)}
+			</div>
+		</div>
+	);
+}
+
+function CardControls({
+	paused,
+	busy,
+	stopLabel,
+	onToggle,
+	onDiscard,
+	onStop,
+}: {
+	paused: boolean;
+	busy: boolean;
+	stopLabel: string;
+	onToggle: () => void;
+	onDiscard: () => void;
+	onStop: () => void;
+}) {
+	return (
+		<span className="flex shrink-0 items-center gap-1.5">
+			<CardButton
+				label={paused ? "Resume the timer" : "Pause the timer"}
+				hint={paused ? "Continue" : "Let's pause for a second..."}
+				variant="outline"
+				size="icon-sm"
+				disabled={busy}
+				onClick={onToggle}
+			>
+				{paused ? (
+					<PlayIcon weight="fill" className="size-3.5" />
+				) : (
+					<PauseIcon weight="fill" className="size-3.5" />
+				)}
+			</CardButton>
+			<CardButton
+				label="Discard the timer"
+				hint="Throw the measurement away"
+				variant="outline"
+				size="icon-sm"
+				onClick={onDiscard}
+			>
+				<TrashIcon weight="regular" className="size-3.5" />
+			</CardButton>
+			<CardButton
+				label={stopLabel}
+				hint="Hammer time"
+				size="icon"
+				onClick={onStop}
+			>
+				<StopIcon weight="fill" className="size-4" />
+			</CardButton>
+		</span>
+	);
+}
+
+function CardDialogs({
+	view,
+	orgSlug,
+	timezone,
+	timer,
+	figure,
+	stopOpen,
+	onStopOpenChange,
+	discardOpen,
+	onDiscardOpenChange,
+	droppedOpen,
+	onDroppedOpenChange,
+}: {
+	view: TimerView;
+	orgSlug: string;
+	timezone: string;
+	timer: RunningTimer;
+	figure: string;
+	stopOpen: boolean;
+	onStopOpenChange: (open: boolean) => void;
+	discardOpen: boolean;
+	onDiscardOpenChange: (open: boolean) => void;
+	droppedOpen: boolean;
+	onDroppedOpenChange: (open: boolean) => void;
+}) {
+	if (view.dropped) {
+		return (
+			<DroppedTimerDialog
+				orgSlug={orgSlug}
+				timezone={timezone}
+				timer={timer}
+				open={droppedOpen}
+				onOpenChange={onDroppedOpenChange}
+			/>
+		);
+	}
+	if (view.elsewhere) return null;
+	return (
+		<>
+			<StopTimerDialog
+				orgSlug={orgSlug}
+				timezone={timezone}
+				timer={timer}
+				open={stopOpen}
+				onOpenChange={onStopOpenChange}
+			/>
+			<DiscardTimerDialog
+				orgSlug={orgSlug}
+				measured={figure}
+				continuing={timer.timeEntryId != null}
+				open={discardOpen}
+				onOpenChange={onDiscardOpenChange}
+			/>
 		</>
 	);
 }

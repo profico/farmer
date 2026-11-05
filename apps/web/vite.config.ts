@@ -128,6 +128,16 @@ export default defineConfig(({ command }) => ({
 		// slows startup and can break packages meant to stay external.
 		noExternal: command === "build" ? true : undefined,
 	},
+	server: {
+		// Vite turns on forwardConsole when an AI agent starts `vite dev`. It
+		// sends the browser console to the terminal. The devtools plugin
+		// sends the server console to the browser, and the SSR code shares
+		// the console of the Vite process. Thus each line goes around again
+		// with one more "[Server]" prefix, and the log does not stop. The
+		// devtools plugin already sends the browser console to the terminal
+		// with a "[Client]" prefix, so turn off the Vite forwarder.
+		forwardConsole: false,
+	},
 	plugins: [
 		seedSiteTasks(),
 		devWorker(),

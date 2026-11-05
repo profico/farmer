@@ -56,13 +56,17 @@ import { findSingleOrg, isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
 import type {
+	HarvestClientPlan,
 	HarvestEmailsInput,
 	HarvestFinishInput,
 	HarvestImportDaysInput,
+	HarvestPersonPlan,
+	HarvestProjectPlan,
 	HarvestRemoveDaysInput,
 	HarvestRunIdInput,
 	HarvestSnapshotInput,
 	HarvestStartInput,
+	HarvestTaskPlan,
 } from "../schema/harvest-import";
 import { recordAudit } from "./audit";
 import { shownName } from "./claim-name";
@@ -444,6 +448,718 @@ const deleteEntries = async (tx: DbClient, ids: readonly string[]) => {
 	}
 };
 
+/** A user `start` makes a member at once (single-org mode). */
+type DirectMember = { userId: string; name: string; role: string };
+
+type PersonMatchPlan = Extract<HarvestPersonPlan, { action: "match" }>;
+type PersonCreatePlan = Extract<HarvestPersonPlan, { action: "create" }>;
+
+/** What the steps of the `start` transaction share. Every write goes
+ *  through `tx`. */
+type StartTx = {
+	tx: DbClient;
+	ctx: Ctx;
+	org: string;
+	runId: string;
+	multiOrg: boolean;
+	counts: StartCounts;
+	directMembers: DirectMember[];
+};
+
+const remember = async (
+	st: StartTx,
+	kind: HarvestMappingKind,
+	sourceKey: string,
+	localId: string,
+	created: boolean,
+) => {
+	// An earlier run's mapping wins: it records who created the row,
+	// and that run's undo is the one that may remove it.
+	await st.tx
+		.insert(importMapping)
+		.values({
+			organizationId: st.org,
+			runId: st.runId,
+			kind,
+			sourceKey,
+			localId,
+			created,
+		})
+		.onConflictDoNothing();
+};
+
+// A `create` for a key an earlier run already mapped means the
+// browser planned against an old snapshot. Refuse rather than make a
+// second copy of the row.
+const assertNotMapped = (
+	kind: HarvestMappingKind,
+	known: ReadonlyMap<string, string>,
+	item: { action: string; sourceKey: string },
+) => {
+	if (item.action === "create" && known.has(item.sourceKey)) {
+		throw new Error(
+			`The ${kind} "${item.sourceKey}" was imported before. Reload the files and try again.`,
+		);
+	}
+};
+
+const startClients = async (
+	st: StartTx,
+	clients: readonly HarvestClientPlan[],
+	orgRow: { name: string } | undefined,
+): Promise<Map<string, string>> => {
+	const { tx, ctx, org } = st;
+	const knownClients = await mappingsFor(tx, ctx, "client");
+	const clientIds = new Map(knownClients);
+	const matchClientIds = clients.flatMap((c) =>
+		c.action === "match" ? [c.localId] : [],
+	);
+	const orgClientIds = new Set<string>();
+	for (const batch of inBatches(matchClientIds)) {
+		const rows = await tx
+			.select({ id: client.id })
+			.from(client)
+			.where(and(eq(client.organizationId, org), inArray(client.id, batch)));
+		for (const r of rows) orgClientIds.add(r.id);
+	}
+	let internalId: string | null = null;
+	for (const c of clients) {
+		assertNotMapped("client", knownClients, c);
+		if (c.action === "match") {
+			if (!orgClientIds.has(c.localId)) {
+				throw new Error(`Client "${c.sourceKey}" matches no client here`);
+			}
+			clientIds.set(c.sourceKey, c.localId);
+			await remember(st, "client", c.sourceKey, c.localId, false);
+		} else if (c.action === "internal") {
+			internalId ??= await clientsService.ensureInternal(ctx, orgRow?.name, tx);
+			clientIds.set(c.sourceKey, internalId);
+			await remember(st, "client", c.sourceKey, internalId, false);
+		} else {
+			const [row] = await tx
+				.insert(client)
+				.values({
+					organizationId: org,
+					name: c.name,
+					archivedAt: c.archived ? new Date() : null,
+				})
+				.returning({ id: client.id });
+			if (!row) throw new Error(`Failed to create client "${c.name}"`);
+			clientIds.set(c.sourceKey, row.id);
+			await remember(st, "client", c.sourceKey, row.id, true);
+			st.counts.clients++;
+		}
+	}
+	return clientIds;
+};
+
+/** Refuses a created task that takes the name of a live task of the org. */
+const assertNoTaskNameClash = async (
+	st: StartTx,
+	tasks: readonly HarvestTaskPlan[],
+) => {
+	const createNames = tasks.flatMap((t) =>
+		t.action === "create" && !t.archived ? [t.name] : [],
+	);
+	for (const batch of inBatches(createNames)) {
+		const clash = await st.tx
+			.select({ name: task.name })
+			.from(task)
+			.where(
+				and(
+					eq(task.organizationId, st.org),
+					eq(task.scope, "organization"),
+					isNull(task.archivedAt),
+					inArray(task.name, batch),
+				),
+			)
+			.limit(1);
+		if (clash[0]) {
+			throw new Error(
+				`A task named "${clash[0].name}" exists already. Match it instead.`,
+			);
+		}
+	}
+};
+
+const startTasks = async (st: StartTx, tasks: readonly HarvestTaskPlan[]) => {
+	const { tx, ctx, org } = st;
+	const knownTasks = await mappingsFor(tx, ctx, "task");
+	const usableTasks = new Set<string>();
+	const matchTaskIds = tasks.flatMap((t) =>
+		t.action === "match" ? [t.localId] : [],
+	);
+	for (const batch of inBatches(matchTaskIds)) {
+		const rows = await tx
+			.select({ id: task.id })
+			.from(task)
+			.where(
+				and(
+					inArray(task.id, batch),
+					or(eq(task.organizationId, org), eq(task.scope, "site")),
+				),
+			);
+		for (const r of rows) usableTasks.add(r.id);
+	}
+	await assertNoTaskNameClash(st, tasks);
+	for (const t of tasks) {
+		assertNotMapped("task", knownTasks, t);
+		if (t.action === "match") {
+			if (!usableTasks.has(t.localId)) {
+				throw new Error(`Task "${t.sourceKey}" matches no task here`);
+			}
+			await remember(st, "task", t.sourceKey, t.localId, false);
+		} else {
+			const [row] = await tx
+				.insert(task)
+				.values({
+					scope: "organization",
+					organizationId: org,
+					name: t.name,
+					group: groupForTaskName(t.name) ?? "general",
+					archivedAt: t.archived ? new Date() : null,
+				})
+				.returning({ id: task.id });
+			if (!row) throw new Error(`Failed to create task "${t.name}"`);
+			await remember(st, "task", t.sourceKey, row.id, true);
+			st.counts.tasks++;
+		}
+	}
+};
+
+/** The users a `match` may name: the org's members among `people`, and the
+ *  people an earlier run invited who have not joined yet. */
+const matchablePeople = async (
+	st: StartTx,
+	people: readonly HarvestPersonPlan[],
+): Promise<Set<string>> => {
+	const matchUserIds = people.flatMap((p) =>
+		p.action === "match" ? [p.localId] : [],
+	);
+	const memberIds = new Set<string>();
+	for (const batch of inBatches(matchUserIds)) {
+		const rows = await st.tx
+			.select({ userId: member.userId })
+			.from(member)
+			.where(
+				and(eq(member.organizationId, st.org), inArray(member.userId, batch)),
+			);
+		for (const r of rows) memberIds.add(r.userId);
+	}
+	for (const r of await invitedPeople(st.tx, st.org)) memberIds.add(r.userId);
+	return memberIds;
+};
+
+const startMatchedPerson = async (
+	st: StartTx,
+	p: PersonMatchPlan,
+	memberIds: ReadonlySet<string>,
+) => {
+	if (!memberIds.has(p.localId)) {
+		throw new Error(
+			`Person "${p.sourceKey}" matches no member or invited person here`,
+		);
+	}
+	if (p.startDate) {
+		await st.tx
+			.insert(memberProfile)
+			.values({
+				organizationId: st.org,
+				userId: p.localId,
+				startDate: p.startDate,
+			})
+			.onConflictDoUpdate({
+				target: [memberProfile.organizationId, memberProfile.userId],
+				set: {
+					startDate: sql`coalesce(${memberProfile.startDate}, excluded.start_date)`,
+				},
+			});
+	}
+	await remember(st, "person", p.sourceKey, p.localId, false);
+};
+
+/** The user a created person maps to: a user that holds the address, or a
+ *  new one. */
+const resolveImportUser = async (
+	st: StartTx,
+	p: PersonCreatePlan,
+	email: string,
+): Promise<string> => {
+	const { tx, org } = st;
+	const [found] = await tx
+		.select({ id: user.id })
+		.from(user)
+		.where(sql`lower(${user.email}) = ${email}`)
+		.limit(1);
+	if (!found) {
+		const userId = generateId();
+		await tx.insert(user).values({
+			id: userId,
+			name: p.name,
+			email,
+			emailVerified: p.emailConfirmed,
+		});
+		return userId;
+	}
+	const membership = await tx
+		.select({ id: member.id })
+		.from(member)
+		.where(and(eq(member.organizationId, org), eq(member.userId, found.id)))
+		.limit(1);
+	if (membership[0]) {
+		throw new Error(`${email} is a member already. Match the person instead.`);
+	}
+	// Single-org mode only. With several organizations no answer may
+	// depend on `found`, or an admin could probe which addresses
+	// have an account.
+	if (!st.multiOrg && !p.emailListed) {
+		throw new Error(
+			`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
+		);
+	}
+	// The admin typed the address, which is not the person's consent.
+	// With several organizations the membership waits for a claim
+	// (`claimPendingSince` below). Single-org mode attaches directly.
+	// Undo tells an attached user from a made one by the row's age.
+	return found.id;
+};
+
+const writeProfileAndType = async (
+	st: StartTx,
+	p: PersonCreatePlan,
+	userId: string,
+) => {
+	const { tx, org } = st;
+	const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
+	// With several organizations, a made or found user alike must
+	// accept before they use the org (`import-claims.service.ts`). An
+	// admin cannot make a stranger a member by importing an address.
+	const claimPendingSince = st.multiOrg ? new Date() : null;
+	await tx
+		.insert(memberProfile)
+		.values({
+			organizationId: org,
+			userId,
+			startDate: p.startDate,
+			archivedAt,
+			claimPendingSince,
+			claimName: claimPendingSince ? p.name : null,
+		})
+		.onConflictDoUpdate({
+			target: [memberProfile.organizationId, memberProfile.userId],
+			// A profile that survived a decline or a removal gets a new
+			// claim too, or the new member row joins without consent.
+			set: {
+				startDate: p.startDate,
+				archivedAt,
+				updatedAt: new Date(),
+				// Single-org mode keeps the stored claim fields.
+				claimPendingSince:
+					claimPendingSince ?? sql`${memberProfile.claimPendingSince}`,
+				claimName: claimPendingSince ? p.name : sql`${memberProfile.claimName}`,
+			},
+		});
+	const hasType = await tx
+		.select({ id: memberTypeHistory.id })
+		.from(memberTypeHistory)
+		.where(
+			and(
+				eq(memberTypeHistory.organizationId, org),
+				eq(memberTypeHistory.userId, userId),
+			),
+		)
+		.limit(1);
+	if (!hasType[0]) {
+		await tx.insert(memberTypeHistory).values({
+			organizationId: org,
+			userId,
+			type: p.type,
+			effectiveFrom: p.startDate,
+		});
+	}
+};
+
+const startCreatedPerson = async (
+	st: StartTx,
+	p: PersonCreatePlan,
+): Promise<string> => {
+	const email = normEmail(p.email);
+	const userId = await resolveImportUser(st, p, email);
+	await st.tx.insert(member).values({
+		id: generateId(),
+		organizationId: st.org,
+		userId,
+		role: p.role,
+		createdAt: new Date(),
+	});
+	if (!st.multiOrg)
+		st.directMembers.push({ userId, name: p.name, role: p.role });
+	await writeProfileAndType(st, p, userId);
+	await remember(st, "person", p.sourceKey, userId, true);
+	st.counts.people++;
+	return userId;
+};
+
+const startPeople = async (
+	st: StartTx,
+	people: readonly HarvestPersonPlan[],
+): Promise<{
+	personIds: Map<string, string>;
+	knownPeople: Map<string, string>;
+}> => {
+	const knownPeople = await mappingsFor(st.tx, st.ctx, "person");
+	const personIds = new Map(knownPeople);
+	const memberIds = await matchablePeople(st, people);
+	for (const p of people) {
+		// After every person it can point at: see `startAliases`.
+		if (p.action === "alias") continue;
+		assertNotMapped("person", knownPeople, p);
+		if (p.action === "match") {
+			personIds.set(p.sourceKey, p.localId);
+			await startMatchedPerson(st, p, memberIds);
+		} else {
+			personIds.set(p.sourceKey, await startCreatedPerson(st, p));
+		}
+	}
+	return { personIds, knownPeople };
+};
+
+// A second spelling of a person: map it to that person's user. Not
+// `created`, so undo removes only the mapping, with the run.
+const startAliases = async (
+	st: StartTx,
+	people: readonly HarvestPersonPlan[],
+	personIds: Map<string, string>,
+	knownPeople: ReadonlyMap<string, string>,
+) => {
+	for (const p of people) {
+		if (p.action !== "alias") continue;
+		const localId = personIds.get(p.of);
+		if (!localId) {
+			throw new Error(
+				`Person "${p.sourceKey}" is the same as "${p.of}", which the plan does not have`,
+			);
+		}
+		const known = knownPeople.get(p.sourceKey);
+		if (known !== undefined && known !== localId) {
+			throw new Error(
+				`"${p.sourceKey}" and "${p.of}" were imported before as different people`,
+			);
+		}
+		personIds.set(p.sourceKey, localId);
+		await remember(st, "person", p.sourceKey, localId, false);
+	}
+};
+
+const startProjects = async (
+	st: StartTx,
+	projects: readonly HarvestProjectPlan[],
+	clientIds: ReadonlyMap<string, string>,
+): Promise<Map<string, string>> => {
+	const { tx, ctx, org } = st;
+	const knownProjects = await mappingsFor(tx, ctx, "project");
+	const projectIds = new Map(knownProjects);
+	const matchProjectIds = projects.flatMap((p) =>
+		p.action === "match" ? [p.localId] : [],
+	);
+	const orgProjectIds = new Set<string>();
+	for (const batch of inBatches(matchProjectIds)) {
+		const rows = await tx
+			.select({ id: project.id })
+			.from(project)
+			.where(and(eq(project.organizationId, org), inArray(project.id, batch)));
+		for (const r of rows) orgProjectIds.add(r.id);
+	}
+	for (const p of projects) {
+		assertNotMapped("project", knownProjects, p);
+		if (p.action === "match") {
+			if (!orgProjectIds.has(p.localId)) {
+				throw new Error(`Project "${p.sourceKey}" matches no project here`);
+			}
+			// The import is the source of truth for the active set (the
+			// projects worked on in the month before the cutoff), so a match
+			// sets the status the way a create does.
+			await tx
+				.update(project)
+				.set({
+					status: p.archived ? "archived" : "active",
+					updatedAt: new Date(),
+				})
+				.where(eq(project.id, p.localId));
+			projectIds.set(p.sourceKey, p.localId);
+			await remember(st, "project", p.sourceKey, p.localId, false);
+			continue;
+		}
+		const clientId = clientIds.get(p.clientSourceKey);
+		if (!clientId) {
+			throw new Error(
+				`Project "${p.name}" names the client "${p.clientSourceKey}", which the plan does not have`,
+			);
+		}
+		const [row] = await tx
+			.insert(project)
+			.values({
+				organizationId: org,
+				clientId,
+				name: p.name,
+				code: p.code,
+				type: p.type,
+				status: p.archived ? "archived" : "active",
+				// The only budget anything computes against, and only on a
+				// fixed-scope project (see `createProjectInput`).
+				budgetSeconds: p.type === "fixed_scope" ? p.budgetSeconds : null,
+			})
+			.returning({ id: project.id });
+		if (!row) throw new Error(`Failed to create project "${p.name}"`);
+		projectIds.set(p.sourceKey, row.id);
+		await remember(st, "project", p.sourceKey, row.id, true);
+		st.counts.projects++;
+	}
+	return projectIds;
+};
+
+const lookupKey = (
+	map: ReadonlyMap<string, string>,
+	kind: string,
+	key: string,
+) => {
+	const id = map.get(key);
+	if (!id) throw new Error(`The plan names an unknown ${kind} "${key}"`);
+	return id;
+};
+
+const startAssignments = async (
+	st: StartTx,
+	projectMembers: HarvestStartInput["projectMembers"],
+	projectIds: ReadonlyMap<string, string>,
+	personIds: ReadonlyMap<string, string>,
+) => {
+	const memberRows = projectMembers.map((pm) => ({
+		organizationId: st.org,
+		projectId: lookupKey(projectIds, "project", pm.projectSourceKey),
+		userId: lookupKey(personIds, "person", pm.personSourceKey),
+		active: pm.active,
+	}));
+	for (const batch of inBatches(memberRows)) {
+		await st.tx.insert(projectMember).values(batch).onConflictDoNothing();
+	}
+};
+
+/** The rows a run created, by kind, and the invitations it relied on. */
+type RunMappings = {
+	userIds: string[];
+	projectIds: string[];
+	taskIds: string[];
+	clientIds: string[];
+	/** Every invitation the run relied on: they tell who it invited. */
+	runInvitationIds: string[];
+	/** Only the invitations the run wrote: the run's to cancel. */
+	ownInvitationIds: string[];
+};
+
+const loadRunMappings = async (
+	tx: DbClient,
+	runId: string,
+): Promise<RunMappings> => {
+	const mappings = await tx
+		.select({
+			kind: importMapping.kind,
+			localId: importMapping.localId,
+			created: importMapping.created,
+		})
+		.from(importMapping)
+		.where(eq(importMapping.runId, runId));
+	const created = mappings.filter((m) => m.created);
+	const of = (kind: HarvestMappingKind) =>
+		created.filter((m) => m.kind === kind).map((m) => m.localId);
+	return {
+		userIds: of("person"),
+		projectIds: of("project"),
+		taskIds: of("task"),
+		clientIds: of("client"),
+		runInvitationIds: mappings
+			.filter((m) => m.kind === "invitation")
+			.map((m) => m.localId),
+		ownInvitationIds: of("invitation"),
+	};
+};
+
+/** The time a run started, as a subquery. */
+const runCreatedAt = (runId: string) =>
+	sql`(select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${runId})`;
+
+// Made by this run, or only attached to it? Both rows took `now()`
+// from the one transaction in `start`, so an attached user is the
+// one whose row is older than the run. Compared in SQL: the user's
+// column has no time zone, and Postgres converts it the same way it
+// stored `now()` into it.
+const findMadeUsers = async (
+	tx: DbClient,
+	runId: string,
+	userIds: readonly string[],
+): Promise<Set<string>> => {
+	const madeUsers = new Set<string>();
+	const signedIn = await usersWithAccount(tx, userIds);
+	for (const batch of inBatches(userIds)) {
+		const rows = await tx
+			.select({ id: user.id, name: user.name })
+			.from(user)
+			.where(
+				and(
+					inArray(user.id, batch),
+					sql`${user.createdAt} >= ${runCreatedAt(runId)}`,
+				),
+			);
+		for (const r of rows) {
+			if (signedIn.has(r.id)) {
+				throw new Error(
+					`${r.name} has signed in since the import. Archive them instead.`,
+				);
+			}
+			madeUsers.add(r.id);
+		}
+	}
+	return madeUsers;
+};
+
+/** Refuses while an entry made here, not by this run, uses a created row. */
+const assertCreatedRowsUnused = async (
+	tx: DbClient,
+	org: string,
+	runId: string,
+	ids: RunMappings,
+) => {
+	const { projectIds, taskIds, userIds } = ids;
+	const refs = [
+		projectIds.length > 0 ? inArray(timeEntry.projectId, projectIds) : null,
+		taskIds.length > 0 ? inArray(timeEntry.taskId, taskIds) : null,
+		userIds.length > 0 ? inArray(timeEntry.userId, userIds) : null,
+	].filter((c) => c != null);
+	if (refs.length === 0) return;
+	const used = await tx
+		.select({ date: timeEntry.date })
+		.from(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, org),
+				or(isNull(timeEntry.importRunId), ne(timeEntry.importRunId, runId)),
+				or(...refs),
+			),
+		)
+		.limit(1);
+	if (used[0]) {
+		throw new Error(
+			`An entry made here on ${used[0].date} uses a row this import created`,
+		);
+	}
+};
+
+const deleteCreatedRows = async (tx: DbClient, ids: RunMappings) => {
+	for (const batch of inBatches(ids.projectIds)) {
+		await tx.delete(project).where(inArray(project.id, batch));
+	}
+	for (const batch of inBatches(ids.clientIds)) {
+		await tx.delete(client).where(inArray(client.id, batch));
+	}
+	for (const batch of inBatches(ids.taskIds)) {
+		await tx.delete(task).where(inArray(task.id, batch));
+	}
+};
+
+/**
+ * An invited user: cancel the invitation the run sent, unless the
+ * person has joined. Then they are a member who chose to join, and
+ * their membership, profile and assignments are theirs now; only
+ * the run's entries and mappings go. The run's invitations are the
+ * ones `start` recorded, by id: a pending one the People page sent
+ * the same address later is not the run's to cancel. A run from
+ * before those were recorded has none, and falls back to the
+ * address and the time of the run.
+ *
+ * "joined" tells the caller to keep the person's rows.
+ */
+const cancelRunInvitation = async (
+	tx: DbClient,
+	org: string,
+	runId: string,
+	userId: string,
+	ids: RunMappings,
+): Promise<"joined" | "done"> => {
+	const { runInvitationIds, ownInvitationIds } = ids;
+	const [person] = await tx
+		.select({ email: user.email })
+		.from(user)
+		.where(eq(user.id, userId));
+	if (!person) return "done";
+	const byAddress = and(
+		eq(invitation.organizationId, org),
+		sql`lower(${invitation.email}) = lower(${person.email})`,
+	);
+	const legacy = runInvitationIds.length === 0;
+	const invitedByRun = legacy
+		? and(byAddress, sql`${invitation.createdAt} >= ${runCreatedAt(runId)}`)
+		: and(byAddress, inArray(invitation.id, runInvitationIds));
+	const [invited] = await tx
+		.select({ id: invitation.id })
+		.from(invitation)
+		.where(invitedByRun)
+		.limit(1);
+	if (!invited) return "done";
+	// `start` refuses a person who is a member already, so for an
+	// invited person a `member` row can only come from a later
+	// acceptance: of this invitation, a reused one, or one the
+	// People page sent.
+	const [joined] = await tx
+		.select({ id: member.id })
+		.from(member)
+		.where(and(eq(member.organizationId, org), eq(member.userId, userId)))
+		.limit(1);
+	if (joined) return "joined";
+	const sentByRun = legacy
+		? invitedByRun
+		: ownInvitationIds.length > 0
+			? and(byAddress, inArray(invitation.id, ownInvitationIds))
+			: null;
+	if (sentByRun) {
+		await tx
+			.update(invitation)
+			.set({ status: "canceled" })
+			.where(and(sentByRun, eq(invitation.status, "pending")));
+	}
+	return "done";
+};
+
+// An attached user keeps their account; only this org's rows go.
+const removeOrgRowsFor = async (tx: DbClient, org: string, userId: string) => {
+	await tx
+		.delete(projectMember)
+		.where(
+			and(
+				eq(projectMember.organizationId, org),
+				eq(projectMember.userId, userId),
+			),
+		);
+	await tx
+		.delete(memberTypeHistory)
+		.where(
+			and(
+				eq(memberTypeHistory.organizationId, org),
+				eq(memberTypeHistory.userId, userId),
+			),
+		);
+	await tx
+		.delete(memberProfile)
+		.where(
+			and(
+				eq(memberProfile.organizationId, org),
+				eq(memberProfile.userId, userId),
+			),
+		);
+	await tx
+		.delete(member)
+		.where(and(eq(member.organizationId, org), eq(member.userId, userId)));
+};
+
 export const harvestImportService = {
 	/** What the org holds, for the browser to plan against. */
 	snapshot: async (
@@ -727,7 +1443,7 @@ export const harvestImportService = {
 		const multiOrg = !isSingleOrgMode();
 		// The people the run makes members at once (single-org mode). A
 		// pending claim is not here: `importClaimsService.accept` records it.
-		const directMembers: { userId: string; name: string; role: string }[] = [];
+		const directMembers: DirectMember[] = [];
 
 		const result = await db.transaction(async (tx) => {
 			// A conflict is a first call with this id that committed while this
@@ -746,426 +1462,22 @@ export const harvestImportService = {
 			if (!run) {
 				throw new Error("This import has started already. Retry to continue.");
 			}
-			const runId = run.id;
-
-			const counts: StartCounts = {
-				clients: 0,
-				tasks: 0,
-				people: 0,
-				invited: 0,
-				projects: 0,
+			const st: StartTx = {
+				tx,
+				ctx,
+				org,
+				runId: run.id,
+				multiOrg,
+				counts: { clients: 0, tasks: 0, people: 0, invited: 0, projects: 0 },
+				directMembers,
 			};
-
-			const remember = async (
-				kind: HarvestMappingKind,
-				sourceKey: string,
-				localId: string,
-				created: boolean,
-			) => {
-				// An earlier run's mapping wins: it records who created the row,
-				// and that run's undo is the one that may remove it.
-				await tx
-					.insert(importMapping)
-					.values({
-						organizationId: org,
-						runId,
-						kind,
-						sourceKey,
-						localId,
-						created,
-					})
-					.onConflictDoNothing();
-			};
-
-			// A `create` for a key an earlier run already mapped means the
-			// browser planned against an old snapshot. Refuse rather than make a
-			// second copy of the row.
-			const assertNotMapped = (
-				kind: HarvestMappingKind,
-				known: ReadonlyMap<string, string>,
-				item: { action: string; sourceKey: string },
-			) => {
-				if (item.action === "create" && known.has(item.sourceKey)) {
-					throw new Error(
-						`The ${kind} "${item.sourceKey}" was imported before. Reload the files and try again.`,
-					);
-				}
-			};
-
-			// ── Clients ──────────────────────────────────────────────────────
-			const knownClients = await mappingsFor(tx, ctx, "client");
-			const clientIds = new Map(knownClients);
-			const matchClientIds = input.clients.flatMap((c) =>
-				c.action === "match" ? [c.localId] : [],
-			);
-			const orgClientIds = new Set<string>();
-			for (const batch of inBatches(matchClientIds)) {
-				const rows = await tx
-					.select({ id: client.id })
-					.from(client)
-					.where(
-						and(eq(client.organizationId, org), inArray(client.id, batch)),
-					);
-				for (const r of rows) orgClientIds.add(r.id);
-			}
-			let internalId: string | null = null;
-			for (const c of input.clients) {
-				assertNotMapped("client", knownClients, c);
-				if (c.action === "match") {
-					if (!orgClientIds.has(c.localId)) {
-						throw new Error(`Client "${c.sourceKey}" matches no client here`);
-					}
-					clientIds.set(c.sourceKey, c.localId);
-					await remember("client", c.sourceKey, c.localId, false);
-				} else if (c.action === "internal") {
-					internalId ??= await clientsService.ensureInternal(
-						ctx,
-						orgRow?.name,
-						tx,
-					);
-					clientIds.set(c.sourceKey, internalId);
-					await remember("client", c.sourceKey, internalId, false);
-				} else {
-					const [row] = await tx
-						.insert(client)
-						.values({
-							organizationId: org,
-							name: c.name,
-							archivedAt: c.archived ? new Date() : null,
-						})
-						.returning({ id: client.id });
-					if (!row) throw new Error(`Failed to create client "${c.name}"`);
-					clientIds.set(c.sourceKey, row.id);
-					await remember("client", c.sourceKey, row.id, true);
-					counts.clients++;
-				}
-			}
-
-			// ── Tasks ────────────────────────────────────────────────────────
-			const knownTasks = await mappingsFor(tx, ctx, "task");
-			const taskIds = new Map(knownTasks);
-			const usableTasks = new Map<string, { isAbsence: boolean }>();
-			const matchTaskIds = input.tasks.flatMap((t) =>
-				t.action === "match" ? [t.localId] : [],
-			);
-			for (const batch of inBatches(matchTaskIds)) {
-				const rows = await tx
-					.select({ id: task.id, isAbsence: task.isAbsence })
-					.from(task)
-					.where(
-						and(
-							inArray(task.id, batch),
-							or(eq(task.organizationId, org), eq(task.scope, "site")),
-						),
-					);
-				for (const r of rows) usableTasks.set(r.id, { isAbsence: r.isAbsence });
-			}
-			const createNames = input.tasks.flatMap((t) =>
-				t.action === "create" && !t.archived ? [t.name] : [],
-			);
-			for (const batch of inBatches(createNames)) {
-				const clash = await tx
-					.select({ name: task.name })
-					.from(task)
-					.where(
-						and(
-							eq(task.organizationId, org),
-							eq(task.scope, "organization"),
-							isNull(task.archivedAt),
-							inArray(task.name, batch),
-						),
-					)
-					.limit(1);
-				if (clash[0]) {
-					throw new Error(
-						`A task named "${clash[0].name}" exists already. Match it instead.`,
-					);
-				}
-			}
-			for (const t of input.tasks) {
-				assertNotMapped("task", knownTasks, t);
-				if (t.action === "match") {
-					if (!usableTasks.has(t.localId)) {
-						throw new Error(`Task "${t.sourceKey}" matches no task here`);
-					}
-					taskIds.set(t.sourceKey, t.localId);
-					await remember("task", t.sourceKey, t.localId, false);
-				} else {
-					const [row] = await tx
-						.insert(task)
-						.values({
-							scope: "organization",
-							organizationId: org,
-							name: t.name,
-							group: groupForTaskName(t.name) ?? "general",
-							archivedAt: t.archived ? new Date() : null,
-						})
-						.returning({ id: task.id });
-					if (!row) throw new Error(`Failed to create task "${t.name}"`);
-					taskIds.set(t.sourceKey, row.id);
-					usableTasks.set(row.id, { isAbsence: false });
-					await remember("task", t.sourceKey, row.id, true);
-					counts.tasks++;
-				}
-			}
-
-			// ── People ───────────────────────────────────────────────────────
-			const knownPeople = await mappingsFor(tx, ctx, "person");
-			const personIds = new Map(knownPeople);
-			const matchUserIds = input.people.flatMap((p) =>
-				p.action === "match" ? [p.localId] : [],
-			);
-			const memberIds = new Set<string>();
-			for (const batch of inBatches(matchUserIds)) {
-				const rows = await tx
-					.select({ userId: member.userId })
-					.from(member)
-					.where(
-						and(eq(member.organizationId, org), inArray(member.userId, batch)),
-					);
-				for (const r of rows) memberIds.add(r.userId);
-			}
-			// Invited by an earlier run and not joined yet: a match as well.
-			for (const r of await invitedPeople(tx, org)) memberIds.add(r.userId);
-			for (const p of input.people) {
-				// After every person it can point at: see the loop below.
-				if (p.action === "alias") continue;
-				assertNotMapped("person", knownPeople, p);
-				if (p.action === "match") {
-					if (!memberIds.has(p.localId)) {
-						throw new Error(
-							`Person "${p.sourceKey}" matches no member or invited person here`,
-						);
-					}
-					if (p.startDate) {
-						await tx
-							.insert(memberProfile)
-							.values({
-								organizationId: org,
-								userId: p.localId,
-								startDate: p.startDate,
-							})
-							.onConflictDoUpdate({
-								target: [memberProfile.organizationId, memberProfile.userId],
-								set: {
-									startDate: sql`coalesce(${memberProfile.startDate}, excluded.start_date)`,
-								},
-							});
-					}
-					personIds.set(p.sourceKey, p.localId);
-					await remember("person", p.sourceKey, p.localId, false);
-					continue;
-				}
-
-				const email = normEmail(p.email);
-				const existing = await tx
-					.select({ id: user.id })
-					.from(user)
-					.where(sql`lower(${user.email}) = ${email}`)
-					.limit(1);
-				let userId: string;
-				const found = existing[0];
-				if (found) {
-					const membership = await tx
-						.select({ id: member.id })
-						.from(member)
-						.where(
-							and(eq(member.organizationId, org), eq(member.userId, found.id)),
-						)
-						.limit(1);
-					if (membership[0]) {
-						throw new Error(
-							`${email} is a member already. Match the person instead.`,
-						);
-					}
-					// Single-org mode only. With several organizations no answer may
-					// depend on `found`, or an admin could probe which addresses
-					// have an account.
-					if (!multiOrg && !p.emailListed) {
-						throw new Error(
-							`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
-						);
-					}
-					// The admin typed the address, which is not the person's consent.
-					// With several organizations the membership waits for a claim
-					// (`claimPendingSince` below). Single-org mode attaches directly.
-					// Undo tells an attached user from a made one by the row's age.
-					userId = found.id;
-				} else {
-					userId = generateId();
-					await tx.insert(user).values({
-						id: userId,
-						name: p.name,
-						email,
-						emailVerified: p.emailConfirmed,
-					});
-				}
-
-				await tx.insert(member).values({
-					id: generateId(),
-					organizationId: org,
-					userId,
-					role: p.role,
-					createdAt: new Date(),
-				});
-				if (!multiOrg)
-					directMembers.push({ userId, name: p.name, role: p.role });
-				const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
-				// With several organizations, a made or found user alike must
-				// accept before they use the org (`import-claims.service.ts`). An
-				// admin cannot make a stranger a member by importing an address.
-				const claimPendingSince = multiOrg ? new Date() : null;
-				await tx
-					.insert(memberProfile)
-					.values({
-						organizationId: org,
-						userId,
-						startDate: p.startDate,
-						archivedAt,
-						claimPendingSince,
-						claimName: claimPendingSince ? p.name : null,
-					})
-					.onConflictDoUpdate({
-						target: [memberProfile.organizationId, memberProfile.userId],
-						// A profile that survived a decline or a removal gets a new
-						// claim too, or the new member row joins without consent.
-						set: {
-							startDate: p.startDate,
-							archivedAt,
-							updatedAt: new Date(),
-							// Single-org mode keeps the stored claim fields.
-							claimPendingSince:
-								claimPendingSince ?? sql`${memberProfile.claimPendingSince}`,
-							claimName: claimPendingSince
-								? p.name
-								: sql`${memberProfile.claimName}`,
-						},
-					});
-				const hasType = await tx
-					.select({ id: memberTypeHistory.id })
-					.from(memberTypeHistory)
-					.where(
-						and(
-							eq(memberTypeHistory.organizationId, org),
-							eq(memberTypeHistory.userId, userId),
-						),
-					)
-					.limit(1);
-				if (!hasType[0]) {
-					await tx.insert(memberTypeHistory).values({
-						organizationId: org,
-						userId,
-						type: p.type,
-						effectiveFrom: p.startDate,
-					});
-				}
-				personIds.set(p.sourceKey, userId);
-				await remember("person", p.sourceKey, userId, true);
-				counts.people++;
-			}
-			// A second spelling of a person: map it to that person's user. Not
-			// `created`, so undo removes only the mapping, with the run.
-			for (const p of input.people) {
-				if (p.action !== "alias") continue;
-				const localId = personIds.get(p.of);
-				if (!localId) {
-					throw new Error(
-						`Person "${p.sourceKey}" is the same as "${p.of}", which the plan does not have`,
-					);
-				}
-				const known = knownPeople.get(p.sourceKey);
-				if (known !== undefined && known !== localId) {
-					throw new Error(
-						`"${p.sourceKey}" and "${p.of}" were imported before as different people`,
-					);
-				}
-				personIds.set(p.sourceKey, localId);
-				await remember("person", p.sourceKey, localId, false);
-			}
-
-			// ── Projects ─────────────────────────────────────────────────────
-			const knownProjects = await mappingsFor(tx, ctx, "project");
-			const projectIds = new Map(knownProjects);
-			const matchProjectIds = input.projects.flatMap((p) =>
-				p.action === "match" ? [p.localId] : [],
-			);
-			const orgProjectIds = new Set<string>();
-			for (const batch of inBatches(matchProjectIds)) {
-				const rows = await tx
-					.select({ id: project.id })
-					.from(project)
-					.where(
-						and(eq(project.organizationId, org), inArray(project.id, batch)),
-					);
-				for (const r of rows) orgProjectIds.add(r.id);
-			}
-			for (const p of input.projects) {
-				assertNotMapped("project", knownProjects, p);
-				if (p.action === "match") {
-					if (!orgProjectIds.has(p.localId)) {
-						throw new Error(`Project "${p.sourceKey}" matches no project here`);
-					}
-					// The import is the source of truth for the active set (the
-					// projects worked on in the month before the cutoff), so a match
-					// sets the status the way a create does.
-					await tx
-						.update(project)
-						.set({
-							status: p.archived ? "archived" : "active",
-							updatedAt: new Date(),
-						})
-						.where(eq(project.id, p.localId));
-					projectIds.set(p.sourceKey, p.localId);
-					await remember("project", p.sourceKey, p.localId, false);
-					continue;
-				}
-				const clientId = clientIds.get(p.clientSourceKey);
-				if (!clientId) {
-					throw new Error(
-						`Project "${p.name}" names the client "${p.clientSourceKey}", which the plan does not have`,
-					);
-				}
-				const [row] = await tx
-					.insert(project)
-					.values({
-						organizationId: org,
-						clientId,
-						name: p.name,
-						code: p.code,
-						type: p.type,
-						status: p.archived ? "archived" : "active",
-						// The only budget anything computes against, and only on a
-						// fixed-scope project (see `createProjectInput`).
-						budgetSeconds: p.type === "fixed_scope" ? p.budgetSeconds : null,
-					})
-					.returning({ id: project.id });
-				if (!row) throw new Error(`Failed to create project "${p.name}"`);
-				projectIds.set(p.sourceKey, row.id);
-				await remember("project", p.sourceKey, row.id, true);
-				counts.projects++;
-			}
-
-			// ── Assignments ──────────────────────────────────────────────────
-			const lookup = (
-				map: ReadonlyMap<string, string>,
-				kind: string,
-				key: string,
-			) => {
-				const id = map.get(key);
-				if (!id) throw new Error(`The plan names an unknown ${kind} "${key}"`);
-				return id;
-			};
-			const memberRows = input.projectMembers.map((pm) => ({
-				organizationId: org,
-				projectId: lookup(projectIds, "project", pm.projectSourceKey),
-				userId: lookup(personIds, "person", pm.personSourceKey),
-				active: pm.active,
-			}));
-			for (const batch of inBatches(memberRows)) {
-				await tx.insert(projectMember).values(batch).onConflictDoNothing();
-			}
-
-			return { runId, created: counts, invited: [] };
+			const clientIds = await startClients(st, input.clients, orgRow);
+			await startTasks(st, input.tasks);
+			const { personIds, knownPeople } = await startPeople(st, input.people);
+			await startAliases(st, input.people, personIds, knownPeople);
+			const projectIds = await startProjects(st, input.projects, clientIds);
+			await startAssignments(st, input.projectMembers, projectIds, personIds);
+			return { runId: st.runId, created: st.counts, invited: [] };
 		});
 
 		// After the commit: this transaction is a raw `db.transaction`, and a
@@ -1523,95 +1835,15 @@ export const harvestImportService = {
 		}
 
 		const undone = await db.transaction(async (tx) => {
-			const mappings = await tx
-				.select({
-					kind: importMapping.kind,
-					localId: importMapping.localId,
-					created: importMapping.created,
-				})
-				.from(importMapping)
-				.where(eq(importMapping.runId, run.id));
-			const created = mappings.filter((m) => m.created);
-			const of = (kind: HarvestMappingKind) =>
-				created.filter((m) => m.kind === kind).map((m) => m.localId);
-			const userIds = of("person");
-			const projectIds = of("project");
-			const taskIds = of("task");
-			const clientIds = of("client");
-			// Every invitation the run relied on tells who it invited. Only the
-			// ones it wrote (`created`) are the run's to cancel.
-			const runInvitationIds = mappings
-				.filter((m) => m.kind === "invitation")
-				.map((m) => m.localId);
-			const ownInvitationIds = of("invitation");
-
-			// Made by this run, or only attached to it? Both rows took `now()`
-			// from the one transaction in `start`, so an attached user is the
-			// one whose row is older than the run. Compared in SQL: the user's
-			// column has no time zone, and Postgres converts it the same way it
-			// stored `now()` into it.
-			const madeUsers = new Set<string>();
-			const signedIn = await usersWithAccount(tx, userIds);
-			for (const batch of inBatches(userIds)) {
-				const rows = await tx
-					.select({ id: user.id, name: user.name })
-					.from(user)
-					.where(
-						and(
-							inArray(user.id, batch),
-							sql`${user.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
-						),
-					);
-				for (const r of rows) {
-					if (signedIn.has(r.id)) {
-						throw new Error(
-							`${r.name} has signed in since the import. Archive them instead.`,
-						);
-					}
-					madeUsers.add(r.id);
-				}
-			}
-
-			const refs = [
-				projectIds.length > 0 ? inArray(timeEntry.projectId, projectIds) : null,
-				taskIds.length > 0 ? inArray(timeEntry.taskId, taskIds) : null,
-				userIds.length > 0 ? inArray(timeEntry.userId, userIds) : null,
-			].filter((c) => c != null);
-			if (refs.length > 0) {
-				const used = await tx
-					.select({ date: timeEntry.date })
-					.from(timeEntry)
-					.where(
-						and(
-							eq(timeEntry.organizationId, org),
-							or(
-								isNull(timeEntry.importRunId),
-								ne(timeEntry.importRunId, run.id),
-							),
-							or(...refs),
-						),
-					)
-					.limit(1);
-				if (used[0]) {
-					throw new Error(
-						`An entry made here on ${used[0].date} uses a row this import created`,
-					);
-				}
-			}
+			const ids = await loadRunMappings(tx, run.id);
+			const madeUsers = await findMadeUsers(tx, run.id, ids.userIds);
+			await assertCreatedRowsUnused(tx, org, run.id, ids);
 			const deleted = await tx
 				.delete(timeEntry)
 				.where(eq(timeEntry.importRunId, run.id))
 				.returning({ id: timeEntry.id });
-			for (const batch of inBatches(projectIds)) {
-				await tx.delete(project).where(inArray(project.id, batch));
-			}
-			for (const batch of inBatches(clientIds)) {
-				await tx.delete(client).where(inArray(client.id, batch));
-			}
-			for (const batch of inBatches(taskIds)) {
-				await tx.delete(task).where(inArray(task.id, batch));
-			}
-			for (const userId of userIds) {
+			await deleteCreatedRows(tx, ids);
+			for (const userId of ids.userIds) {
 				// A made user that another organization holds rows for keeps the
 				// user row: the foreign keys cascade and would delete that data.
 				if (madeUsers.has(userId) && !(await heldElsewhere(tx, org, userId))) {
@@ -1622,91 +1854,9 @@ export const harvestImportService = {
 				// membership, profile and assignments are theirs now; only the
 				// run's entries and mappings go.
 				if (await acceptedClaim(tx, org, userId)) continue;
-				// An invited user: cancel the invitation the run sent, unless the
-				// person has joined. Then they are a member who chose to join, and
-				// their membership, profile and assignments are theirs now; only
-				// the run's entries and mappings go. The run's invitations are the
-				// ones `start` recorded, by id: a pending one the People page sent
-				// the same address later is not the run's to cancel. A run from
-				// before those were recorded has none, and falls back to the
-				// address and the time of the run.
-				const [person] = await tx
-					.select({ email: user.email })
-					.from(user)
-					.where(eq(user.id, userId));
-				if (person) {
-					const byAddress = and(
-						eq(invitation.organizationId, org),
-						sql`lower(${invitation.email}) = lower(${person.email})`,
-					);
-					const legacy = runInvitationIds.length === 0;
-					const invitedByRun = legacy
-						? and(
-								byAddress,
-								sql`${invitation.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
-							)
-						: and(byAddress, inArray(invitation.id, runInvitationIds));
-					const [invited] = await tx
-						.select({ id: invitation.id })
-						.from(invitation)
-						.where(invitedByRun)
-						.limit(1);
-					if (invited) {
-						// `start` refuses a person who is a member already, so for an
-						// invited person a `member` row can only come from a later
-						// acceptance: of this invitation, a reused one, or one the
-						// People page sent.
-						const [joined] = await tx
-							.select({ id: member.id })
-							.from(member)
-							.where(
-								and(eq(member.organizationId, org), eq(member.userId, userId)),
-							)
-							.limit(1);
-						if (joined) continue;
-						const sentByRun = legacy
-							? invitedByRun
-							: ownInvitationIds.length > 0
-								? and(byAddress, inArray(invitation.id, ownInvitationIds))
-								: null;
-						if (sentByRun) {
-							await tx
-								.update(invitation)
-								.set({ status: "canceled" })
-								.where(and(sentByRun, eq(invitation.status, "pending")));
-						}
-					}
-				}
-				// An attached user keeps their account; only this org's rows go.
-				await tx
-					.delete(projectMember)
-					.where(
-						and(
-							eq(projectMember.organizationId, org),
-							eq(projectMember.userId, userId),
-						),
-					);
-				await tx
-					.delete(memberTypeHistory)
-					.where(
-						and(
-							eq(memberTypeHistory.organizationId, org),
-							eq(memberTypeHistory.userId, userId),
-						),
-					);
-				await tx
-					.delete(memberProfile)
-					.where(
-						and(
-							eq(memberProfile.organizationId, org),
-							eq(memberProfile.userId, userId),
-						),
-					);
-				await tx
-					.delete(member)
-					.where(
-						and(eq(member.organizationId, org), eq(member.userId, userId)),
-					);
+				const outcome = await cancelRunInvitation(tx, org, run.id, userId, ids);
+				if (outcome === "joined") continue;
+				await removeOrgRowsFor(tx, org, userId);
 			}
 			await tx.delete(importMapping).where(eq(importMapping.runId, run.id));
 			await tx
@@ -1716,10 +1866,10 @@ export const harvestImportService = {
 
 			return {
 				entriesDeleted: deleted.length,
-				projectsDeleted: projectIds.length,
-				clientsDeleted: clientIds.length,
-				tasksDeleted: taskIds.length,
-				peopleRemoved: userIds.length,
+				projectsDeleted: ids.projectIds.length,
+				clientsDeleted: ids.clientIds.length,
+				tasksDeleted: ids.taskIds.length,
+				peopleRemoved: ids.userIds.length,
 			};
 		});
 		// After the commit: this transaction is a raw `db.transaction`, and a

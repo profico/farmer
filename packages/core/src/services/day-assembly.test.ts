@@ -14,6 +14,7 @@
 
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
@@ -24,7 +25,7 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
+import { account, member, organization, user } from "../db/schema/auth";
 import {
 	client,
 	project,
@@ -46,7 +47,7 @@ import {
 	pullRequestReviewTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
-import { emptyCalendar } from "../test/calendar";
+import { emptyCalendar, fakeCalendar } from "../test/calendar";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { findTool } from "./assistant-tools";
 import { dayAssemblyService } from "./day-assembly.service";
@@ -189,6 +190,7 @@ beforeEach(async () => {
 	// next one's starting state.
 	await db.delete(syncedMeetingTombstone);
 	await db.delete(commitFillTombstone);
+	await db.delete(pullRequestReviewTombstone);
 	setCalendarSourceForTests(noCalendar);
 	setCommitSourceForTests(noCommits);
 	setPullRequestSourceForTests(null);
@@ -669,6 +671,47 @@ describe("offering back what was deleted", () => {
 		);
 	});
 
+	test("a deleted review block is held back, then offered", async () => {
+		const url = "https://github.com/acme/farmer/pull/7";
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityByDay: async () => [],
+			listUserPullRequestActivityForDay: async () => [
+				{
+					eventId: "PRR_1",
+					kind: "reviewed",
+					reviewState: "approved",
+					number: 7,
+					title: "Fix login",
+					pullRequestUrl: url,
+					url: `${url}#pullrequestreview-1`,
+					occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+					projectGithubRepoId: repoId,
+					projectId,
+					repoFullName: "acme/farmer",
+				},
+			],
+		});
+		await db.insert(pullRequestReviewTombstone).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			date: MONDAY,
+			pullRequestUrl: url,
+		});
+
+		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(quiet.suggestions.map((s) => s.kind)).not.toContain("review");
+		expect(quiet.dismissedCount).toBe(1);
+
+		const loud = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+		const review = loud.suggestions.find((s) => s.kind === "review");
+		expect(review?.dismissed).toBe(true);
+		expect(review?.key).toBe(`review:${url}`);
+		expect(loud.dismissedCount).toBe(1);
+	});
+
 	test("a day with nothing deleted reports nothing to offer", async () => {
 		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
 
@@ -1006,5 +1049,48 @@ describe("a rule on a proposed block", () => {
 		} finally {
 			await db.delete(filingRule);
 		}
+	});
+});
+
+describe("which sources the assembler could read", () => {
+	const link = async (providerId: string) => {
+		await db.insert(account).values({
+			id: `account-${providerId}`,
+			accountId: providerId,
+			providerId,
+			userId: USER_ID,
+			updatedAt: new Date(),
+		});
+	};
+
+	afterEach(async () => {
+		await db.delete(account);
+	});
+
+	test("both are unavailable while no account is linked", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources).toEqual({
+			calendar: "unavailable",
+			github: "unavailable",
+		});
+	});
+
+	test("a linked calendar and GitHub account are ok", async () => {
+		await link("google-calendar");
+		await link("github");
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources).toEqual({ calendar: "ok", github: "ok" });
+	});
+
+	test("a linked calendar that cannot be read is unavailable", async () => {
+		await link("google-calendar");
+		setCalendarSourceForTests(fakeCalendar(null));
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources.calendar).toBe("unavailable");
 	});
 });
