@@ -142,6 +142,9 @@ class TimerActionReceiver : BroadcastReceiver() {
     val connection = url.openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "POST"
+      // The bearer token must not follow a redirect (the JS client uses
+      // `redirect: "manual"`).
+      connection.instanceFollowRedirects = false
       // These timeouts do not bound the request. The connect timeout does
       // not include DNS and it applies to each address. The read timeout
       // applies to each read. The watcher and `settled` set the real bound.
