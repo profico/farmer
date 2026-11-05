@@ -235,6 +235,10 @@ function AddBlockDialogBody({
 	// logged on a project like everything else.
 	const pickableTasks = isTimeOff ? tasks.filter((t) => t.isAbsence) : tasks;
 	const selectedTask = tasks.find((t) => t.id === taskId);
+	// By systemKey, never by name: an org may rename the built-in Meeting task.
+	const meetingTaskId = pickableTasks.find(
+		(t) => t.systemKey === "meeting",
+	)?.id;
 	useEffect(() => {
 		if (isStaleTask(taskId, pickableTasks)) form.setValue("taskId", "");
 	}, [pickableTasks, taskId, form]);
@@ -356,7 +360,7 @@ function AddBlockDialogBody({
 		fillsDay,
 		isAbsence,
 		hasProject,
-		meetingTask: selectedTask,
+		meetingTaskId,
 		github: githubStatus,
 		google: googleStatus,
 		linkedRepos,
@@ -514,7 +518,7 @@ function AddBlockDialogBody({
 	);
 
 	// Auto-load the day's meetings the moment the picker becomes relevant (the
-	// Meeting task on a connected account) — no "Load meetings" click.
+	// Meeting task on offer and a connected account) — no "Load meetings" click.
 	const calendarEventsQ = useQuery({
 		...calendarEventsForDayQuery(orgSlug, targetDate),
 		enabled: open && showCalendarPicker,
@@ -536,6 +540,8 @@ function AddBlockDialogBody({
 		if (!form.getValues("description")) {
 			form.setValue("description", event.title);
 		}
+		// A pulled-in event is a meeting, so the entry becomes one.
+		if (meetingTaskId) form.setValue("taskId", meetingTaskId);
 		setMeetingUrl(event.meetingUrl);
 		setCalendarEventId(event.id);
 		setCalendarOpen(false);

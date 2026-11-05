@@ -248,7 +248,7 @@ describe("dialogVisibility", () => {
 		fillsDay: false,
 		isAbsence: false,
 		hasProject: true,
-		meetingTask: undefined,
+		meetingTaskId: undefined,
 		github: { connected: true },
 		google: { connected: true },
 		linkedRepos: [{}],
@@ -311,7 +311,7 @@ describe("dialogVisibility", () => {
 			...base,
 			repeatEnabled: true,
 			attachedCommits: [{}],
-			meetingTask: { systemKey: "meeting" },
+			meetingTaskId: "meeting-id",
 		});
 		expect(v.showCommitPicker).toBe(false);
 		expect(v.showAttachedCommits).toBe(false);
@@ -319,21 +319,18 @@ describe("dialogVisibility", () => {
 		expect(v.showFillPreset).toBe(false);
 	});
 
-	test("the calendar picker needs the Meeting task and Google", () => {
-		const meeting = { systemKey: "meeting" };
+	test("the calendar picker needs a Meeting task on offer and Google", () => {
+		const meeting = "meeting-id";
 		expect(
-			dialogVisibility({ ...base, meetingTask: meeting }).showCalendarPicker,
+			dialogVisibility({ ...base, meetingTaskId: meeting }).showCalendarPicker,
 		).toBe(true);
+		expect(dialogVisibility(base).showCalendarPicker).toBe(false);
 		expect(
-			dialogVisibility({ ...base, meetingTask: { systemKey: "break" } })
+			dialogVisibility({ ...base, meetingTaskId: meeting, google: undefined })
 				.showCalendarPicker,
 		).toBe(false);
 		expect(
-			dialogVisibility({ ...base, meetingTask: meeting, google: undefined })
-				.showCalendarPicker,
-		).toBe(false);
-		expect(
-			dialogVisibility({ ...base, meetingTask: meeting, fillsDay: true })
+			dialogVisibility({ ...base, meetingTaskId: meeting, fillsDay: true })
 				.showCalendarPicker,
 		).toBe(false);
 	});

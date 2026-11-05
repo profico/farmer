@@ -497,7 +497,8 @@ export function dialogVisibility(state: {
 	fillsDay: boolean;
 	isAbsence: boolean;
 	hasProject: boolean;
-	meetingTask: { systemKey?: string | null } | undefined;
+	/** The id of the Meeting task, found by `systemKey`; undefined when none is on offer. */
+	meetingTaskId: string | undefined;
 	github: { connected: boolean } | undefined;
 	google: { connected: boolean } | undefined;
 	linkedRepos: Countable | undefined;
@@ -510,13 +511,12 @@ export function dialogVisibility(state: {
 		(state.attachedPullRequests?.length ?? 0) > 0;
 	return {
 		...githubVisibility(state),
-		// By systemKey, never by name: an org may rename the built-in Meeting
-		// task, and a name match would then hide the calendar picker without a
-		// word.
+		// Any task may start the picker: picking an event switches the entry to
+		// the Meeting task, so the picker needs that task to be on offer.
 		showCalendarPicker:
 			!repeatEnabled &&
 			!fillsDay &&
-			state.meetingTask?.systemKey === "meeting" &&
+			state.meetingTaskId !== undefined &&
 			!!state.google?.connected,
 		showRepeatSection: !state.isEdit && !fillsDay && !state.isAbsence,
 		// The fifth preset. An absence is a whole day off, not a block sized from
