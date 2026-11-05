@@ -121,6 +121,7 @@ export function PromptBar({
 
 	const anchorRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const focusedOnce = useRef(false);
 	const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
 	const token = dismissed ? null : parseCommand(draft);
@@ -137,10 +138,19 @@ export function PromptBar({
 	// hydration, before the page has settled, which on a slow load steals focus
 	// from wherever the reader had already moved.
 	// It runs again when `focusKey` changes (a different thread). An effect, not
-	// a `key` on the bar, so a switch keeps the unsent draft.
+	// a `key` on the bar, so a switch keeps the unsent draft. After the first
+	// focus, only a fine pointer refocuses: on a touch device it would raise the
+	// keyboard over the transcript.
 	// oxlint-disable-next-line react-hooks/exhaustive-deps -- `focusKey` only triggers the effect, the body does not read it
 	useEffect(() => {
-		if (autoFocus) inputRef.current?.focus();
+		if (!autoFocus) return;
+		if (
+			!focusedOnce.current ||
+			globalThis.matchMedia("(pointer: fine)").matches
+		) {
+			inputRef.current?.focus();
+		}
+		focusedOnce.current = true;
 	}, [autoFocus, focusKey]);
 
 	// Reset the selection whenever the list underneath it changes, so the
