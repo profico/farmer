@@ -336,6 +336,13 @@ const ownedPlaceholder = async (
 	return row ?? null;
 };
 
+type Adopted = {
+	role: string;
+	name: string;
+	joined: boolean;
+	daysOverCap: number;
+};
+
 /** Moves the placeholder's rows to the caller and deletes the placeholder.
  *  `joined` is false when the caller was a member already: then the rows
  *  merge, nothing is announced, and a day may hold more than 24 hours. The
@@ -344,12 +351,7 @@ const adoptPlaceholder = async (
 	tx: DbClient,
 	ctx: Ctx,
 	placeholder: PlaceholderClaim,
-): Promise<{
-	role: string;
-	name: string;
-	joined: boolean;
-	daysOverCap: number;
-}> => {
+): Promise<Adopted> => {
 	const org = ctx.organizationId;
 	const row = await placeholderMembership(tx, org, placeholder.userId);
 	const [mine] = await tx
@@ -480,15 +482,7 @@ const pendingOwn = async (userId: string): Promise<PendingClaim[]> => {
 /** Ends a claim as an accept: the caller's own pending membership, or the
  *  placeholder they own. `joined` is false when the caller was a member
  *  already. */
-const acceptClaim = async (
-	tx: DbClient,
-	ctx: Ctx,
-): Promise<{
-	role: string;
-	name: string;
-	joined: boolean;
-	daysOverCap: number;
-}> => {
+const acceptClaim = async (tx: DbClient, ctx: Ctx): Promise<Adopted> => {
 	const placeholder = await ownedPlaceholder(tx, ctx);
 	if (placeholder) return adoptPlaceholder(tx, ctx, placeholder);
 	const pending = await pendingMembership(tx, ctx);
