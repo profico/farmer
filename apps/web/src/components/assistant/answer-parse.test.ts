@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 import { describe, expect, test } from "bun:test";
 
-import { type Block, parseBlocks } from "./answer-parse.ts";
+import { type Block, parseBlocks, safeHref } from "./answer-parse.ts";
 
 const chartJson = JSON.stringify({
 	type: "bar",
@@ -188,5 +188,20 @@ describe("parseBlocks prose", () => {
 	test("an empty source has no blocks", () => {
 		expect(parseBlocks("", false)).toEqual([]);
 		expect(parseBlocks("\n\n", true)).toEqual([]);
+	});
+});
+
+describe("safeHref", () => {
+	test("keeps a path, a web link and a mail link", () => {
+		expect(safeHref("/acme/time")).toBe("/acme/time");
+		expect(safeHref("https://example.com")).toBe("https://example.com");
+		expect(safeHref("mailto:a@example.com")).toBe("mailto:a@example.com");
+	});
+
+	test("refuses a link that a browser reads as another site", () => {
+		expect(safeHref("//evil.example/x")).toBeNull();
+		expect(safeHref("/\\evil.example")).toBeNull();
+		expect(safeHref(" //evil.example")).toBeNull();
+		expect(safeHref("javascript:alert(1)")).toBeNull();
 	});
 });

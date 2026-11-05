@@ -1,4 +1,4 @@
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 
@@ -9,7 +9,7 @@ import { useToday } from "#/hooks/use-today.ts";
 import { dateSearch } from "#/lib/time-search.ts";
 
 import { AnswerChart, ChartPlaceholder } from "./answer-chart.tsx";
-import { type Align, parseBlocks } from "./answer-parse.ts";
+import { type Align, parseBlocks, safeHref } from "./answer-parse.ts";
 import { useTypeset } from "./typeset.ts";
 
 // A deliberately small markdown reader.
@@ -70,11 +70,17 @@ import { useTypeset } from "./typeset.ts";
 // of one effect, and the drain is the part that decides when a word is there to
 // reveal.
 
-/** Anything that isn't a plain web link is rendered as text rather than as an
- *  anchor. The model composes these from data it read, so `javascript:` is
- *  reachable from a project name if nothing checks. */
-const safeHref = (href: string) =>
-	/^(https?:\/\/|mailto:|\/)/i.test(href.trim()) ? href.trim() : null;
+/** The host an `http(s)` link goes to, or null for a path or a `mailto:`.
+ *  The label of a link is text the model wrote, so it can name one site and
+ *  point at another; the reader needs to see the real destination. */
+const externalHost = (href: string) => {
+	if (!/^https?:\/\//i.test(href)) return null;
+	try {
+		return new URL(href).host;
+	} catch {
+		return null;
+	}
+};
 
 /** Shared with the tool trace, which prints a month on its own
  *  (`primitives.tsx`). One table, so the two never drift apart. */
@@ -222,15 +228,23 @@ const renderInline = (text: string, reveal = false) => {
 		if (link) {
 			const href = safeHref(link[2] ?? "");
 			if (!href) return <Fragment key={key}>{link[1]}</Fragment>;
+			const host = externalHost(href);
 			return (
 				<a
 					key={key}
 					href={href}
 					target="_blank"
 					rel="noreferrer noopener"
+					title={host ?? undefined}
 					className={word(reveal, "underlined text-ink")}
 				>
 					{link[1]}
+					{host && (
+						<span className="ml-1 inline-flex items-center gap-0.5 align-baseline text-[11px] text-ink-2 no-underline">
+							<ArrowSquareOutIcon aria-hidden="true" size={11} />
+							{host}
+						</span>
+					)}
 				</a>
 			);
 		}

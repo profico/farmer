@@ -1,3 +1,4 @@
+import { safeColor } from "@farmer/core/lib/color";
 import {
 	datesBetween,
 	endOfMonthKey,
@@ -229,8 +230,7 @@ export function MonthView({
 											<span
 												className="size-1.5 shrink-0 rounded-full"
 												style={{
-													backgroundColor:
-														entry.task.color ?? "var(--muted-foreground)",
+													backgroundColor: safeColor(entry.task.color),
 												}}
 											/>
 											<span className="truncate">{entry.task.name}</span>

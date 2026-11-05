@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
 import { project, projectMember } from "../db/schema/domain";
@@ -394,11 +394,22 @@ export const accessService = {
 			const rows = await ctxDb(ctx)
 				.select({ userId: projectMember.userId })
 				.from(projectMember)
+				.innerJoin(
+					member,
+					and(
+						eq(member.organizationId, projectMember.organizationId),
+						eq(member.userId, projectMember.userId),
+					),
+				)
 				.where(
 					and(
 						eq(projectMember.organizationId, ctx.organizationId),
 						inArray(projectMember.projectId, managed),
 						eq(projectMember.active, true),
+						// Only an Admin-made assignment puts a person in scope, and
+						// never an Admin or an owner.
+						eq(projectMember.assignedByAdmin, true),
+						notInArray(member.role, ["owner", "admin"]),
 					),
 				);
 			for (const r of rows) people.add(r.userId);

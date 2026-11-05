@@ -110,7 +110,7 @@ const personPlan = z.discriminatedUnion("action", [
 		// True when somebody vouches for the address: the people list, or an
 		// admin who typed it on the review screen. Only a guess stays false,
 		// and an unverified address is one better-auth refuses to link a
-		// Google sign-in to (plan section 3.3).
+		// Google sign-in to.
 		emailConfirmed: z.boolean(),
 		role: z.enum(["admin", "member"]),
 		type: memberTypeEnum,
@@ -161,7 +161,7 @@ const importRow = z.object({
 	projectSourceKey: sourceKey.nullable(),
 	taskSourceKey: sourceKey,
 	description: z.string().max(10_000),
-	// Rounded to the quarter hour, and never over a day (plan section 4).
+	// Rounded to the quarter hour, and never over a day.
 	durationSeconds: z
 		.number()
 		.int()

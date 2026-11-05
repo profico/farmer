@@ -159,14 +159,20 @@ describe("the lookup", () => {
 		expect(result.ok).toBe(true);
 	});
 
-	test("a refusal names the host, not the address it resolved to", async () => {
-		// Echoing the address would let an admin read the deployment's internal
-		// DNS: `https://postgres/` answering "resolves to 172.18.0.3".
-		const result = await resolveWebhookTarget("https://localhost/hook");
-		const reason = result.ok ? "" : result.reason;
-		expect(reason).toContain("localhost");
-		expect(reason).not.toContain("127.0.0.1");
-		expect(reason).not.toContain("::1");
+	test("a name that does not resolve and a private name give one text", async () => {
+		// Two texts would let an admin map the deployment's internal DNS:
+		// `https://postgres/` answering differently from `https://nothing/`.
+		const reasonOf = async (url: string) => {
+			const result = await resolveWebhookTarget(url);
+			return result.ok ? "" : result.reason;
+		};
+		const missing = await reasonOf("https://nx.farmer-test.invalid/hook");
+		const private_ = await reasonOf("https://localhost/hook");
+		expect(missing).not.toBe("");
+		expect(missing).toBe(private_);
+		expect(private_).not.toContain("localhost");
+		expect(private_).not.toContain("127.0.0.1");
+		expect(private_).not.toContain("::1");
 	});
 });
 

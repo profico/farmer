@@ -282,6 +282,35 @@ describe("reading from another workspace", () => {
 	});
 });
 
+describe("a principal bound to one workspace", () => {
+	const bound = (): Ctx => ({ ...otherCtx(), boundToOrganization: true });
+
+	test("cannot see a timer from another workspace", async () => {
+		await startDev();
+
+		expect(await timersService.get(bound(), { now: later(HOUR) })).toBeNull();
+	});
+
+	test("cannot discard a timer from another workspace", async () => {
+		await startDev();
+
+		await timersService.discard(bound());
+
+		present(
+			await timersService.get(ctx(), { now: later(HOUR) }),
+			"the timer, still running",
+		);
+	});
+
+	test("cannot start beside it, and the error names no workspace", async () => {
+		await startDev();
+
+		await expect(
+			timersService.start(bound(), { taskId: devTaskId }, { now: later(60) }),
+		).rejects.toThrow(/^A timer is already running\. Stop it first\.$/);
+	});
+});
+
 describe("confirming", () => {
 	const confirm = (
 		over: Partial<Parameters<typeof timersService.confirm>[1]> = {},
