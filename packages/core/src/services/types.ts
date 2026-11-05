@@ -39,6 +39,9 @@ export type Ctx = {
 	organizationId: string;
 	userId: string;
 	actor?: CtxActor;
+	/** The principal is bound to this one organization (a workspace-bound API
+	 *  token). It must not see or change a row of its owner in another one. */
+	boundToOrganization?: true;
 	[CTX_MEMO]?: CtxMemo;
 };
 

@@ -1,6 +1,6 @@
 {
-  "id": "56adc244-bda7-49fd-b598-d266f151c84c",
-  "prevId": "1a882d90-c2c5-4cf0-bf98-d6bb52cecbe6",
+  "id": "58e3e3b3-5dde-4970-95a1-d5900cf1dab6",
+  "prevId": "56adc244-bda7-49fd-b598-d266f151c84c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2267,6 +2267,13 @@
         },
         "active": {
           "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "assigned_by_admin": {
+          "name": "assigned_by_admin",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -4594,6 +4601,12 @@
         "claim_pending_since": {
           "name": "claim_pending_since",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_name": {
+          "name": "claim_name",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

@@ -1,4 +1,4 @@
-// The server half of the Harvest import (docs/plans/harvest-import.md).
+// The server half of the Harvest import (docs/domains/harvest-import.md).
 //
 // The browser parses the export and builds the plan (`lib/harvest/plan.ts`),
 // because the time report is 45 MB and a server function should not hold it.
@@ -28,7 +28,6 @@ import {
 	sql,
 } from "drizzle-orm";
 
-import { deliverInvitation } from "../auth/invitation-delivery";
 import { db } from "../db";
 import {
 	account,
@@ -53,7 +52,6 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
-import { loggableError } from "../lib/loggable-error";
 import { findSingleOrg, isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
@@ -71,6 +69,7 @@ import type {
 	HarvestTaskPlan,
 } from "../schema/harvest-import";
 import { recordAudit } from "./audit";
+import { shownName } from "./claim-name";
 import { clientsService } from "./clients.service";
 import { type DbClient, requireAdmin } from "./context";
 import { emitEvent } from "./events";
@@ -231,13 +230,68 @@ const usersWithAccount = async (
 	return out;
 };
 
+/** Whether `userId` accepted the claim that `start` set in `org`. Multi-org
+ *  `start` writes `claimName` with the claim and nothing clears it. A person
+ *  who declined has no `member` row, and is not an accepted claim. */
+const acceptedClaim = async (
+	tx: DbClient,
+	org: string,
+	userId: string,
+): Promise<boolean> => {
+	const [row] = await tx
+		.select({ id: memberProfile.id })
+		.from(memberProfile)
+		.innerJoin(
+			member,
+			and(
+				eq(member.organizationId, memberProfile.organizationId),
+				eq(member.userId, memberProfile.userId),
+			),
+		)
+		.where(
+			and(
+				eq(memberProfile.organizationId, org),
+				eq(memberProfile.userId, userId),
+				isNotNull(memberProfile.claimName),
+				isNull(memberProfile.claimPendingSince),
+			),
+		)
+		.limit(1);
+	return row !== undefined;
+};
+
+/** Whether `userId` has a row in an organization other than `org`. A foreign
+ *  key from each of these tables to `user` cascades, so deleting the user row
+ *  would delete that other organization's data. Invitations are read by
+ *  address: they hold no user id. */
+const heldElsewhere = async (
+	tx: DbClient,
+	org: string,
+	userId: string,
+): Promise<boolean> => {
+	const [row] = await tx
+		.select({
+			held: sql<boolean>`(
+				exists (select 1 from ${member} where ${member.userId} = ${userId} and ${member.organizationId} <> ${org})
+				or exists (select 1 from ${memberProfile} where ${memberProfile.userId} = ${userId} and ${memberProfile.organizationId} <> ${org})
+				or exists (select 1 from ${timeEntry} where ${timeEntry.userId} = ${userId} and ${timeEntry.organizationId} <> ${org})
+				or exists (select 1 from ${projectMember} where ${projectMember.userId} = ${userId} and ${projectMember.organizationId} <> ${org})
+				or exists (select 1 from ${importMapping} where ${importMapping.kind} = 'person' and ${importMapping.localId} = ${userId} and ${importMapping.organizationId} <> ${org})
+				or exists (select 1 from ${invitation} where lower(${invitation.email}) = (select lower(${user.email}) from ${user} where ${user.id} = ${userId}) and ${invitation.organizationId} <> ${org})
+			)`,
+		})
+		.from(user)
+		.where(eq(user.id, userId));
+	return row?.held === true;
+};
+
 /**
  * The people an earlier run of this org invited and who have not joined yet:
  * a person mapping to a user with no membership here, and a pending
- * invitation of this org to that user's address. With several organizations
- * on the instance an existing user is invited rather than attached (see
- * `start`), and their hours are written at once, so until they accept they
- * are a mapped person with no `member` row. A second run matches them, as it
+ * invitation of this org to that user's address. Only a run from before the
+ * claim change wrote such an invitation: `start` now attaches the user with a
+ * pending claim. Until they accept, that older person is a mapped person
+ * with no `member` row. A second run matches them, as it
  * matches a member, rather than calling them gone. Only people this org's own
  * import mapped are read, so this says nothing about any other address.
  */
@@ -245,7 +299,7 @@ const invitedPeople = async (client_: DbClient, org: string) =>
 	client_
 		.selectDistinctOn([user.id], {
 			userId: user.id,
-			name: user.name,
+			name: shownName(org),
 			email: user.email,
 			role: invitation.role,
 			archivedAt: memberProfile.archivedAt,
@@ -275,13 +329,6 @@ const invitedPeople = async (client_: DbClient, org: string) =>
 				sql`not exists (select 1 from ${member} where ${member.organizationId} = ${org} and ${member.userId} = ${user.id})`,
 			),
 		);
-
-/** An invitation `start` wrote, for the email it sends after the commit. */
-type NewInvitation = { invitationId: string; email: string; role: string };
-
-/** How long an invitation the import writes stays open: better-auth's default
- *  for the ones the People page makes (`invitationExpiresIn`, 48 hours). */
-const INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 type ExistingDay = {
 	ids: string[];
@@ -392,12 +439,6 @@ const startResult = async (
 	};
 };
 
-// The source key of an `invitation` mapping. The run id is part of it, so
-// each run records its own row: under the `(org, kind, sourceKey)` key, a
-// bare invitation id from an earlier run would hide this run's reuse.
-const invitationKey = (runId: string, invitationId: string) =>
-	`${runId}:${invitationId}`;
-
 const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
 	a.size === b.size && [...a].every((k) => b.has(k));
 
@@ -422,8 +463,6 @@ type StartTx = {
 	runId: string;
 	multiOrg: boolean;
 	counts: StartCounts;
-	invitedEmails: string[];
-	newInvitations: NewInvitation[];
 	directMembers: DirectMember[];
 };
 
@@ -640,13 +679,12 @@ const startMatchedPerson = async (
 };
 
 /** The user a created person maps to: a user that holds the address, or a
- *  new one. `invite` is true when the person gets an invitation, not a
- *  membership. `found` is true for a user that existed before the run. */
+ *  new one. */
 const resolveImportUser = async (
 	st: StartTx,
 	p: PersonCreatePlan,
 	email: string,
-): Promise<{ userId: string; invite: boolean; found: boolean }> => {
+): Promise<string> => {
 	const { tx, org } = st;
 	const [found] = await tx
 		.select({ id: user.id })
@@ -661,7 +699,7 @@ const resolveImportUser = async (
 			email,
 			emailVerified: p.emailConfirmed,
 		});
-		return { userId, invite: false, found: false };
+		return userId;
 	}
 	const membership = await tx
 		.select({ id: member.id })
@@ -671,98 +709,32 @@ const resolveImportUser = async (
 	if (membership[0]) {
 		throw new Error(`${email} is a member already. Match the person instead.`);
 	}
-	// A guessed address that happens to be somebody's real one must
-	// not hand that person an old account (plan section 3.3), nor
-	// send them an invitation to history that is not theirs.
-	if (!p.emailListed && !(st.multiOrg && p.emailConfirmed)) {
+	// Single-org mode only. With several organizations no answer may
+	// depend on `found`, or an admin could probe which addresses
+	// have an account.
+	if (!st.multiOrg && !p.emailListed) {
 		throw new Error(
 			`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
 		);
 	}
-	// With several organizations on the instance, an existing user
-	// is never added to this one. The people list and a typed
-	// address come from this org's admin, so neither is the
-	// person's consent: they get an invitation, which they may
-	// decline. Their hours are written now, under their user, and
-	// the org sees them in its reports; the person sees them once
-	// they accept, because accepting adds only the `member` row
-	// and everything else is here already.
-	//
-	// In single-org mode every user came in through an invitation
-	// to the one organization, so a listed address attaches that
-	// user directly. Undo tells an attached user from a made one by
-	// the user row's age.
-	return { userId: found.id, invite: st.multiOrg, found: true };
-};
-
-const recordRunInvitation = async (
-	st: StartTx,
-	p: PersonCreatePlan,
-	email: string,
-) => {
-	const { tx, org, runId } = st;
-	// An invitation this org already sent that address is the one
-	// the person gets; a second would be a second email.
-	const [pending] = await tx
-		.select({ id: invitation.id })
-		.from(invitation)
-		.where(
-			and(
-				eq(invitation.organizationId, org),
-				eq(invitation.status, "pending"),
-				sql`lower(${invitation.email}) = ${email}`,
-			),
-		)
-		.limit(1);
-	if (pending) {
-		// One the org sent before. The person is still invited by this
-		// run, so the summary counts it, but it is not the run's to
-		// cancel (`created` false).
-		await remember(
-			st,
-			"invitation",
-			invitationKey(runId, pending.id),
-			pending.id,
-			false,
-		);
-		return;
-	}
-	const invitationId = generateId();
-	await tx.insert(invitation).values({
-		id: invitationId,
-		organizationId: org,
-		email,
-		role: p.role,
-		status: "pending",
-		expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
-		inviterId: st.ctx.userId,
-	});
-	st.newInvitations.push({ invitationId, email, role: p.role });
-	// The run's own invitation: undo cancels exactly this one.
-	await remember(
-		st,
-		"invitation",
-		invitationKey(runId, invitationId),
-		invitationId,
-		true,
-	);
+	// The admin typed the address, which is not the person's consent.
+	// With several organizations the membership waits for a claim
+	// (`claimPendingSince` below). Single-org mode attaches directly.
+	// Undo tells an attached user from a made one by the row's age.
+	return found.id;
 };
 
 const writeProfileAndType = async (
 	st: StartTx,
 	p: PersonCreatePlan,
 	userId: string,
-	found: boolean,
 ) => {
 	const { tx, org } = st;
 	const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
-	// A user this run made, with several organizations on the
-	// instance: the address has no account yet, and whoever owns it
-	// may sign up later. The org sees them now, but they use the org
-	// only after they accept it on their first sign-in
-	// (`import-claims.service.ts`), so an admin of any workspace
-	// cannot make a stranger a member by importing their address.
-	const claimPendingSince = st.multiOrg && !found ? new Date() : null;
+	// With several organizations, a made or found user alike must
+	// accept before they use the org (`import-claims.service.ts`). An
+	// admin cannot make a stranger a member by importing an address.
+	const claimPendingSince = st.multiOrg ? new Date() : null;
 	await tx
 		.insert(memberProfile)
 		.values({
@@ -771,10 +743,21 @@ const writeProfileAndType = async (
 			startDate: p.startDate,
 			archivedAt,
 			claimPendingSince,
+			claimName: claimPendingSince ? p.name : null,
 		})
 		.onConflictDoUpdate({
 			target: [memberProfile.organizationId, memberProfile.userId],
-			set: { startDate: p.startDate, archivedAt, updatedAt: new Date() },
+			// A profile that survived a decline or a removal gets a new
+			// claim too, or the new member row joins without consent.
+			set: {
+				startDate: p.startDate,
+				archivedAt,
+				updatedAt: new Date(),
+				// Single-org mode keeps the stored claim fields.
+				claimPendingSince:
+					claimPendingSince ?? sql`${memberProfile.claimPendingSince}`,
+				claimName: claimPendingSince ? p.name : sql`${memberProfile.claimName}`,
+			},
 		});
 	const hasType = await tx
 		.select({ id: memberTypeHistory.id })
@@ -801,28 +784,19 @@ const startCreatedPerson = async (
 	p: PersonCreatePlan,
 ): Promise<string> => {
 	const email = normEmail(p.email);
-	const { userId, invite, found } = await resolveImportUser(st, p, email);
-	if (invite) {
-		await recordRunInvitation(st, p, email);
-	} else {
-		await st.tx.insert(member).values({
-			id: generateId(),
-			organizationId: st.org,
-			userId,
-			role: p.role,
-			createdAt: new Date(),
-		});
-		if (!st.multiOrg)
-			st.directMembers.push({ userId, name: p.name, role: p.role });
-	}
-	await writeProfileAndType(st, p, userId, found);
+	const userId = await resolveImportUser(st, p, email);
+	await st.tx.insert(member).values({
+		id: generateId(),
+		organizationId: st.org,
+		userId,
+		role: p.role,
+		createdAt: new Date(),
+	});
+	if (!st.multiOrg)
+		st.directMembers.push({ userId, name: p.name, role: p.role });
+	await writeProfileAndType(st, p, userId);
 	await remember(st, "person", p.sourceKey, userId, true);
-	if (invite) {
-		st.counts.invited++;
-		st.invitedEmails.push(email);
-	} else {
-		st.counts.people++;
-	}
+	st.counts.people++;
 	return userId;
 };
 
@@ -1232,11 +1206,12 @@ export const harvestImportService = {
 		const members = await db
 			.select({
 				userId: member.userId,
-				name: user.name,
+				name: shownName(org),
 				email: user.email,
 				role: member.role,
 				archivedAt: memberProfile.archivedAt,
 				startDate: memberProfile.startDate,
+				claimPendingSince: memberProfile.claimPendingSince,
 			})
 			.from(member)
 			.innerJoin(user, eq(user.id, member.userId))
@@ -1354,7 +1329,10 @@ export const harvestImportService = {
 					email: m.email,
 					role: m.role,
 					archived: m.archivedAt != null,
-					hasAccount: signedIn.has(m.userId),
+					// Not for a pending claim: an import attaches an existing user
+					// with one, and "has signed in" would say that the address
+					// had an account before the import.
+					hasAccount: signedIn.has(m.userId) && m.claimPendingSince == null,
 					startDate: m.startDate,
 					invited: false,
 				})),
@@ -1461,9 +1439,8 @@ export const harvestImportService = {
 			where: eq(organization.id, org),
 			columns: { name: true, slug: true },
 		});
-		// With several organizations, an existing user is invited, not added.
+		// With several organizations, each person gets a pending claim.
 		const multiOrg = !isSingleOrgMode();
-		const newInvitations: NewInvitation[] = [];
 		// The people the run makes members at once (single-org mode). A
 		// pending claim is not here: `importClaimsService.accept` records it.
 		const directMembers: DirectMember[] = [];
@@ -1492,8 +1469,6 @@ export const harvestImportService = {
 				runId: run.id,
 				multiOrg,
 				counts: { clients: 0, tasks: 0, people: 0, invited: 0, projects: 0 },
-				invitedEmails: [],
-				newInvitations,
 				directMembers,
 			};
 			const clientIds = await startClients(st, input.clients, orgRow);
@@ -1502,20 +1477,11 @@ export const harvestImportService = {
 			await startAliases(st, input.people, personIds, knownPeople);
 			const projectIds = await startProjects(st, input.projects, clientIds);
 			await startAssignments(st, input.projectMembers, projectIds, personIds);
-			return { runId: st.runId, created: st.counts, invited: st.invitedEmails };
+			return { runId: st.runId, created: st.counts, invited: [] };
 		});
 
-		// The import writes its invitations itself, so better-auth's
-		// `afterCreateInvitation` hook never sees them. Record each one here,
-		// after the commit: this transaction is a raw `db.transaction`, and a
+		// After the commit: this transaction is a raw `db.transaction`, and a
 		// second connection held inside it is the deadlock `ctxDb` warns about.
-		for (const inv of newInvitations) {
-			await recordAudit(ctx, {
-				kind: "member.invited",
-				target: { type: "invitation", id: inv.invitationId, label: inv.email },
-				details: { role: inv.role, importRunId: result.runId },
-			});
-		}
 		// A direct add is a way in, so each person gets `member.joined`, with
 		// the admin as the actor. `import.finished` holds only counts. This
 		// goes through `recordAudit` and not `memberJoined`, because the run
@@ -1528,33 +1494,11 @@ export const harvestImportService = {
 				details: { role: m.role, importRunId: result.runId },
 			});
 		}
-
-		// After the commit, so nobody gets an email for an invitation that a
-		// failed run rolled back. A failure costs the email, not the run: the
-		// People page shows it, and the admin can send it again there.
-		if (newInvitations.length > 0 && orgRow) {
-			const inviter = await db.query.user.findFirst({
-				where: eq(user.id, ctx.userId),
-				columns: { name: true },
-			});
-			for (const inv of newInvitations) {
-				await deliverInvitation({
-					...inv,
-					organization: { id: org, name: orgRow.name, slug: orgRow.slug },
-					inviterName: inviter?.name ?? orgRow.name,
-				}).catch((error: unknown) => {
-					console.error("[harvest] could not send an invitation", {
-						invitationId: inv.invitationId,
-						error: loggableError(error),
-					});
-				});
-			}
-		}
 		return result;
 	},
 
 	/**
-	 * Writes one chunk of whole person-days (plan section 5.3):
+	 * Writes one chunk of whole person-days:
 	 *
 	 * - a day with no imported rows yet: insert them;
 	 * - the same key set as before: nothing;
@@ -1717,7 +1661,7 @@ export const harvestImportService = {
 
 	/**
 	 * Deletes the imported rows of person-days that are no longer in Harvest
-	 * (plan section 5.3). The browser only sends these after the admin says the
+	 * The browser only sends these after the admin says the
 	 * file is a full export. A day a person edited here stays.
 	 */
 	removeDays: async (ctx: Ctx, input: HarvestRemoveDaysInput) => {
@@ -1761,7 +1705,7 @@ export const harvestImportService = {
 	},
 
 	/**
-	 * Closes the run (plan section 6):
+	 * Closes the run:
 	 *
 	 * 1. `automationLockedThrough` moves up to the day before the cutoff, so no
 	 *    engine writes into the imported history. It never moves back.
@@ -1900,10 +1844,16 @@ export const harvestImportService = {
 				.returning({ id: timeEntry.id });
 			await deleteCreatedRows(tx, ids);
 			for (const userId of ids.userIds) {
-				if (madeUsers.has(userId)) {
+				// A made user that another organization holds rows for keeps the
+				// user row: the foreign keys cascade and would delete that data.
+				if (madeUsers.has(userId) && !(await heldElsewhere(tx, org, userId))) {
 					await tx.delete(user).where(eq(user.id, userId));
 					continue;
 				}
+				// An attached user who accepted the claim joined by choice. Their
+				// membership, profile and assignments are theirs now; only the
+				// run's entries and mappings go.
+				if (await acceptedClaim(tx, org, userId)) continue;
 				const outcome = await cancelRunInvitation(tx, org, run.id, userId, ids);
 				if (outcome === "joined") continue;
 				await removeOrgRowsFor(tx, org, userId);

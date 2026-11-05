@@ -4,7 +4,7 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
 import { loggableError } from "../lib/loggable-error";
-import { dayKeyInTz, timeKeyInTz } from "../lib/time";
+import { dayKeyInTz, safeTimezone, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
 import {
 	deliveryBlocks,
@@ -292,7 +292,7 @@ const runOrgPass = async (
 	now: Date,
 	summary: SlackReminderSummary,
 ): Promise<void> => {
-	const tz = org.timezone ?? "UTC";
+	const tz = safeTimezone(org.timezone);
 	const today = dayKeyInTz(now, tz);
 	const timeKey = timeKeyInTz(now, tz);
 

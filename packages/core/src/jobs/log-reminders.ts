@@ -5,7 +5,7 @@ import { member, organization } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { durationFromEnv, withTimeout } from "../lib/http";
 import { loggableError } from "../lib/loggable-error";
-import { dayKeyInTz, timeKeyInTz } from "../lib/time";
+import { dayKeyInTz, safeTimezone, timeKeyInTz } from "../lib/time";
 import { notificationsService } from "../services/notifications.service";
 import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
 import {
@@ -100,7 +100,7 @@ export const runLogRemindersOnce = async (
 		const run = orgs.get(row.organizationId) ?? {
 			organizationId: row.organizationId,
 			slug: row.slug,
-			tz: row.timezone ?? "UTC",
+			tz: safeTimezone(row.timezone),
 			userIds: [],
 		};
 		run.userIds.push(row.userId);

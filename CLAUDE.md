@@ -126,7 +126,8 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds
-the design history of the Harvest import and the reminder settings.
+the plans for the audit log, the instance settings migration and the reminder
+settings.
 
 ## Rules that survive the split
 

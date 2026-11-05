@@ -10,12 +10,13 @@ import {
 	isNull,
 	lte,
 	ne,
+	notInArray,
 	sql,
 } from "drizzle-orm";
 import postgres from "postgres";
 
 import { db } from "../db";
-import { user } from "../db/schema/auth";
+import { member } from "../db/schema/auth";
 import {
 	projectMember,
 	recurringBlockRuleSkip,
@@ -75,6 +76,7 @@ import type {
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
+import { shownNameOf } from "./claim-name";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import {
 	computeDayFillSeconds,
@@ -1654,17 +1656,17 @@ const recordAbsenceForPerson = async (
 	},
 ) => {
 	if (entry.personUserId === ctx.userId) return;
-	const [person] = await ctxDb(ctx)
-		.select({ name: user.name })
-		.from(user)
-		.where(eq(user.id, entry.personUserId))
-		.limit(1);
+	const personName = await shownNameOf(
+		ctxDb(ctx),
+		ctx.organizationId,
+		entry.personUserId,
+	);
 	await recordAudit(ctx, {
 		kind: entry.kind,
 		target: {
 			type: "member",
 			id: entry.personUserId,
-			label: person?.name ?? null,
+			label: personName,
 		},
 		subjectUserId: entry.personUserId,
 		changes: entry.changes ?? null,
@@ -1676,17 +1678,27 @@ const recordAbsenceForPerson = async (
 	});
 };
 
-/** Project ids the given person is assigned to — used to decide whether a PM may
- *  correct that person's absence entries. */
+/** Project ids that give a PM authority over the given person's absence. Only
+ *  an assignment that an Admin made counts, and an Admin or owner has none: a
+ *  PM could otherwise assign anyone and then read or change their absence. */
 const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 	const rows = await db
 		.select({ projectId: projectMember.projectId })
 		.from(projectMember)
+		.innerJoin(
+			member,
+			and(
+				eq(member.organizationId, projectMember.organizationId),
+				eq(member.userId, projectMember.userId),
+			),
+		)
 		.where(
 			and(
 				eq(projectMember.organizationId, ctx.organizationId),
 				eq(projectMember.userId, userId),
 				eq(projectMember.active, true),
+				eq(projectMember.assignedByAdmin, true),
+				notInArray(member.role, ["owner", "admin"]),
 			),
 		);
 	return rows.map((r) => r.projectId);

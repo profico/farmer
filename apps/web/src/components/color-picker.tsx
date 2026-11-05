@@ -1,3 +1,4 @@
+import { isSafeColor } from "@farmer/core/lib/color";
 import { PlusIcon } from "@phosphor-icons/react";
 
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
@@ -25,7 +26,8 @@ export function ColorPicker({
 	onChange: (color: string) => void;
 	className?: string;
 }) {
-	const customColor = value && !isPreset(value) ? value : undefined;
+	const customColor =
+		value && !isPreset(value) && isSafeColor(value) ? value : undefined;
 
 	return (
 		<div className={cn("space-y-2.5", className)}>
