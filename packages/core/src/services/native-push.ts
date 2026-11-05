@@ -296,7 +296,7 @@ export const sendNativeAlert = async (
 			if (outcome.status === "rejected") {
 				console.error("[native-push] alert failed for a phone", {
 					userId,
-					error: outcome.reason,
+					error: loggableError(outcome.reason),
 				});
 			}
 		}
