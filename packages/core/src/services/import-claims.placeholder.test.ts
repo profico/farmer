@@ -726,6 +726,16 @@ describe("registration while it is closed", () => {
 		await mayRegister("owner.guess@example.com", true);
 	});
 
+	test("an address whose placeholder was removed is refused", async () => {
+		const email = "owner.removed@example.com";
+		const { placeholder } = await importPerson(email, true);
+		await mayRegister(email, true);
+		await db
+			.delete(member)
+			.where(and(eq(member.organizationId, ORG), eq(member.userId, placeholder)));
+		await expect(mayRegister(email, true)).rejects.toThrow(CLOSED);
+	});
+
 	test("an address that declined is refused", async () => {
 		const email = "owner.declined@example.com";
 		await importPerson(email, true);
