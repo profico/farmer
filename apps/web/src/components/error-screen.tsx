@@ -21,8 +21,8 @@ export function ErrorScreen({ children }: { children: ReactNode }) {
 		<div
 			className={
 				inside
-					? "flex min-h-[70svh] flex-1 flex-col p-6"
-					: "flex min-h-svh flex-col p-6"
+					? "flex min-h-[calc(70*var(--svh))] flex-1 flex-col p-6"
+					: "flex min-h-[calc(100*var(--svh))] flex-col p-6 pt-[calc(1.5rem+var(--safe-t))]"
 			}
 		>
 			{!inside && (
