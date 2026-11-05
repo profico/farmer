@@ -32,6 +32,7 @@ const KIND_LABELS = {
 	"member.role_changed": "Role changed",
 	"member.archived": "Person archived",
 	"member.restored": "Person restored",
+	"member.anonymised": "Person anonymised",
 	"member.type_changed": "Person type changed",
 	"member.start_date_changed": "Start date changed",
 	"member.email_confirmed": "Email address confirmed",

@@ -17,6 +17,7 @@ import { Route as McpConsentRouteImport } from './routes/mcp-consent'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EarlyAccessRouteImport } from './routes/early-access'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as DeleteAccountRouteImport } from './routes/delete-account'
 import { Route as ChooseOrganizationRouteImport } from './routes/choose-organization'
 import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as ApiDocsRouteImport } from './routes/api-docs'
@@ -245,6 +246,11 @@ const EarlyAccessRoute = EarlyAccessRouteImport.update({
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeleteAccountRoute = DeleteAccountRouteImport.update({
+  id: '/delete-account',
+  path: '/delete-account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChooseOrganizationRoute = ChooseOrganizationRouteImport.update({
@@ -1340,6 +1346,7 @@ export interface FileRoutesByFullPath {
   '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
@@ -1538,6 +1545,7 @@ export interface FileRoutesByTo {
   '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
@@ -1737,6 +1745,7 @@ export interface FileRoutesById {
   '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
@@ -1938,6 +1947,7 @@ export interface FileRouteTypes {
     | '/api-docs'
     | '/changelog'
     | '/choose-organization'
+    | '/delete-account'
     | '/device'
     | '/early-access'
     | '/login'
@@ -2136,6 +2146,7 @@ export interface FileRouteTypes {
     | '/api-docs'
     | '/changelog'
     | '/choose-organization'
+    | '/delete-account'
     | '/device'
     | '/early-access'
     | '/login'
@@ -2334,6 +2345,7 @@ export interface FileRouteTypes {
     | '/api-docs'
     | '/changelog'
     | '/choose-organization'
+    | '/delete-account'
     | '/device'
     | '/early-access'
     | '/login'
@@ -2534,6 +2546,7 @@ export interface RootRouteChildren {
   ApiDocsRoute: typeof ApiDocsRoute
   ChangelogRoute: typeof ChangelogRoute
   ChooseOrganizationRoute: typeof ChooseOrganizationRoute
+  DeleteAccountRoute: typeof DeleteAccountRoute
   DeviceRoute: typeof DeviceRoute
   EarlyAccessRoute: typeof EarlyAccessRoute
   LoginRoute: typeof LoginRoute
@@ -2730,6 +2743,13 @@ declare module '@tanstack/react-router' {
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delete-account': {
+      id: '/delete-account'
+      path: '/delete-account'
+      fullPath: '/delete-account'
+      preLoaderRoute: typeof DeleteAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/choose-organization': {
@@ -4235,6 +4255,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocsRoute: ApiDocsRoute,
   ChangelogRoute: ChangelogRoute,
   ChooseOrganizationRoute: ChooseOrganizationRoute,
+  DeleteAccountRoute: DeleteAccountRoute,
   DeviceRoute: DeviceRoute,
   EarlyAccessRoute: EarlyAccessRoute,
   LoginRoute: LoginRoute,
@@ -4429,3 +4450,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

@@ -31,6 +31,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
 	"changelog",
 	"choose-organization",
 	"cli",
+	"delete-account",
 	"device",
 	"early-access",
 	"login",

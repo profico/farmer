@@ -15,20 +15,19 @@ import "./legal.css";
  * cookies it sets, the services it calls — as run by Profico on
  * farmer.profi.co. A change to any of those (a new integration, a new cookie,
  * a new retention job) makes one of these paragraphs false: update it here, and
- * bump `UPDATED` and `version`.
+ * bump its `updated` and `version`.
  */
-type LegalDocKey = "privacy" | "terms";
+type LegalDocKey = "privacy" | "terms" | "deleteAccount";
 
 type LegalSection = { h: string; body: ReactNode };
 
 type LegalDoc = {
 	title: string;
+	updated: string;
 	version: string;
 	note: ReactNode;
 	sections: LegalSection[];
 };
-
-const UPDATED = "23 September 2026";
 
 const ENTITY = "INNOVATIO PROFICIT d.o.o.";
 const ADDRESS = "Viška 2, 21000 Split, Croatia";
@@ -37,7 +36,8 @@ const Mail = () => <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
 
 const PRIVACY: LegalDoc = {
 	title: "Privacy",
-	version: "1.0",
+	updated: "5 November 2026",
+	version: "1.1",
 	note: (
 		<>
 			This policy covers farmer.profi.co, the Farmer instance that Profico runs,
@@ -380,6 +380,10 @@ const PRIVACY: LegalDoc = {
 						<li>withdraw a consent you gave, at any time.</li>
 					</ul>
 					<p>
+						To delete your account, follow the steps on{" "}
+						<Link to="/delete-account">Delete your account</Link>.
+					</p>
+					<p>
 						Write to <Mail /> and we answer within one month. You can also
 						complain to the Croatian Personal Data Protection Agency (AZOP,{" "}
 						<a href="https://azop.hr">azop.hr</a>) or to the authority where you
@@ -403,6 +407,7 @@ const PRIVACY: LegalDoc = {
 
 const TERMS: LegalDoc = {
 	title: "Terms",
+	updated: "23 September 2026",
 	version: "1.0",
 	note: (
 		<>
@@ -617,10 +622,113 @@ const TERMS: LegalDoc = {
 	],
 };
 
-const DOCS = { privacy: PRIVACY, terms: TERMS } satisfies Record<
-	LegalDocKey,
-	LegalDoc
->;
+/** The page Google Play links as the app's account deletion page. Play needs
+ *  the app and developer name, the steps, and what is kept and for how long. */
+const DELETE_ACCOUNT: LegalDoc = {
+	title: "Delete your account",
+	updated: "5 November 2026",
+	version: "1.0",
+	note: (
+		<>
+			This page is for Farmer, the app and the website that {ENTITY} ("Profico")
+			runs on farmer.profi.co. If you use Farmer on a self-hosted server, the
+			operator of that server holds your account. Ask them to delete it.
+		</>
+	),
+	sections: [
+		{
+			h: "How to ask",
+			body: (
+				<ol>
+					<li>
+						Write to <Mail /> from the email address of your Farmer account.
+					</li>
+					<li>Use the subject "Delete my account".</li>
+					<li>
+						If the email address of your account is a different one, write it in
+						the message.
+					</li>
+				</ol>
+			),
+		},
+		{
+			h: "What happens next",
+			body: (
+				<p>
+					We reply to confirm that the request comes from you. Then we anonymise
+					your account within 30 days. After this, nobody can sign in to the
+					account again. You do not need the app for any of these steps.
+				</p>
+			),
+		},
+		{
+			h: "What we delete",
+			body: (
+				<>
+					<p>We replace these data with "Deleted user":</p>
+					<ul>
+						<li>Your name. We also remove your profile picture.</li>
+						<li>
+							Your email address. We replace it with an address that does not
+							belong to you and does not receive email.
+						</li>
+					</ul>
+					<p>We delete these data:</p>
+					<ul>
+						<li>
+							Your sessions, your sign-in methods (password, Google and other
+							providers) and your API tokens.
+						</li>
+						<li>
+							Your access grants to other apps, and any sign-in request or
+							invitation for your email address.
+						</li>
+						<li>The phones and browsers that get your notifications.</li>
+						<li>Your assistant conversations and your running timer.</li>
+						<li>
+							Your own preferences, your saved filing rules and your hidden
+							tasks.
+						</li>
+						<li>
+							Your links to Google Calendar, GitHub and Slack, and the settings
+							of these links.
+						</li>
+					</ul>
+				</>
+			),
+		},
+		{
+			h: "What we keep",
+			body: (
+				<>
+					<p>
+						The time data inside a workspace belongs to the organization that
+						runs that workspace, usually your employer. Your time entries, your
+						absences, your project assignments and your place in the people list
+						stay in that workspace as the organization's records. They show
+						under "Deleted user", and Farmer marks you as a person who left. To
+						delete them, ask the organization first.
+					</p>
+					<p>
+						The audit log of each workspace that you joined keeps the record of
+						your changes and sign-ins before the anonymisation: your name as it
+						was then, the IP address and the browser's user agent. Nobody can
+						change these entries. The anonymisation adds new entries, which show
+						"Deleted user". The old entries stay until the retention period of
+						that workspace ends: 90 days, 1 year, 2 years or 7 years, as its
+						administrators choose. After that time, Farmer deletes the entries.
+					</p>
+				</>
+			),
+		},
+	],
+};
+
+const DOCS = {
+	privacy: PRIVACY,
+	terms: TERMS,
+	deleteAccount: DELETE_ACCOUNT,
+} satisfies Record<LegalDocKey, LegalDoc>;
 
 export function LegalDocument({ doc }: { doc: LegalDocKey }) {
 	const d = DOCS[doc];
@@ -645,7 +753,7 @@ export function LegalDocument({ doc }: { doc: LegalDocKey }) {
 				</div>
 				<h1 className="fm-h1">{d.title}</h1>
 				<p className="fm-mono fm-faint" style={{ margin: 0, fontSize: 13 }}>
-					Last updated {UPDATED} · Version {d.version}
+					Last updated {d.updated} · Version {d.version}
 				</p>
 			</section>
 			<section className="fm-container fm-container-md fm-legal-body">
