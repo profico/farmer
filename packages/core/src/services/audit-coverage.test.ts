@@ -13,6 +13,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { accountService } from "./account.service";
+import { anonymiseService } from "./anonymise.service";
 import { apiTokensService } from "./api-tokens.service";
 import { assistantService } from "./assistant.service";
 import { auditService } from "./audit";
@@ -115,12 +116,14 @@ const SERVICES = {
 				setArchived: true,
 				confirmEmail: true,
 				setStartDate: true,
+				archiveForAnonymise: { via: "archiveMember" },
 			},
 			exempt: {
 				recordInvitationEmail:
 					"delivery state of an invitation; the invitation itself is recorded by the better-auth hook",
 			},
 			reads: [
+				"soleOwnerWorkspaces",
 				"getRole",
 				"resolveUserId",
 				"directory",
@@ -376,6 +379,16 @@ const SERVICES = {
 					"removes a GitHub or Google Calendar grant, which is an integration and not a sign-in method (docs/domains/audit-log.md)",
 			},
 			reads: ["signInMethods"],
+		},
+	},
+	anonymiseService: {
+		service: anonymiseService,
+		coverage: {
+			// One `member.archived` and one `member.anonymised` row for each
+			// workspace of the person, written by `archiveMemberships`.
+			recorded: { anonymise: { via: "archiveMemberships" } },
+			exempt: {},
+			reads: [],
 		},
 	},
 	auditService: {
