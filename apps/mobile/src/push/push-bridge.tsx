@@ -22,7 +22,6 @@ import {
 	reportLiveActivityToken,
 	reportPushToStartToken,
 	syncPush,
-	teardownPush,
 } from "./registration";
 import { KEYS, readItem, writeItem } from "./storage";
 import {
@@ -125,8 +124,8 @@ export function PushBridge() {
 	const wasSignedIn = useRef(false);
 	useEffect(() => {
 		if (wasSignedIn.current && state.status === "signed_out") {
+			// The push teardown ran in `forget`, before the session was wiped.
 			clearTimerSurface();
-			void teardownPush();
 		}
 		if (state.status !== "loading") wasSignedIn.current = signedIn;
 	}, [state.status, signedIn]);

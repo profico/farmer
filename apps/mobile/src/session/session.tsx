@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { transportFor } from "../api/transport";
-import { unregisterDevice } from "../push/registration";
+import { teardownPush, unregisterDevice } from "../push/registration";
 import { revokesOnSignOut } from "./credential";
 import { wipeAfterReinstall } from "./first-launch";
 import {
@@ -19,6 +19,9 @@ import {
 	wipeSession,
 	writeSession,
 } from "./storage";
+
+/** The longest time that a sign-out waits for the push teardown. */
+const TEARDOWN_WAIT_MS = 3_000;
 
 type Active = { session: StoredSession; client: FarmerClient };
 
@@ -86,6 +89,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	const forget = useCallback(async () => {
+		// The push teardown goes first: if the process dies between the two
+		// steps, the session is still there and the next sign-out runs it
+		// again. It removes the local items first, so the wait is short even
+		// when the network is down. Sign-out never waits for the relay: the
+		// teardown goes on in the background after the limit.
+		await Promise.race([
+			teardownPush(),
+			new Promise((resolve) => setTimeout(resolve, TEARDOWN_WAIT_MS)),
+		]);
 		await wipeSession();
 		setState((current) =>
 			current.status === "signed_in"
