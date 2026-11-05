@@ -84,6 +84,11 @@ does.
 every way in runs one time: an invitation accepted, a member added, and a
 Harvest import's pending claim accepted (`importClaimsService.accept`).
 
+`anonymiseService.anonymise` (a platform admin scrubs one account, see
+`services/anonymise.service.ts`) writes `member.archived` and
+`member.anonymised` in each workspace of the person. The platform admin is
+the actor, and the target reads "Deleted user".
+
 Two more rows come from outside the hooks:
 
 - `member.invited` from `harvestImportService.start`, one for each invitation
