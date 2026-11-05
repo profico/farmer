@@ -445,7 +445,7 @@ function OpenRouterSection() {
 							? `Currently ${settings?.keyHint ?? ""}. Pasting a new one replaces it; the old key is not recoverable from here.`
 							: unreadable
 								? "The stored key can no longer be read, because the server's secret changed after it was saved. The Assistant is off for everyone until a key is saved again — the same one or a new one."
-								: "Create a key at openrouter.ai/keys."
+								: "Create a key at openrouter.ai/keys. It is never shown again."
 					}
 					action={
 						<div className="flex items-center gap-2">
@@ -653,7 +653,7 @@ function SlackSection() {
 					/>
 					<SettingRow
 						title="Matched people"
-						description="People are matched to Slack by email when they join. Re-match if someone joined Slack later."
+						description="People are matched to Slack by email when they join. Anyone without a matching email gets no reminders. Re-match if someone joined Slack later."
 						badge={
 							<Badge variant="outline">
 								{status?.connected ? status.mappedPeople : 0} matched

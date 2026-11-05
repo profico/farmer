@@ -486,7 +486,9 @@ export function StopTimerDialog({
 						{continuing ? "Update the entry" : "Log the time"}
 					</DialogTitle>
 					<p className="text-sm text-muted-foreground">
-						{`The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes.`}
+						{continuing
+							? `The entry held ${formatClock(timer.entrySeconds)}. With the time measured since, the clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes.`
+							: `The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes.`}
 					</p>
 				</DialogHeader>
 
