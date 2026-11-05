@@ -125,7 +125,7 @@ function Fallbacks({
 		<>
 			<BrowserCard
 				hasMethods={hasMethods}
-				busy={flow.busy}
+				running={flow.running}
 				onPress={() => void flow.withBrowser()}
 			/>
 			<TokenCard flow={flow} />
@@ -151,15 +151,16 @@ function Methods({
 			{providers.length > 0 ? (
 				<ProviderButtons
 					providers={providers}
-					busy={flow.busy}
+					running={flow.running}
 					onPick={(method) => void flow.withProvider(method)}
 				/>
 			) : null}
 			{meta.data?.passwordSignIn === true ? (
 				<PasswordSection flow={flow} hasProviders={providers.length > 0} />
 			) : null}
-			{flow.busy ? <Busy /> : null}
-			<OthersToggle shown={showOthers} onToggle={onToggle} />
+			{/* Android draws the spinner in the button that runs. */}
+			{flow.busy && IOS ? <Busy /> : null}
+			<OthersToggle shown={showOthers} busy={flow.busy} onToggle={onToggle} />
 			{showOthers ? <Fallbacks flow={flow} hasMethods /> : null}
 		</>
 	);

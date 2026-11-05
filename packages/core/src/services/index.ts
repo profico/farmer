@@ -1,6 +1,7 @@
 export * from "./access.service";
 export * from "./api-tokens.service";
 export * from "./account.service";
+export * from "./anonymise.service";
 // The analytics seam: the event shapes a turn reports, and the setter that
 // installs a sink for them. Exported because the adapter lives in `apps/web`,
 // beside the vendor's credentials — see `lib/posthog-ai.ts`.

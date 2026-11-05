@@ -33,6 +33,33 @@ export const searchPlatformPeople = createServerFn({ method: "GET" })
 		return platformAdminsService.search(data);
 	});
 
+/**
+ * Anonymise one person's account, the answer to a request to delete it.
+ *
+ * Platform admins only. `anonymiseService` holds the refusals (yourself, the
+ * last platform admin, the only active owner of a workspace); this layer
+ * adds nothing but the gate and the caller's id. The admin types the address
+ * in the dialog, and the server checks it again, so a stale tab cannot
+ * anonymise a different person than the one on the screen.
+ */
+export const anonymiseAccount = createServerFn({ method: "POST" })
+	.middleware([platformAdminMiddleware])
+	.validator(z.object({ userId: z.string().min(1), email: z.string() }))
+	.handler(async ({ data, context }) => {
+		const { anonymiseService, platformAdminsService } =
+			await import("@farmer/core/services");
+		const person = await platformAdminsService.find(data.userId);
+		if (!person) throw new Error("That account no longer exists.");
+		if (person.email.toLowerCase() !== data.email.trim().toLowerCase()) {
+			throw new Error("The address does not match this account.");
+		}
+		await anonymiseService.anonymise(
+			{ userId: context.session.user.id, actor: { via: "web" } },
+			person.id,
+		);
+		return { ok: true as const };
+	});
+
 const setPlatformAdminInput = z.object({
 	userId: z.string().min(1),
 	/** True promotes, false demotes. One function rather than two, because the

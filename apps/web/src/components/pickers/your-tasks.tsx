@@ -18,7 +18,7 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
-import { setTaskHidden, showAllTasks } from "#/server/tasks.ts";
+import { hideAllTasks, setTaskHidden, showAllTasks } from "#/server/tasks.ts";
 
 // Your tasks: the tasks a person has switched off, so the task list offers only
 // the work they actually do (issue #84). One setting with two ways in —
@@ -93,13 +93,13 @@ function useYourTasks() {
 		onSettled: settle,
 	});
 
-	const showAll = useMutation({
+	const setAll = useMutation({
 		mutationKey,
-		mutationFn: () => showAllTasks(),
-		onMutate: async () => {
+		mutationFn: (off: boolean) => (off ? hideAllTasks() : showAllTasks()),
+		onMutate: async (off) => {
 			await queryClient.cancelQueries({ queryKey });
 			const previous = queryClient.getQueryData(queryKey);
-			queryClient.setQueryData(queryKey, []);
+			queryClient.setQueryData(queryKey, off ? tasks.map((t) => t.id) : []);
 			return { previous };
 		},
 		onError: (error: Error, _data, context) => {
@@ -119,7 +119,8 @@ function useYourTasks() {
 		offCount,
 		setHidden: (taskId: string, off: boolean) =>
 			toggle.mutate({ taskId, hidden: off }),
-		showAll: () => showAll.mutate(),
+		showAll: () => setAll.mutate(false),
+		hideAll: () => setAll.mutate(true),
 	};
 }
 
@@ -157,19 +158,18 @@ function TaskChips({
 									aria-pressed={on}
 									onClick={() => onToggle(task.id, on)}
 									className={cn(
-										"inline-flex h-7.5 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40",
+										"inline-flex h-7.5 items-center gap-1.5 rounded-lg border pr-3 pl-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40",
 										on
-											? "border-line bg-secondary pl-2 font-medium text-foreground"
+											? "border-line bg-secondary text-foreground"
 											: "border-line2 text-muted-foreground",
 									)}
 								>
-									{on && (
-										<CheckIcon
-											weight="bold"
-											aria-hidden
-											className="size-3.5 shrink-0"
-										/>
-									)}
+									{/* Kept in the layout when off, so a click does not resize the chip. */}
+									<CheckIcon
+										weight="bold"
+										aria-hidden
+										className={cn("size-3.5 shrink-0", !on && "invisible")}
+									/>
 									{task.name}
 								</button>
 							);
@@ -186,7 +186,8 @@ const DESCRIPTION =
 
 /** Preferences → Your tasks. */
 export function YourTasksSection() {
-	const { tasks, hidden, offCount, setHidden, showAll } = useYourTasks();
+	const { tasks, hidden, offCount, setHidden, showAll, hideAll } =
+		useYourTasks();
 	if (tasks.length === 0) return null;
 
 	return (
@@ -201,6 +202,11 @@ export function YourTasksSection() {
 					{offCount > 0 && (
 						<Button variant="outline" size="sm" onClick={showAll}>
 							Show all
+						</Button>
+					)}
+					{offCount < tasks.length && (
+						<Button variant="outline" size="sm" onClick={hideAll}>
+							Hide all
 						</Button>
 					)}
 				</div>
@@ -219,7 +225,8 @@ export function YourTasksDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
-	const { tasks, hidden, offCount, setHidden, showAll } = useYourTasks();
+	const { tasks, hidden, offCount, setHidden, showAll, hideAll } =
+		useYourTasks();
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,13 +237,19 @@ export function YourTasksDialog({
 				</DialogHeader>
 				<TaskChips tasks={tasks} hidden={hidden} onToggle={setHidden} />
 				<DialogFooter className="sm:justify-between">
-					{offCount > 0 ? (
-						<Button variant="ghost" onClick={showAll}>
-							Show all
-						</Button>
-					) : (
-						<span />
-					)}
+					{/* On a sheet the footer is a full-width stack, so these stack too. */}
+					<div className="flex gap-1 in-data-[slot=drawer-content]:flex-col in-data-[slot=drawer-content]:gap-2">
+						{offCount > 0 && (
+							<Button variant="ghost" onClick={showAll}>
+								Show all
+							</Button>
+						)}
+						{offCount < tasks.length && (
+							<Button variant="ghost" onClick={hideAll}>
+								Hide all
+							</Button>
+						)}
+					</div>
 					<Button onClick={() => onOpenChange(false)}>Done</Button>
 				</DialogFooter>
 			</DialogContent>

@@ -206,7 +206,7 @@ const defaultServer = process.env.FARMER_DEFAULT_SERVER?.trim() || undefined;
 const config: ExpoConfig = {
 	name: "Farmer",
 	slug: "farmer",
-	version: "0.1.0",
+	version: "0.1.1",
 	scheme: "farmer",
 	orientation: "portrait",
 	userInterfaceStyle: "automatic",

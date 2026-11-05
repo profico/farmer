@@ -449,6 +449,7 @@ export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
 					<Link to="/about">About</Link>
 					<Link to="/privacy">Privacy</Link>
 					<Link to="/terms">Terms</Link>
+					<Link to="/delete-account">Delete your account</Link>
 				</div>
 			</div>
 			<div className="fm-container fm-footer-base">

@@ -12,7 +12,11 @@ import { Icon } from "../ui/icon";
 import { LoadingIndicator } from "../ui/loading";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
-import { openApproval, type SignInFlow } from "./sign-in-flow";
+import {
+	openApproval,
+	type SignInAction,
+	type SignInFlow,
+} from "./sign-in-flow";
 
 export const IOS = Platform.OS === "ios";
 
@@ -54,15 +58,16 @@ const BROWSER_NOTE =
 /** The device flow in the browser. */
 export function BrowserCard({
 	hasMethods,
-	busy,
+	running,
 	onPress,
 }: {
 	hasMethods: boolean;
-	busy: boolean;
+	running: SignInAction | null;
 	onPress: () => void;
 }) {
 	const palette = usePalette();
 	const variant = hasMethods ? "outlined" : "filled";
+	const busy = running !== null;
 	if (IOS) {
 		return (
 			<View style={{ gap: SPACE.s }}>
@@ -88,6 +93,7 @@ export function BrowserCard({
 				variant={variant}
 				onPress={onPress}
 				disabled={busy}
+				busy={running === "browser"}
 			/>
 		</Card>
 	);
@@ -116,6 +122,7 @@ export function TokenCard({ flow }: { flow: SignInFlow }) {
 			variant="outlined"
 			onPress={() => void flow.withToken()}
 			disabled={flow.busy || !flow.token.trim()}
+			busy={flow.running === "token"}
 		/>
 	);
 	if (IOS) {
@@ -226,6 +233,7 @@ export function PasswordSection({
 			variant={hasProviders ? "outlined" : "filled"}
 			onPress={() => void flow.withPassword()}
 			disabled={flow.busy || !flow.email.trim() || !flow.password}
+			busy={flow.running === "password"}
 		/>
 	);
 	if (IOS) {
@@ -251,11 +259,11 @@ export function PasswordSection({
 /** One button for each provider that the server lists. */
 export function ProviderButtons({
 	providers,
-	busy,
+	running,
 	onPick,
 }: {
 	providers: SignInMethod[];
-	busy: boolean;
+	running: SignInAction | null;
 	onPick: (method: SignInMethod) => void;
 }) {
 	return (
@@ -266,7 +274,8 @@ export function ProviderButtons({
 					label={`Continue with ${method.name}`}
 					wide
 					onPress={() => onPick(method)}
-					disabled={busy}
+					disabled={running !== null}
+					busy={running === `provider:${method.id}`}
 				/>
 			))}
 		</View>
@@ -276,9 +285,12 @@ export function ProviderButtons({
 /** The switch that shows the other ways to sign in. */
 export function OthersToggle({
 	shown,
+	busy,
 	onToggle,
 }: {
 	shown: boolean;
+	/** Hiding the running button would hide its spinner too. */
+	busy: boolean;
 	onToggle: () => void;
 }) {
 	return (
@@ -290,6 +302,7 @@ export function OthersToggle({
 				variant="text"
 				wide
 				onPress={onToggle}
+				disabled={busy}
 			/>
 		</View>
 	);

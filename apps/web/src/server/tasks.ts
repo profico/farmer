@@ -65,6 +65,13 @@ export const showAllTasks = createServerFn({ method: "POST" })
 		return tasksService.showAll(context.ctx);
 	});
 
+export const hideAllTasks = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { tasksService } = await import("@farmer/core/services");
+		return tasksService.hideAll(context.ctx);
+	});
+
 export const listManagedTasks = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {

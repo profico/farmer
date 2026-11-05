@@ -218,7 +218,11 @@ export function CreateProjectDialog() {
 		>
 			{noClients ? (
 				<Tooltip>
-					<TooltipTrigger>{trigger}</TooltipTrigger>
+					{/* A span, not the default button: a button in a button is invalid
+					    HTML, so the parser splits the server's markup and hydration
+					    fails. The disabled button takes no pointer events, so the
+					    span gets the hover. */}
+					<TooltipTrigger render={<span />}>{trigger}</TooltipTrigger>
 					<TooltipContent>Create a client first</TooltipContent>
 				</Tooltip>
 			) : (

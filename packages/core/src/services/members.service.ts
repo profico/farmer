@@ -15,7 +15,13 @@ import {
 } from "drizzle-orm";
 
 import { db } from "../db";
-import { account, invitation, member, user } from "../db/schema/auth";
+import {
+	account,
+	invitation,
+	member,
+	organization,
+	user,
+} from "../db/schema/auth";
 import { importPendingPerson } from "../db/schema/import";
 import {
 	invitationEmail,
@@ -219,6 +225,37 @@ const assertNotOnlyOwner = async (
 	if (owners.length <= 1 && owners.some((o) => o.userId === userId)) {
 		throw new Error(message);
 	}
+};
+
+/** The archive itself, with its side effects. No access check: the callers
+ *  decide who may archive (`setArchived` an org admin, `archiveForAnonymise`
+ *  a platform admin). */
+const archiveMember = async (ctx: Ctx, userId: string) => {
+	const target = await memberTarget(ctx, userId);
+	await db
+		.insert(memberProfile)
+		.values({
+			organizationId: ctx.organizationId,
+			userId,
+			archivedAt: new Date(),
+		})
+		.onConflictDoUpdate({
+			target: [memberProfile.organizationId, memberProfile.userId],
+			set: { archivedAt: new Date(), updatedAt: new Date() },
+		});
+	// An archived person is gone from every forward-looking surface; a
+	// stale Team Lead list row is exactly the kind of thing that survives
+	// an archive and comes back to life when the same person is restored
+	// or a new person is invited into their old email.
+	await teamLeadsService.removeFromAllLists(ctx, userId);
+	await emitEvent(ctx, "member.archived", () =>
+		memberWebhookPayload(ctx, userId),
+	);
+	await recordAudit(ctx, {
+		kind: "member.archived",
+		target,
+		subjectUserId: userId,
+	});
 };
 
 export const membersService = {
@@ -667,31 +704,18 @@ export const membersService = {
 				"You cannot archive the only owner",
 			);
 		}
-		const target = await memberTarget(ctx, userId);
-		const archivedAt = archived ? new Date() : null;
-		await db
-			.insert(memberProfile)
-			.values({ organizationId: ctx.organizationId, userId, archivedAt })
-			.onConflictDoUpdate({
-				target: [memberProfile.organizationId, memberProfile.userId],
-				set: { archivedAt, updatedAt: new Date() },
-			});
 		if (archived) {
-			// An archived person is gone from every forward-looking surface; a
-			// stale Team Lead list row is exactly the kind of thing that survives
-			// an archive and comes back to life when the same person is restored
-			// or a new person is invited into their old email.
-			await teamLeadsService.removeFromAllLists(ctx, userId);
-			await emitEvent(ctx, "member.archived", () =>
-				memberWebhookPayload(ctx, userId),
-			);
-			await recordAudit(ctx, {
-				kind: "member.archived",
-				target,
-				subjectUserId: userId,
-			});
+			await archiveMember(ctx, userId);
 			return { emailConfirmed: false };
 		}
+		const target = await memberTarget(ctx, userId);
+		await db
+			.insert(memberProfile)
+			.values({ organizationId: ctx.organizationId, userId, archivedAt: null })
+			.onConflictDoUpdate({
+				target: [memberProfile.organizationId, memberProfile.userId],
+				set: { archivedAt: null, updatedAt: new Date() },
+			});
 		await recordAudit(ctx, {
 			kind: "member.restored",
 			target,
@@ -709,6 +733,74 @@ export const membersService = {
 		if (why) return { emailConfirmed: false };
 		await markEmailVerified(userId);
 		return { emailConfirmed: true };
+	},
+
+	/** The workspaces where the person is the only active owner. A person who
+	 *  is that cannot be anonymised: the workspace would keep no owner who can
+	 *  sign in. Reads every workspace, so it takes no Ctx. */
+	soleOwnerWorkspaces: async (
+		userId: string,
+	): Promise<{ id: string; name: string }[]> => {
+		const owned = await db
+			.select({ id: organization.id, name: organization.name })
+			.from(member)
+			.innerJoin(organization, eq(organization.id, member.organizationId))
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(
+				and(
+					eq(member.userId, userId),
+					eq(member.role, "owner"),
+					isNull(memberProfile.archivedAt),
+				),
+			);
+		const sole: { id: string; name: string }[] = [];
+		for (const workspace of owned) {
+			const others = await db
+				.select({ userId: member.userId })
+				.from(member)
+				.leftJoin(
+					memberProfile,
+					and(
+						eq(memberProfile.organizationId, member.organizationId),
+						eq(memberProfile.userId, member.userId),
+					),
+				)
+				.where(
+					and(
+						eq(member.organizationId, workspace.id),
+						eq(member.role, "owner"),
+						ne(member.userId, userId),
+						isNull(memberProfile.archivedAt),
+					),
+				)
+				.limit(1);
+			if (others.length === 0) sole.push(workspace);
+		}
+		return sole;
+	},
+
+	/** Archive a person for the account anonymise action. A platform admin
+	 *  calls it, who need not be a member of the workspace, so there is no
+	 *  access check here and `anonymiseService` has made the guards. A person
+	 *  who is archived already is left alone, so a second run adds no row.
+	 *  Answers whether it archived. */
+	archiveForAnonymise: async (ctx: Ctx, userId: string): Promise<boolean> => {
+		const profile = await db.query.memberProfile.findFirst({
+			where: and(
+				eq(memberProfile.organizationId, ctx.organizationId),
+				eq(memberProfile.userId, userId),
+			),
+			columns: { archivedAt: true },
+		});
+		if (profile?.archivedAt) return false;
+		await archiveMember(ctx, userId);
+		return true;
 	},
 
 	/** Confirm the address of an ACTIVE person who has never signed in. The

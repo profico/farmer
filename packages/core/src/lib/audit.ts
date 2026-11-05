@@ -110,6 +110,10 @@ export const AUDIT_KINDS = {
 	},
 	"member.archived": { category: "change", sentence: "archived {target}" },
 	"member.restored": { category: "change", sentence: "restored {target}" },
+	"member.anonymised": {
+		category: "change",
+		sentence: "anonymised the account of {target}",
+	},
 	"member.type_changed": {
 		category: "change",
 		sentence: "changed the person type of {target}",
