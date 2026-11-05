@@ -244,8 +244,8 @@ function OrganizationSettingsPage() {
 				title={uploadsEnabled ? "Logo" : "Logo URL"}
 				description={
 					uploadsEnabled
-						? "Upload an image or paste a public URL. SVG or PNG work best. Leave it empty to show the initials."
-						: "A public image URL. SVG or PNG work best. Leave it empty to show the initials."
+						? "Upload an image or paste a public URL. SVG or PNG work best."
+						: "A public image URL. SVG or PNG work best."
 				}
 			>
 				<form
@@ -560,7 +560,7 @@ function AutomationLockSection() {
 	return (
 		<PageSection
 			title="Automation lock"
-			description="Automations add nothing on or before this date, so a closed month cannot gain hours. People can still edit their own entries. Leave it empty for no lock."
+			description="Automations add nothing on or before this date, so a closed month cannot gain hours. People can still edit their own entries."
 		>
 			<form
 				className="flex w-full max-w-sm items-center gap-2"

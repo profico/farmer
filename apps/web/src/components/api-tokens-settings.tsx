@@ -279,8 +279,7 @@ function CreateApiTokenDialog() {
 						</DialogHeader>
 						<div className="grid gap-3">
 							<p className="text-sm text-muted-foreground">
-								Shown once. Treat it as a password. If you lose it, revoke it
-								and make a new one.
+								Shown once. If you lose it, make a new one.
 							</p>
 							<code className="block rounded-md bg-muted p-3 font-mono text-xs break-all select-all">
 								{token}
