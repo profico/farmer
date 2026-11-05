@@ -22,7 +22,7 @@ name: Mobile release
 #   push to feat/mobile  builds both platforms and keeps the files as workflow
 #                    artifacts. It publishes nothing.
 #   workflow_dispatch    the same as a push to the branch that you pick: a
-#                    release only on main.
+#                    release, and a store upload, only on main.
 #
 # A fork runs this as is. Without the Android secrets the APK is signed with
 # the debug keystore (see "Check the signing secrets"), and the file name
@@ -93,12 +93,12 @@ on:
         type: boolean
         default: false
 
-# A newer push replaces an older run on the same ref. A tag is never
+# A newer push replaces an older run on the same ref. A tag and main are never
 # cancelled: a cancelled release run can leave a release with only some of
-# its assets.
+# its assets, or delete `mobile-latest` and stop before it makes it again.
 concurrency:
   group: mobile-release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -108,10 +108,12 @@ env:
   # installs over an old one only when its version code is higher, and the
   # run number only goes up. The iOS build number takes the same value.
   FARMER_VERSION_CODE: ${{ github.run_number }}
-  # "true" for a tag `mobile-v*`, and for a manual run with the input on. A
-  # push to a branch never uploads to a store. The two upload jobs repeat
+  # "true" for a tag `mobile-v*`, and for a manual run on main with the input
+  # on. A push to a branch, or a manual run on another branch, never uploads
+  # to a store: only reviewed code gets the store keys. The job `version`
+  # refuses a tag on a commit that is not on main. The two upload jobs repeat
   # this test in their `if`, because a job `if` cannot read the workflow env.
-  PUBLISH_TO_STORES: ${{ startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores) }}
+  PUBLISH_TO_STORES: ${{ startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores && github.ref == 'refs/heads/main') }}
 
 jobs:
   version:
@@ -122,6 +124,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The whole history, so the next step can find the tag's commit on main.
+          fetch-depth: 0
+
+      # A tag publishes a release and uploads to the stores with the signing
+      # keys. Anyone who can push a tag could otherwise ship a commit that no
+      # review saw.
+      - name: Check a tag's commit is on main
+        if: github.ref_type == 'tag'
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is on a commit that is not on main"
+            exit 1
+          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -221,6 +237,11 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_REF" = refs/heads/main ] || [ "$GITHUB_REF_TYPE" = tag ]; then
+            # A published APK signed with the public debug key can be re-signed
+            # by anyone, and does not install over the release-signed app.
+            echo "::error title=Android signing::An ANDROID_KEYSTORE_* or ANDROID_KEY_* secret is missing. Main and a tag publish only a release-signed APK."
+            exit 1
           else
             echo "::warning title=Android signing::An ANDROID_KEYSTORE_* or ANDROID_KEY_* secret is missing, so the APK is signed with the debug keystore. It will not install over a release-signed app."
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -477,7 +498,7 @@ jobs:
   play-upload:
     name: Upload to Google Play
     needs: [version, android]
-    if: ${{ needs.android.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores)) }}
+    if: ${{ needs.android.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -530,7 +551,7 @@ jobs:
   testflight:
     name: Upload to TestFlight
     needs: version
-    if: ${{ needs.version.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores)) }}
+    if: ${{ needs.version.result == 'success' && (startsWith(github.ref, 'refs/tags/mobile-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_stores && github.ref == 'refs/heads/main')) }}
     runs-on: macos-latest
     timeout-minutes: 90
     env:
@@ -833,5 +854,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --latest=false \
             --title "Farmer mobile $VERSION" \
             --notes-file notes.md
