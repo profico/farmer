@@ -531,9 +531,13 @@ describe("the timer's Live Activity", () => {
 			await end();
 			await settleNativePushForTests();
 
+			// Only the activity's pushes: the sweep can also send the person its
+			// notice, an alert, depending on the hour the suite runs at.
 			expect({
 				name,
-				events: relay.requests.map((r) => r.liveActivity?.event),
+				events: relay.requests.flatMap((r) =>
+					r.liveActivity ? [r.liveActivity.event] : [],
+				),
 			}).toEqual({
 				name,
 				events: ["end"],
