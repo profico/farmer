@@ -25,3 +25,8 @@ apps/mobile/GoogleService-Info.plist
 *.p8
 *service-account*.json
 *-firebase-adminsdk-*.json
+# App signing: an Android keystore, an Apple certificate or profile.
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

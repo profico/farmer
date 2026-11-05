@@ -51,3 +51,7 @@ apps/push-relay/data
 **/*.p8
 **/*service-account*.json
 **/*-firebase-adminsdk-*.json
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.mobileprovision
