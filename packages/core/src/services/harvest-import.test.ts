@@ -1,4 +1,4 @@
-// The Harvest import's write side (docs/plans/harvest-import.md). The browser
+// The Harvest import's write side (docs/domains/harvest-import.md). The browser
 // builds the plan; this file pins what the server does with one, and the
 // properties that matter are the ones a bad plan must not break:
 //
@@ -6,7 +6,7 @@
 //      fails, and a chunk naming a source key `start` never mapped fails.
 //   2. A MATCHED PERSON IS NOT CHANGED, except an empty start date.
 //   3. A GUESSED ADDRESS STAYS UNVERIFIED, and never attaches to a user that
-//      exists already (plan section 3.3). A LISTED ADDRESS attaches an
+//      exists already. A LISTED ADDRESS attaches an
 //      existing user only in single-org mode; with several organizations the
 //      user is invited instead (harvest-import.invite.test.ts).
 //   4. A SECOND IMPORT OF THE SAME DATA ADDS NOTHING; a changed day is
@@ -348,6 +348,28 @@ describe("harvest import", () => {
 		expect(runs).toHaveLength(0);
 	});
 
+	test("a created task may not take the name of a task here", async () => {
+		const bad: HarvestStartInput = {
+			...emptyPlan(),
+			tasks: [
+				{
+					action: "create",
+					sourceKey: "Development copy",
+					name: "Development",
+					archived: false,
+				},
+			],
+		};
+		await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
+			'A task named "Development" exists already',
+		);
+		const runs = await db
+			.select()
+			.from(importRun)
+			.where(eq(importRun.organizationId, ORG));
+		expect(runs).toHaveLength(0);
+	});
+
 	test("a guessed address never attaches to an existing user", async () => {
 		const bad = plan();
 		bad.people[2] = {
@@ -366,9 +388,20 @@ describe("harvest import", () => {
 		// can reach the user.
 		bad.people.splice(3, 1);
 		bad.projectMembers = [];
-		await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
-			"belongs to another user",
-		);
+		// Only the one organization of a single-org instance may be told that an
+		// address has an account: see harvest-import.invite.test.ts for the rest.
+		// The environment wins over the stored setting: see the next test.
+		const envSlug = process.env.SINGLE_ORG_SLUG;
+		delete process.env.SINGLE_ORG_SLUG;
+		setInstanceSettingsForTests({ SINGLE_ORG_SLUG: ORG });
+		try {
+			await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
+				"belongs to another user",
+			);
+		} finally {
+			setInstanceSettingsForTests(undefined);
+			if (envSlug !== undefined) process.env.SINGLE_ORG_SLUG = envSlug;
+		}
 	});
 
 	test("the snapshot does not say which addresses have an account elsewhere", async () => {

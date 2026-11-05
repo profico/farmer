@@ -24,7 +24,8 @@
 		"typecheck": "turbo run typecheck",
 		"lint": "oxlint",
 		"format": "oxfmt --write",
-		"check": "oxfmt --check && oxlint"
+		"check": "oxfmt --check && oxlint",
+		"complexity": "cccc --top-cognitive 10 . && cccc --top-cyclomatic 10 ."
 	},
 	"dependencies": {
 		"@posthog/react": "1.11.0",

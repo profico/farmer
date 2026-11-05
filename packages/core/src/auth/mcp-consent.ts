@@ -107,10 +107,12 @@ export const mcpTokenRequest = z
 	.object({
 		grant_type: z.unknown().optional(),
 		code: z.unknown().optional(),
+		refresh_token: z.unknown().optional(),
 	})
-	.transform(({ grant_type, code }) => ({
+	.transform(({ grant_type, code, refresh_token }) => ({
 		refresh: grant_type === "refresh_token",
 		code: code ? String(code) : null,
+		refreshToken: refresh_token ? String(refresh_token) : null,
 	}));
 
 /** The one field of a consent request this check reads. */

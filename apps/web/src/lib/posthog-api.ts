@@ -17,6 +17,8 @@
 // imports every route module, `api-route.ts` is in that graph, and
 // `posthog-node` at the top of this file would therefore ship to the browser.
 
+import { withoutQueryValues } from "@farmer/core/lib/loggable-error";
+
 import { getPostHogClient } from "./posthog-server";
 
 /** A uuid, as the two `$id` routes carry it. */
@@ -133,10 +135,30 @@ export const captureApiFailure = (
 ): void => {
 	const posthog = getPostHogClient();
 	if (!posthog) return;
-	posthog.captureException(error, report.userId ?? ANONYMOUS, {
-		...propertiesOf(report),
-		// Error tracking groups on the exception itself, so the route has to be
-		// on the event to tell two failures of one message apart.
-		api_failed_route: routeTemplate(report.pathname),
+	// A database error holds the values of its query in its message, its
+	// stack and its `cause`: a token, a token hash or an email address. Only a
+	// copy without them goes to PostHog. See `withoutQueryValues`.
+	posthog.captureException(
+		withoutQueryValues(error),
+		report.userId ?? ANONYMOUS,
+		{
+			...propertiesOf(report),
+			// Error tracking groups on the exception itself, so the route has to be
+			// on the event to tell two failures of one message apart.
+			api_failed_route: routeTemplate(report.pathname),
+		},
+	);
+};
+
+/** An assistant turn that failed with an error not worded for the person.
+ *  The stream route answers it with a generic line, so without this the
+ *  only record is the log line. Scrubbed as `captureApiFailure` is. */
+export const captureAssistantFailure = (
+	error: Error,
+	ctx: { userId: string; organizationId: string },
+): void => {
+	getPostHogClient()?.captureException(withoutQueryValues(error), ctx.userId, {
+		organization_id: ctx.organizationId,
+		assistant_turn_failed: true,
 	});
 };

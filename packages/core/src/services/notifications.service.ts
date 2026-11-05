@@ -7,6 +7,7 @@ import {
 	pushSubscription,
 } from "../db/schema/notifications";
 import { setting } from "../lib/instance-settings";
+import { loggableError } from "../lib/loggable-error";
 import {
 	isAllowedPushEndpoint,
 	PUSH_ENDPOINT_MESSAGE,
@@ -205,7 +206,7 @@ export const notificationsService = {
 		} catch (error) {
 			console.error("[notifications] failed to load subscriptions", {
 				userId,
-				error,
+				error: loggableError(error),
 			});
 			return;
 		}

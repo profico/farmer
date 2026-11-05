@@ -86,7 +86,7 @@ beforeAll(async () => {
 	harness = await createTestDb();
 	// The address rule reads this; the developer's `.env` must not change it.
 	savedTrustedHeader = process.env.TRUSTED_IP_HEADER;
-	delete process.env.TRUSTED_IP_HEADER;
+	process.env.TRUSTED_IP_HEADER = "cf-connecting-ip";
 
 	await db.insert(organization).values(
 		[ORG_A, ORG_B].map((id) => ({

@@ -32,6 +32,11 @@
 // an address this module checked, and the name travels only in the `Host`
 // header and the TLS server name.
 //
+// A refusal never tells a name that does not resolve from a name that resolves
+// to a private address, and never holds an address. Both give one text, and
+// the specific cause goes to the server log only. Else an admin could map the
+// internal DNS through the URL field.
+//
 // `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for the
 // self-hosted deployment whose receiver genuinely is on the same private
 // network. It is off by default and it is the operator's decision, never an
@@ -215,6 +220,11 @@ export const isPublicIpAddress = (address: string): boolean => {
 
 // ── The URL itself ──────────────────────────────────────────────────────────
 
+/** The one refusal text for a private address and for a name that does not
+ *  resolve. Two texts would let an admin map the internal DNS. */
+const NOT_PUBLIC_REASON =
+	"That address is not reachable from the public internet";
+
 /**
  * Everything decidable without a name lookup: the scheme, the credentials, the
  * length, and a literal address in the host position.
@@ -256,7 +266,7 @@ export const checkWebhookUrlRules = (raw: string): WebhookUrlCheck => {
 		? url.hostname.slice(1, -1)
 		: url.hostname;
 	if (isIP(hostname) !== 0 && !allowPrivate && !isPublicIpAddress(hostname)) {
-		return refuse("That address is not reachable from the public internet");
+		return refuse(NOT_PUBLIC_REASON);
 	}
 
 	return { ok: true, url, addresses: [] };
@@ -289,16 +299,21 @@ export const resolveWebhookTarget = async (
 	try {
 		answers = await lookup(hostname, { all: true });
 	} catch {
-		return refuse(`Could not resolve ${hostname}`);
+		console.warn(`[webhooks] ${hostname} does not resolve`);
+		return refuse(NOT_PUBLIC_REASON);
 	}
-	if (answers.length === 0) return refuse(`Could not resolve ${hostname}`);
+	if (answers.length === 0) {
+		console.warn(`[webhooks] ${hostname} does not resolve`);
+		return refuse(NOT_PUBLIC_REASON);
+	}
 
 	for (const answer of answers) {
-		// The reason names the host and not the address: an admin may type any
-		// name, and echoing what it resolves to would read out the deployment's
-		// internal DNS one text field at a time.
+		// Same text as a name that does not resolve, with no host and no address
+		// in it: any other text would read out the deployment's internal DNS one
+		// text field at a time. The cause goes to the server log only.
 		if (!isPublicIpAddress(answer.address)) {
-			return refuse(`${hostname} is not reachable from the public internet`);
+			console.warn(`[webhooks] ${hostname} resolves to a private address`);
+			return refuse(NOT_PUBLIC_REASON);
 		}
 	}
 	return { ...checked, addresses: answers.map((answer) => answer.address) };

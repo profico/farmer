@@ -11,6 +11,7 @@ import { auditEvent } from "../db/schema/audit";
 import * as schema from "../db/schema/auth";
 import type { AuditVia } from "../lib/audit";
 import { clientAddress, trustedIpHeader } from "../lib/client-address";
+import { loggableError } from "../lib/loggable-error";
 import { recordSecurityEvent } from "../services/audit";
 import type { Ctx, CtxActor } from "../services/types";
 
@@ -192,6 +193,9 @@ export const recordFailedSignIn = async (
 			details: { method: "password", reason },
 		});
 	} catch (error) {
-		console.error("[audit] could not record a failed sign-in", error);
+		console.error(
+			"[audit] could not record a failed sign-in",
+			loggableError(error),
+		);
 	}
 };

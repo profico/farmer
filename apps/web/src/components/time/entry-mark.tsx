@@ -1,3 +1,5 @@
+import { safeColor } from "@farmer/core/lib/color";
+
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
 import { cn } from "#/lib/utils.ts";
 
@@ -44,7 +46,7 @@ export function EntryMark({
 		>
 			<span
 				className="size-2 rounded-full"
-				style={{ backgroundColor: taskColor ?? "var(--muted-foreground)" }}
+				style={{ backgroundColor: safeColor(taskColor) }}
 			/>
 		</span>
 	);

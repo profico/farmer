@@ -4,7 +4,8 @@ import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { durationFromEnv, withTimeout } from "../lib/http";
-import { dayKeyInTz, timeKeyInTz } from "../lib/time";
+import { loggableError } from "../lib/loggable-error";
+import { dayKeyInTz, safeTimezone, timeKeyInTz } from "../lib/time";
 import { notificationsService } from "../services/notifications.service";
 import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
 import {
@@ -99,7 +100,7 @@ export const runLogRemindersOnce = async (
 		const run = orgs.get(row.organizationId) ?? {
 			organizationId: row.organizationId,
 			slug: row.slug,
-			tz: row.timezone ?? "UTC",
+			tz: safeTimezone(row.timezone),
 			userIds: [],
 		};
 		run.userIds.push(row.userId);
@@ -139,7 +140,7 @@ export const runLogRemindersOnce = async (
 			console.error("[log-reminders] user reminder failed", {
 				organizationId: run.organizationId,
 				userId: recipient.userId,
-				error,
+				error: loggableError(error),
 			});
 		}
 	};
@@ -207,7 +208,7 @@ export const runLogRemindersOnce = async (
 			failed += run.userIds.length;
 			console.error("[log-reminders] org pass failed", {
 				organizationId: run.organizationId,
-				error,
+				error: loggableError(error),
 			});
 			continue;
 		}

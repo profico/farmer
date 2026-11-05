@@ -29,9 +29,11 @@ import {
 	project,
 	projectMember,
 	recurringBlockRule,
+	recurringBlockRuleSkip,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import { timeEntryGithubCommit } from "../db/schema/github";
 import { MAX_DAY_SECONDS } from "../lib/working-day";
 import {
 	createRecurringBlockRuleInput,
@@ -375,6 +377,32 @@ describe("a day off gets no recurring block", () => {
 		expect(await allEntries()).toHaveLength(5);
 	});
 
+	test("a block that holds a commit stays on a day later booked off", async () => {
+		// Its attachments would cascade with it, so the engine leaves it alone.
+		await runningBreakRuleSince(MONDAY);
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+		const block = present(
+			(await entriesOn(WEDNESDAY))[0],
+			"Wednesday's generated block",
+		);
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: block.id,
+			sha: "abc123",
+			message: "work",
+			committedAt: new Date(`${WEDNESDAY}T10:00:00.000Z`),
+			url: "https://example.test/c/abc123",
+		});
+		await vacationOn(WEDNESDAY);
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		const wednesday = await entriesOn(WEDNESDAY);
+		expect(wednesday).toHaveLength(2);
+		expect(wednesday.map((e) => e.taskId).sort()).toEqual(
+			[breakTaskId, vacationTaskId].sort(),
+		);
+	});
+
 	test("the block comes back when the day off is removed", async () => {
 		// Taking the block back is not the person deleting it, so it writes no
 		// skip: cancel the vacation and the day is an ordinary working day again.
@@ -389,6 +417,57 @@ describe("a day off gets no recurring block", () => {
 		const wednesday = await entriesOn(WEDNESDAY);
 		expect(wednesday).toHaveLength(1);
 		expect(wednesday[0]?.taskId).toBe(breakTaskId);
+	});
+});
+
+describe("what narrows a rule's reach", () => {
+	test("effectiveUntil stops the rule after that day", async () => {
+		const rule = await breakRuleFrom();
+		await switchedOnAt(rule.id, MONDAY);
+		await db
+			.update(recurringBlockRule)
+			.set({ effectiveUntil: TUESDAY })
+			.where(eq(recurringBlockRule.id, rule.id));
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		expect(await allEntries()).toHaveLength(2); // Mon and Tue
+		expect(await entriesOn(WEDNESDAY)).toHaveLength(0);
+	});
+
+	test("a rule writes only on its own weekdays", async () => {
+		const rule = await recurringBlockRulesService.create(ctx, {
+			taskId: breakTaskId,
+			daysOfWeek: [1, 3],
+			duration: "30m",
+			description: "Break",
+		});
+		await switchedOnAt(rule.id, MONDAY);
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		expect(await entriesOn(MONDAY)).toHaveLength(1);
+		expect(await entriesOn(TUESDAY)).toHaveLength(0);
+		expect(await entriesOn(WEDNESDAY)).toHaveLength(1);
+		expect(await allEntries()).toHaveLength(2);
+	});
+
+	test("a skipped day gets no block", async () => {
+		const rule = await runningBreakRuleSince(MONDAY);
+		await db
+			.insert(recurringBlockRuleSkip)
+			.values({ ruleId: rule.id, date: TUESDAY });
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		expect(await entriesOn(TUESDAY)).toHaveLength(0);
+		expect(await allEntries()).toHaveLength(4);
+	});
+
+	test("a range with no rule in reach writes nothing", async () => {
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		expect(await allEntries()).toHaveLength(0);
 	});
 });
 

@@ -125,6 +125,34 @@ describe("a stream the caller stops part-way", () => {
 		expect(turn.toolCalls[0]?.arguments).toBe('{"fro');
 	});
 
+	test("an abort with a reason that is not an Error is still an abort", async () => {
+		const controller = new AbortController();
+		// SAFETY: as above.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(
+				new ReadableStream<Uint8Array>({
+					start(streamController) {
+						streamController.enqueue(
+							new TextEncoder().encode(`data: ${delta("Half")}\n\n`),
+						);
+						// The read fails with the plain value of the abort reason.
+						controller.signal.addEventListener("abort", () => {
+							streamController.error(controller.signal.reason);
+						});
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
+			)) as typeof globalThis.fetch;
+
+		const pending = call(controller.signal);
+		setTimeout(() => {
+			controller.abort("user stopped");
+		}, 10);
+		const turn = await pending;
+		expect(turn.content).toBe("Half");
+		expect(turn.finishReason).toBe(ABORTED);
+	});
+
 	test("an error that is not the abort is a network error with the cause", async () => {
 		const controller = new AbortController();
 		// SAFETY: as above.
@@ -401,6 +429,71 @@ describe("a stream that ends without a finish reason", () => {
 				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
 			)) as typeof globalThis.fetch;
 		const turn = await call(new AbortController().signal);
+		expect(turn.finishReason).toBe("stop");
+	});
+});
+
+describe("a rejected request", () => {
+	const reject = (status: number, body: string) => {
+		// SAFETY: a test stub for `fetch` that answers one shape.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(body, { status })) as typeof globalThis.fetch;
+	};
+
+	const failure = async () => {
+		try {
+			await call(new AbortController().signal);
+		} catch (error) {
+			if (error instanceof OpenRouterError) return error;
+			throw error;
+		}
+		throw new Error("the call did not fail");
+	};
+
+	test("a JSON error body gives its message", async () => {
+		reject(401, JSON.stringify({ error: { message: "No auth credentials" } }));
+		const error = await failure();
+		expect(error.message).toBe("No auth credentials");
+		expect(error.status).toBe(401);
+	});
+
+	test("an HTML error body gives its first 300 characters", async () => {
+		reject(502, `<html>${"x".repeat(400)}</html>`);
+		const error = await failure();
+		expect(error.message).toBe(`<html>${"x".repeat(400)}</html>`.slice(0, 300));
+		expect(error.status).toBe(502);
+	});
+
+	test("a JSON body with no message keeps the raw text", async () => {
+		reject(500, '{"error":{}}');
+		await expect(call(new AbortController().signal)).rejects.toThrow(
+			'{"error":{}}',
+		);
+	});
+
+	test("an empty body names the status", async () => {
+		reject(503, "");
+		await expect(call(new AbortController().signal)).rejects.toThrow(
+			"OpenRouter returned 503",
+		);
+	});
+});
+
+describe("a stream with a null frame", () => {
+	test("skips `data: null` and keeps both good frames", async () => {
+		const finish = JSON.stringify({
+			choices: [{ delta: {}, finish_reason: "stop" }],
+		});
+		const frames = [delta("Hello, "), "null", delta("world"), finish, "[DONE]"];
+		// SAFETY: as above — a stub that answers one shape.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(frames.map((frame) => `data: ${frame}\n\n`).join(""), {
+				status: 200,
+				headers: { "Content-Type": "text/event-stream" },
+			})) as typeof globalThis.fetch;
+
+		const turn = await call(new AbortController().signal);
+		expect(turn.content).toBe("Hello, world");
 		expect(turn.finishReason).toBe("stop");
 	});
 });

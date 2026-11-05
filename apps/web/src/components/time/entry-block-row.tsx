@@ -1,29 +1,15 @@
-import {
-	dayKeyInTz,
-	parseDuration,
-	snapToQuarterHour,
-	timeKeyInTz,
-} from "@farmer/core/lib/time";
 import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
 } from "#/components/time/add-block-dialog.tsx";
 import { EntryMark } from "#/components/time/entry-mark.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "#/components/ui/popover.tsx";
-import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
@@ -46,8 +32,24 @@ import {
 } from "#/server/time-entries.ts";
 import { startTimer } from "#/server/timer.ts";
 
-// Notes longer than this are cut on the row until "Show more" is pressed.
-const NOTE_LIMIT = 220;
+import {
+	errorMessage,
+	isWorkEntry,
+	noteChanged,
+	noteView,
+	readDurationEdit,
+} from "./entry-block-row-helpers.ts";
+import {
+	CalendarChangePill,
+	CalendarDiffPill,
+	CalendarOriginMark,
+	DurationCell,
+	ExpandNoteButton,
+	LinkedCountBadge,
+	NoteField,
+	OvertimeButton,
+	StartButton,
+} from "./entry-block-row-parts.tsx";
 
 export type EntryBlockRowEntry = ExistingTimeEntry & {
 	project: {
@@ -130,17 +132,6 @@ export function calendarDifference(entry: EntryBlockRowEntry): {
 	return { date, durationSeconds };
 }
 
-/** The pill's text: the calendar's day, its length, or both. */
-function calendarLabel(
-	diff: NonNullable<ReturnType<typeof calendarDifference>>,
-) {
-	const parts: string[] = [];
-	if (diff.date) parts.push(formatDateKeyShort(diff.date));
-	if (diff.durationSeconds != null)
-		parts.push(formatClock(diff.durationSeconds));
-	return parts.join(" · ");
-}
-
 /** Harvest's row heading: "[CODE] Project (Client)". The code is what people
  *  actually say out loud, so it leads; an absence has neither and just names
  *  itself. */
@@ -201,7 +192,7 @@ export function EntryBlockRow({
 			]);
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not save note");
+			toast.error(errorMessage(error, "Could not save note"));
 			setNote(entry.description ?? "");
 		},
 	});
@@ -214,14 +205,11 @@ export function EntryBlockRow({
 	// holds the (possibly cut) note and swaps to the textarea on click.
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState(false);
-	const isLong = note.length > NOTE_LIMIT;
-	const shownNote =
-		isLong && !expanded ? `${note.slice(0, NOTE_LIMIT).trimEnd()}…` : note;
+	const { isLong, shownNote } = noteView(note, expanded);
 
 	const saveNote = () => {
-		const trimmed = note.trimEnd();
-		if (trimmed === (entry.description ?? "")) return;
-		noteMutation.mutate(trimmed);
+		if (!noteChanged(note, entry.description)) return;
+		noteMutation.mutate(note.trimEnd());
 	};
 
 	// Inline duration editing, the note field's twin: a local draft, committed on
@@ -247,23 +235,22 @@ export function EntryBlockRow({
 			]);
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not save duration");
+			toast.error(errorMessage(error, "Could not save duration"));
 			setDuration(formatClock(entry.durationSeconds));
 		},
 	});
 
 	const saveDuration = () => {
 		setEditingDuration(false);
-		const trimmed = duration.trim();
+		const edit = readDurationEdit(duration, entry.durationSeconds);
 		// An emptied box is an abandoned edit, not a request to log nothing —
 		// deleting an entry is the Delete button, and a zero-length one cannot
 		// exist. Same for a cleared-then-retyped value that comes back unchanged.
-		if (trimmed === "") {
+		if (edit.kind === "abandon") {
 			setDuration(formatClock(entry.durationSeconds));
 			return;
 		}
-		const parsed = parseDuration(trimmed);
-		if (parsed == null || parsed <= 0) {
+		if (edit.kind === "invalid") {
 			// Said out loud rather than reverted in silence. The grid cell next door
 			// can revert quietly because a wrong cell sits in a field of right ones;
 			// a single figure snapping back on its own reads as the app ignoring the
@@ -272,12 +259,11 @@ export function EntryBlockRow({
 			setDuration(formatClock(entry.durationSeconds));
 			return;
 		}
-		const snapped = snapToQuarterHour(parsed);
 		// Show the snap even when the length did not change, so typing "1h20m"
 		// against an hour and a half does not look like nothing happened.
-		setDuration(formatClock(snapped));
-		if (snapped === entry.durationSeconds) return;
-		durationMutation.mutate(snapped);
+		setDuration(formatClock(edit.snapped));
+		if (edit.kind === "unchanged") return;
+		durationMutation.mutate(edit.snapped);
 	};
 
 	const calendarChanges = calendarChangeSentences(entry);
@@ -290,7 +276,7 @@ export function EntryBlockRow({
 			});
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not dismiss the notice");
+			toast.error(errorMessage(error, "Could not dismiss the notice"));
 		},
 	});
 
@@ -306,21 +292,21 @@ export function EntryBlockRow({
 			]);
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not take the calendar's values");
+			toast.error(errorMessage(error, "Could not take the calendar's values"));
 		},
 	});
 
 	// Continue this entry on the stopwatch (issue #107), the way Harvest restarts
 	// a row: the timer measures on top of what the entry holds and saves over
 	// it when stopped. Whether it already does is `timing`, from the list.
-	const continuable = !entry.task.isAbsence && !entry.fillsDay;
+	const continuable = isWorkEntry(entry);
 	const continueMutation = useMutation({
 		mutationFn: () => startTimer({ data: { timeEntryId: entry.id } }),
 		onSuccess: async () => {
 			await invalidateTimer(queryClient, orgSlug);
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not start the timer");
+			toast.error(errorMessage(error, "Could not start the timer"));
 		},
 	});
 
@@ -333,7 +319,7 @@ export function EntryBlockRow({
 			});
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not update overtime");
+			toast.error(errorMessage(error, "Could not update overtime"));
 		},
 	});
 
@@ -391,7 +377,7 @@ export function EntryBlockRow({
 			// Put the row back — it is still there, and a collapsed one would read
 			// as deleted while the toast says otherwise.
 			setCollapsing(false);
-			toast.error(error.message ?? "Could not delete time entry");
+			toast.error(errorMessage(error, "Could not delete time entry"));
 		},
 	});
 
@@ -457,20 +443,8 @@ export function EntryBlockRow({
 					<p className="truncate text-base font-medium">
 						{entryHeading(entry)}
 					</p>
-					{/* Where this entry came from. Google's own mark, so a synced
-					    meeting is told from a typed one at a glance; the hover names
-					    the meeting's start, which the duration-only row cannot. */}
 					{entry.calendarEventId != null && (
-						<span
-							className="flex shrink-0 items-center"
-							title={
-								entry.meetingStartsAt
-									? `From Google Calendar · ${formatDateKeyShort(entry.date)} at ${timeKeyInTz(new Date(entry.meetingStartsAt), timezone)}`
-									: "From Google Calendar"
-							}
-						>
-							<GoogleCalendarMark className="size-3.5" />
-						</span>
+						<CalendarOriginMark entry={entry} timezone={timezone} />
 					)}
 					{entry.fillsDay && (
 						<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
@@ -482,274 +456,87 @@ export function EntryBlockRow({
 							Overtime
 						</span>
 					)}
-					{/* A synced meeting the person moved or re-lengthed: the calendar's
-					    value, as a quiet pill like "Updated automatically" beside it.
-					    Opening it (hover or tap) sets the two side by side, and the button
-					    inside is what takes the calendar's — the pill itself never acts,
-					    so a stray click cannot move an entry. Absent on every meeting that
-					    simply follows the calendar, so its presence means something. */}
+					{/* Absent on every meeting that simply follows the calendar, so its
+					    presence means something. */}
 					{calendarDiff && (
-						<Popover>
-							<PopoverTrigger
-								openOnHover
-								delay={300}
-								closeDelay={100}
-								render={
-									<button
-										type="button"
-										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
-									/>
-								}
-							>
-								Calendar: {calendarLabel(calendarDiff)}
-							</PopoverTrigger>
-							<PopoverContent
-								side="bottom"
-								align="start"
-								className="flex w-72 flex-col gap-2 p-3"
-							>
-								<div className="eyebrow">Differs from your calendar</div>
-								<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
-									<dt className="text-muted-foreground">Calendar</dt>
-									<dd>
-										{formatDateKeyShort(calendarDiff.date ?? entry.date)} ·{" "}
-										{formatClock(
-											calendarDiff.durationSeconds ?? entry.durationSeconds,
-										)}
-									</dd>
-									<dt className="text-muted-foreground">Your entry</dt>
-									<dd>
-										{formatDateKeyShort(entry.date)} ·{" "}
-										{formatClock(entry.durationSeconds)}
-									</dd>
-								</dl>
-								<p className="text-xs text-muted-foreground">
-									Your entry keeps your values. Take the calendar's and it
-									follows the calendar again.
-								</p>
-								<Button
-									size="sm"
-									variant="secondary"
-									className="self-start"
-									disabled={calendarMutation.isPending}
-									onClick={() => calendarMutation.mutate()}
-								>
-									{calendarMutation.isPending
-										? "Updating…"
-										: "Use the calendar's"}
-								</Button>
-							</PopoverContent>
-						</Popover>
+						<CalendarDiffPill
+							entry={entry}
+							diff={calendarDiff}
+							pending={calendarMutation.isPending}
+							onUse={() => calendarMutation.mutate()}
+						/>
 					)}
-					{/* The sync moved, re-lengthed or renamed this on the calendar's
-					    say-so. A quiet pill in words only — the calendar mark is already
-					    beside the heading; opening it (hover or tap) says what the entry
-					    was before, and "Got it" puts the notice away. */}
 					{calendarChanges.length > 0 && (
-						<Popover>
-							<PopoverTrigger
-								openOnHover
-								delay={300}
-								closeDelay={100}
-								render={
-									<button
-										type="button"
-										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
-									/>
-								}
-							>
-								Updated automatically
-							</PopoverTrigger>
-							<PopoverContent
-								side="bottom"
-								align="start"
-								className="flex w-64 flex-col gap-2 p-3"
-							>
-								<div className="eyebrow">Updated by your calendar</div>
-								<ul className="flex flex-col gap-0.5 text-sm">
-									{calendarChanges.map((line) => (
-										<li key={line}>{line}</li>
-									))}
-								</ul>
-								{entry.calendarChangedAt && (
-									<p className="text-xs text-muted-foreground">
-										{formatDateKeyShort(
-											dayKeyInTz(new Date(entry.calendarChangedAt), timezone),
-										)}{" "}
-										at{" "}
-										{timeKeyInTz(new Date(entry.calendarChangedAt), timezone)}
-									</p>
-								)}
-								<Button
-									size="sm"
-									variant="secondary"
-									className="self-start"
-									disabled={acknowledgeMutation.isPending}
-									onClick={() => acknowledgeMutation.mutate()}
-								>
-									Got it
-								</Button>
-							</PopoverContent>
-						</Popover>
+						<CalendarChangePill
+							lines={calendarChanges}
+							changedAt={entry.calendarChangedAt}
+							timezone={timezone}
+							pending={acknowledgeMutation.isPending}
+							onAcknowledge={() => acknowledgeMutation.mutate()}
+						/>
 					)}
-					{!!entry.commitCount && entry.commitCount > 0 && (
-						<span
-							className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-							title={`${entry.commitCount} linked commit${entry.commitCount === 1 ? "" : "s"}`}
-						>
-							<GitCommitIcon className="size-3" />
-							{entry.commitCount}
-						</span>
-					)}
-					{!!entry.pullRequestCount && entry.pullRequestCount > 0 && (
-						<span
-							className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-							title={`${entry.pullRequestCount} linked pull request${entry.pullRequestCount === 1 ? "" : "s"}`}
-						>
-							<GitPullRequestIcon className="size-3" />
-							{entry.pullRequestCount}
-						</span>
-					)}
+					<LinkedCountBadge
+						count={entry.commitCount}
+						noun="commit"
+						icon={<GitCommitIcon className="size-3" />}
+					/>
+					<LinkedCountBadge
+						count={entry.pullRequestCount}
+						noun="pull request"
+						icon={<GitPullRequestIcon className="size-3" />}
+					/>
 				</div>
 				{entry.project && (
 					<p className="text-sm text-muted-foreground">{entry.task.name}</p>
 				)}
-				{editing ? (
-					<Textarea
-						// oxlint-disable-next-line jsx-a11y/no-autofocus -- the field only exists because the person just clicked the note to edit it
-						autoFocus
-						value={note}
-						onChange={(event) => setNote(event.target.value)}
-						onBlur={() => {
-							saveNote();
-							setEditing(false);
-						}}
-						onKeyDown={(event) => {
-							// Escape abandons the edit and puts the stored value back.
-							if (event.key === "Escape") {
-								setNote(entry.description ?? "");
-								setEditing(false);
-							}
-						}}
-						placeholder="Add a note…"
-						rows={1}
-						className="mt-0.5 -ml-1.5 max-h-56 min-h-7 w-full resize-none overflow-y-auto rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
-					/>
-				) : (
-					<button
-						type="button"
-						aria-label={note ? `Edit note: ${note}` : "Add a note"}
-						onClick={() => setEditing(true)}
-						className={cn(
-							"mt-0.5 -ml-1.5 block min-h-7 w-full cursor-text rounded-md border border-transparent px-1.5 py-1 text-left text-sm wrap-anywhere whitespace-pre-wrap outline-none hover:border-input focus-visible:border-ring",
-							note ? "text-muted-foreground" : "text-faint",
-						)}
-					>
-						{shownNote || "Add a note…"}
-					</button>
-				)}
+				<NoteField
+					note={note}
+					shownNote={shownNote}
+					editing={editing}
+					onChange={setNote}
+					onStartEdit={() => setEditing(true)}
+					onBlur={() => {
+						saveNote();
+						setEditing(false);
+					}}
+					onEscape={() => {
+						setNote(entry.description ?? "");
+						setEditing(false);
+					}}
+				/>
 				{!editing && isLong && (
-					<button
-						type="button"
-						aria-expanded={expanded}
-						onClick={() => setExpanded((open) => !open)}
-						className="rounded-sm text-xs font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/16"
-					>
-						{expanded ? "Show less" : "Show more"}
-					</button>
+					<ExpandNoteButton
+						expanded={expanded}
+						onToggle={() => setExpanded((open) => !open)}
+					/>
 				)}
 			</div>
 			<div className="flex w-full shrink-0 items-center justify-end gap-1 @md/entries:w-auto @md/entries:items-start @md/entries:gap-3">
-				{/* A fill block's length is the day's leftover working time, recomputed
-				    on every write, so there is nothing here to type into — it stays a
-				    figure. Everything else is editable in place, like the note. */}
-				{entry.fillsDay ? (
-					<span
-						className="mono mr-auto w-16 shrink-0 border-x border-transparent px-1.5 text-right text-base @md/entries:mt-0.5 @md/entries:mr-0"
-						title="This block fills the rest of the day, so its length follows the day"
-					>
-						{formatClock(entry.durationSeconds)}
-					</span>
-				) : (
-					<Input
-						value={duration}
-						onFocus={() => setEditingDuration(true)}
-						onChange={(event) => setDuration(event.target.value)}
-						onBlur={saveDuration}
-						onKeyDown={(event) => {
-							if (event.key === "Enter") {
-								event.preventDefault();
-								event.currentTarget.blur();
-								return;
-							}
-							if (event.key === "Escape") {
-								setEditingDuration(false);
-								setDuration(formatClock(entry.durationSeconds));
-								event.currentTarget.blur();
-							}
-						}}
-						inputMode="decimal"
-						aria-label={`Duration — ${entryHeading(entry)}`}
-						className="mono mr-auto h-7 w-16 shrink-0 rounded-md border-transparent px-1.5 text-right text-base hover:not-disabled:not-focus-visible:border-input focus-visible:bg-background @md/entries:mr-0"
-					/>
-				)}
-				{/* Overtime is a one-click toggle from the row: it is purely manual, and
-				    making people reopen the dialog for it guarantees it never gets set. */}
-				{!entry.task.isAbsence && !entry.fillsDay ? (
-					<Button
-						variant="ghost"
-						size="sm"
-						className={cn("text-faint", entry.overtime && "text-warn")}
-						onClick={() => overtimeMutation.mutate(!entry.overtime)}
-						disabled={overtimeMutation.isPending}
-					>
-						OT
-					</Button>
-				) : (
-					// An absence or a fill block has no overtime, but the slot stays: the
-					// row is right-aligned, so a missing button moves the duration out of
-					// its column. The same button, unseen, is the same width by definition.
-					<Button
-						variant="ghost"
-						size="sm"
-						className="invisible"
-						aria-hidden
-						tabIndex={-1}
-						disabled
-					>
-						OT
-					</Button>
-				)}
-				{/* The same unseen-slot rule as OT above: an entry a timer cannot
-				    continue keeps the button's width, so the column stays put. */}
-				{continuable ? (
-					<Button
-						variant="ghost"
-						size="sm"
-						// Fixed, so "Timing" and "Start" take the same room.
-						className={cn("w-16 text-faint", timing && "text-ok")}
-						onClick={() => continueMutation.mutate()}
-						disabled={continueMutation.isPending || timing}
-						title={
-							timing
-								? "A timer is adding to this entry"
-								: "Start a timer that adds to this entry"
-						}
-					>
-						{timing ? "Timing" : "Start"}
-					</Button>
-				) : (
-					<Button
-						variant="ghost"
-						size="sm"
-						className="invisible w-16"
-						aria-hidden
-						tabIndex={-1}
-						disabled
-					>
-						Start
-					</Button>
-				)}
+				<DurationCell
+					fillsDay={entry.fillsDay}
+					seconds={entry.durationSeconds}
+					value={duration}
+					label={`Duration — ${entryHeading(entry)}`}
+					onFocus={() => setEditingDuration(true)}
+					onChange={setDuration}
+					onBlur={saveDuration}
+					onCancel={() => {
+						setEditingDuration(false);
+						setDuration(formatClock(entry.durationSeconds));
+					}}
+				/>
+				<OvertimeButton
+					available={continuable}
+					overtime={entry.overtime}
+					pending={overtimeMutation.isPending}
+					onToggle={() => overtimeMutation.mutate(!entry.overtime)}
+				/>
+				<StartButton
+					available={continuable}
+					timing={timing}
+					pending={continueMutation.isPending}
+					onStart={() => continueMutation.mutate()}
+				/>
 				<AddBlockDialog
 					timezone={timezone}
 					defaultDate={entry.date}

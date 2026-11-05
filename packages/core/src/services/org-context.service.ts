@@ -20,6 +20,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
+import { safeTimezone } from "../lib/time";
 import { NotAMemberError } from "./access.service";
 import { ctxAccess } from "./context";
 import { membersService } from "./members.service";
@@ -105,8 +106,8 @@ export const orgContextService = {
 			role: string;
 			timezone: string;
 		}[]
-	> =>
-		db
+	> => {
+		const rows = await db
 			.select({
 				id: organization.id,
 				slug: organization.slug,
@@ -127,7 +128,13 @@ export const orgContextService = {
 			.where(
 				and(eq(member.userId, userId), isNull(memberProfile.claimPendingSince)),
 			)
-			.orderBy(asc(member.createdAt)),
+			.orderBy(asc(member.createdAt));
+		// A stored zone can be invalid. The web app and the CLI use it in Intl.
+		return rows.map((row) => ({
+			...row,
+			timezone: safeTimezone(row.timezone),
+		}));
+	},
 
 	/** The slug and name of the Ctx's own organization. A Ctx is only ever
 	 *  built for an organization that exists, so a missing row is a bug. */
