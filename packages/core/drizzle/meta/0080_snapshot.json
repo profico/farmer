@@ -1,6 +1,6 @@
 {
-  "id": "500f036c-5e89-485b-b429-04dfc27082ef",
-  "prevId": "58e3e3b3-5dde-4970-95a1-d5900cf1dab6",
+  "id": "aa700524-d749-435d-810e-3916cc99e773",
+  "prevId": "e7f66179-efba-4e92-9b74-c87d34227662",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5413,6 +5413,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5448,17 +5454,31 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "commit_fill_tombstone_project_id_project_id_fk": {
+          "name": "commit_fill_tombstone_project_id_project_id_fk",
+          "tableFrom": "commit_fill_tombstone",
+          "tableTo": "project",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "cft_org_user_date_unq": {
-          "name": "cft_org_user_date_unq",
-          "nullsNotDistinct": false,
+        "cft_org_user_date_project_unq": {
+          "name": "cft_org_user_date_project_unq",
+          "nullsNotDistinct": true,
           "columns": [
             "organization_id",
             "user_id",
-            "date"
+            "date",
+            "project_id"
           ]
         }
       },

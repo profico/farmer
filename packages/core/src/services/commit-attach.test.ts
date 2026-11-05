@@ -38,7 +38,11 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
+import {
+	projectGithubRepo,
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
 	commitDetachTombstone,
@@ -47,10 +51,21 @@ import {
 	orgSettings,
 } from "../db/schema/settings";
 import { dayKeyInTz } from "../lib/time";
+import { emptyCalendar } from "../test/calendar";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
-import { githubService, setGithubClientForTests } from "./github.service";
+import { invalidateCtxAccess } from "./context";
+import { dayAssemblyService } from "./day-assembly.service";
+import {
+	githubService,
+	type ScannedPullRequestActivity,
+	setGithubClientForTests,
+} from "./github.service";
 import { integrationSettingsService } from "./integration-settings.service";
-import { setCommitSourceForTests } from "./ports";
+import {
+	setCalendarSourceForTests,
+	setCommitSourceForTests,
+	setPullRequestSourceForTests,
+} from "./ports";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
@@ -94,12 +109,10 @@ const commitsAttachedTo = async (timeEntryId: string) =>
 
 /** One commit per (day, project), so "which entry did it land on?" has a single
  *  unambiguous answer per project. */
-const commitsFor = (entries: { day: string; project: "main" | "other" }[]) => ({
-	listUserCommitsForDay: async () => [],
-	listUserCommitsByDay: async (
-		_ctx: Ctx,
-		range: { from: string; to: string },
-	) => {
+const commitsFor = (
+	entries: { day: string; project: "main" | "other"; count?: number }[],
+) => {
+	const byDayOf = (range: { from: string; to: string }) => {
 		const inRange = entries.filter(
 			(e) => e.day >= range.from && e.day <= range.to,
 		);
@@ -109,18 +122,30 @@ const commitsFor = (entries: { day: string; project: "main" | "other" }[]) => ({
 		}
 		return [...byDay].map(([dayKey, group]) => ({
 			dayKey,
-			commits: group.map((g) => ({
-				projectGithubRepoId: g.project === "main" ? repoId : otherRepoId,
-				projectId: g.project === "main" ? projectId : otherProjectId,
-				sha: `sha-${dayKey}-${g.project}`,
-				message: `Work on ${g.project}`,
-				authorLogin: "tester",
-				committedAt: new Date(`${dayKey}T12:00:00.000Z`),
-				url: `https://example.com/${dayKey}/${g.project}`,
-			})),
+			commits: group.flatMap((g) =>
+				Array.from({ length: g.count ?? 1 }, (_, index) => ({
+					projectGithubRepoId: g.project === "main" ? repoId : otherRepoId,
+					projectId: g.project === "main" ? projectId : otherProjectId,
+					sha: `sha-${dayKey}-${g.project}${index === 0 ? "" : `-${String(index)}`}`,
+					message: `Work on ${g.project} ${String(index)}`,
+					authorLogin: "tester",
+					committedAt: new Date(`${dayKey}T12:00:00.000Z`),
+					url: `https://example.com/${dayKey}/${g.project}/${String(index)}`,
+					repoFullName:
+						g.project === "main" ? "profico/repo-0" : "profico/repo-1",
+				})),
+			),
 		}));
-	},
-});
+	};
+	return {
+		listUserCommitsForDay: async (_ctx: Ctx, date: string) =>
+			byDayOf({ from: date, to: date })[0]?.commits ?? [],
+		listUserCommitsByDay: async (
+			_ctx: Ctx,
+			range: { from: string; to: string },
+		) => byDayOf(range),
+	};
+};
 
 const addEntry = async (values: {
 	date: string;
@@ -258,11 +283,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	setCommitSourceForTests(null);
+	setPullRequestSourceForTests(null);
+	setCalendarSourceForTests(null);
 	setGithubClientForTests(null);
 	await harness.close();
 });
 
 beforeEach(async () => {
+	setCalendarSourceForTests(emptyCalendar);
 	await db.delete(timeEntry);
 	await db.delete(commitFillTombstone);
 	await db.delete(commitDetachTombstone);
@@ -470,7 +498,167 @@ describe("which project the rest-of-day block is filed against", () => {
 		expect(fill?.projectId).toBe(projectId);
 	});
 
-	test("nothing, when its commits span two projects", async () => {
+	test("each project, when its commits span two", async () => {
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 3 },
+				{ day: YESTERDAY, project: "other", count: 1 },
+			]),
+		);
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const main = present(
+			rows.find((r) => r.projectId === projectId),
+			"main entry",
+		);
+		const other = present(
+			rows.find((r) => r.projectId === otherProjectId),
+			"other entry",
+		);
+		// Split by commit count, three to one, of an eight hour day. The larger
+		// share is the fill block, so the day still resizes.
+		expect(main.fillsDay).toBe(true);
+		expect(main.durationSeconds).toBe(6 * 60 * 60);
+		expect(other.fillsDay).toBe(false);
+		expect(other.durationSeconds).toBe(2 * 60 * 60);
+		expect(main.durationSeconds + other.durationSeconds).toBe(8 * 60 * 60);
+		// Each project's commits sit on its own entry.
+		expect(await commitsAttachedTo(main.id)).toHaveLength(3);
+		expect(
+			(await commitsAttachedTo(other.id)).map((c) => c.projectGithubRepoId),
+		).toEqual([otherRepoId]);
+	});
+
+	test("the shares add up to what the rest of the day holds", async () => {
+		// 7h15 left: 29 quarter hours, which the weights two and one do not divide.
+		const [admin] = await db
+			.insert(task)
+			.values({
+				scope: "organization" as const,
+				organizationId: ORG_ID,
+				name: "Admin",
+				isAbsence: false,
+			})
+			.returning({ id: task.id });
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: present(admin, "admin task").id,
+			date: YESTERDAY,
+			durationSeconds: 45 * 60,
+			description: "Admin",
+		});
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 2 },
+				{ day: YESTERDAY, project: "other", count: 1 },
+			]),
+		);
+
+		await runAutomations();
+
+		const rows = (await entriesOn(YESTERDAY)).filter(
+			(r) => r.taskId === devTaskId,
+		);
+		expect(rows).toHaveLength(2);
+		expect(rows.reduce((sum, r) => sum + r.durationSeconds, 0)).toBe(
+			8 * 60 * 60 - 45 * 60,
+		);
+		for (const row of rows.filter((r) => !r.fillsDay)) {
+			expect(row.durationSeconds % 900).toBe(0);
+		}
+		await db.delete(timeEntry);
+		await db.delete(task).where(eq(task.id, present(admin, "admin task").id));
+	});
+
+	// Assemble my day counts distinct pull requests. An opened and a merged event
+	// on one pull request are one pull request, not two.
+	test("a pull request weighs once, however many events it has", async () => {
+		const events = (["opened", "merged"] as const).map(
+			(kind): ScannedPullRequestActivity => ({
+				eventId: `PR_1:${kind}`,
+				kind,
+				reviewState: null,
+				number: 1,
+				title: "Change 1",
+				pullRequestUrl: "https://github.com/profico/repo-0/pull/1",
+				url: "https://github.com/profico/repo-0/pull/1",
+				occurredAt: new Date(`${YESTERDAY}T12:00:00.000Z`),
+				projectGithubRepoId: repoId,
+				projectId,
+				repoFullName: "profico/repo-0",
+			}),
+		);
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityForDay: async () => [],
+			listUserPullRequestActivityByDay: async () => [
+				{ dayKey: YESTERDAY, activity: events },
+			],
+		});
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "other", count: 1 }]),
+		);
+
+		try {
+			await runAutomations();
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows.map((r) => r.durationSeconds).sort()).toEqual([
+			4 * 60 * 60,
+			4 * 60 * 60,
+		]);
+	});
+
+	test("only the projects the person may track on get a share", async () => {
+		await db
+			.update(member)
+			.set({ role: "member" })
+			.where(eq(member.userId, USER_ID));
+		// The suite's own assignment on the main project is what the gate reads.
+		invalidateCtxAccess(ctx);
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 1 },
+				{ day: YESTERDAY, project: "other", count: 3 },
+			]),
+		);
+
+		try {
+			await runAutomations();
+
+			// The other project's commits weigh more, and it still gets nothing: the
+			// whole day goes to the one project the engine may write time on.
+			const rows = await entriesOn(YESTERDAY);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.projectId).toBe(projectId);
+			expect(rows[0]?.fillsDay).toBe(true);
+			expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
+			// And its commits are left alone rather than hung on the first project.
+			expect(await commitsAttachedTo(rows[0]?.id ?? "")).toHaveLength(1);
+		} finally {
+			await db
+				.update(member)
+				.set({ role: "owner" })
+				.where(eq(member.userId, USER_ID));
+			invalidateCtxAccess(ctx);
+		}
+	});
+
+	test("nothing, when no project can take the time", async () => {
+		// A member with no assignment: neither project passes the gate, so the
+		// block is the project-less one it was before the split.
+		await db
+			.update(member)
+			.set({ role: "member" })
+			.where(eq(member.userId, USER_ID));
+		await db.delete(projectMember);
+		invalidateCtxAccess(ctx);
 		setCommitSourceForTests(
 			commitsFor([
 				{ day: YESTERDAY, project: "main" },
@@ -478,12 +666,25 @@ describe("which project the rest-of-day block is filed against", () => {
 			]),
 		);
 
-		await runAutomations();
+		try {
+			await runAutomations();
+		} finally {
+			// Put back the suite's own assignment.
+			await db.insert(projectMember).values({
+				organizationId: ORG_ID,
+				projectId,
+				userId: USER_ID,
+			});
+			await db
+				.update(member)
+				.set({ role: "owner" })
+				.where(eq(member.userId, USER_ID));
+			invalidateCtxAccess(ctx);
+		}
 
 		const [fill] = await entriesOn(YESTERDAY);
 		expect(fill?.fillsDay).toBe(true);
 		expect(fill?.projectId).toBeNull();
-		// Both projects' commits still land on it — unfiled, but not lost.
 		expect(await commitsAttachedTo(fill?.id ?? "")).toHaveLength(2);
 	});
 
@@ -505,6 +706,330 @@ describe("which project the rest-of-day block is filed against", () => {
 	});
 });
 
+describe("a fill block filed against one project", () => {
+	const lateCommits = commitsFor([
+		{ day: YESTERDAY, project: "main" },
+		{ day: YESTERDAY, project: "other" },
+	]);
+
+	// An earlier run saw one project and filed the day on it. Another project's
+	// commits turning up later used to stay unattached for good.
+	test("late evidence for another project is carved out of the fill", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(lateCommits);
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const other = present(
+			rows.find((r) => r.projectId === otherProjectId),
+			"carved entry",
+		);
+		const kept = present(
+			rows.find((r) => r.id === fill.id),
+			"fill",
+		);
+		expect(other.fillsDay).toBe(false);
+		expect(other.durationSeconds).toBe(4 * 60 * 60);
+		expect(kept.durationSeconds).toBe(4 * 60 * 60);
+		expect((await commitsAttachedTo(fill.id)).map((c) => c.sha)).toEqual([
+			`sha-${YESTERDAY}-main`,
+		]);
+		expect((await commitsAttachedTo(other.id)).map((c) => c.sha)).toEqual([
+			`sha-${YESTERDAY}-other`,
+		]);
+
+		// A second run changes nothing.
+		await runAutomations();
+		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
+	});
+
+	// A fill made by hand, or from Assemble my day, holds no evidence. It is still
+	// the person's block on that project and keeps a share.
+	test("a fill with no evidence still gives a late project its share", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const other = present(
+			rows.find((r) => r.projectId === otherProjectId),
+			"carved entry",
+		);
+		expect(other.durationSeconds).toBe(4 * 60 * 60);
+		expect(
+			present(
+				rows.find((r) => r.id === fill.id),
+				"fill",
+			).durationSeconds,
+		).toBe(4 * 60 * 60);
+		expect((await commitsAttachedTo(other.id)).map((c) => c.sha)).toEqual([
+			`sha-${YESTERDAY}-other`,
+		]);
+
+		await runAutomations();
+		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
+	});
+
+	test("a share of nothing leaves the evidence for later", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 15 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(lateCommits);
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(1);
+		expect(await commitsAttachedTo(fill.id)).toHaveLength(1);
+	});
+
+	test("a project the person cannot track on gets no entry from the fill", async () => {
+		await db
+			.update(member)
+			.set({ role: "member" })
+			.where(eq(member.userId, USER_ID));
+		invalidateCtxAccess(ctx);
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(lateCommits);
+
+		try {
+			await runAutomations();
+		} finally {
+			await db
+				.update(member)
+				.set({ role: "owner" })
+				.where(eq(member.userId, USER_ID));
+			invalidateCtxAccess(ctx);
+		}
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(1);
+		expect(await commitsAttachedTo(fill.id)).toHaveLength(1);
+	});
+
+	test("still takes a project-less commit", async () => {
+		// A project-less fill is the "nobody could take it" block: every
+		// project's evidence belongs on it.
+		const fill = await addEntry({
+			date: YESTERDAY,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main" },
+				{ day: YESTERDAY, project: "other" },
+			]),
+		);
+
+		await runAutomations();
+
+		expect(await commitsAttachedTo(fill.id)).toHaveLength(2);
+	});
+
+	// Deleting a project's split entry is that person saying no to the project
+	// on that day: the engine neither recreates it nor carves it out of the fill
+	// again, and its commits do not land on the other project's fill.
+	test("a deleted split entry stays deleted, and its commits stay off the fill", async () => {
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 3 },
+				{ day: YESTERDAY, project: "other", count: 1 },
+			]),
+		);
+		await runAutomations();
+		const split = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.projectId === otherProjectId),
+			"split entry",
+		);
+
+		await timeEntriesService.remove(ctx, split.id);
+		await runAutomations();
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		const [fill] = rows;
+		expect(fill?.projectId).toBe(projectId);
+		expect(fill?.fillsDay).toBe(true);
+		expect((await commitsAttachedTo(fill?.id ?? "")).map((c) => c.sha)).toEqual(
+			[
+				`sha-${YESTERDAY}-main`,
+				`sha-${YESTERDAY}-main-1`,
+				`sha-${YESTERDAY}-main-2`,
+			].sort(),
+		);
+	});
+
+	test("deleting the fill says no to its project only", async () => {
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 3 },
+				{ day: YESTERDAY, project: "other", count: 1 },
+			]),
+		);
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+
+		await timeEntriesService.remove(ctx, fill.id);
+		await runAutomations();
+
+		// The other project still has its entry and no block is made for main.
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows.map((r) => r.projectId)).toEqual([otherProjectId]);
+	});
+
+	test("a project-less no still stops every block that day", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main" },
+				{ day: YESTERDAY, project: "other" },
+			]),
+		);
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
+	});
+});
+
+describe("Assemble my day and a deleted project block", () => {
+	const deleteOtherSplit = async () => {
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main", count: 3 },
+				{ day: YESTERDAY, project: "other", count: 1 },
+			]),
+		);
+		await runAutomations();
+		const split = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.projectId === otherProjectId),
+			"split entry",
+		);
+		await timeEntriesService.remove(ctx, split.id);
+		// Free the whole day so the assembler has something to propose.
+		await db.delete(timeEntry);
+	};
+	const workFor = <T extends { key: string }>(suggestions: T[]) =>
+		suggestions.find((s) => s.key === `work:${otherProjectId}`);
+
+	test("holds the work suggestion back and counts it", async () => {
+		await deleteOtherSplit();
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
+
+		expect(workFor(assembly.suggestions)).toBeUndefined();
+		expect(assembly.dismissedCount).toBe(1);
+		expect(
+			assembly.suggestions.some((s) => s.key === `work:${projectId}`),
+		).toBe(true);
+	});
+
+	test("includeDismissed brings it back flagged, and applying it clears the no", async () => {
+		await deleteOtherSplit();
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+		const work = present(workFor(assembly.suggestions), "the work row");
+		expect(work.dismissed).toBe(true);
+		expect(assembly.dismissedCount).toBe(1);
+
+		const result = await dayAssemblyService.apply(ctx, {
+			date: YESTERDAY,
+			entries: [
+				{
+					taskId: work.taskId,
+					projectId: otherProjectId,
+					description: work.description,
+					durationSeconds: work.durationSeconds,
+				},
+			],
+		});
+		expect(result.created).toBe(1);
+		expect(
+			await db.query.commitFillTombstone.findMany({
+				where: eq(commitFillTombstone.organizationId, ORG_ID),
+			}),
+		).toHaveLength(0);
+
+		await runAutomations();
+		const entry = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.projectId === otherProjectId),
+			"applied entry",
+		);
+		expect((await commitsAttachedTo(entry.id)).map((c) => c.sha)).toEqual([
+			`sha-${YESTERDAY}-other`,
+		]);
+	});
+
+	test("applying the day-level rest-of-day suggestion clears its no", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		setCommitSourceForTests(commitsFor([]));
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+		const fill = present(
+			assembly.suggestions.find((s) => s.kind === "fill"),
+			"fill row",
+		);
+		expect(fill.dismissed).toBe(true);
+
+		await dayAssemblyService.apply(ctx, {
+			date: YESTERDAY,
+			entries: [
+				{
+					taskId: fill.taskId,
+					description: fill.description,
+					fillsDay: true,
+				},
+			],
+		});
+
+		expect(
+			await db.query.commitFillTombstone.findMany({
+				where: eq(commitFillTombstone.organizationId, ORG_ID),
+			}),
+		).toHaveLength(0);
+	});
+});
+
 describe("a deleted rest-of-day block", () => {
 	test("stays deleted", async () => {
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
@@ -520,7 +1045,7 @@ describe("a deleted rest-of-day block", () => {
 		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
 	});
 
-	test("records the day, not the row", async () => {
+	test("records the day and the project", async () => {
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
@@ -532,8 +1057,10 @@ describe("a deleted rest-of-day block", () => {
 				eq(commitFillTombstone.userId, USER_ID),
 			),
 		});
-		expect(tombstones).toHaveLength(1);
-		expect(tombstones[0]?.date).toBe(YESTERDAY);
+		expect(tombstones.map((t) => t.date)).toEqual([YESTERDAY, YESTERDAY]);
+		expect(tombstones.map((t) => t.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
 	});
 
 	test("is retracted by deliberately making a new one", async () => {
@@ -547,6 +1074,7 @@ describe("a deleted rest-of-day block", () => {
 		// forever.
 		await timeEntriesService.create(ctx, {
 			taskId: devTaskId,
+			projectId,
 			date: YESTERDAY,
 			fillsDay: true,
 			overtime: false,
@@ -957,5 +1485,765 @@ describe("a detached commit", () => {
 
 		const left = await db.query.commitDetachTombstone.findMany();
 		expect(left.map((row) => row.sha)).toEqual(["sha-recent"]);
+	});
+});
+
+// The tombstone rules, read from both sides: what a delete writes, what a
+// create retracts, and which paths of the engine read the day-level row.
+describe("the day-level no", () => {
+	const dayRows = () =>
+		db.query.commitFillTombstone.findMany({
+			where: eq(commitFillTombstone.organizationId, ORG_ID),
+		});
+
+	test("deleting the fill keeps a late push for another project from filing a new one", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+	});
+
+	test("Assemble my day holds back the rest of the day after the fill was deleted", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+
+		const held = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
+		expect(held.suggestions.some((s) => s.kind === "fill")).toBe(false);
+		expect(held.dismissedCount).toBe(2);
+
+		const shown = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+		expect(shown.suggestions.find((s) => s.kind === "fill")?.dismissed).toBe(
+			true,
+		);
+	});
+
+	test("a project-less entry that is not a fill leaves the no in place", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+		await timeEntriesService.remove(ctx, hand.id);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+
+		await runAutomations();
+
+		expect(await entriesOn(YESTERDAY)).toHaveLength(0);
+	});
+
+	test("a fill made on a project retracts the day-level no", async () => {
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			date: YESTERDAY,
+			fillsDay: true,
+			overtime: false,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
+	});
+
+	test("the day-level no stops a carve out of a fill", async () => {
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await db
+			.insert(commitFillTombstone)
+			.values({ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY });
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "other" }]));
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
+	});
+});
+
+describe("a fill moved to another project", () => {
+	test("is not carved again for the project it left", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 2 }]),
+		);
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		expect(fill.durationSeconds).toBe(8 * 60 * 60);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: fill.id,
+			projectId: otherProjectId,
+		});
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.projectId).toBe(otherProjectId);
+		expect(rows[0]?.durationSeconds).toBe(8 * 60 * 60);
+		expect(await commitsAttachedTo(fill.id)).toHaveLength(2);
+	});
+});
+
+// The late-evidence rule is per piece of evidence: a project is carved only for
+// the commits that are not on the fill yet.
+describe("late evidence when the fill already holds some of it", () => {
+	const shaOf = (project: "main" | "other", index: number) =>
+		`sha-${YESTERDAY}-${project}${index === 0 ? "" : `-${String(index)}`}`;
+
+	const putOnFill = (timeEntryId: string, sha: string, repo: string) =>
+		db.insert(timeEntryGithubCommit).values({
+			timeEntryId,
+			projectGithubRepoId: repo,
+			sha,
+			message: "Work",
+			authorLogin: "tester",
+			committedAt: new Date(`${YESTERDAY}T12:00:00.000Z`),
+			url: `https://example.com/${sha}`,
+		});
+
+	// An old engine hung another project's commit on the fill.
+	test("a fill that holds one commit of a project still gives it the new ones", async () => {
+		const fill = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await putOnFill(fill.id, shaOf("other", 0), otherRepoId);
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "other", count: 3 }]),
+		);
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const carved = present(
+			rows.find((r) => r.id !== fill.id),
+			"carved entry",
+		);
+		expect(carved.projectId).toBe(otherProjectId);
+		// The fill weighs 1 (its one held commit), the newcomer 2. 32 quarter
+		// hours split 10.67 : 21.33; the larger remainder rounds up, so the fill
+		// takes 11 units and the carved entry 21 (5h15).
+		expect(carved.durationSeconds).toBe(18900);
+		expect(
+			present(
+				rows.find((r) => r.id === fill.id),
+				"fill",
+			).durationSeconds,
+		).toBe(9900);
+		// The description comes from the two new commits only.
+		expect(carved.description).toContain("Work on other 1");
+		expect(carved.description).toContain("Work on other 2");
+		expect(carved.description).not.toContain("Work on other 0");
+		expect(rows.reduce((sum, r) => sum + r.durationSeconds, 0)).toBe(
+			8 * 60 * 60,
+		);
+		expect(
+			(await commitsAttachedTo(carved.id)).map((c) => c.sha).sort(),
+		).toEqual([shaOf("other", 1), shaOf("other", 2)]);
+		expect((await commitsAttachedTo(fill.id)).map((c) => c.sha)).toEqual([
+			shaOf("other", 0),
+		]);
+
+		await runAutomations();
+		expect(await entriesOn(YESTERDAY)).toHaveLength(2);
+		expect(await commitsAttachedTo(carved.id)).toHaveLength(2);
+	});
+
+	// The engine filed project P, the person moved the fill to Q, and a third P
+	// commit arrives.
+	test("a fill moved away still gives its old project the new commit", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 2 }]),
+		);
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.file(ctx, {
+			timeEntryId: fill.id,
+			projectId: otherProjectId,
+		});
+
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "main", count: 3 }]),
+		);
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(2);
+		const carved = present(
+			rows.find((r) => r.id !== fill.id),
+			"carved entry",
+		);
+		expect(carved.projectId).toBe(projectId);
+		// The fill holds two commits, the newcomer one. 32 quarter hours split
+		// 21.33 : 10.67; the newcomer has the larger remainder and takes 11 units
+		// (2h45).
+		expect(carved.durationSeconds).toBe(9900);
+		expect(
+			present(
+				rows.find((r) => r.id === fill.id),
+				"fill",
+			).durationSeconds,
+		).toBe(18900);
+		expect(carved.description).toContain("Work on main 2");
+		expect(carved.description).not.toContain("Work on main 0");
+		expect((await commitsAttachedTo(carved.id)).map((c) => c.sha)).toEqual([
+			shaOf("main", 2),
+		]);
+		expect((await commitsAttachedTo(fill.id)).map((c) => c.sha).sort()).toEqual(
+			[shaOf("main", 0), shaOf("main", 1)],
+		);
+	});
+
+	const prEvent = (kind: "opened" | "merged"): ScannedPullRequestActivity => ({
+		eventId: `PR_1:${kind}`,
+		kind,
+		reviewState: null,
+		number: 1,
+		title: "Change 1",
+		pullRequestUrl: "https://github.com/profico/repo-0/pull/1",
+		url: "https://github.com/profico/repo-0/pull/1",
+		occurredAt: new Date(`${YESTERDAY}T12:00:00.000Z`),
+		projectGithubRepoId: repoId,
+		projectId,
+		repoFullName: "profico/repo-0",
+	});
+
+	const pullRequestsFor = (kinds: ("opened" | "merged")[]) =>
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityForDay: async () => [],
+			listUserPullRequestActivityByDay: async () => [
+				{ dayKey: YESTERDAY, activity: kinds.map(prEvent) },
+			],
+		});
+
+	const eventsOn = async (timeEntryId: string) =>
+		(
+			await db.query.timeEntryGithubPrActivity.findMany({
+				where: eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId),
+			})
+		)
+			.map((row) => row.eventId)
+			.sort();
+
+	test("a new event of a pull request the fill holds one event of still attaches", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+			const hand = await timeEntriesService.create(ctx, {
+				taskId: devTaskId,
+				projectId,
+				description: "Planning",
+				date: YESTERDAY,
+				durationSeconds: 60 * 60,
+				overtime: false,
+				fillsDay: false,
+			});
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			expect(await eventsOn(hand.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// Run 1 filed the fill on P with `opened`. The person moved it to Q, so P has
+	// no entry. The fill holds the pull request, so the carve gives P nothing for
+	// it, and `merged` goes to the fill rather than to no entry at all.
+	test("a new event of a held pull request goes to a fill moved to another project", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+			await runAutomations();
+
+			expect(await entriesOn(YESTERDAY)).toHaveLength(1);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// A new commit of P carves P an entry. The pull request is still on the fill,
+	// so `merged` goes to the fill in this probe too, not to the carved entry.
+	test("a new event of a held pull request stays on the fill when a commit carves an entry", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "main", count: 1 }]),
+			);
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			const rows = await entriesOn(YESTERDAY);
+			expect(rows).toHaveLength(2);
+			const carved = present(
+				rows.find((r) => r.id !== fill.id),
+				"carved entry",
+			);
+			expect(carved.projectId).toBe(projectId);
+			expect(await eventsOn(carved.id)).toEqual([]);
+			expect((await commitsAttachedTo(carved.id)).map((c) => c.sha)).toEqual([
+				shaOf("main", 0),
+			]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// The target is decided on each sweep. Run 1 files the fill on P with
+	// `opened`. The person moves the fill to Q. Run 2 sees a new commit of P and
+	// carves P an entry with the commit only, because the fill holds the pull
+	// request. Run 3 finds P with an entry, so `merged` goes to that entry.
+	test("a later event goes to the entry the project has by then", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "main", count: 1 }]),
+			);
+			await runAutomations();
+			const carved = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.id !== fill.id),
+				"carved entry",
+			);
+			expect(carved.projectId).toBe(projectId);
+			expect(await eventsOn(carved.id)).toEqual([]);
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			expect(await eventsOn(carved.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// A project-less entry on the day means there is no carve. A new event of a
+	// held pull request goes to that entry and not to the fill.
+	test("a new event of a held pull request goes to a project-less entry, not the fill", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			await timeEntriesService.file(ctx, {
+				timeEntryId: fill.id,
+				projectId: otherProjectId,
+			});
+			const general = await timeEntriesService.create(ctx, {
+				taskId: devTaskId,
+				description: "Planning",
+				date: YESTERDAY,
+				durationSeconds: 60 * 60,
+				overtime: false,
+				fillsDay: false,
+			});
+
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+
+			expect(await eventsOn(general.id)).toEqual(["PR_1:merged"]);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:opened"]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+
+	// The fill weighs a pull request once, however many events of it it holds.
+	test("a fill that holds two events of one pull request weighs it once", async () => {
+		setCommitSourceForTests(commitsFor([]));
+		try {
+			pullRequestsFor(["opened", "merged"]);
+			await runAutomations();
+			const fill = present(
+				(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+				"fill",
+			);
+			expect(await eventsOn(fill.id)).toEqual(["PR_1:merged", "PR_1:opened"]);
+
+			setCommitSourceForTests(
+				commitsFor([{ day: YESTERDAY, project: "other", count: 1 }]),
+			);
+			await runAutomations();
+
+			const rows = await entriesOn(YESTERDAY);
+			expect(rows).toHaveLength(2);
+			// The fill weighs 1 (one pull request), the newcomer 1: 4h each. Two
+			// event keys counted beside the pull request key would weigh the fill
+			// 3 against 1: 6h and 2h.
+			expect(rows.map((r) => r.durationSeconds).sort()).toEqual([
+				4 * 60 * 60,
+				4 * 60 * 60,
+			]);
+		} finally {
+			setPullRequestSourceForTests(null);
+		}
+	});
+});
+
+describe("editing or filing an entry retracts the commit engine's no", () => {
+	const dayRows = () =>
+		db.query.commitFillTombstone.findMany({
+			where: eq(commitFillTombstone.organizationId, ORG_ID),
+		});
+
+	const deleteTheEnginesFill = async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const fill = present(
+			(await entriesOn(YESTERDAY)).find((r) => r.fillsDay),
+			"fill",
+		);
+		await timeEntriesService.remove(ctx, fill.id);
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+	};
+
+	test("an update that turns an entry into a fill clears the day-level no", async () => {
+		await deleteTheEnginesFill();
+		const dev = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+		expect(await dayRows()).toHaveLength(1);
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: dev.id,
+			taskId: devTaskId,
+			projectId,
+			description: "",
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
+	});
+
+	test("an update that makes Development on a project clears that project's no", async () => {
+		await deleteTheEnginesFill();
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: hand.id,
+			taskId: devTaskId,
+			projectId: otherProjectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		// The deleted project is another one: nothing of its no is retracted.
+		expect((await dayRows()).map((r) => r.projectId).sort()).toEqual(
+			[null, projectId].sort(),
+		);
+
+		await timeEntriesService.update(ctx, {
+			timeEntryId: hand.id,
+			taskId: devTaskId,
+			projectId,
+			description: "Planning",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		expect((await dayRows()).map((r) => r.projectId)).toEqual([null]);
+	});
+
+	test("filing a fill to a project clears that project's no, so commits attach", async () => {
+		await deleteTheEnginesFill();
+		const byHand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+		expect((await dayRows()).map((r) => r.projectId)).toEqual([projectId]);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: byHand.id,
+			projectId,
+		});
+		expect(await dayRows()).toHaveLength(0);
+
+		await runAutomations();
+		expect(await commitsAttachedTo(byHand.id)).toHaveLength(1);
+	});
+
+	test("filing a fill clears the day-level no", async () => {
+		const byHand = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: YESTERDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+		await db.insert(commitFillTombstone).values({
+			organizationId: ORG_ID,
+			userId: ctx.userId,
+			date: YESTERDAY,
+			projectId: null,
+		});
+		expect(await dayRows()).toHaveLength(1);
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: byHand.id,
+			projectId,
+		});
+
+		expect(await dayRows()).toHaveLength(0);
+	});
+
+	test("filing a plain entry that is not Development clears nothing", async () => {
+		await deleteTheEnginesFill();
+		const other = await db
+			.insert(task)
+			.values({
+				scope: "organization" as const,
+				organizationId: ORG_ID,
+				name: "Design",
+				isAbsence: false,
+			})
+			.returning({ id: task.id });
+		const designId = present(other[0], "design task").id;
+		const hand = await timeEntriesService.create(ctx, {
+			taskId: designId,
+			description: "Mockups",
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		await timeEntriesService.file(ctx, {
+			timeEntryId: hand.id,
+			projectId,
+		});
+
+		expect(await dayRows()).toHaveLength(2);
+	});
+});
+
+describe("copying a day retracts the commit engine's no", () => {
+	const COPY_TO = "2026-08-10";
+
+	const tombstonesOn = async (date: string) =>
+		(
+			await db.query.commitFillTombstone.findMany({
+				where: and(
+					eq(commitFillTombstone.organizationId, ORG_ID),
+					eq(commitFillTombstone.date, date),
+				),
+			})
+		).map((row) => row.projectId);
+
+	const tombstoneBoth = () =>
+		db.insert(commitFillTombstone).values([
+			{ organizationId: ORG_ID, userId: USER_ID, date: COPY_TO },
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: COPY_TO,
+				projectId,
+			},
+		]);
+
+	test("a copied fill on a project clears the day-level and the project's no", async () => {
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await tombstoneBoth();
+
+		await timeEntriesService.copyDay(ctx, {
+			fromDate: YESTERDAY,
+			toDate: COPY_TO,
+		});
+
+		expect((await entriesOn(COPY_TO)).some((r) => r.fillsDay)).toBe(true);
+		expect(await tombstonesOn(COPY_TO)).toEqual([]);
+	});
+
+	test("a copied entry of another task clears nothing", async () => {
+		const meeting = present(
+			await db.query.task.findFirst({ where: eq(task.systemKey, "meeting") }),
+			"Meeting task",
+		);
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: meeting.id,
+			projectId,
+			date: YESTERDAY,
+			durationSeconds: 60 * 60,
+			description: "Sync",
+			fillsDay: false,
+		});
+		await tombstoneBoth();
+
+		await timeEntriesService.copyDay(ctx, {
+			fromDate: YESTERDAY,
+			toDate: COPY_TO,
+		});
+
+		expect(await entriesOn(COPY_TO)).toHaveLength(1);
+		const left = await tombstonesOn(COPY_TO);
+		expect(left).toHaveLength(2);
+		expect(left).toContain(null);
+		expect(left).toContain(projectId);
+	});
+
+	test("a copied Development entry clears its project's no only", async () => {
+		await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 60 * 60,
+			description: "Planning",
+		});
+		await tombstoneBoth();
+
+		await timeEntriesService.copyDay(ctx, {
+			fromDate: YESTERDAY,
+			toDate: COPY_TO,
+		});
+
+		expect(await tombstonesOn(COPY_TO)).toEqual([null]);
+	});
+});
+
+describe("the dismissed count and what includeDismissed adds back", () => {
+	// A project-less fill and a project's Development entry were both
+	// deleted. Two rows come back with the toggle, so the count is two.
+	test("counts the work row and the fill row separately", async () => {
+		setCommitSourceForTests(
+			commitsFor([{ day: YESTERDAY, project: "other", count: 2 }]),
+		);
+		await db.insert(commitFillTombstone).values([
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: YESTERDAY,
+				projectId: otherProjectId,
+			},
+			{ organizationId: ORG_ID, userId: USER_ID, date: YESTERDAY },
+		]);
+
+		const held = await dayAssemblyService.suggest(ctx, { date: YESTERDAY });
+		const shown = await dayAssemblyService.suggest(ctx, {
+			date: YESTERDAY,
+			includeDismissed: true,
+		});
+
+		expect(held.suggestions.filter((s) => s.dismissed)).toHaveLength(0);
+		expect(shown.suggestions.filter((s) => s.dismissed)).toHaveLength(2);
+		expect(held.dismissedCount).toBe(2);
+		expect(shown.dismissedCount).toBe(2);
 	});
 });

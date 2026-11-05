@@ -11,7 +11,11 @@ import {
 	present,
 	type TestDb,
 } from "../../../../packages/core/src/test/harness.ts";
-import { type ApiRequestReport, captureApiFailure } from "./posthog-api";
+import {
+	type ApiRequestReport,
+	captureApiFailure,
+	captureAssistantFailure,
+} from "./posthog-api";
 import * as posthogServer from "./posthog-server";
 
 const SECRET = "secret-person@example.com";
@@ -61,9 +65,12 @@ const duplicateEmailError = async (): Promise<Error> => {
 	return present(caught, "the duplicate insert's error");
 };
 
-/** The error that `captureApiFailure` gives to PostHog. The client is real,
- *  but its `captureException` sends nothing. */
-const sentToPostHog = (error: Error): Error => {
+/** The error that `report` gives to PostHog. The client is real, but its
+ *  `captureException` sends nothing. */
+const sentToPostHog = (
+	error: Error,
+	report: (error: Error) => void = (e) => captureApiFailure(e, REPORT),
+): Error => {
 	const client = new PostHog("test-token", { disabled: true });
 	const capture = spyOn(client, "captureException").mockImplementation(
 		() => {},
@@ -72,7 +79,7 @@ const sentToPostHog = (error: Error): Error => {
 		client,
 	);
 	try {
-		captureApiFailure(error, REPORT);
+		report(error);
 		const [sent] = present(capture.mock.calls[0], "a captureException call");
 		if (!(sent instanceof Error)) throw new Error("PostHog got a non-Error");
 		return sent;
@@ -101,5 +108,20 @@ describe("captureApiFailure", () => {
 		const error = new TypeError("fetch failed");
 
 		expect(sentToPostHog(error)).toBe(error);
+	});
+});
+
+describe("captureAssistantFailure", () => {
+	test("a database error goes to PostHog without the values of its query", async () => {
+		const error = await duplicateEmailError();
+		expect(error.message).toContain(SECRET);
+
+		const sent = sentToPostHog(error, (e) =>
+			captureAssistantFailure(e, { userId: "u-1", organizationId: "org-1" }),
+		);
+
+		expect(sent.message).not.toContain(SECRET);
+		expect(String(sent.stack)).not.toContain(SECRET);
+		expect(sent.cause).toBeUndefined();
 	});
 });

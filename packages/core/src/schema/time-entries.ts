@@ -68,6 +68,22 @@ export const updateTimeEntryInput = z
 	.superRefine(entryRefinement);
 export type UpdateTimeEntryInput = z.infer<typeof updateTimeEntryInput>;
 
+// The assistant tools omit the sync fields: a model invents values for them and
+// marks an entry as a synced meeting. Zod strips the keys it does not know.
+const {
+	meetingUrl: _meetingUrl,
+	calendarEventId: _calendarEventId,
+	...toolBody
+} = entryBody;
+
+export const createTimeEntryToolInput = z
+	.object(toolBody)
+	.superRefine(entryRefinement);
+
+export const updateTimeEntryToolInput = z
+	.object({ timeEntryId: z.uuid(), ...toolBody })
+	.superRefine(entryRefinement);
+
 // Patches only the note of an entry — used by inline editing, so it deliberately
 // touches nothing duration/day/meeting-related.
 export const updateTimeEntryDescriptionInput = z.object({

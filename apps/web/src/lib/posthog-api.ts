@@ -149,3 +149,16 @@ export const captureApiFailure = (
 		},
 	);
 };
+
+/** An assistant turn that failed with an error not worded for the person.
+ *  The stream route answers it with a generic line, so without this the
+ *  only record is the log line. Scrubbed as `captureApiFailure` is. */
+export const captureAssistantFailure = (
+	error: Error,
+	ctx: { userId: string; organizationId: string },
+): void => {
+	getPostHogClient()?.captureException(withoutQueryValues(error), ctx.userId, {
+		organization_id: ctx.organizationId,
+		assistant_turn_failed: true,
+	});
+};

@@ -61,6 +61,7 @@ export const turnStream = (
 	) => Promise<void>,
 	userFacingMessage: (error: Error) => string | null,
 	heartbeatMs?: number,
+	onUnexpected?: (error: Error) => void,
 ): ReadableStream<Uint8Array> =>
 	new ReadableStream({
 		async start(controller) {
@@ -108,6 +109,7 @@ export const turnStream = (
 					const { loggableError } =
 						await import("@farmer/core/lib/loggable-error");
 					console.error("[assistant] turn failed", loggableError(error));
+					if (error instanceof Error) onUnexpected?.(error);
 				}
 				send({
 					type: "error",
@@ -166,6 +168,12 @@ export const streamAssistantTurn = async (
 		request,
 		(send, signal) => assistantService.run(ctx, input, send, signal),
 		userFacingAssistantError,
+		undefined,
+		(error) => {
+			void import("#/lib/posthog-api.ts").then(({ captureAssistantFailure }) =>
+				captureAssistantFailure(error, ctx),
+			);
+		},
 	);
 
 	return new Response(stream, {

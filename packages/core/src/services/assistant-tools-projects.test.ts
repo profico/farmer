@@ -8,6 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../db";
@@ -41,6 +42,9 @@ const tool = (name: string) => present(findTool(name), `tool ${name}`);
 let harness: TestDb;
 let alphaId = "";
 let betaId = "";
+let devTaskId = "";
+let clientOneId = "";
+let abWebId = "";
 
 const overview = z.object({
 	project: z.string().nullable(),
@@ -129,6 +133,32 @@ beforeAll(async () => {
 		{ organizationId: ORG, projectId: alphaId, userId: PLAIN },
 		{ organizationId: ORG, projectId: betaId, userId: PLAIN },
 	]);
+	const clientOne = at(
+		await db
+			.insert(client)
+			.values({ organizationId: ORG, name: "Client One" })
+			.returning(),
+		0,
+	);
+	clientOneId = clientOne.id;
+	const clientOneProjects = await db
+		.insert(project)
+		.values([
+			{
+				organizationId: ORG,
+				clientId: clientOne.id,
+				name: "Acme Portal",
+				code: "ACP",
+			},
+			{
+				organizationId: ORG,
+				clientId: clientOne.id,
+				name: "AB web",
+				code: "ABWEB",
+			},
+		])
+		.returning();
+	abWebId = at(clientOneProjects, 1).id;
 	const dev = at(
 		await db
 			.insert(task)
@@ -141,6 +171,7 @@ beforeAll(async () => {
 			.returning(),
 		0,
 	);
+	devTaskId = dev.id;
 	const entry = (
 		userId: string,
 		projectId: string,
@@ -168,6 +199,77 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await harness.close();
+});
+
+const listed = async (args: Record<string, string>) =>
+	z
+		.array(z.object({ id: z.string(), name: z.string() }))
+		.parse(await tool("list_projects").run(ctxOf(ADMIN), args))
+		.map((row) => row.name)
+		.sort();
+
+describe("list_projects filter", () => {
+	test("a compact code or name finds a spaced name", async () => {
+		expect(await listed({ q: "ABWEB" })).toEqual(["AB web"]);
+		expect(await listed({ q: "ab web" })).toEqual(["AB web"]);
+	});
+
+	test("a bracketed code and a name both match", async () => {
+		expect(await listed({ q: "[ACP]Acme Portal" })).toEqual(["Acme Portal"]);
+		expect(await listed({ q: "[ACP]" })).toEqual(["Acme Portal"]);
+	});
+
+	test("the client name matches, and every token must match", async () => {
+		expect(await listed({ q: "client one" })).toEqual([
+			"AB web",
+			"Acme Portal",
+		]);
+		expect(await listed({ q: "client one portal" })).toEqual(["Acme Portal"]);
+	});
+
+	test("clientId keeps only the projects of that client", async () => {
+		expect(await listed({ clientId: clientOneId })).toEqual([
+			"AB web",
+			"Acme Portal",
+		]);
+	});
+
+	test("no match returns an empty list", async () => {
+		expect(await listed({ q: "zzz nothing" })).toEqual([]);
+	});
+
+	test("no filter returns every project", async () => {
+		expect((await listed({})).length).toBeGreaterThanOrEqual(4);
+	});
+});
+
+describe("create_time_entry for a model", () => {
+	test("the schema has no meeting fields and a call that sends them stores null", async () => {
+		const toolSchema = JSON.stringify(
+			z.toJSONSchema(tool("create_time_entry").schema),
+		);
+		expect(toolSchema).not.toContain("meetingUrl");
+		expect(toolSchema).not.toContain("calendarEventId");
+		const created = z.object({ id: z.string() }).parse(
+			await tool("create_time_entry").run(ctxOf(ADMIN), {
+				date: "2026-01-07",
+				projectId: abWebId,
+				taskId: devTaskId,
+				description: "work",
+				durationSeconds: 3600,
+				meetingUrl: "https://meet.example.com/abc",
+				calendarEventId: "invented",
+			}),
+		);
+		const row = present(
+			await db.query.timeEntry.findFirst({
+				where: eq(timeEntry.id, created.id),
+			}),
+			"created entry",
+		);
+		expect(row.meetingUrl).toBeNull();
+		expect(row.calendarEventId).toBeNull();
+	});
 });
 
 describe("project_overview", () => {
