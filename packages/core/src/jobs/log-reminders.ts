@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
-import { withTimeout } from "../lib/http";
+import { durationFromEnv, withTimeout } from "../lib/http";
+import { loggableError } from "../lib/loggable-error";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import { notificationsService } from "../services/notifications.service";
 import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
@@ -53,8 +54,9 @@ export type LogReminderSummary = {
  *  the same reason: nothing else bounds a pass, and one wedged send must
  *  degrade the sweep rather than end it. */
 const SWEEP_CONCURRENCY = Number(process.env.LOG_REMINDERS_CONCURRENCY ?? 4);
-const PER_USER_TIMEOUT_MS = Number(
-	process.env.LOG_REMINDERS_USER_TIMEOUT_MS ?? 30_000,
+const PER_USER_TIMEOUT_MS = durationFromEnv(
+	process.env.LOG_REMINDERS_USER_TIMEOUT_MS,
+	30_000,
 );
 
 /** People per delivery-gate read. Each read is one `in` list, and PGLite (the
@@ -138,7 +140,7 @@ export const runLogRemindersOnce = async (
 			console.error("[log-reminders] user reminder failed", {
 				organizationId: run.organizationId,
 				userId: recipient.userId,
-				error,
+				error: loggableError(error),
 			});
 		}
 	};
@@ -206,7 +208,7 @@ export const runLogRemindersOnce = async (
 			failed += run.userIds.length;
 			console.error("[log-reminders] org pass failed", {
 				organizationId: run.organizationId,
-				error,
+				error: loggableError(error),
 			});
 			continue;
 		}

@@ -348,6 +348,28 @@ describe("harvest import", () => {
 		expect(runs).toHaveLength(0);
 	});
 
+	test("a created task may not take the name of a task here", async () => {
+		const bad: HarvestStartInput = {
+			...emptyPlan(),
+			tasks: [
+				{
+					action: "create",
+					sourceKey: "Development copy",
+					name: "Development",
+					archived: false,
+				},
+			],
+		};
+		await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
+			'A task named "Development" exists already',
+		);
+		const runs = await db
+			.select()
+			.from(importRun)
+			.where(eq(importRun.organizationId, ORG));
+		expect(runs).toHaveLength(0);
+	});
+
 	test("a guessed address never attaches to an existing user", async () => {
 		const bad = plan();
 		bad.people[2] = {

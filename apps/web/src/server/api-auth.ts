@@ -261,7 +261,12 @@ export const resolveCliUser = async (
 				updatedAt: new Date(now),
 			});
 		} catch (error) {
-			console.error("[api] could not refresh a CLI session", error);
+			// The update holds the session token in its WHERE clause.
+			const { loggableError } = await import("@farmer/core/lib/loggable-error");
+			console.error(
+				"[api] could not refresh a CLI session",
+				loggableError(error),
+			);
 		}
 	}
 

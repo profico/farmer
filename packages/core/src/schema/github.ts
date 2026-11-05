@@ -89,23 +89,25 @@ export type SuggestCommitsInput = z.infer<typeof suggestCommitsInput>;
 // anyone reconstructs in one go.
 const MAX_COMMIT_SCAN_DAYS = 31;
 
+const fromNotAfterTo = (data: { from: string; to: string }) =>
+	data.from <= data.to;
+
+const withinScanSpan = (data: { from: string; to: string }) => {
+	const from = new Date(`${data.from}T00:00:00Z`).getTime();
+	const to = new Date(`${data.to}T00:00:00Z`).getTime();
+	return (to - from) / 86_400_000 <= MAX_COMMIT_SCAN_DAYS;
+};
+
 export const userCommitsRangeInput = z
 	.object({ from: dayKeySchema, to: dayKeySchema })
-	.refine((data) => data.from <= data.to, {
+	.refine(fromNotAfterTo, {
 		message: "from must not be after to",
 		path: ["to"],
 	})
-	.refine(
-		(data) => {
-			const from = new Date(`${data.from}T00:00:00Z`).getTime();
-			const to = new Date(`${data.to}T00:00:00Z`).getTime();
-			return (to - from) / 86_400_000 <= MAX_COMMIT_SCAN_DAYS;
-		},
-		{
-			message: `Range too large (max ${MAX_COMMIT_SCAN_DAYS} days)`,
-			path: ["to"],
-		},
-	);
+	.refine(withinScanSpan, {
+		message: `Range too large (max ${MAX_COMMIT_SCAN_DAYS} days)`,
+		path: ["to"],
+	});
 export type UserCommitsRangeInput = z.infer<typeof userCommitsRangeInput>;
 
 // A commit id, abbreviated or full. Constrained because `attachCommits` puts it
@@ -116,6 +118,43 @@ export type UserCommitsRangeInput = z.infer<typeof userCommitsRangeInput>;
 export const commitSha = z
 	.string()
 	.regex(/^[0-9a-f]{7,40}$/i, "Expected a commit SHA");
+
+// The evidence already attached to the person's own entries, over the entry
+// dates. It reads the database only, so the span has the same ceiling as the
+// GitHub reads for one reason: a longer span is more rows than a model reads.
+// `repository` is `owner/name`, matched without regard to case.
+export const attachedEvidenceRangeInput = z
+	.object({
+		from: dayKeySchema,
+		to: dayKeySchema,
+		repository: repositoryProjectsInput.shape.repository.optional(),
+		// One entry's evidence. The dates still bound the read.
+		timeEntryId: z.uuid().optional(),
+	})
+	.refine(fromNotAfterTo, {
+		message: "from must not be after to",
+		path: ["to"],
+	})
+	.refine(withinScanSpan, {
+		message: `Range too large (max ${MAX_COMMIT_SCAN_DAYS} days)`,
+		path: ["to"],
+	});
+export type AttachedEvidenceRangeInput = z.infer<
+	typeof attachedEvidenceRangeInput
+>;
+
+// How many attachments one unlink call may name. It is the number of rows the
+// approval card shows (`MAX_PREVIEW_ROWS` in services/assistant-tools.ts). A
+// row past the card is never shown, so the person cannot untick it.
+export const MAX_UNLINK_PER_CALL = 25;
+
+// Any string, not a uuid: a model can send one malformed id among good ones,
+// and the tool reports that id as not found and unlinks the rest. A uuid
+// check here refused the whole call.
+export const unlinkCommitsInput = z.object({
+	attachmentIds: z.array(z.string()).min(1).max(MAX_UNLINK_PER_CALL),
+});
+export type UnlinkCommitsInput = z.infer<typeof unlinkCommitsInput>;
 
 export const attachCommitsInput = z.object({
 	timeEntryId: z.uuid(),
@@ -149,6 +188,12 @@ export type DetachPullRequestActivityInput = z.infer<
 	typeof detachPullRequestActivityInput
 >;
 
+// Any string, for the reason `unlinkCommitsInput` gives.
+export const unlinkPullRequestsInput = z.object({
+	activityIds: z.array(z.string()).min(1).max(MAX_UNLINK_PER_CALL),
+});
+export type UnlinkPullRequestsInput = z.infer<typeof unlinkPullRequestsInput>;
+
 // A pull request is named by its repo row and number, and nothing the caller
 // says about it is stored: the service reads the PR again and keeps only the
 // caller's own events on the entry's day. Capped, because each one is a call to
@@ -163,3 +208,20 @@ export const attachPullRequestsInput = z.object({
 	pullRequests: z.array(pullRequestRef).min(1).max(50),
 });
 export type AttachPullRequestsInput = z.infer<typeof attachPullRequestsInput>;
+
+// The repos the assistant lists to link. One installation can show hundreds of
+// repos, so the read takes a filter, and the tool caps what it returns.
+export const listAvailableReposInput = z.object({
+	query: z.string().trim().max(100).optional(),
+	onlyUnlinked: z.boolean().optional(),
+});
+export type ListAvailableReposInput = z.infer<typeof listAvailableReposInput>;
+
+// An unlink names the project as well as the repo row. The assistant shows
+// both on its approval card, and the tool refuses a row that is not on that
+// project, so a wrong id cannot unlink some other project's repo.
+export const unlinkGithubRepoInput = z.object({
+	projectId: z.uuid(),
+	projectGithubRepoId: unlinkProjectRepoInput,
+});
+export type UnlinkGithubRepoInput = z.infer<typeof unlinkGithubRepoInput>;

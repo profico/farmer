@@ -163,6 +163,130 @@ type Actions = {
  * stable for the life of the provider, so a component that only sends is never
  * re-rendered by somebody else's answer arriving.
  */
+/** The state of a thread at the start of a turn. */
+function startedRun(body: Body): AssistantRun {
+	return {
+		...IDLE,
+		// An approval turn carries no message, so this also clears the one
+		// the suspended turn was started with — by then the server's copy
+		// has landed.
+		sentMessage: "message" in body ? body.message : null,
+		isStreaming: true,
+	};
+}
+
+/** The run of each thread, by conversation id. */
+type RunsById = Record<string, AssistantRun>;
+
+/** Mark a thread as no longer streaming. A thread with no row is left alone. */
+function stopStreaming(state: RunsById, conversationId: string) {
+	const held = state[conversationId];
+	if (!held?.isStreaming) return state;
+	return {
+		...state,
+		[conversationId]: { ...held, isStreaming: false },
+	};
+}
+
+/** Read the message of a failed response, or name the status code. */
+async function failureDetail(response: Response): Promise<string> {
+	// SAFETY: this is the error path — `.catch(() => null)` already covers a body
+	// that is not JSON, and `error` is optional with a status-code fallback below.
+	const detail = (await response.json().catch(() => null)) as {
+		error?: string;
+	} | null;
+	return detail?.error ?? `The assistant failed (${response.status})`;
+}
+
+/** Read one `data:` line as an event. A line that is not an event gives null. */
+export function parseFrame(line: string): AssistantEvent | null {
+	if (!line.startsWith("data:")) return null;
+	try {
+		return JSON.parse(line.slice(5).trim());
+	} catch {
+		return null;
+	}
+}
+
+/** Give each event of a stream to `onEvent`, until the stream ends. */
+export async function readEvents(
+	stream: ReadableStream<Uint8Array>,
+	onEvent: (event: AssistantEvent) => void,
+): Promise<void> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		buffer += decoder.decode(value, { stream: true });
+
+		// Frames are `data: {...}\n\n`; a read can split one anywhere, so the
+		// trailing partial line is carried over rather than parsed.
+		const lines = buffer.split("\n");
+		buffer = lines.pop() ?? "";
+
+		for (const line of lines) {
+			const event = parseFrame(line);
+			if (event) onEvent(event);
+		}
+	}
+}
+
+/** The change an event makes to a thread. An event with no change gives null. */
+export function eventChange(
+	event: AssistantEvent,
+): ((state: AssistantRun) => AssistantRun) | null {
+	switch (event.type) {
+		case "message":
+			return (state) => ({ ...state, sentMessageId: event.messageId });
+		case "delta":
+			return (state) => ({
+				...state,
+				streamingText: state.streamingText + event.text,
+			});
+		case "tool_start":
+			return (state) => ({
+				...state,
+				traces: [
+					...state.traces,
+					{
+						toolCallId: event.toolCallId,
+						name: event.name,
+						ok: null,
+						arguments: event.arguments,
+					},
+				],
+			});
+		case "tool_result":
+			return (state) => ({
+				...state,
+				traces: state.traces.map((trace) =>
+					trace.toolCallId === event.toolCallId
+						? { ...trace, ok: event.ok }
+						: trace,
+				),
+			});
+		case "approval_required":
+			return (state) => ({
+				...state,
+				pending: {
+					toolCallId: event.toolCallId,
+					name: event.name,
+					summary: event.summary,
+					arguments: event.arguments,
+					preview: event.preview ?? null,
+					selectable: Boolean(event.selectable),
+				},
+			});
+		case "error":
+			return (state) => ({ ...state, error: event.message });
+		default:
+			return null;
+	}
+}
+
 const RunsContext = createContext<Record<string, AssistantRun>>({});
 const RunningContext = createContext<readonly string[]>([]);
 const ActionsContext = createContext<Actions | null>(null);
@@ -195,7 +319,7 @@ export function AssistantRunsProvider({
 	children: React.ReactNode;
 }) {
 	const queryClient = useQueryClient();
-	const [runs, setRuns] = useState<Record<string, AssistantRun>>({});
+	const [runs, setRuns] = useState<RunsById>({});
 	const [running, setRunning] = useState<readonly string[]>([]);
 	const controllers = useRef(new Map<string, AbortController>());
 
@@ -317,14 +441,7 @@ export function AssistantRunsProvider({
 
 			setRuns((state) => ({
 				...state,
-				[conversationId]: {
-					...IDLE,
-					// An approval turn carries no message, so this also clears the one
-					// the suspended turn was started with — by then the server's copy
-					// has landed.
-					sentMessage: "message" in body ? body.message : null,
-					isStreaming: true,
-				},
+				[conversationId]: startedRun(body),
 			}));
 			setRunning((state) =>
 				state.includes(conversationId) ? state : [...state, conversationId],
@@ -348,105 +465,19 @@ export function AssistantRunsProvider({
 				});
 
 				if (!response.ok || !response.body) {
-					// SAFETY: this is the error path — `.catch(() => null)` already covers a body
-					// that is not JSON, and `error` is optional with a status-code fallback below.
-					const detail = (await response.json().catch(() => null)) as {
-						error?: string;
-					} | null;
-					const message =
-						detail?.error ?? `The assistant failed (${response.status})`;
+					const message = await failureDetail(response);
 					if (current())
 						patch(conversationId, (state) => ({ ...state, error: message }));
 					return false;
 				}
 
-				const reader = response.body.getReader();
-				const decoder = new TextDecoder();
-				let buffer = "";
-
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) break;
-					buffer += decoder.decode(value, { stream: true });
-
-					// Frames are `data: {...}\n\n`; a read can split one anywhere, so the
-					// trailing partial line is carried over rather than parsed.
-					const lines = buffer.split("\n");
-					buffer = lines.pop() ?? "";
-
-					for (const line of lines) {
-						if (!line.startsWith("data:")) continue;
-						let event: AssistantEvent;
-						try {
-							event = JSON.parse(line.slice(5).trim());
-						} catch {
-							continue;
-						}
-						if (!current()) continue;
-
-						switch (event.type) {
-							case "message":
-								delivered = true;
-								patch(conversationId, (state) => ({
-									...state,
-									sentMessageId: event.messageId,
-								}));
-								break;
-							case "delta":
-								streamed = true;
-								patch(conversationId, (state) => ({
-									...state,
-									streamingText: state.streamingText + event.text,
-								}));
-								break;
-							case "tool_start":
-								patch(conversationId, (state) => ({
-									...state,
-									traces: [
-										...state.traces,
-										{
-											toolCallId: event.toolCallId,
-											name: event.name,
-											ok: null,
-											arguments: event.arguments,
-										},
-									],
-								}));
-								break;
-							case "tool_result":
-								patch(conversationId, (state) => ({
-									...state,
-									traces: state.traces.map((trace) =>
-										trace.toolCallId === event.toolCallId
-											? { ...trace, ok: event.ok }
-											: trace,
-									),
-								}));
-								break;
-							case "approval_required":
-								patch(conversationId, (state) => ({
-									...state,
-									pending: {
-										toolCallId: event.toolCallId,
-										name: event.name,
-										summary: event.summary,
-										arguments: event.arguments,
-										preview: event.preview ?? null,
-										selectable: Boolean(event.selectable),
-									},
-								}));
-								break;
-							case "error":
-								patch(conversationId, (state) => ({
-									...state,
-									error: event.message,
-								}));
-								break;
-							default:
-								break;
-						}
-					}
-				}
+				await readEvents(response.body, (event) => {
+					if (!current()) return;
+					if (event.type === "message") delivered = true;
+					if (event.type === "delta") streamed = true;
+					const change = eventChange(event);
+					if (change) patch(conversationId, change);
+				});
 
 				if (current()) await settle(conversationId);
 				return delivered;
@@ -478,14 +509,7 @@ export function AssistantRunsProvider({
 				if (current()) {
 					controllers.current.delete(conversationId);
 					setRunning((state) => state.filter((id) => id !== conversationId));
-					setRuns((state) => {
-						const held = state[conversationId];
-						if (!held?.isStreaming) return state;
-						return {
-							...state,
-							[conversationId]: { ...held, isStreaming: false },
-						};
-					});
+					setRuns((state) => stopStreaming(state, conversationId));
 				}
 			}
 		},

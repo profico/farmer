@@ -28,6 +28,7 @@ import {
 	user,
 } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
+import { importMapping } from "../db/schema/import";
 import { invitationEmail, memberProfile } from "../db/schema/people";
 import { setInstanceSettingsForTests } from "../lib/instance-settings";
 import type { HarvestStartInput } from "../schema/harvest-import";
@@ -54,6 +55,9 @@ const REUSED = "u-hv-reused";
 const REUSED_EMAIL = "reused@example.com";
 const JOINER = "u-hv-joiner";
 const JOINER_EMAIL = "joiner@example.com";
+/** Invited by a run from before `start` recorded its invitations. */
+const LEGACY = "u-hv-legacy";
+const LEGACY_EMAIL = "legacy@example.com";
 
 const admin: Ctx = { organizationId: ORG, userId: ADMIN };
 
@@ -184,6 +188,7 @@ beforeAll(async () => {
 		{ id: RETRY, name: "Retry", email: RETRY_EMAIL, emailVerified: true },
 		{ id: REUSED, name: "Reused", email: REUSED_EMAIL, emailVerified: true },
 		{ id: JOINER, name: "Joiner", email: JOINER_EMAIL, emailVerified: true },
+		{ id: LEGACY, name: "Legacy", email: LEGACY_EMAIL, emailVerified: true },
 	]);
 	await db.insert(member).values([
 		{
@@ -531,5 +536,38 @@ describe("harvest import with several organizations", () => {
 				),
 			}),
 		).toBeDefined();
+	});
+
+	test("undo of a run with no recorded invitations cancels by address", async () => {
+		const result = await harvestImportService.start(
+			admin,
+			plan([person("legacy", LEGACY_EMAIL)]),
+		);
+		const runsOwn = present(
+			(await invitationsTo(LEGACY_EMAIL)).find((r) => r.status === "pending"),
+			"the run's invitation",
+		);
+		// A pending invitation older than the run is not the run's to cancel.
+		await invite("inv-hv-legacy-before", LEGACY_EMAIL);
+		await db
+			.update(invitation)
+			.set({ createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000) })
+			.where(eq(invitation.id, "inv-hv-legacy-before"));
+		// A run from before the ids were recorded has no invitation rows.
+		await db
+			.delete(importMapping)
+			.where(
+				and(
+					eq(importMapping.runId, result.runId),
+					eq(importMapping.kind, "invitation"),
+				),
+			);
+
+		await harvestImportService.undo(admin, { runId: result.runId });
+		const statuses = new Map(
+			(await invitationsTo(LEGACY_EMAIL)).map((r) => [r.id, r.status]),
+		);
+		expect(statuses.get(runsOwn.id)).toBe("canceled");
+		expect(statuses.get("inv-hv-legacy-before")).toBe("pending");
 	});
 });

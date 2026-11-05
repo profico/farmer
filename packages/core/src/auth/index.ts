@@ -27,6 +27,7 @@ import { memberProfile } from "../db/schema/people";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
 import { externalFetch } from "../lib/http";
+import { loggableError } from "../lib/loggable-error";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
@@ -473,7 +474,10 @@ const buildAuth = () => {
 							});
 						}
 					} catch (error) {
-						console.error("[audit] could not record a sign-out", error);
+						console.error(
+							"[audit] could not record a sign-out",
+							loggableError(error),
+						);
 					}
 					return;
 				}
@@ -704,7 +708,10 @@ const buildAuth = () => {
 								},
 							});
 						} catch (error) {
-							console.error("[audit] could not record a linked account", error);
+							console.error(
+								"[audit] could not record a linked account",
+								loggableError(error),
+							);
 						}
 					},
 				},

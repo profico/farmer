@@ -22,7 +22,7 @@
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"worker": "bun run src/jobs/worker.ts",
 		"auth:generate": "better-auth generate --config ./src/auth/index.ts --output ./src/db/schema/auth.ts -y",
-		"db:generate": "drizzle-kit generate",
+		"db:generate": "bun run src/db/generate.ts",
 		"db:migrate": "drizzle-kit migrate",
 		"db:deploy": "bun run src/db/migrate.ts",
 		"db:check": "bun run src/db/check.ts",
@@ -30,7 +30,8 @@
 		"db:seed": "bun run src/db/seed.ts",
 		"db:seed-tasks": "bun run src/db/seed-tasks.ts",
 		"db:seed-assistant-ui": "bun run src/db/seed-assistant-ui.ts",
-		"settings:import-env": "bun run src/db/import-env-settings.ts"
+		"settings:import-env": "bun run src/db/import-env-settings.ts",
+		"bench:assistant": "bun run scripts/assistant-benchmark/run.ts"
 	},
 	"dependencies": {
 		"@better-auth/core": "1.6.23",

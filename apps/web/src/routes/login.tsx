@@ -180,6 +180,9 @@ export const Route = createFileRoute("/login")({
 	component: SignInPage,
 });
 
+type AppConfig = Awaited<ReturnType<typeof getPublicAppConfig>>;
+type PasswordKind = "first-account" | "administrator";
+
 function SignInPage() {
 	const { config, passwordSignIn } = Route.useLoaderData();
 	const search = Route.useSearch();
@@ -188,135 +191,224 @@ function SignInPage() {
 	// text from the query string reaches the page: a link such as
 	// `?error=x&error_description=…` would otherwise put anybody's words on the
 	// real sign-in screen. A code this app does not know gets `GENERIC_ERROR`.
-	const knownFailure = search.error ? ERRORS.get(search.error) : undefined;
-	const failure = search.error ? (knownFailure ?? GENERIC_ERROR) : null;
-	const oauthError = failure ? failure.fallback : null;
-	const providers = config.signInProviders;
-	const notConfigured = providers.length === 0 && !config.devAuth;
-	const org = config.singleOrgMode ? config.org : null;
+	const failure = search.error
+		? (ERRORS.get(search.error) ?? GENERIC_ERROR)
+		: null;
+	const notConfigured = config.signInProviders.length === 0 && !config.devAuth;
 
 	// The password form sits behind a link when there are buttons: the
 	// administrator is one person, and everybody else reads the page too.
-	const [passwordOpen, setPasswordOpen] = useState(providers.length === 0);
-
-	const providerButtons =
-		providers.length > 0 ? (
-			<div className="fm-auth-actions">
-				{providers.map((provider, index) => (
-					<ProviderButton
-						key={provider.id}
-						provider={provider}
-						search={search}
-						retry={oauthError !== null}
-						primary={index === 0}
-					/>
-				))}
-			</div>
-		) : null;
+	const [passwordOpen, setPasswordOpen] = useState(
+		config.signInProviders.length === 0,
+	);
 
 	if (failure) {
-		// The same page without the error: every button, and the password or
-		// development form. Only worth a link when there is more than the one
-		// button already on screen.
-		const otherOptions =
-			providers.length > 1 || config.devAuth || passwordSignIn !== null;
 		return (
-			<AuthSplitPanel brand={config.org}>
-				<AuthHead
-					icon={
-						(knownFailure && search.error
-							? ERROR_ICONS.get(search.error)
-							: undefined) ?? WarningCircleIcon
-					}
-					tone="warn"
-					title={failure.title}
-				>
-					{oauthError}
-				</AuthHead>
-				{providerButtons}
-				{otherOptions ? (
-					<a
-						href={signInHref(search, "/login")}
-						className="fm-auth-link fm-auth-back"
-						data-tone="muted"
-					>
-						Use another sign-in option
-					</a>
-				) : null}
-			</AuthSplitPanel>
+			<SignInFailureView
+				config={config}
+				search={search}
+				failure={failure}
+				passwordSignIn={passwordSignIn}
+			/>
 		);
 	}
 
 	if (passwordSignIn && !config.devAuth && passwordOpen) {
-		const back =
-			providers.length > 0 ? (
-				<button
-					type="button"
-					className="fm-auth-link fm-auth-back"
-					data-tone="muted"
-					onClick={() => setPasswordOpen(false)}
-				>
-					<ArrowLeftIcon size={14} aria-hidden />
-					All sign-in options
-				</button>
-			) : null;
 		return (
-			<AuthSplitPanel brand={config.org}>
-				{passwordSignIn === "first-account" ? (
-					<AuthHead
-						back={back}
-						title={
-							<>
-								Set up <em>Farmer</em>
-							</>
-						}
-					>
-						No account exists yet. This first account administers the instance.
-						Sign-in providers and invitations come after.
-					</AuthHead>
-				) : notConfigured ? (
-					<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
-						This instance has no sign-in provider. The administrator signs in
-						with a password and adds Google or an OpenID Connect provider under
-						<MenuPath steps={["Settings", "Infrastructure"]} />.
-					</AuthHead>
-				) : (
-					<AuthHead back={back} title="Administrator sign-in">
-						For the instance administrator. Everyone else signs in with a
-						provider.
-					</AuthHead>
-				)}
-				<PasswordForm
-					search={search}
-					kind={passwordSignIn}
-					submitLabel={
-						passwordSignIn === "first-account"
-							? "Create administrator account"
-							: notConfigured
-								? "Sign in as administrator"
-								: "Sign in"
-					}
-				/>
-				{passwordSignIn === "administrator" && notConfigured ? (
-					<p className="fm-auth-fine">
-						Not the administrator? Ask them to finish setup, then come back.
-					</p>
-				) : null}
-			</AuthSplitPanel>
+			<PasswordSignInView
+				config={config}
+				search={search}
+				kind={passwordSignIn}
+				notConfigured={notConfigured}
+				onBack={() => setPasswordOpen(false)}
+			/>
 		);
 	}
 
 	if (notConfigured && !passwordSignIn) {
-		return (
-			<AuthSplitPanel brand={config.org}>
-				<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
-					This instance has no sign-in provider. Ask the person who runs this
-					instance to add one.
-				</AuthHead>
-			</AuthSplitPanel>
-		);
+		return <NotConfiguredView config={config} />;
 	}
 
+	return (
+		<SignInChooserView
+			config={config}
+			search={search}
+			passwordSignIn={passwordSignIn}
+			onOpenPassword={() => setPasswordOpen(true)}
+		/>
+	);
+}
+
+/** One button for each sign-in provider. `retry` words them as a second try. */
+function ProviderButtons({
+	providers,
+	search,
+	retry,
+}: {
+	providers: AppConfig["signInProviders"];
+	search: Search;
+	retry: boolean;
+}) {
+	if (providers.length === 0) return null;
+	return (
+		<div className="fm-auth-actions">
+			{providers.map((provider, index) => (
+				<ProviderButton
+					key={provider.id}
+					provider={provider}
+					search={search}
+					retry={retry}
+					primary={index === 0}
+				/>
+			))}
+		</div>
+	);
+}
+
+/** What a failed round trip shows, with every button to try again. */
+function SignInFailureView({
+	config,
+	search,
+	failure,
+	passwordSignIn,
+}: {
+	config: AppConfig;
+	search: Search;
+	failure: SignInFailure;
+	passwordSignIn: PasswordKind | null;
+}) {
+	// The same page without the error: every button, and the password or
+	// development form. Only worth a link when there is more than the one
+	// button already on screen.
+	const otherOptions =
+		config.signInProviders.length > 1 ||
+		config.devAuth ||
+		passwordSignIn !== null;
+	const icon =
+		(search.error ? ERROR_ICONS.get(search.error) : undefined) ??
+		WarningCircleIcon;
+	return (
+		<AuthSplitPanel brand={config.org}>
+			<AuthHead icon={icon} tone="warn" title={failure.title}>
+				{failure.fallback}
+			</AuthHead>
+			<ProviderButtons
+				providers={config.signInProviders}
+				search={search}
+				retry
+			/>
+			{otherOptions ? (
+				<a
+					href={signInHref(search, "/login")}
+					className="fm-auth-link fm-auth-back"
+					data-tone="muted"
+				>
+					Use another sign-in option
+				</a>
+			) : null}
+		</AuthSplitPanel>
+	);
+}
+
+function passwordSubmitLabel(
+	kind: PasswordKind,
+	notConfigured: boolean,
+): string {
+	if (kind === "first-account") return "Create administrator account";
+	return notConfigured ? "Sign in as administrator" : "Sign in";
+}
+
+/** The password form: the first account, or the administrator. */
+function PasswordSignInView({
+	config,
+	search,
+	kind,
+	notConfigured,
+	onBack,
+}: {
+	config: AppConfig;
+	search: Search;
+	kind: PasswordKind;
+	notConfigured: boolean;
+	onBack: () => void;
+}) {
+	const back =
+		config.signInProviders.length > 0 ? (
+			<button
+				type="button"
+				className="fm-auth-link fm-auth-back"
+				data-tone="muted"
+				onClick={onBack}
+			>
+				<ArrowLeftIcon size={14} aria-hidden />
+				All sign-in options
+			</button>
+		) : null;
+	return (
+		<AuthSplitPanel brand={config.org}>
+			{kind === "first-account" ? (
+				<AuthHead
+					back={back}
+					title={
+						<>
+							Set up <em>Farmer</em>
+						</>
+					}
+				>
+					No account exists yet. This first account administers the instance.
+					Sign-in providers and invitations come after.
+				</AuthHead>
+			) : notConfigured ? (
+				<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
+					This instance has no sign-in provider. The administrator signs in with
+					a password and adds Google or an OpenID Connect provider under
+					<MenuPath steps={["Settings", "Infrastructure"]} />.
+				</AuthHead>
+			) : (
+				<AuthHead back={back} title="Administrator sign-in">
+					For the instance administrator. Everyone else signs in with a
+					provider.
+				</AuthHead>
+			)}
+			<PasswordForm
+				search={search}
+				kind={kind}
+				submitLabel={passwordSubmitLabel(kind, notConfigured)}
+			/>
+			{kind === "administrator" && notConfigured ? (
+				<p className="fm-auth-fine">
+					Not the administrator? Ask them to finish setup, then come back.
+				</p>
+			) : null}
+		</AuthSplitPanel>
+	);
+}
+
+/** No provider and no password form: only an administrator can fix it. */
+function NotConfiguredView({ config }: { config: AppConfig }) {
+	return (
+		<AuthSplitPanel brand={config.org}>
+			<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
+				This instance has no sign-in provider. Ask the person who runs this
+				instance to add one.
+			</AuthHead>
+		</AuthSplitPanel>
+	);
+}
+
+/** The usual screen: the buttons, and a way to the password or dev form. */
+function SignInChooserView({
+	config,
+	search,
+	passwordSignIn,
+	onOpenPassword,
+}: {
+	config: AppConfig;
+	search: Search;
+	passwordSignIn: PasswordKind | null;
+	onOpenPassword: () => void;
+}) {
+	const org = config.singleOrgMode ? config.org : null;
 	return (
 		<AuthSplitPanel brand={config.org}>
 			{passwordSignIn === "first-account" ? (
@@ -338,9 +430,13 @@ function SignInPage() {
 				</AuthHead>
 			)}
 
-			{providerButtons}
+			<ProviderButtons
+				providers={config.signInProviders}
+				search={search}
+				retry={false}
+			/>
 
-			{providers.length > 0 ? (
+			{config.signInProviders.length > 0 ? (
 				<p className="fm-auth-note">
 					{org
 						? `Access to ${org.name} is by invitation.`
@@ -355,7 +451,7 @@ function SignInPage() {
 					type="button"
 					className="fm-auth-link fm-auth-divided"
 					data-tone="faint"
-					onClick={() => setPasswordOpen(true)}
+					onClick={onOpenPassword}
 				>
 					{passwordSignIn === "first-account"
 						? "Create the first account with a password"

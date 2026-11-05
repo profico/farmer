@@ -13,7 +13,7 @@
 		"build": "vite build && bun run scripts/prune-client-assets.ts",
 		"start": "NODE_ENV=production bun run server.ts",
 		"preview": "vite preview",
-		"test": "bun test",
+		"test": "bun test --isolate",
 		"format": "oxfmt --write",
 		"lint": "oxlint --config ../../oxlint.config.ts .",
 		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
@@ -53,6 +53,7 @@
 		"zod": "4.4.3"
 	},
 	"devDependencies": {
+		"@happy-dom/global-registrator": "20.14.5",
 		"@tanstack/devtools-vite": "0.8.1",
 		"@tanstack/router-cli": "^1.132.0",
 		"@types/node": "^22.10.2",

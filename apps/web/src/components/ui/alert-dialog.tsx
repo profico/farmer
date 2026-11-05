@@ -1,11 +1,77 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import type * as React from "react";
 
 import { Button } from "#/components/ui/button.tsx";
+import {
+	type ModalChangeEventDetails,
+	ModalModeContext,
+	ModalSheetContent,
+	sheetFooterClassName,
+	useModalMode,
+	useModalModeContext,
+} from "#/components/ui/modal-mode.tsx";
+import { useControllableOpen } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 
-function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
-	return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
+type AlertDialogProps = Omit<
+	AlertDialogPrimitive.Root.Props,
+	"onOpenChange"
+> & {
+	onOpenChange?: (open: boolean, details: ModalChangeEventDetails) => void;
+};
+
+// On a phone a confirmation is a bottom sheet (see `modal-mode.tsx`). The
+// wrapper owns the open state, because the mode locks in the render that
+// opens the root, and some call sites leave the state to the Trigger.
+//
+// The sheet keeps two rules that Base UI applies only in the alert dialog
+// root: a tap on the backdrop does not dismiss it, and the popup keeps
+// `role="alertdialog"`. A swipe down still cancels, as Cancel does.
+function AlertDialog({
+	open,
+	defaultOpen,
+	onOpenChange,
+	onOpenChangeComplete,
+	children,
+	handle,
+	...props
+}: AlertDialogProps) {
+	const [value, setOpen] = useControllableOpen<ModalChangeEventDetails>({
+		open,
+		defaultOpen,
+		onOpenChange,
+	});
+	const mode = useModalMode(value);
+
+	return (
+		<ModalModeContext.Provider value={mode}>
+			{mode === "drawer" ? (
+				<DrawerPrimitive.Root
+					data-slot="alert-dialog"
+					{...props}
+					handle={handle}
+					open={value}
+					onOpenChange={setOpen}
+					onOpenChangeComplete={onOpenChangeComplete}
+					disablePointerDismissal
+				>
+					{children}
+				</DrawerPrimitive.Root>
+			) : (
+				<AlertDialogPrimitive.Root
+					data-slot="alert-dialog"
+					{...props}
+					handle={handle}
+					open={value}
+					onOpenChange={setOpen}
+					onOpenChangeComplete={onOpenChangeComplete}
+				>
+					{children}
+				</AlertDialogPrimitive.Root>
+			)}
+		</ModalModeContext.Provider>
+	);
 }
 
 function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {
@@ -41,9 +107,29 @@ function AlertDialogContent({
 	size = "default",
 	children,
 	...props
-}: AlertDialogPrimitive.Popup.Props & {
+}: Omit<AlertDialogPrimitive.Popup.Props, "className" | "render" | "style"> & {
+	className?: string;
 	size?: "default" | "sm";
 }) {
+	const mode = useModalModeContext();
+
+	if (mode === "drawer") {
+		// The header, the media and the title select on the group name and
+		// `data-size`. There is no close button, because the footer has Cancel.
+		return (
+			<ModalSheetContent
+				kind="alert-dialog"
+				data-size={size}
+				role="alertdialog"
+				showCloseButton={false}
+				className={cn("group/alert-dialog-content sm:max-w-md", className)}
+				{...props}
+			>
+				{children}
+			</ModalSheetContent>
+		);
+	}
+
 	return (
 		<AlertDialogPortal>
 			<AlertDialogOverlay />
@@ -90,11 +176,14 @@ function AlertDialogFooter({
 	className,
 	...props
 }: React.ComponentProps<"div">) {
+	const mode = useModalModeContext();
 	return (
 		<div
 			data-slot="alert-dialog-footer"
 			className={cn(
-				"-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+				mode === "drawer"
+					? sheetFooterClassName
+					: "-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

@@ -19,11 +19,20 @@ bun run build               # turbo: builds all workspaces
 bun run test                # turbo: runs the bun test suites of packages/core, apps/cli and apps/web
 bun run check               # oxfmt --check + oxlint — what CI runs
 bun run typecheck           # turbo: tsc --noEmit in every workspace — also what CI runs
+bun run complexity          # cccc: no function over 40 cognitive or 40 cyclomatic (cccc.toml) — also what CI runs
 bun run lint                # oxlint only
 bun run format              # oxfmt --write
 
 # Database (packages/core, run through root turbo)
 bun run db:generate         # drizzle-kit generate → packages/core/drizzle/*.sql
+                            # then deletes all but the newest snapshot in drizzle/meta.
+                            # Never run bare `drizzle-kit generate`, never `drizzle-kit drop` (it deletes
+                            # the snapshot): after an undo, restore the previous snapshot from git.
+                            # Before the drizzle-kit v1 upgrade (0.31's `up` needs no restore), restore the snapshots first,
+                            # then run `drizzle-kit up`. This works from any folder:
+                            # `git checkout 0b6f8713 -- ':(top,glob)packages/core/drizzle/meta/*_snapshot.json'`
+                            # (it needs every snapshot; 0000-0075 are there, later ones from their own commit).
+                            # Do not restore `_journal.json`: it would drop every migration after 0076.
 bun run db:migrate          # drizzle-kit migrate
 bun run db:check            # `select 1` sanity check
 bun run db:studio           # drizzle-kit studio
@@ -41,6 +50,8 @@ bun run db:seed              # demo data: clients, projects, assignments, an hou
 bun run db:seed-assistant-ui # an assistant thread holding every renderer construct plus a suspended
                               # approval, so no model call is spent. Idempotent by title, dev only.
                               # Optional args: [org-slug] [user-email].
+bun run bench:assistant      # model benchmark through the real assistant loop. Needs OPENROUTER_API_KEY and
+                              # costs money. `-- --stub` runs without a key. See `scripts/assistant-benchmark/README.md`.
 bun run db:deploy            # src/db/migrate.ts — applies pending migrations without drizzle-kit
 bun run worker               # the standalone background worker (see `docs/domains/deployment.md`)
 bun test                     # the test suite (PGLite, no DATABASE_URL needed)
@@ -71,6 +82,14 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 **`SAFETY:` comments are load-bearing.** `require-safety-comment-for-type-assertion` fails the build on any non-`as const` assertion without one, so a new assertion needs a real invariant, not a restatement of the cast. The comment must be the line directly above the assertion **or** its containing statement, `//` not `{/* */}` (JSX comments are nodes, not comments), with the directive line last. Tests use `at(rows, i)` and `present(value, what)` from `src/test/harness.ts` instead of an assertion — both fail the test naming what was missing.
 
 **Warnings do not fail the build** (about 50 today): `typescript/no-non-null-assertion` in the auth and drizzle configs and two test files, plus React and a11y findings (`react/set-state-in-effect`, `jsx-a11y/no-autofocus`, `jsx-a11y/control-has-associated-label` and a few others). They are left visible on purpose; promote a rule to `"error"` in `oxlint.config.ts` once it is burned down.
+
+### Complexity
+
+[`cccc`](https://github.com/moznion/cccc) measures the cognitive and the cyclomatic complexity of each function. `cccc.toml` sets both limits to 40. **Run `bun run complexity` before you say that a change is done, and make sure that it passes.** It reads every language in the tree, the Kotlin and the Swift too.
+
+- When a function goes over a limit, split it: extract a helper, a sub-component or an early return. Do not raise a limit, and do not add the file to `exclude`. That list holds only generated files.
+- `cccc` is a single binary, not an npm package. Download v1.7.0 (the version that CI uses, in `.github/workflows/ci.yml`) from the [releases](https://github.com/moznion/cccc/releases) and put it on your `PATH`. The `cargo install cccc-cli` build has no Kotlin.
+- `cccc --top-cognitive 20 .` lists the worst functions. `cccc --no-config --table <file>` measures one file.
 
 ## Architecture
 

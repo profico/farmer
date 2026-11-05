@@ -9,6 +9,10 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
+import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
@@ -17,6 +21,7 @@ import {
 	describePullRequestActivity,
 	type PullRequestActivityKind,
 } from "../lib/github-activity";
+import { loggableError } from "../lib/loggable-error";
 import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
 	loggedSeconds,
@@ -29,6 +34,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxAccess, ctxTimezone } from "./context";
+import { refusedCommitShas, refusedEventIds } from "./detach-tombstones";
 import { safeErrorMessage } from "./error-message";
 import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
@@ -91,6 +97,9 @@ export type DaySuggestionPullRequest = {
 type ProjectEvidence = {
 	commits: Awaited<ReturnType<typeof githubService.listUserCommitsForDay>>;
 	pullRequests: DaySuggestionPullRequest[];
+	/** True when the evidence holds a commit or an event that the person
+	 *  unlinked. Only `includeDismissed` lets it in. */
+	refused: boolean;
 };
 
 export type DaySuggestion = {
@@ -134,8 +143,10 @@ export type DayAssembly = {
 		github: "ok" | "unavailable";
 	};
 	/**
-	 * How many suggestions this day is holding back because they were deleted
-	 * before — the count `includeDismissed` would add.
+	 * How many suggestions this day is holding back — the count
+	 * `includeDismissed` would add. It counts deleted meetings, review blocks
+	 * and fill blocks, plus each commit and pull request event that the
+	 * person unlinked from an entry.
 	 *
 	 * Reported rather than left implicit so the dialog can offer the toggle only
 	 * on a day that has something behind it. A switch that is always visible and
@@ -167,6 +178,8 @@ const hasLinkedAccount = async (userId: string, providerId: string) => {
 const findEngineTask = (ctx: Ctx, key: TaskSystemKey) =>
 	tasksService.findBySystemKey(ctx, key);
 
+type EngineTask = NonNullable<Awaited<ReturnType<typeof findEngineTask>>>;
+
 /** The projects whose commit block the person deleted on this day. */
 const deletedWorkProjects = async (
 	ctx: Ctx,
@@ -183,6 +196,788 @@ const deletedWorkProjects = async (
 	});
 	return new Set(rows.flatMap((row) => (row.projectId ? [row.projectId] : [])));
 };
+type PullRequestEvents = Awaited<
+	ReturnType<
+		ReturnType<typeof pullRequestSource>["listUserPullRequestActivityForDay"]
+	>
+>;
+type CommitEvents = Awaited<
+	ReturnType<ReturnType<typeof commitSource>["listUserCommitsForDay"]>
+>;
+type DayAccess = Awaited<ReturnType<typeof ctxAccess>>;
+
+/** Everything `suggest` reads about the day before it decides anything. */
+const loadDayInputs = async (ctx: Ctx, date: string) => {
+	const [
+		existing,
+		workingHours,
+		meetingTask,
+		workTask,
+		breakTask,
+		reviewTask,
+		calendarEvents,
+		commits,
+		pullRequestEvents,
+		calendarLinked,
+		githubLinked,
+		holidays,
+	] = await Promise.all([
+		db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, date),
+			),
+			columns: {
+				id: true,
+				description: true,
+				durationSeconds: true,
+				fillsDay: true,
+				calendarEventId: true,
+				taskId: true,
+				projectId: true,
+			},
+		}),
+		workingHoursService.list(ctx),
+		findEngineTask(ctx, "meeting"),
+		findEngineTask(ctx, "development"),
+		findEngineTask(ctx, "break"),
+		findEngineTask(ctx, "code_review"),
+		calendarSource()
+			.listEventsForRange(ctx, { from: date, to: date })
+			.catch((error) => {
+				console.error(
+					"[day-assembly] calendar read failed",
+					loggableError(error),
+				);
+				return null;
+			}),
+		commitSource()
+			.listUserCommitsForDay(ctx, date)
+			.catch((error) => {
+				console.error(
+					"[day-assembly] commit read failed",
+					loggableError(error),
+				);
+				return [];
+			}),
+		pullRequestSource()
+			.listUserPullRequestActivityForDay(ctx, date)
+			.catch((error) => {
+				console.error(
+					"[day-assembly] pull request read failed",
+					loggableError(error),
+				);
+				return [];
+			}),
+		// "google-calendar", not "google": the plain Google provider is only a
+		// sign-in link and carries no calendar scope, so checking it reported
+		// "connect your calendar" at people who had already connected it.
+		hasLinkedAccount(ctx.userId, "google-calendar"),
+		hasLinkedAccount(ctx.userId, "github"),
+		// The assembler proposes the same rest-of-day block the commit engine
+		// files, so it has to agree with it about whether the day is a working
+		// day at all. On a public holiday the target is 0 and the whole
+		// suggestion list collapses to nothing, which is the correct answer.
+		holidaysService.holidaySetForRange(ctx, date, date),
+	]);
+	return {
+		existing,
+		workingHours,
+		meetingTask,
+		workTask,
+		breakTask,
+		reviewTask,
+		calendarEvents,
+		commits,
+		pullRequestEvents,
+		calendarLinked,
+		githubLinked,
+		holidays,
+	};
+};
+
+type DayInputs = Awaited<ReturnType<typeof loadDayInputs>>;
+
+/** The commits and events that are already on an entry of the day. */
+const heldOnEntries = async (entryIds: string[]) => {
+	if (entryIds.length === 0) {
+		return { shas: new Set<string>(), eventIds: new Set<string>() };
+	}
+	const [commitRows, eventRows] = await Promise.all([
+		db
+			.select({ sha: timeEntryGithubCommit.sha })
+			.from(timeEntryGithubCommit)
+			.where(inArray(timeEntryGithubCommit.timeEntryId, entryIds)),
+		db
+			.select({ eventId: timeEntryGithubPrActivity.eventId })
+			.from(timeEntryGithubPrActivity)
+			.where(inArray(timeEntryGithubPrActivity.timeEntryId, entryIds)),
+	]);
+	return {
+		shas: new Set(commitRows.map((row) => row.sha)),
+		eventIds: new Set(eventRows.map((row) => row.eventId)),
+	};
+};
+
+/** What the person unlinked from an entry, and what is left to offer. */
+type Unlinked = {
+	offeredCommits: CommitEvents;
+	offeredEvents: PullRequestEvents;
+	refusedShas: Set<string>;
+	refusedEvents: Set<string>;
+	/** How many of them `includeDismissed` would add back. */
+	dismissed: number;
+};
+
+// A commit or an event that the person unlinked from an entry. The engine
+// keeps it off every entry (see ./detach-tombstones), so the assembler does
+// not offer it either, unless `includeDismissed` asks for it. One that is
+// on an entry of the day again (attached by hand) is simply here, as a
+// logged meeting is: it is neither counted nor offered, toggle or not.
+const loadUnlinked = async (
+	ctx: Ctx,
+	inputs: DayInputs,
+	includeDismissed: boolean,
+): Promise<Unlinked> => {
+	const { existing, commits, pullRequestEvents } = inputs;
+	const [refusedCommitSet, refusedEventSet, held] = await Promise.all([
+		refusedCommitShas(
+			ctx,
+			commits.map((commit) => commit.sha),
+		),
+		refusedEventIds(
+			ctx,
+			pullRequestEvents.map((event) => event.eventId),
+		),
+		heldOnEntries(existing.map((entry) => entry.id)),
+	]);
+	const refusedShas = new Set(
+		[...refusedCommitSet].filter((sha) => !held.shas.has(sha)),
+	);
+	const refusedEvents = new Set(
+		[...refusedEventSet].filter((eventId) => !held.eventIds.has(eventId)),
+	);
+	return {
+		refusedShas,
+		refusedEvents,
+		dismissed: refusedShas.size + refusedEvents.size,
+		offeredCommits: commits.filter(
+			(commit) =>
+				!(refusedCommitSet.has(commit.sha) && held.shas.has(commit.sha)) &&
+				(includeDismissed || !refusedShas.has(commit.sha)),
+		),
+		offeredEvents: pullRequestEvents.filter(
+			(event) =>
+				!(
+					refusedEventSet.has(event.eventId) && held.eventIds.has(event.eventId)
+				) &&
+				(includeDismissed || !refusedEvents.has(event.eventId)),
+		),
+	};
+};
+
+/** What one proposal step adds: its rows, the seconds they claim, and how many
+ *  rows `includeDismissed` would add back. */
+type SuggestionStep = {
+	suggestions: DaySuggestion[];
+	seconds: number;
+	dismissed: number;
+};
+
+// ── Meetings: calendar events not already logged ──────────────────────────
+const suggestMeetings = async (
+	ctx: Ctx,
+	inputs: DayInputs,
+	includeDismissed: boolean,
+): Promise<SuggestionStep> => {
+	const { calendarEvents, meetingTask, existing } = inputs;
+	const step: SuggestionStep = { suggestions: [], seconds: 0, dismissed: 0 };
+	if (!calendarEvents || calendarEvents.length === 0 || !meetingTask) {
+		return step;
+	}
+	const tombstones = await db.query.syncedMeetingTombstone.findMany({
+		where: and(
+			eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
+			eq(syncedMeetingTombstone.userId, ctx.userId),
+		),
+		columns: { calendarEventId: true },
+	});
+	// Two different reasons to leave an event out, and only one of them is a
+	// decision the toggle may override. A tombstoned meeting was deleted; a
+	// meeting already on an entry is simply here, and re-proposing it would
+	// offer a duplicate no matter what the toggle says.
+	const deletedIds = new Set(tombstones.map((t) => t.calendarEventId));
+	const loggedIds = new Set(
+		existing
+			.map((e) => e.calendarEventId)
+			.filter((id): id is string => id !== null),
+	);
+
+	for (const event of calendarEvents) {
+		if (loggedIds.has(event.id)) continue;
+		const wasDeleted = deletedIds.has(event.id);
+		if (wasDeleted) {
+			step.dismissed++;
+			if (!includeDismissed) continue;
+		}
+		const raw = Math.floor(
+			(new Date(event.end).getTime() - new Date(event.start).getTime()) / 1000,
+		);
+		if (raw <= 0) continue;
+		const durationSeconds = snapToQuarterHour(raw);
+		step.seconds += durationSeconds;
+		step.suggestions.push({
+			key: `meeting:${event.id}`,
+			kind: "meeting",
+			taskId: meetingTask.id,
+			taskName: meetingTask.name,
+			projectId: null,
+			projectName: null,
+			description: event.title,
+			durationSeconds,
+			fillsDay: false,
+			meetingUrl: event.meetingUrl,
+			calendarEventId: event.id,
+			commits: [],
+			pullRequests: [],
+			dismissed: wasDeleted,
+		});
+	}
+	return step;
+};
+
+// ── Break: carved out of the day, not added on top ────────────────────────
+const suggestBreak = (
+	breakTask: EngineTask | null,
+	existing: DayInputs["existing"],
+	targetSeconds: number,
+	remaining: number,
+): DaySuggestion | null => {
+	const alreadyHasBreak =
+		breakTask != null && existing.some((e) => e.taskId === breakTask.id);
+	if (
+		!breakTask ||
+		alreadyHasBreak ||
+		targetSeconds <= BREAK_MIN_WORKDAY_SECONDS ||
+		remaining <= DEFAULT_BREAK_SECONDS
+	) {
+		return null;
+	}
+	return {
+		key: "break",
+		kind: "break",
+		taskId: breakTask.id,
+		taskName: breakTask.name,
+		projectId: null,
+		projectName: null,
+		description: "Break",
+		durationSeconds: DEFAULT_BREAK_SECONDS,
+		fillsDay: false,
+		meetingUrl: null,
+		calendarEventId: null,
+		commits: [],
+		pullRequests: [],
+		// A recurring-break skip is a rule adjusted for one day, not a row
+		// lost, so the toggle deliberately doesn't cover it — see the note on
+		// `includeDismissed` in schema/day-assembly. This branch never
+		// suppresses anything, so nothing here is ever held back.
+		dismissed: false,
+	};
+};
+
+/** What the review loop reads about the day, gathered once. */
+type ReviewContext = {
+	homes: Map<string, string>;
+	loggedOn: Set<string>;
+	deleted: Set<string>;
+	access: DayAccess;
+	nameById: Map<string, string>;
+	/** The events that the person unlinked from an entry. */
+	refusedEvents: Set<string>;
+	/** The pull requests with a review that the person unlinked. Unlinking the
+	 *  last review from a Code Review entry leaves a block tombstone and an
+	 *  event tombstone. Unlinking an earlier review leaves only the event
+	 *  tombstone. The event is already in the unlinked count, so the block
+	 *  must not count the same review a second time. */
+	unlinkedPullRequests: Set<string>;
+};
+
+const loadReviewContext = async (
+	ctx: Ctx,
+	date: string,
+	reviews: ScannedPullRequestActivity[],
+	existing: DayInputs["existing"],
+	reviewTask: EngineTask,
+): Promise<Omit<ReviewContext, "refusedEvents" | "unlinkedPullRequests">> => {
+	const [{ homes, heldBy }, deleted, access, projects] = await Promise.all([
+		reviewsOnDay(ctx, date),
+		deletedReviewsOnDay(ctx, date),
+		ctxAccess(ctx),
+		db.query.project.findMany({
+			where: and(
+				eq(project.organizationId, ctx.organizationId),
+				inArray(project.id, [
+					...new Set(reviews.map((review) => review.projectId)),
+				]),
+			),
+			columns: { id: true, name: true },
+		}),
+	]);
+	// The engine's step 2 (see `fileReviewBlocks`): another PR's block does
+	// not account for this one.
+	const loggedOn = new Set(
+		existing.flatMap((e) =>
+			e.taskId === reviewTask.id &&
+			e.projectId &&
+			!isReviewBlock(e.description, heldBy.get(e.id) ?? [])
+				? [e.projectId]
+				: [],
+		),
+	);
+	return {
+		homes,
+		loggedOn,
+		deleted,
+		access,
+		nameById: new Map(projects.map((p) => [p.id, p.name])),
+	};
+};
+
+/** What one reviewed pull request comes to: a block to propose, whether its
+ *  events are now accounted for, and whether it was a deleted block. */
+type ReviewOutcome = {
+	suggestion: DaySuggestion | null;
+	accounted: boolean;
+	dismissed: boolean;
+};
+
+const reviewSuggestionFor = (
+	pullRequestUrl: string,
+	events: ScannedPullRequestActivity[],
+	reviewTask: EngineTask,
+	review: ReviewContext,
+	room: number,
+	includeDismissed: boolean,
+): ReviewOutcome => {
+	const skipped: ReviewOutcome = {
+		suggestion: null,
+		accounted: false,
+		dismissed: false,
+	};
+	const [first] = events;
+	if (!first) return skipped;
+	if (
+		review.homes.has(pullRequestUrl) ||
+		review.loggedOn.has(first.projectId)
+	) {
+		return { ...skipped, accounted: true };
+	}
+	// The same reason as the work branch: a suggestion that `apply`
+	// would refuse is worse than none.
+	if (
+		!review.nameById.has(first.projectId) ||
+		!review.access.canTrackOn(first.projectId)
+	) {
+		return skipped;
+	}
+	const wasDeleted = review.deleted.has(pullRequestUrl);
+	const counted =
+		wasDeleted && !review.unlinkedPullRequests.has(pullRequestUrl);
+	if (wasDeleted && !includeDismissed)
+		return { ...skipped, dismissed: counted };
+	const durationSeconds = Math.min(
+		REVIEW_BLOCK_SECONDS,
+		room - (room % QUARTER_HOUR_SECONDS),
+	);
+	if (durationSeconds <= 0) return { ...skipped, dismissed: counted };
+	return {
+		accounted: true,
+		dismissed: counted,
+		suggestion: {
+			key: `review:${pullRequestUrl}`,
+			kind: "review",
+			taskId: reviewTask.id,
+			taskName: reviewTask.name,
+			projectId: first.projectId,
+			projectName: review.nameById.get(first.projectId) ?? null,
+			description: reviewBlockDescription(first.title),
+			durationSeconds,
+			fillsDay: false,
+			meetingUrl: null,
+			calendarEventId: null,
+			commits: [],
+			pullRequests: [
+				{
+					projectGithubRepoId: first.projectGithubRepoId,
+					number: first.number,
+					title: first.title,
+					repoFullName: first.repoFullName,
+					kinds: events.map((event) => event.kind),
+				},
+			],
+			dismissed:
+				wasDeleted ||
+				events.some((event) => review.refusedEvents.has(event.eventId)),
+		},
+	};
+};
+
+// ── Reviews: one block per reviewed pull request ──────────────────────────
+//
+// The block the commit engine files (see ./pr-reviews), proposed here so
+// a day assembled by hand agrees with a day synced overnight. A review
+// that is already on an entry, or on a project with a Code Review entry
+// that is not another PR's block, is accounted for and proposes nothing.
+// A review that gets no block stays evidence for the project's work
+// suggestion below.
+const suggestReviews = async (
+	ctx: Ctx,
+	date: string,
+	inputs: DayInputs,
+	unlinked: Unlinked,
+	room: number,
+	includeDismissed: boolean,
+): Promise<SuggestionStep & { accounted: Set<string> }> => {
+	const { reviewTask, pullRequestEvents, existing } = inputs;
+	const step: SuggestionStep & { accounted: Set<string> } = {
+		suggestions: [],
+		seconds: 0,
+		dismissed: 0,
+		accounted: new Set(),
+	};
+	const reviews = reviewTask
+		? unlinked.offeredEvents.filter((event) => event.kind === "reviewed")
+		: [];
+	if (!reviewTask || reviews.length === 0) return step;
+
+	const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
+	for (const review of reviews) {
+		byPullRequest.set(review.pullRequestUrl, [
+			...(byPullRequest.get(review.pullRequestUrl) ?? []),
+			review,
+		]);
+	}
+	const review: ReviewContext = {
+		...(await loadReviewContext(ctx, date, reviews, existing, reviewTask)),
+		refusedEvents: unlinked.refusedEvents,
+		unlinkedPullRequests: new Set(
+			pullRequestEvents
+				.filter(
+					(event) =>
+						event.kind === "reviewed" &&
+						unlinked.refusedEvents.has(event.eventId),
+				)
+				.map((event) => event.pullRequestUrl),
+		),
+	};
+	let left = room;
+	for (const [pullRequestUrl, events] of byPullRequest) {
+		const outcome = reviewSuggestionFor(
+			pullRequestUrl,
+			events,
+			reviewTask,
+			review,
+			left,
+			includeDismissed,
+		);
+		if (outcome.dismissed) step.dismissed++;
+		if (outcome.accounted) {
+			for (const event of events) step.accounted.add(event.eventId);
+		}
+		if (!outcome.suggestion) continue;
+		left -= outcome.suggestion.durationSeconds;
+		step.seconds += outcome.suggestion.durationSeconds;
+		step.suggestions.push(outcome.suggestion);
+	}
+	return step;
+};
+
+const evidenceFor = (
+	evidenceByProject: Map<string, ProjectEvidence>,
+	projectId: string,
+): ProjectEvidence => {
+	const existing = evidenceByProject.get(projectId);
+	if (existing) return existing;
+	const created: ProjectEvidence = {
+		commits: [],
+		pullRequests: [],
+		refused: false,
+	};
+	evidenceByProject.set(projectId, created);
+	return created;
+};
+
+/** One project's commits and pull requests for the day, minus the reviews that
+ *  already got a block of their own. */
+const collectEvidence = (
+	unlinked: Unlinked,
+	accountedReviews: Set<string>,
+): Map<string, ProjectEvidence> => {
+	const evidenceByProject = new Map<string, ProjectEvidence>();
+	for (const commit of unlinked.offeredCommits) {
+		const evidence = evidenceFor(evidenceByProject, commit.projectId);
+		evidence.commits.push(commit);
+		if (unlinked.refusedShas.has(commit.sha)) evidence.refused = true;
+	}
+	// One row per PR, not per event: the dialog and the attach both name a PR.
+	for (const event of unlinked.offeredEvents) {
+		if (accountedReviews.has(event.eventId)) continue;
+		const evidence = evidenceFor(evidenceByProject, event.projectId);
+		if (unlinked.refusedEvents.has(event.eventId)) evidence.refused = true;
+		const { pullRequests } = evidence;
+		const existing = pullRequests.find(
+			(pr) =>
+				pr.projectGithubRepoId === event.projectGithubRepoId &&
+				pr.number === event.number,
+		);
+		if (existing) existing.kinds.push(event.kind);
+		else {
+			pullRequests.push({
+				projectGithubRepoId: event.projectGithubRepoId,
+				number: event.number,
+				title: event.title,
+				repoFullName: event.repoFullName,
+				kinds: [event.kind],
+			});
+		}
+	}
+	return evidenceByProject;
+};
+
+const workSuggestionFor = (
+	group: ProjectEvidence & { projectId: string },
+	projectName: string | null,
+	workTask: EngineTask,
+	share: number,
+): DaySuggestion => ({
+	key: `work:${group.projectId}`,
+	kind: "work",
+	taskId: workTask.id,
+	taskName: workTask.name,
+	projectId: group.projectId,
+	projectName,
+	description: summarizeCommitMessages([
+		...group.commits.map((c) => c.message),
+		...describePullRequestActivity(
+			group.pullRequests.flatMap((pr) =>
+				pr.kinds.map((kind) => ({
+					kind,
+					number: pr.number,
+					title: pr.title,
+				})),
+			),
+		),
+	]),
+	durationSeconds: share,
+	fillsDay: false,
+	meetingUrl: null,
+	calendarEventId: null,
+	// Per-project commit work is derived fresh from the commits every
+	// time, so only an unlinked commit or event makes it dismissed.
+	dismissed: group.refused,
+	commits: group.commits.map((c) => ({
+		projectGithubRepoId: c.projectGithubRepoId,
+		sha: c.sha,
+		message: c.message,
+		repoFullName: c.repoFullName,
+	})),
+	pullRequests: group.pullRequests,
+});
+
+// ── Work: one entry per project with commits or PR activity that day ──────
+const suggestWork = async (
+	ctx: Ctx,
+	date: string,
+	evidenceByProject: Map<string, ProjectEvidence>,
+	workTask: EngineTask,
+	remaining: number,
+	includeDismissed: boolean,
+): Promise<{
+	suggestions: DaySuggestion[];
+	dismissed: number;
+	seconds: number;
+}> => {
+	if (evidenceByProject.size === 0 || remaining < QUARTER_HOUR_SECONDS) {
+		return { suggestions: [], dismissed: 0, seconds: 0 };
+	}
+	const projectIds = [...evidenceByProject.keys()];
+	const [access, projects] = await Promise.all([
+		// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
+		// so a commit to a repo whose project you are not on is routine rather
+		// than exotic. Without this the assembler proposed work on it, arriving
+		// pre-ticked, and `apply` — which routes through `create` and does
+		// assert access — returned `{ created: 0, errors: ["You are not
+		// assigned to this project"] }`. A suggestion that cannot be accepted
+		// is worse than no suggestion.
+		ctxAccess(ctx),
+		db.query.project.findMany({
+			where: and(
+				eq(project.organizationId, ctx.organizationId),
+				inArray(project.id, projectIds),
+			),
+			columns: { id: true, name: true },
+		}),
+	]);
+	const nameById = new Map(projects.map((p) => [p.id, p.name]));
+
+	const groups = projectIds
+		.filter((id) => nameById.has(id) && access.canTrackOn(id))
+		.map((id) => ({ projectId: id, ...evidenceFor(evidenceByProject, id) }));
+
+	// A pull request somebody opened, merged or reviewed weighs what one
+	// commit does. Neither measures time; the split only needs a ratio
+	// that leaves a review-only project with a share rather than none.
+	//
+	// A project whose block the person deleted (see `commitFillTombstone`)
+	// does not take part, as in the commit engine: the others share the day
+	// without it. It is still proposed, dismissed, with the share it would
+	// have had, for the toggle that brings dismissed rows back.
+	const deletedProjects = await deletedWorkProjects(ctx, date);
+	const weights = groups.map((g) => g.commits.length + g.pullRequests.length);
+	const shares = splitProportionally(
+		remaining,
+		weights.map((w, i) =>
+			deletedProjects.has(groups[i]?.projectId ?? "") ? 0 : w,
+		),
+	);
+	const dismissedShares = splitProportionally(remaining, weights);
+
+	let dismissed = 0;
+	let seconds = 0;
+	const suggestions: DaySuggestion[] = [];
+	groups.forEach((group, index) => {
+		const deleted = deletedProjects.has(group.projectId);
+		const share = (deleted ? dismissedShares : shares)[index] ?? 0;
+		if (share <= 0) return;
+		if (deleted) dismissed++;
+		if (deleted && !includeDismissed) return;
+		const suggestion = workSuggestionFor(
+			group,
+			nameById.get(group.projectId) ?? null,
+			workTask,
+			share,
+		);
+		if (deleted) suggestion.dismissed = true;
+		else seconds += share;
+		suggestions.push(suggestion);
+	});
+	return { suggestions, dismissed, seconds };
+};
+
+// ── Fill: whatever the signals above did not account for ──────────────────
+//
+// Without this the assembler could only ever propose what it had evidence
+// for, so a person with no calendar and no commits — the common case on a
+// heads-down day — was offered a 30-minute break against an 8-hour target
+// and told the day "already matches your working hours". The break is
+// carved out of the day, so on its own it never adds up to one.
+//
+// It is deliberately last and deliberately un-sized on apply: `create`
+// derives a fill block's duration from what the day has left, so
+// deselecting a meeting above grows this to match instead of leaving a
+// hole. The number here is the estimate that pairs with the dialog's "~".
+const suggestFill = async (
+	ctx: Ctx,
+	date: string,
+	workTask: EngineTask,
+	unaccounted: number,
+	includeDismissed: boolean,
+): Promise<{ suggestion: DaySuggestion | null; dismissed: number }> => {
+	// A day whose rest-of-day block the person deleted. The commit engine
+	// honours that tombstone and so does this — the assembler proposing the
+	// very thing the engine has been told not to rebuild is the same block
+	// coming back, just with an extra click in front of it.
+	const deletedFill = await db.query.commitFillTombstone.findFirst({
+		where: and(
+			eq(commitFillTombstone.organizationId, ctx.organizationId),
+			eq(commitFillTombstone.userId, ctx.userId),
+			eq(commitFillTombstone.date, date),
+			isNull(commitFillTombstone.projectId),
+		),
+		columns: { id: true },
+	});
+	// The fill row is one more suggestion that includeDismissed adds back,
+	// beside the project's work row when that one was deleted too.
+	const dismissed = deletedFill ? 1 : 0;
+	if (deletedFill && !includeDismissed) return { suggestion: null, dismissed };
+	return {
+		dismissed,
+		suggestion: {
+			key: "fill",
+			kind: "fill",
+			taskId: workTask.id,
+			taskName: workTask.name,
+			projectId: null,
+			projectName: null,
+			description: "Rest of day",
+			durationSeconds: unaccounted,
+			fillsDay: true,
+			meetingUrl: null,
+			calendarEventId: null,
+			commits: [],
+			pullRequests: [],
+			dismissed: !!deletedFill,
+		},
+	};
+};
+
+// ── Filing rules: the person's standing answers ───────────────────────────
+//
+// Every row proposed without a project (a meeting, the break, the
+// rest-of-day block) gets the project and task the person already chose
+// for that title, so the day is filed as it is added rather than filed
+// again in File your time. A row that already has a project got it from
+// its evidence, and a rule keyed on a title does not outrank that.
+const applyFilingRules = async (
+	ctx: Ctx,
+	suggestions: DaySuggestion[],
+): Promise<DaySuggestion[]> => {
+	const rules = await filingRulesService.resolve(ctx, [
+		...new Set(
+			suggestions.filter((s) => s.projectId === null).map((s) => s.taskId),
+		),
+	]);
+	const ruled = suggestions.flatMap((s) => {
+		if (s.projectId !== null) return [];
+		const target = rules.get(ruleKeyFor(s.taskId, s.description));
+		return target ? [{ suggestion: s, target }] : [];
+	});
+	const [ruleProjects, ruleTasks] =
+		ruled.length === 0
+			? [[], []]
+			: await Promise.all([
+					db.query.project.findMany({
+						where: and(
+							eq(project.organizationId, ctx.organizationId),
+							inArray(project.id, [
+								...new Set(ruled.map((r) => r.target.projectId)),
+							]),
+						),
+						columns: { id: true, name: true },
+					}),
+					db.query.task.findMany({
+						where: inArray(task.id, [
+							...new Set(ruled.map((r) => r.target.taskId)),
+						]),
+						columns: { id: true, name: true },
+					}),
+				]);
+	const projectNames = new Map(ruleProjects.map((p) => [p.id, p.name]));
+	const taskNames = new Map(ruleTasks.map((t) => [t.id, t.name]));
+	const targets = new Map(ruled.map((r) => [r.suggestion.key, r.target]));
+	return suggestions.map((s) => {
+		const target = targets.get(s.key);
+		if (!target) return s;
+		return {
+			...s,
+			projectId: target.projectId,
+			projectName: projectNames.get(target.projectId) ?? null,
+			taskId: target.taskId,
+			taskName: taskNames.get(target.taskId) ?? s.taskName,
+		};
+	});
+};
 
 export const dayAssemblyService = {
 	/** Read-only preview: nothing here writes. It used to run the recurring
@@ -198,317 +993,41 @@ export const dayAssemblyService = {
 		const { date, includeDismissed = false } = input;
 
 		const tz = await ctxTimezone(ctx);
+		const inputs = await loadDayInputs(ctx, date);
+		const { existing, workTask } = inputs;
 
-		const [
-			existing,
-			workingHours,
-			meetingTask,
-			workTask,
-			breakTask,
-			reviewTask,
-			calendarEvents,
-			commits,
-			pullRequestEvents,
-			calendarLinked,
-			githubLinked,
-			holidays,
-		] = await Promise.all([
-			db.query.timeEntry.findMany({
-				where: and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					eq(timeEntry.date, date),
-				),
-				columns: {
-					id: true,
-					description: true,
-					durationSeconds: true,
-					fillsDay: true,
-					calendarEventId: true,
-					taskId: true,
-					projectId: true,
-				},
-			}),
-			workingHoursService.list(ctx),
-			findEngineTask(ctx, "meeting"),
-			findEngineTask(ctx, "development"),
-			findEngineTask(ctx, "break"),
-			findEngineTask(ctx, "code_review"),
-			calendarSource()
-				.listEventsForRange(ctx, { from: date, to: date })
-				.catch((error) => {
-					console.error("[day-assembly] calendar read failed", error);
-					return null;
-				}),
-			commitSource()
-				.listUserCommitsForDay(ctx, date)
-				.catch((error) => {
-					console.error("[day-assembly] commit read failed", error);
-					return [];
-				}),
-			pullRequestSource()
-				.listUserPullRequestActivityForDay(ctx, date)
-				.catch((error) => {
-					console.error("[day-assembly] pull request read failed", error);
-					return [];
-				}),
-			// "google-calendar", not "google": the plain Google provider is only a
-			// sign-in link and carries no calendar scope, so checking it reported
-			// "connect your calendar" at people who had already connected it.
-			hasLinkedAccount(ctx.userId, "google-calendar"),
-			hasLinkedAccount(ctx.userId, "github"),
-			// The assembler proposes the same rest-of-day block the commit engine
-			// files, so it has to agree with it about whether the day is a working
-			// day at all. On a public holiday the target is 0 and the whole
-			// suggestion list collapses to nothing, which is the correct answer.
-			holidaysService.holidaySetForRange(ctx, date, date),
-		]);
-
-		const targetSeconds = targetSecondsFor(workingHours, date, tz, holidays);
-		const logged = loggedSeconds(existing);
+		const targetSeconds = targetSecondsFor(
+			inputs.workingHours,
+			date,
+			tz,
+			inputs.holidays,
+		);
 		const spokenFor = spokenForSeconds(existing);
 
-		const suggestions: DaySuggestion[] = [];
-		// Everything `includeDismissed` would add back, whether or not it is on.
-		let dismissedCount = 0;
-
-		// ── Meetings: calendar events not already logged ────────────────────────
-		let meetingSeconds = 0;
-		if (calendarEvents && calendarEvents.length > 0 && meetingTask) {
-			const tombstones = await db.query.syncedMeetingTombstone.findMany({
-				where: and(
-					eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
-					eq(syncedMeetingTombstone.userId, ctx.userId),
-				),
-				columns: { calendarEventId: true },
-			});
-			// Two different reasons to leave an event out, and only one of them is a
-			// decision the toggle may override. A tombstoned meeting was deleted; a
-			// meeting already on an entry is simply here, and re-proposing it would
-			// offer a duplicate no matter what the toggle says.
-			const deletedIds = new Set(tombstones.map((t) => t.calendarEventId));
-			const loggedIds = new Set(
-				existing
-					.map((e) => e.calendarEventId)
-					.filter((id): id is string => id !== null),
-			);
-
-			for (const event of calendarEvents) {
-				if (loggedIds.has(event.id)) continue;
-				if (deletedIds.has(event.id)) {
-					dismissedCount++;
-					if (!includeDismissed) continue;
-				}
-				const raw = Math.floor(
-					(new Date(event.end).getTime() - new Date(event.start).getTime()) /
-						1000,
-				);
-				if (raw <= 0) continue;
-				const durationSeconds = snapToQuarterHour(raw);
-				meetingSeconds += durationSeconds;
-				suggestions.push({
-					key: `meeting:${event.id}`,
-					kind: "meeting",
-					taskId: meetingTask.id,
-					taskName: meetingTask.name,
-					projectId: null,
-					projectName: null,
-					description: event.title,
-					durationSeconds,
-					fillsDay: false,
-					meetingUrl: event.meetingUrl,
-					calendarEventId: event.id,
-					commits: [],
-					pullRequests: [],
-					dismissed: deletedIds.has(event.id),
-				});
-			}
-		}
-
-		// ── Break: carved out of the day, not added on top ──────────────────────
-		let breakSeconds = 0;
-		const preBreakRemaining = remainingSeconds(
+		const unlinked = await loadUnlinked(ctx, inputs, includeDismissed);
+		const meetings = await suggestMeetings(ctx, inputs, includeDismissed);
+		const breakSuggestion = suggestBreak(
+			inputs.breakTask,
+			existing,
 			targetSeconds,
-			spokenFor,
-			meetingSeconds,
+			remainingSeconds(targetSeconds, spokenFor, meetings.seconds),
 		);
-		const alreadyHasBreak =
-			breakTask != null && existing.some((e) => e.taskId === breakTask.id);
-		if (
-			breakTask &&
-			!alreadyHasBreak &&
-			targetSeconds > BREAK_MIN_WORKDAY_SECONDS &&
-			preBreakRemaining > DEFAULT_BREAK_SECONDS
-		) {
-			breakSeconds = DEFAULT_BREAK_SECONDS;
-			suggestions.push({
-				key: "break",
-				kind: "break",
-				taskId: breakTask.id,
-				taskName: breakTask.name,
-				projectId: null,
-				projectName: null,
-				description: "Break",
-				durationSeconds: breakSeconds,
-				fillsDay: false,
-				meetingUrl: null,
-				calendarEventId: null,
-				commits: [],
-				pullRequests: [],
-				// A recurring-break skip is a rule adjusted for one day, not a row
-				// lost, so the toggle deliberately doesn't cover it — see the note on
-				// `includeDismissed` in schema/day-assembly. This branch never
-				// suppresses anything, so nothing here is ever held back.
-				dismissed: false,
-			});
-		}
-
+		const breakSeconds = breakSuggestion?.durationSeconds ?? 0;
 		const beforeReviews = remainingSeconds(
 			targetSeconds,
 			spokenFor,
-			meetingSeconds,
+			meetings.seconds,
 			breakSeconds,
 		);
-
-		// ── Reviews: one block per reviewed pull request ────────────────────────
-		//
-		// The block the commit engine files (see ./pr-reviews), proposed here so
-		// a day assembled by hand agrees with a day synced overnight. A review
-		// that is already on an entry, or on a project with a Code Review entry
-		// that is not another PR's block, is accounted for and proposes nothing.
-		// A review that gets no block stays evidence for the project's work
-		// suggestion below.
-		let reviewSeconds = 0;
-		const accountedReviews = new Set<string>();
-		const reviews = reviewTask
-			? pullRequestEvents.filter((event) => event.kind === "reviewed")
-			: [];
-		if (reviewTask && reviews.length > 0) {
-			const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
-			for (const review of reviews) {
-				byPullRequest.set(review.pullRequestUrl, [
-					...(byPullRequest.get(review.pullRequestUrl) ?? []),
-					review,
-				]);
-			}
-			const [{ homes, heldBy }, deleted, access, projects] = await Promise.all([
-				reviewsOnDay(ctx, date),
-				deletedReviewsOnDay(ctx, date),
-				ctxAccess(ctx),
-				db.query.project.findMany({
-					where: and(
-						eq(project.organizationId, ctx.organizationId),
-						inArray(project.id, [
-							...new Set(reviews.map((review) => review.projectId)),
-						]),
-					),
-					columns: { id: true, name: true },
-				}),
-			]);
-			const nameById = new Map(projects.map((p) => [p.id, p.name]));
-			// The engine's step 2 (see `fileReviewBlocks`): another PR's block does
-			// not account for this one.
-			const loggedOn = new Set(
-				existing.flatMap((e) =>
-					e.taskId === reviewTask.id &&
-					e.projectId &&
-					!isReviewBlock(e.description, heldBy.get(e.id) ?? [])
-						? [e.projectId]
-						: [],
-				),
-			);
-
-			let room = beforeReviews;
-			for (const [pullRequestUrl, events] of byPullRequest) {
-				const [first] = events;
-				if (!first) continue;
-				if (homes.has(pullRequestUrl) || loggedOn.has(first.projectId)) {
-					for (const event of events) accountedReviews.add(event.eventId);
-					continue;
-				}
-				// The same reason as the work branch: a suggestion that `apply`
-				// would refuse is worse than none.
-				if (
-					!nameById.has(first.projectId) ||
-					!access.canTrackOn(first.projectId)
-				) {
-					continue;
-				}
-				const wasDeleted = deleted.has(pullRequestUrl);
-				if (wasDeleted) {
-					dismissedCount++;
-					if (!includeDismissed) continue;
-				}
-				const durationSeconds = Math.min(
-					REVIEW_BLOCK_SECONDS,
-					room - (room % QUARTER_HOUR_SECONDS),
-				);
-				if (durationSeconds <= 0) continue;
-				room -= durationSeconds;
-				reviewSeconds += durationSeconds;
-				for (const event of events) accountedReviews.add(event.eventId);
-				suggestions.push({
-					key: `review:${pullRequestUrl}`,
-					kind: "review",
-					taskId: reviewTask.id,
-					taskName: reviewTask.name,
-					projectId: first.projectId,
-					projectName: nameById.get(first.projectId) ?? null,
-					description: reviewBlockDescription(first.title),
-					durationSeconds,
-					fillsDay: false,
-					meetingUrl: null,
-					calendarEventId: null,
-					commits: [],
-					pullRequests: [
-						{
-							projectGithubRepoId: first.projectGithubRepoId,
-							number: first.number,
-							title: first.title,
-							repoFullName: first.repoFullName,
-							kinds: events.map((event) => event.kind),
-						},
-					],
-					dismissed: wasDeleted,
-				});
-			}
-		}
-
-		const remaining = remainingSeconds(beforeReviews, reviewSeconds);
-
-		// ── Work: one entry per project with commits or PR activity that day ────
-		let workSeconds = 0;
-		const evidenceByProject = new Map<string, ProjectEvidence>();
-		const evidenceFor = (projectId: string): ProjectEvidence => {
-			const existing = evidenceByProject.get(projectId);
-			if (existing) return existing;
-			const created: ProjectEvidence = { commits: [], pullRequests: [] };
-			evidenceByProject.set(projectId, created);
-			return created;
-		};
-		for (const commit of commits) {
-			evidenceFor(commit.projectId).commits.push(commit);
-		}
-		// One row per PR, not per event: the dialog and the attach both name a PR.
-		for (const event of pullRequestEvents) {
-			if (accountedReviews.has(event.eventId)) continue;
-			const { pullRequests } = evidenceFor(event.projectId);
-			const existing = pullRequests.find(
-				(pr) =>
-					pr.projectGithubRepoId === event.projectGithubRepoId &&
-					pr.number === event.number,
-			);
-			if (existing) existing.kinds.push(event.kind);
-			else {
-				pullRequests.push({
-					projectGithubRepoId: event.projectGithubRepoId,
-					number: event.number,
-					title: event.title,
-					repoFullName: event.repoFullName,
-					kinds: [event.kind],
-				});
-			}
-		}
+		const reviews = await suggestReviews(
+			ctx,
+			date,
+			inputs,
+			unlinked,
+			beforeReviews,
+			includeDismissed,
+		);
+		const remaining = remainingSeconds(beforeReviews, reviews.seconds);
 
 		// A day that already has a fill block is already claiming the rest of its
 		// working hours — usually the commit-sync engine's own block, built from
@@ -517,217 +1036,53 @@ export const dayAssemblyService = {
 		// empty block sitting next to the real one. The fill wins: it's the entry
 		// the person can already see.
 		const hasFillBlock = existing.some((e) => e.fillsDay);
+		const evidenceByProject = collectEvidence(unlinked, reviews.accounted);
+		const work =
+			workTask && !hasFillBlock
+				? await suggestWork(
+						ctx,
+						date,
+						evidenceByProject,
+						workTask,
+						remaining,
+						includeDismissed,
+					)
+				: { suggestions: [], dismissed: 0, seconds: 0 };
+		const workSeconds = work.seconds;
 
-		if (
-			evidenceByProject.size > 0 &&
-			workTask &&
-			!hasFillBlock &&
-			remaining >= QUARTER_HOUR_SECONDS
-		) {
-			const projectIds = [...evidenceByProject.keys()];
-			const [access, projects] = await Promise.all([
-				// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
-				// so a commit to a repo whose project you are not on is routine rather
-				// than exotic. Without this the assembler proposed work on it, arriving
-				// pre-ticked, and `apply` — which routes through `create` and does
-				// assert access — returned `{ created: 0, errors: ["You are not
-				// assigned to this project"] }`. A suggestion that cannot be accepted
-				// is worse than no suggestion.
-				ctxAccess(ctx),
-				db.query.project.findMany({
-					where: and(
-						eq(project.organizationId, ctx.organizationId),
-						inArray(project.id, projectIds),
-					),
-					columns: { id: true, name: true },
-				}),
-			]);
-			const nameById = new Map(projects.map((p) => [p.id, p.name]));
-
-			const groups = projectIds
-				.filter((id) => nameById.has(id) && access.canTrackOn(id))
-				.map((id) => ({ projectId: id, ...evidenceFor(id) }));
-
-			// A pull request somebody opened, merged or reviewed weighs what one
-			// commit does. Neither measures time; the split only needs a ratio
-			// that leaves a review-only project with a share rather than none.
-			//
-			// A project whose block the person deleted (see `commitFillTombstone`)
-			// does not take part, as in the commit engine: the others share the day
-			// without it. It is still proposed, dismissed, with the share it would
-			// have had, for the toggle that brings dismissed rows back.
-			const deletedProjects = await deletedWorkProjects(ctx, date);
-			const weights = groups.map(
-				(g) => g.commits.length + g.pullRequests.length,
-			);
-			const shares = splitProportionally(
-				remaining,
-				weights.map((w, i) =>
-					deletedProjects.has(groups[i]?.projectId ?? "") ? 0 : w,
-				),
-			);
-			const dismissedShares = splitProportionally(remaining, weights);
-
-			groups.forEach((group, index) => {
-				const deleted = deletedProjects.has(group.projectId);
-				const share = (deleted ? dismissedShares : shares)[index] ?? 0;
-				if (share <= 0) return;
-				if (deleted) {
-					dismissedCount++;
-				}
-				if (deleted && !includeDismissed) return;
-				if (!deleted) workSeconds += share;
-				suggestions.push({
-					key: `work:${group.projectId}`,
-					kind: "work",
-					taskId: workTask.id,
-					taskName: workTask.name,
-					projectId: group.projectId,
-					projectName: nameById.get(group.projectId) ?? null,
-					description: summarizeCommitMessages([
-						...group.commits.map((c) => c.message),
-						...describePullRequestActivity(
-							group.pullRequests.flatMap((pr) =>
-								pr.kinds.map((kind) => ({
-									kind,
-									number: pr.number,
-									title: pr.title,
-								})),
-							),
-						),
-					]),
-					durationSeconds: share,
-					fillsDay: false,
-					meetingUrl: null,
-					calendarEventId: null,
-					// Derived fresh from the commits every time; the one record of a "no"
-					// is the project's tombstone, read above.
-					dismissed: deletedProjects.has(group.projectId),
-					commits: group.commits.map((c) => ({
-						projectGithubRepoId: c.projectGithubRepoId,
-						sha: c.sha,
-						message: c.message,
-						repoFullName: c.repoFullName,
-					})),
-					pullRequests: group.pullRequests,
-				});
-			});
-		}
-
-		// ── Fill: whatever the signals above did not account for ────────────────
-		//
-		// Without this the assembler could only ever propose what it had evidence
-		// for, so a person with no calendar and no commits — the common case on a
-		// heads-down day — was offered a 30-minute break against an 8-hour target
-		// and told the day "already matches your working hours". The break is
-		// carved out of the day, so on its own it never adds up to one.
-		//
-		// It is deliberately last and deliberately un-sized on apply: `create`
-		// derives a fill block's duration from what the day has left, so
-		// deselecting a meeting above grows this to match instead of leaving a
-		// hole. The number here is the estimate that pairs with the dialog's "~".
 		const unaccounted = remainingSeconds(remaining, workSeconds);
-		if (workTask && !hasFillBlock && unaccounted >= QUARTER_HOUR_SECONDS) {
-			// A day whose rest-of-day block the person deleted. The commit engine
-			// honours that tombstone and so does this — the assembler proposing the
-			// very thing the engine has been told not to rebuild is the same block
-			// coming back, just with an extra click in front of it.
-			const deletedFill = await db.query.commitFillTombstone.findFirst({
-				where: and(
-					eq(commitFillTombstone.organizationId, ctx.organizationId),
-					eq(commitFillTombstone.userId, ctx.userId),
-					eq(commitFillTombstone.date, date),
-					isNull(commitFillTombstone.projectId),
-				),
-				columns: { id: true },
-			});
-			// The fill row is one more suggestion that includeDismissed adds back,
-			// beside the project's work row when that one was deleted too.
-			if (deletedFill) dismissedCount++;
+		const fill =
+			workTask && !hasFillBlock && unaccounted >= QUARTER_HOUR_SECONDS
+				? await suggestFill(ctx, date, workTask, unaccounted, includeDismissed)
+				: { suggestion: null, dismissed: 0 };
 
-			if (!deletedFill || includeDismissed) {
-				suggestions.push({
-					key: "fill",
-					kind: "fill",
-					taskId: workTask.id,
-					taskName: workTask.name,
-					projectId: null,
-					projectName: null,
-					description: "Rest of day",
-					durationSeconds: unaccounted,
-					fillsDay: true,
-					meetingUrl: null,
-					calendarEventId: null,
-					commits: [],
-					pullRequests: [],
-					dismissed: !!deletedFill,
-				});
-			}
-		}
-
-		// ── Filing rules: the person's standing answers ─────────────────────────
-		//
-		// Every row proposed without a project (a meeting, the break, the
-		// rest-of-day block) gets the project and task the person already chose
-		// for that title, so the day is filed as it is added rather than filed
-		// again in File your time. A row that already has a project got it from
-		// its evidence, and a rule keyed on a title does not outrank that.
-		const rules = await filingRulesService.resolve(ctx, [
-			...new Set(
-				suggestions.filter((s) => s.projectId === null).map((s) => s.taskId),
-			),
+		const suggestions = await applyFilingRules(ctx, [
+			...meetings.suggestions,
+			...(breakSuggestion ? [breakSuggestion] : []),
+			...reviews.suggestions,
+			...work.suggestions,
+			...(fill.suggestion ? [fill.suggestion] : []),
 		]);
-		const ruled = suggestions.flatMap((s) => {
-			if (s.projectId !== null) return [];
-			const target = rules.get(ruleKeyFor(s.taskId, s.description));
-			return target ? [{ suggestion: s, target }] : [];
-		});
-		const [ruleProjects, ruleTasks] =
-			ruled.length === 0
-				? [[], []]
-				: await Promise.all([
-						db.query.project.findMany({
-							where: and(
-								eq(project.organizationId, ctx.organizationId),
-								inArray(project.id, [
-									...new Set(ruled.map((r) => r.target.projectId)),
-								]),
-							),
-							columns: { id: true, name: true },
-						}),
-						db.query.task.findMany({
-							where: inArray(task.id, [
-								...new Set(ruled.map((r) => r.target.taskId)),
-							]),
-							columns: { id: true, name: true },
-						}),
-					]);
-		const projectNames = new Map(ruleProjects.map((p) => [p.id, p.name]));
-		const taskNames = new Map(ruleTasks.map((t) => [t.id, t.name]));
-		const targets = new Map(ruled.map((r) => [r.suggestion.key, r.target]));
-		const filed = suggestions.map((s) => {
-			const target = targets.get(s.key);
-			if (!target) return s;
-			return {
-				...s,
-				projectId: target.projectId,
-				projectName: projectNames.get(target.projectId) ?? null,
-				taskId: target.taskId,
-				taskName: taskNames.get(target.taskId) ?? s.taskName,
-			};
-		});
 
 		return {
 			date,
 			targetSeconds,
-			loggedSeconds: logged,
-			suggestions: filed,
+			loggedSeconds: loggedSeconds(existing),
+			suggestions,
 			sources: {
 				calendar:
-					calendarLinked && calendarEvents !== null ? "ok" : "unavailable",
-				github: githubLinked ? "ok" : "unavailable",
+					inputs.calendarLinked && inputs.calendarEvents !== null
+						? "ok"
+						: "unavailable",
+				github: inputs.githubLinked ? "ok" : "unavailable",
 			},
-			dismissedCount,
+			// Everything `includeDismissed` would add back, whether or not it is on.
+			dismissedCount:
+				unlinked.dismissed +
+				meetings.dismissed +
+				reviews.dismissed +
+				work.dismissed +
+				fill.dismissed,
 		};
 	},
 
@@ -798,7 +1153,10 @@ export const dayAssemblyService = {
 							commits: entry.commits,
 						})
 						.catch((error) =>
-							console.error("[day-assembly] attachCommits failed", error),
+							console.error(
+								"[day-assembly] attachCommits failed",
+								loggableError(error),
+							),
 						);
 				}
 				if (entry.pullRequests && entry.pullRequests.length > 0) {
@@ -808,7 +1166,10 @@ export const dayAssemblyService = {
 							pullRequests: entry.pullRequests,
 						})
 						.catch((error) =>
-							console.error("[day-assembly] attachPullRequests failed", error),
+							console.error(
+								"[day-assembly] attachPullRequests failed",
+								loggableError(error),
+							),
 						);
 				}
 			} catch (error) {
@@ -820,7 +1181,7 @@ export const dayAssemblyService = {
 					console.error("[day-assembly] could not create an entry", {
 						organizationId: ctx.organizationId,
 						taskId: entry.taskId,
-						error,
+						error: loggableError(error),
 					});
 				}
 				errors.push(message ?? "Failed to create entry");

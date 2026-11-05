@@ -14,6 +14,7 @@
 
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
@@ -24,23 +25,36 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
-import { client, project, task, timeEntry } from "../db/schema/domain";
+import { account, member, organization, user } from "../db/schema/auth";
+import {
+	client,
+	project,
+	projectMember,
+	task,
+	timeEntry,
+} from "../db/schema/domain";
 import {
 	projectGithubRepo,
+	timeEntryGithubCommit,
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
+	commitDetachTombstone,
 	commitFillTombstone,
 	filingRule,
+	pullRequestEventDetachTombstone,
+	pullRequestReviewTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
-import { emptyCalendar } from "../test/calendar";
+import { emptyCalendar, fakeCalendar } from "../test/calendar";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { findTool } from "./assistant-tools";
 import { dayAssemblyService } from "./day-assembly.service";
-import { pullRequestActivityRow } from "./github.service";
+import {
+	pullRequestActivityRow,
+	setGithubClientForTests,
+} from "./github.service";
 import {
 	setCalendarSourceForTests,
 	setCommitSourceForTests,
@@ -176,6 +190,7 @@ beforeEach(async () => {
 	// next one's starting state.
 	await db.delete(syncedMeetingTombstone);
 	await db.delete(commitFillTombstone);
+	await db.delete(pullRequestReviewTombstone);
 	setCalendarSourceForTests(noCalendar);
 	setCommitSourceForTests(noCommits);
 	setPullRequestSourceForTests(null);
@@ -656,12 +671,313 @@ describe("offering back what was deleted", () => {
 		);
 	});
 
+	test("a deleted review block is held back, then offered", async () => {
+		const url = "https://github.com/acme/farmer/pull/7";
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityByDay: async () => [],
+			listUserPullRequestActivityForDay: async () => [
+				{
+					eventId: "PRR_1",
+					kind: "reviewed",
+					reviewState: "approved",
+					number: 7,
+					title: "Fix login",
+					pullRequestUrl: url,
+					url: `${url}#pullrequestreview-1`,
+					occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+					projectGithubRepoId: repoId,
+					projectId,
+					repoFullName: "acme/farmer",
+				},
+			],
+		});
+		await db.insert(pullRequestReviewTombstone).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			date: MONDAY,
+			pullRequestUrl: url,
+		});
+
+		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(quiet.suggestions.map((s) => s.kind)).not.toContain("review");
+		expect(quiet.dismissedCount).toBe(1);
+
+		const loud = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+		const review = loud.suggestions.find((s) => s.kind === "review");
+		expect(review?.dismissed).toBe(true);
+		expect(review?.key).toBe(`review:${url}`);
+		expect(loud.dismissedCount).toBe(1);
+	});
+
 	test("a day with nothing deleted reports nothing to offer", async () => {
 		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
 
 		// The dialog hides the toggle on this answer, which is almost every day.
 		expect(assembly.dismissedCount).toBe(0);
 		expect(assembly.suggestions.every((s) => !s.dismissed)).toBe(true);
+	});
+});
+
+// An unlinked commit or event has a detach tombstone. The engine keeps it off
+// every entry, so the assembler holds it back as it holds back a deleted
+// meeting, and accepting it again does not take the "no" back.
+describe("offering back what was unlinked", () => {
+	const SHA = "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0";
+
+	beforeAll(async () => {
+		// A manual attach reads the repo through the caller's assignment.
+		await db
+			.insert(projectMember)
+			.values({ organizationId: ORG_ID, projectId, userId: USER_ID });
+		await db
+			.update(projectGithubRepo)
+			.set({ installationId: 100 })
+			.where(eq(projectGithubRepo.id, repoId));
+	});
+
+	beforeEach(async () => {
+		await db.delete(commitDetachTombstone);
+		await db.delete(pullRequestEventDetachTombstone);
+		await db.delete(pullRequestReviewTombstone);
+		setCommitSourceForTests({
+			...noCommits,
+			listUserCommitsForDay: async () => [
+				{
+					projectId,
+					projectGithubRepoId: repoId,
+					repoFullName: "acme/farmer",
+					sha: SHA,
+					message: "fix: the thing",
+					committedAt: new Date(`${MONDAY}T12:00:00.000Z`),
+				},
+			],
+		});
+	});
+
+	const refuseTheCommit = () =>
+		db.insert(commitDetachTombstone).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			sha: SHA,
+			date: MONDAY,
+		});
+
+	test("an unlinked commit is held back, then offered unticked", async () => {
+		await refuseTheCommit();
+
+		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(quiet.suggestions.some((s) => s.kind === "work")).toBe(false);
+		expect(quiet.dismissedCount).toBe(1);
+
+		const loud = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+		const work = present(
+			loud.suggestions.find((s) => s.kind === "work"),
+			"the work suggestion",
+		);
+		expect(work.commits.map((commit) => commit.sha)).toEqual([SHA]);
+		expect(work.dismissed).toBe(true);
+	});
+
+	test("an unlinked pull request event is held back, then offered unticked", async () => {
+		setCommitSourceForTests(noCommits);
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityByDay: async () => [],
+			listUserPullRequestActivityForDay: async () => [
+				{
+					eventId: "PR_7:opened",
+					kind: "opened",
+					reviewState: null,
+					number: 7,
+					title: "Fix login",
+					pullRequestUrl: "https://github.com/acme/farmer/pull/7",
+					url: "https://github.com/acme/farmer/pull/7",
+					occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+					projectGithubRepoId: repoId,
+					projectId,
+					repoFullName: "acme/farmer",
+				},
+			],
+		});
+		await db.insert(pullRequestEventDetachTombstone).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			eventId: "PR_7:opened",
+			date: MONDAY,
+		});
+
+		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(quiet.suggestions.some((s) => s.kind === "work")).toBe(false);
+		expect(quiet.dismissedCount).toBe(1);
+
+		const loud = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+		expect(loud.suggestions.find((s) => s.kind === "work")?.dismissed).toBe(
+			true,
+		);
+	});
+
+	describe("an unlinked review counts once", () => {
+		const PR_URL = "https://github.com/acme/farmer/pull/7";
+		const review = (eventId: string) => ({
+			eventId,
+			kind: "reviewed" as const,
+			reviewState: "approved" as const,
+			number: 7,
+			title: "Fix login",
+			pullRequestUrl: PR_URL,
+			url: `${PR_URL}#${eventId}`,
+			occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+			projectGithubRepoId: repoId,
+			projectId,
+			repoFullName: "acme/farmer",
+		});
+		const reviewsOnTheDay = (eventIds: string[]) => {
+			setCommitSourceForTests(noCommits);
+			setPullRequestSourceForTests({
+				listUserPullRequestActivityByDay: async () => [],
+				listUserPullRequestActivityForDay: async () => eventIds.map(review),
+			});
+		};
+		const refuseEvent = (eventId: string) =>
+			db.insert(pullRequestEventDetachTombstone).values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				eventId,
+				date: MONDAY,
+			});
+		const refuseBlock = () =>
+			db.insert(pullRequestReviewTombstone).values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: MONDAY,
+				pullRequestUrl: PR_URL,
+			});
+
+		test("the last review of a pull request, with the toggle on or off", async () => {
+			reviewsOnTheDay(["PRR_1"]);
+			await refuseEvent("PRR_1");
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.suggestions.some((s) => s.kind === "review")).toBe(false);
+			expect(quiet.dismissedCount).toBe(1);
+
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.suggestions.some((s) => s.kind === "review")).toBe(true);
+			expect(loud.dismissedCount).toBe(1);
+		});
+
+		test("an unlinked review beside another review of the same pull request", async () => {
+			reviewsOnTheDay(["PRR_1", "PRR_2"]);
+			await refuseEvent("PRR_1");
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.dismissedCount).toBe(1);
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.dismissedCount).toBe(1);
+		});
+
+		test("a deleted block with no event tombstone still counts once", async () => {
+			reviewsOnTheDay(["PRR_1"]);
+			await refuseBlock();
+
+			const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+			expect(quiet.dismissedCount).toBe(1);
+			const loud = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+				includeDismissed: true,
+			});
+			expect(loud.dismissedCount).toBe(1);
+		});
+	});
+
+	test("an unlinked commit moved by hand to another entry is not offered", async () => {
+		await refuseTheCommit();
+		const [moved] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: devTaskId,
+				projectId: null,
+				date: MONDAY,
+				durationSeconds: 3600,
+				description: "Moved here",
+			})
+			.returning({ id: timeEntry.id });
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: present(moved, "the entry").id,
+			projectGithubRepoId: repoId,
+			sha: SHA,
+			message: "fix: the thing",
+			committedAt: new Date(`${MONDAY}T12:00:00.000Z`),
+			url: `https://github.com/acme/farmer/commit/${SHA}`,
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+
+		// It is on an entry already, as a logged meeting is: nothing to offer.
+		expect(
+			assembly.suggestions.some((s) =>
+				s.commits.some((commit) => commit.sha === SHA),
+			),
+		).toBe(false);
+		expect(assembly.dismissedCount).toBe(0);
+	});
+
+	test("accepting an unlinked commit keeps the tombstone", async () => {
+		await refuseTheCommit();
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getCommit: async (_token, _owner, _repo, sha) => ({
+				sha,
+				html_url: `https://github.com/acme/farmer/commit/${sha}`,
+				commit: {
+					message: "fix: the thing",
+					author: { date: `${MONDAY}T12:00:00Z` },
+				},
+				author: { login: "tester" },
+			}),
+			listInstallationRepos: async () => [],
+		});
+
+		const result = await dayAssemblyService.apply(ctx, {
+			date: MONDAY,
+			entries: [
+				{
+					taskId: devTaskId,
+					projectId,
+					description: "fix: the thing",
+					durationSeconds: 3600,
+					commits: [{ projectGithubRepoId: repoId, sha: SHA }],
+				},
+			],
+		});
+
+		expect(result.errors).toEqual([]);
+		const attached = await db.query.timeEntryGithubCommit.findMany({
+			where: eq(timeEntryGithubCommit.sha, SHA),
+		});
+		expect(attached).toHaveLength(1);
+		expect(await db.query.commitDetachTombstone.findMany()).toHaveLength(1);
 	});
 });
 
@@ -733,5 +1049,48 @@ describe("a rule on a proposed block", () => {
 		} finally {
 			await db.delete(filingRule);
 		}
+	});
+});
+
+describe("which sources the assembler could read", () => {
+	const link = async (providerId: string) => {
+		await db.insert(account).values({
+			id: `account-${providerId}`,
+			accountId: providerId,
+			providerId,
+			userId: USER_ID,
+			updatedAt: new Date(),
+		});
+	};
+
+	afterEach(async () => {
+		await db.delete(account);
+	});
+
+	test("both are unavailable while no account is linked", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources).toEqual({
+			calendar: "unavailable",
+			github: "unavailable",
+		});
+	});
+
+	test("a linked calendar and GitHub account are ok", async () => {
+		await link("google-calendar");
+		await link("github");
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources).toEqual({ calendar: "ok", github: "ok" });
+	});
+
+	test("a linked calendar that cannot be read is unavailable", async () => {
+		await link("google-calendar");
+		setCalendarSourceForTests(fakeCalendar(null));
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.sources.calendar).toBe("unavailable");
 	});
 });

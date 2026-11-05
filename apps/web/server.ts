@@ -75,6 +75,8 @@ import path from "node:path";
 // loaded by the deferred import inside startBackgroundSchedulers().
 import type { SchedulerHandle } from "@farmer/core/jobs";
 import { SOCKET_ADDRESS_HEADER } from "@farmer/core/lib/client-address";
+import { durationFromEnv } from "@farmer/core/lib/http";
+import { loggableErrorLine } from "@farmer/core/lib/loggable-error";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
 import { applySecurityHeaders } from "./src/lib/security-headers.ts";
@@ -372,6 +374,225 @@ function createCompositeGlobPattern(): Bun.Glob {
 	return new Bun.Glob(`{${raw.join(",")}}`);
 }
 
+type RouteHandler = (req: Request) => Response | Promise<Response>;
+
+/**
+ * Print the preload settings. Only verbose mode shows them.
+ */
+function logPreloadConfig(): void {
+	if (!VERBOSE) return;
+	console.log(
+		`Max preload size: ${(MAX_PRELOAD_BYTES / 1024 / 1024).toFixed(2)} MB`,
+	);
+	if (INCLUDE_PATTERNS.length > 0) {
+		console.log(
+			`Include patterns: ${process.env.ASSET_PRELOAD_INCLUDE_PATTERNS ?? ""}`,
+		);
+	}
+	if (EXCLUDE_PATTERNS.length > 0) {
+		console.log(
+			`Exclude patterns: ${process.env.ASSET_PRELOAD_EXCLUDE_PATTERNS ?? ""}`,
+		);
+	}
+}
+
+/**
+ * Handler for a file that is read from disk on each request
+ */
+function onDemandHandler(filepath: string, type: string): RouteHandler {
+	return () =>
+		new Response(Bun.file(filepath), {
+			headers: applySecurityHeaders(
+				new Headers({
+					"Content-Type": type,
+					"Cache-Control": "public, max-age=3600",
+				}),
+			),
+		});
+}
+
+/**
+ * Build the route for one file in the client directory.
+ * Return null for a file that does not exist or is empty.
+ */
+async function routeForFile(
+	clientDirectory: string,
+	relativePath: string,
+): Promise<{
+	route: string;
+	handler: RouteHandler;
+	metadata: AssetMetadata;
+	preloaded: boolean;
+} | null> {
+	const filepath = path.join(clientDirectory, relativePath);
+	const route = `/${relativePath.split(path.sep).join(path.posix.sep)}`;
+	const file = Bun.file(filepath);
+
+	// Skip if file doesn't exist or is empty
+	if (!(await file.exists()) || file.size === 0) return null;
+
+	const type = file.type || "application/octet-stream";
+	const metadata: AssetMetadata = { route, size: file.size, type };
+
+	// Determine if file should be preloaded
+	const preloaded =
+		isFileEligibleForPreloading(relativePath) && file.size <= MAX_PRELOAD_BYTES;
+	if (!preloaded) {
+		// Serve large or filtered files on-demand
+		return {
+			route,
+			handler: onDemandHandler(filepath, type),
+			metadata,
+			preloaded,
+		};
+	}
+
+	// Preload small files into memory with ETag and Gzip support
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	const asset: InMemoryAsset = {
+		raw: bytes,
+		gz: compressDataIfAppropriate(bytes, type),
+		etag: ENABLE_ETAG ? computeEtag(bytes) : undefined,
+		type,
+		immutable: isImmutableRoute(route),
+		size: bytes.byteLength,
+	};
+	return {
+		route,
+		handler: createResponseHandler(asset),
+		metadata: { ...metadata, size: bytes.byteLength },
+		preloaded,
+	};
+}
+
+/**
+ * The glob yields directories too, and opening one throws EISDIR —
+ * expected, not worth a line in the log. The code is on `.code`;
+ * `.name` is plain "Error", so the old test never matched and every
+ * directory under `dist/client` was reported as a failed asset.
+ */
+function isExpectedScanError(error: Error): boolean {
+	const code = "code" in error ? error.code : undefined;
+	return code === "EISDIR";
+}
+
+/**
+ * Format file size with KB and actual gzip size
+ */
+function formatFileSize(bytes: number, gzBytes?: number) {
+	const kb = bytes / 1024;
+	const sizeStr = kb < 100 ? kb.toFixed(2) : kb.toFixed(1);
+
+	if (gzBytes !== undefined) {
+		const gzKb = gzBytes / 1024;
+		const gzStr = gzKb < 100 ? gzKb.toFixed(2) : gzKb.toFixed(1);
+		return {
+			size: sizeStr,
+			gzip: gzStr,
+		};
+	}
+
+	// Rough gzip estimation (typically 30-70% compression) if no actual gzip data
+	const gzipKb = kb * 0.35;
+	return {
+		size: sizeStr,
+		gzip: gzipKb < 100 ? gzipKb.toFixed(2) : gzipKb.toFixed(1),
+	};
+}
+
+/**
+ * Print one table of files. Sort the list in place.
+ */
+function printFileTable(
+	title: string,
+	files: AssetMetadata[],
+	width: number,
+): void {
+	if (files.length === 0) return;
+	console.log(title);
+	console.log(
+		"Path                                          │    Size │ Gzip Size",
+	);
+	files
+		.sort((a, b) => a.route.localeCompare(b.route))
+		.forEach((file) => {
+			const { size, gzip } = formatFileSize(file.size);
+			const paddedPath = file.route.padEnd(width);
+			const sizeStr = `${size.padStart(7)} kB`;
+			const gzipStr = `${gzip.padStart(7)} kB`;
+			console.log(`${paddedPath} │ ${sizeStr} │  ${gzipStr}`);
+		});
+}
+
+/**
+ * Print the file tables and the detail list. Only verbose mode calls this.
+ */
+function printVerboseDetails(
+	loaded: AssetMetadata[],
+	skipped: AssetMetadata[],
+): void {
+	if (loaded.length === 0 && skipped.length === 0) {
+		console.log("\n📊 No files found to display");
+		return;
+	}
+	const allFiles = [...loaded, ...skipped].sort((a, b) =>
+		a.route.localeCompare(b.route),
+	);
+
+	// Calculate max path length for alignment
+	const maxPathLength = Math.min(
+		Math.max(...allFiles.map((f) => f.route.length)),
+		60,
+	);
+	printFileTable("\n📁 Preloaded into memory:", loaded, maxPathLength);
+	printFileTable("\n💾 Served on-demand:", skipped, maxPathLength);
+
+	console.log("\n📊 Detailed file information:");
+	console.log(
+		"Status       │ Path                            │ MIME Type                    │ Reason",
+	);
+	allFiles.forEach((file) => {
+		const isPreloaded = loaded.includes(file);
+		const status = isPreloaded ? "MEMORY" : "ON-DEMAND";
+		const reason = isPreloaded
+			? "preloaded"
+			: file.size > MAX_PRELOAD_BYTES
+				? "too large"
+				: "filtered";
+		const route =
+			file.route.length > 30 ? `${file.route.substring(0, 27)}...` : file.route;
+		console.log(
+			`${status.padEnd(12)} │ ${route.padEnd(30)} │ ${file.type.padEnd(28)} │ ${reason.padEnd(10)}`,
+		);
+	});
+}
+
+/**
+ * Print the summary line for the preloaded and the on-demand files
+ */
+function logPreloadSummary(
+	loaded: AssetMetadata[],
+	skipped: AssetMetadata[],
+	totalBytes: number,
+): void {
+	console.log(); // Empty line for separation
+	if (loaded.length > 0) {
+		log.success(
+			`Preloaded ${String(loaded.length)} files (${(totalBytes / 1024 / 1024).toFixed(2)} MB) into memory`,
+		);
+	} else {
+		log.info("No files preloaded into memory");
+	}
+
+	if (skipped.length > 0) {
+		const tooLarge = skipped.filter((f) => f.size > MAX_PRELOAD_BYTES).length;
+		const filtered = skipped.length - tooLarge;
+		log.info(
+			`${String(skipped.length)} files will be served on-demand (${String(tooLarge)} too large, ${String(filtered)} filtered)`,
+		);
+	}
+}
+
 /**
  * Initialize static routes with intelligent preloading strategy
  * Small files are loaded into memory, large files are served on-demand
@@ -379,217 +600,39 @@ function createCompositeGlobPattern(): Bun.Glob {
 async function initializeStaticRoutes(
 	clientDirectory: string,
 ): Promise<PreloadResult> {
-	const routes: Record<string, (req: Request) => Response | Promise<Response>> =
-		{};
+	const routes: Record<string, RouteHandler> = {};
 	const loaded: AssetMetadata[] = [];
 	const skipped: AssetMetadata[] = [];
 
 	log.info(`Loading static assets from ${clientDirectory}...`);
-	if (VERBOSE) {
-		console.log(
-			`Max preload size: ${(MAX_PRELOAD_BYTES / 1024 / 1024).toFixed(2)} MB`,
-		);
-		if (INCLUDE_PATTERNS.length > 0) {
-			console.log(
-				`Include patterns: ${process.env.ASSET_PRELOAD_INCLUDE_PATTERNS ?? ""}`,
-			);
-		}
-		if (EXCLUDE_PATTERNS.length > 0) {
-			console.log(
-				`Exclude patterns: ${process.env.ASSET_PRELOAD_EXCLUDE_PATTERNS ?? ""}`,
-			);
-		}
-	}
+	logPreloadConfig();
 
 	let totalPreloadedBytes = 0;
 
 	try {
 		const glob = createCompositeGlobPattern();
 		for await (const relativePath of glob.scan({ cwd: clientDirectory })) {
-			const filepath = path.join(clientDirectory, relativePath);
-			const route = `/${relativePath.split(path.sep).join(path.posix.sep)}`;
-
 			try {
-				// Get file metadata
-				const file = Bun.file(filepath);
-
-				// Skip if file doesn't exist or is empty
-				if (!(await file.exists()) || file.size === 0) {
-					continue;
-				}
-
-				const metadata: AssetMetadata = {
-					route,
-					size: file.size,
-					type: file.type || "application/octet-stream",
-				};
-
-				// Determine if file should be preloaded
-				const matchesPattern = isFileEligibleForPreloading(relativePath);
-				const withinSizeLimit = file.size <= MAX_PRELOAD_BYTES;
-
-				if (matchesPattern && withinSizeLimit) {
-					// Preload small files into memory with ETag and Gzip support
-					const bytes = new Uint8Array(await file.arrayBuffer());
-					const gz = compressDataIfAppropriate(bytes, metadata.type);
-					const etag = ENABLE_ETAG ? computeEtag(bytes) : undefined;
-					const asset: InMemoryAsset = {
-						raw: bytes,
-						gz,
-						etag,
-						type: metadata.type,
-						immutable: isImmutableRoute(route),
-						size: bytes.byteLength,
-					};
-					routes[route] = createResponseHandler(asset);
-
-					loaded.push({ ...metadata, size: bytes.byteLength });
-					totalPreloadedBytes += bytes.byteLength;
+				const entry = await routeForFile(clientDirectory, relativePath);
+				if (!entry) continue;
+				routes[entry.route] = entry.handler;
+				if (entry.preloaded) {
+					loaded.push(entry.metadata);
+					totalPreloadedBytes += entry.metadata.size;
 				} else {
-					// Serve large or filtered files on-demand
-					routes[route] = () => {
-						const fileOnDemand = Bun.file(filepath);
-						return new Response(fileOnDemand, {
-							headers: applySecurityHeaders(
-								new Headers({
-									"Content-Type": metadata.type,
-									"Cache-Control": "public, max-age=3600",
-								}),
-							),
-						});
-					};
-
-					skipped.push(metadata);
+					skipped.push(entry.metadata);
 				}
 			} catch (error: unknown) {
-				// The glob yields directories too, and opening one throws EISDIR —
-				// expected, not worth a line in the log. The code is on `.code`;
-				// `.name` is plain "Error", so the old test never matched and every
-				// directory under `dist/client` was reported as a failed asset.
-				const code =
-					error instanceof Error && "code" in error ? error.code : undefined;
-				if (error instanceof Error && code !== "EISDIR") {
-					log.error(`Failed to load ${filepath}: ${error.message}`);
-				}
-			}
-		}
-
-		// Show detailed file overview only when verbose mode is enabled
-		if (VERBOSE && (loaded.length > 0 || skipped.length > 0)) {
-			const allFiles = [...loaded, ...skipped].sort((a, b) =>
-				a.route.localeCompare(b.route),
-			);
-
-			// Calculate max path length for alignment
-			const maxPathLength = Math.min(
-				Math.max(...allFiles.map((f) => f.route.length)),
-				60,
-			);
-
-			// Format file size with KB and actual gzip size
-			const formatFileSize = (bytes: number, gzBytes?: number) => {
-				const kb = bytes / 1024;
-				const sizeStr = kb < 100 ? kb.toFixed(2) : kb.toFixed(1);
-
-				if (gzBytes !== undefined) {
-					const gzKb = gzBytes / 1024;
-					const gzStr = gzKb < 100 ? gzKb.toFixed(2) : gzKb.toFixed(1);
-					return {
-						size: sizeStr,
-						gzip: gzStr,
-					};
-				}
-
-				// Rough gzip estimation (typically 30-70% compression) if no actual gzip data
-				const gzipKb = kb * 0.35;
-				return {
-					size: sizeStr,
-					gzip: gzipKb < 100 ? gzipKb.toFixed(2) : gzipKb.toFixed(1),
-				};
-			};
-
-			if (loaded.length > 0) {
-				console.log("\n📁 Preloaded into memory:");
-				console.log(
-					"Path                                          │    Size │ Gzip Size",
-				);
-				loaded
-					.sort((a, b) => a.route.localeCompare(b.route))
-					.forEach((file) => {
-						const { size, gzip } = formatFileSize(file.size);
-						const paddedPath = file.route.padEnd(maxPathLength);
-						const sizeStr = `${size.padStart(7)} kB`;
-						const gzipStr = `${gzip.padStart(7)} kB`;
-						console.log(`${paddedPath} │ ${sizeStr} │  ${gzipStr}`);
-					});
-			}
-
-			if (skipped.length > 0) {
-				console.log("\n💾 Served on-demand:");
-				console.log(
-					"Path                                          │    Size │ Gzip Size",
-				);
-				skipped
-					.sort((a, b) => a.route.localeCompare(b.route))
-					.forEach((file) => {
-						const { size, gzip } = formatFileSize(file.size);
-						const paddedPath = file.route.padEnd(maxPathLength);
-						const sizeStr = `${size.padStart(7)} kB`;
-						const gzipStr = `${gzip.padStart(7)} kB`;
-						console.log(`${paddedPath} │ ${sizeStr} │  ${gzipStr}`);
-					});
-			}
-		}
-
-		// Show detailed verbose info if enabled
-		if (VERBOSE) {
-			if (loaded.length > 0 || skipped.length > 0) {
-				const allFiles = [...loaded, ...skipped].sort((a, b) =>
-					a.route.localeCompare(b.route),
-				);
-				console.log("\n📊 Detailed file information:");
-				console.log(
-					"Status       │ Path                            │ MIME Type                    │ Reason",
-				);
-				allFiles.forEach((file) => {
-					const isPreloaded = loaded.includes(file);
-					const status = isPreloaded ? "MEMORY" : "ON-DEMAND";
-					const reason =
-						!isPreloaded && file.size > MAX_PRELOAD_BYTES
-							? "too large"
-							: !isPreloaded
-								? "filtered"
-								: "preloaded";
-					const route =
-						file.route.length > 30
-							? `${file.route.substring(0, 27)}...`
-							: file.route;
-					console.log(
-						`${status.padEnd(12)} │ ${route.padEnd(30)} │ ${file.type.padEnd(28)} │ ${reason.padEnd(10)}`,
+				if (error instanceof Error && !isExpectedScanError(error)) {
+					log.error(
+						`Failed to load ${path.join(clientDirectory, relativePath)}: ${error.message}`,
 					);
-				});
-			} else {
-				console.log("\n📊 No files found to display");
+				}
 			}
 		}
 
-		// Log summary after the file list
-		console.log(); // Empty line for separation
-		if (loaded.length > 0) {
-			log.success(
-				`Preloaded ${String(loaded.length)} files (${(totalPreloadedBytes / 1024 / 1024).toFixed(2)} MB) into memory`,
-			);
-		} else {
-			log.info("No files preloaded into memory");
-		}
-
-		if (skipped.length > 0) {
-			const tooLarge = skipped.filter((f) => f.size > MAX_PRELOAD_BYTES).length;
-			const filtered = skipped.length - tooLarge;
-			log.info(
-				`${String(skipped.length)} files will be served on-demand (${String(tooLarge)} too large, ${String(filtered)} filtered)`,
-			);
-		}
+		if (VERBOSE) printVerboseDetails(loaded, skipped);
+		logPreloadSummary(loaded, skipped, totalPreloadedBytes);
 	} catch (error) {
 		log.error(
 			`Failed to load static files from ${clientDirectory}: ${String(error)}`,
@@ -702,7 +745,7 @@ async function initializeServer() {
 						headers,
 					});
 				} catch (error) {
-					log.error(`Server handler error: ${String(error)}`);
+					log.error(`Server handler error: ${loggableErrorLine(error)}`);
 					return new Response("Internal Server Error", { status: 500 });
 				}
 			},
@@ -710,9 +753,7 @@ async function initializeServer() {
 
 		// Global error handler
 		error(error) {
-			log.error(
-				`Uncaught server error: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			log.error(`Uncaught server error: ${loggableErrorLine(error)}`);
 			return new Response("Internal Server Error", { status: 500 });
 		},
 	});
@@ -762,7 +803,11 @@ function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
 	schedulersHandle: Promise<SchedulerHandle[]>,
 ) {
-	const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 10_000);
+	const SHUTDOWN_GRACE_MS = durationFromEnv(
+		process.env.SHUTDOWN_GRACE_MS,
+		10_000,
+		"off",
+	);
 	let shuttingDown = false;
 
 	const shutdown = async (signal: string) => {

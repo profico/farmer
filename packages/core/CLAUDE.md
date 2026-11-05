@@ -18,7 +18,7 @@ argument — **tenancy is a parameter, never ambient**.
   - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry (a synced meeting also carries `syncedDate/syncedDurationSeconds/syncedDescription`, what the calendar last said — the meeting engine is a per-field merge against them, see `docs/domains/automation.md`).
   - `schema/people.ts` — memberProfile (`claimPendingSince`: a Harvest import's membership the person has not accepted yet), memberTypeHistory (effective-dated `memberType`), teamLeadPerson, invitationEmail (whether an invite email reached the provider; it sits here because `invitation` is CLI-generated).
   - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
-  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
+  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, commitDetachTombstone, pullRequestEventDetachTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
   - `schema/github.ts` — orgGithubInstallation, projectGithubRepo, timeEntryGithubCommit, timeEntryGithubPrActivity (one row per pull request EVENT — opened, merged, closed, reviewed — not per PR).
   - `schema/slack.ts` — slackInstallation, memberSlackIdentity, slackReminderLog.
   - `schema/notifications.ts` — pushSubscription, notificationSettings.
@@ -133,6 +133,8 @@ and the Harvest import).
 `services/ports.ts` — `calendarSource()`, `commitSource()` and `pullRequestSource()`, the substitutable seam the sync engines read through. The production adapter is the real service; tests install an in-memory one (`setCalendarSourceForTests`, `setCommitSourceForTests`, …).
 
 **`lib/http.ts` (`externalFetch`) puts a deadline on every outbound call** (15s by default, `EXTERNAL_FETCH_TIMEOUT_MS`). `fetch` has no default timeout, and the sweep refuses a new tick while one is in flight, so one wedged socket would stop all syncing until a restart. `withTimeout` is the same idea one layer up.
+
+**Never log a raw caught error.** Log `loggableError(error)` (`lib/loggable-error.ts`), or `loggableErrorLine(error)` for a string. A Drizzle error holds the query parameters in its message and its stack: a session token, an email, a relay id. The helper keeps the class, the code and the constraint, and drops the rest for a database error. Give PostHog `withoutQueryValues(error)` for the same reason.
 
 
 ## Testing

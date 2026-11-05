@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { auth } from "../auth";
 import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
@@ -22,10 +23,12 @@ import {
 	GithubRateLimitError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
+import { loggableError } from "../lib/loggable-error";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
 import {
 	type AttachCommitsInput,
+	type AttachedEvidenceRangeInput,
 	type AttachPullRequestsInput,
 	type ConnectInstallationInput,
 	type DisconnectInstallationInput,
@@ -43,10 +46,21 @@ import {
 	requireAdmin,
 	withCtxTx,
 } from "./context";
+import {
+	lockDetachTombstones,
+	refuseCommits,
+	refuseEvents,
+} from "./detach-tombstones";
 import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
+
+/** The ids among these that can name a row. An assistant tool takes any string,
+ *  so that one bad id does not refuse the whole call. A string that is not a
+ *  uuid fails the cast in Postgres, so it must not reach a query. */
+const rowIds = (ids: string[]) =>
+	ids.filter((id) => z.uuid().safeParse(id).success);
 
 /** The GitHub HTTP calls this service makes. */
 export type GithubClient = Pick<
@@ -177,6 +191,32 @@ export const settleRepoListRefreshesForTests = async (): Promise<void> => {
 	await Promise.allSettled(repoListFetches.values());
 };
 
+/** The most attachments one range read returns. A person reads a session, not
+ *  a month of history, and every row costs the model context. */
+const MAX_ATTACHED_ROWS = 200;
+
+const attachedCommitColumns = {
+	id: timeEntryGithubCommit.id,
+	timeEntryId: timeEntryGithubCommit.timeEntryId,
+	date: timeEntry.date,
+	sha: timeEntryGithubCommit.sha,
+	message: timeEntryGithubCommit.message,
+	committedAt: timeEntryGithubCommit.committedAt,
+	repository: projectGithubRepo.fullName,
+};
+
+const attachedActivityColumns = {
+	id: timeEntryGithubPrActivity.id,
+	timeEntryId: timeEntryGithubPrActivity.timeEntryId,
+	date: timeEntry.date,
+	number: timeEntryGithubPrActivity.number,
+	title: timeEntryGithubPrActivity.title,
+	kind: timeEntryGithubPrActivity.kind,
+	reviewState: timeEntryGithubPrActivity.reviewState,
+	occurredAt: timeEntryGithubPrActivity.occurredAt,
+	repository: projectGithubRepo.fullName,
+};
+
 // A commit as it comes back from a repo scan, already carrying every field
 // `timeEntryGithubCommit` stores — so a caller can attach it without a second
 // round trip to GitHub.
@@ -240,7 +280,7 @@ const readAccessToken = async (ctx: Ctx): Promise<string | null> => {
 	} catch (error) {
 		console.error("[github] getAccessToken failed", {
 			userId: ctx.userId,
-			error,
+			error: loggableError(error),
 		});
 		return null;
 	}
@@ -1143,6 +1183,9 @@ export const githubService = {
 				details: { projectId: row.projectId },
 			});
 		}
+		// The rows that went, so a caller can tell a real unlink from an id that
+		// matched nothing.
+		return removed;
 	},
 
 	/**
@@ -1504,7 +1547,13 @@ export const githubService = {
 			}));
 
 		if (rows.length > 0) {
-			await db.insert(timeEntryGithubCommit).values(rows).onConflictDoNothing();
+			// The detach tombstone stays. A hand attach puts the commit on this
+			// entry only. If it cleared the tombstone, the engine would also put the
+			// commit back on the entry that the person took it off.
+			await ctxDb(ctx)
+				.insert(timeEntryGithubCommit)
+				.values(rows)
+				.onConflictDoNothing();
 		}
 
 		return githubService.listAttachedCommits(ctx, input.timeEntryId);
@@ -1521,8 +1570,16 @@ export const githubService = {
 	},
 
 	detachCommit: async (ctx: Ctx, timeEntryGithubCommitId: string) => {
+		// A string that is not a uuid names no row, and is the same "not found".
+		if (rowIds([timeEntryGithubCommitId]).length === 0) {
+			throw new Error("Commit attachment not found");
+		}
 		const [row] = await db
-			.select({ id: timeEntryGithubCommit.id })
+			.select({
+				id: timeEntryGithubCommit.id,
+				sha: timeEntryGithubCommit.sha,
+				committedAt: timeEntryGithubCommit.committedAt,
+			})
 			.from(timeEntryGithubCommit)
 			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
 			.where(
@@ -1537,9 +1594,78 @@ export const githubService = {
 			throw new Error("Commit attachment not found");
 		}
 
-		await db
-			.delete(timeEntryGithubCommit)
-			.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
+		const tz = await ctxTimezone(ctx);
+		await withCtxTx(ctx, async (txCtx) => {
+			await lockDetachTombstones(txCtx);
+			await ctxDb(txCtx)
+				.delete(timeEntryGithubCommit)
+				.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
+			// The attachment row alone is not enough: the engine would attach the
+			// commit again on its next pass. The tombstone is per person and commit,
+			// so it holds whichever entry the engine would choose.
+			await refuseCommits(txCtx, [
+				{ sha: row.sha, date: dayKeyInTz(row.committedAt, tz) },
+			]);
+		});
+	},
+
+	/** The caller's own commit attachments on entries dated in the span, oldest
+	 *  commit first, with the attachment id `detachCommit` takes. `truncated`
+	 *  says the span held more than `MAX_ATTACHED_ROWS`. Tenancy comes from the
+	 *  join to the entry, as it does in `detachCommit`. */
+	listAttachedCommitsInRange: async (
+		ctx: Ctx,
+		input: AttachedEvidenceRangeInput,
+	) => {
+		const rows = await db
+			.select(attachedCommitColumns)
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
+			)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					gte(timeEntry.date, input.from),
+					lte(timeEntry.date, input.to),
+					input.timeEntryId ? eq(timeEntry.id, input.timeEntryId) : undefined,
+					input.repository
+						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
+						: undefined,
+				),
+			)
+			.orderBy(asc(timeEntryGithubCommit.committedAt))
+			.limit(MAX_ATTACHED_ROWS + 1);
+		return {
+			rows: rows.slice(0, MAX_ATTACHED_ROWS),
+			truncated: rows.length > MAX_ATTACHED_ROWS,
+		};
+	},
+
+	/** The caller's own attachments among these ids. An id that is missing or
+	 *  belongs to somebody else is left out, with no way to tell which. */
+	listAttachedCommitsByIds: async (ctx: Ctx, ids: string[]) => {
+		const valid = rowIds(ids);
+		if (valid.length === 0) return [];
+		return db
+			.select(attachedCommitColumns)
+			.from(timeEntryGithubCommit)
+			.innerJoin(timeEntry, eq(timeEntryGithubCommit.timeEntryId, timeEntry.id))
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
+			)
+			.where(
+				and(
+					inArray(timeEntryGithubCommit.id, valid),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.orderBy(asc(timeEntryGithubCommit.committedAt));
 	},
 
 	// ── Pull requests (installation token for access, user login for who) ────
@@ -1707,10 +1833,11 @@ export const githubService = {
 
 		const flat = rows.flat();
 		if (flat.length > 0) {
-			await db
+			await ctxDb(ctx)
 				.insert(timeEntryGithubPrActivity)
 				.values(flat)
 				// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
+				// The detach tombstone stays, for the reason `attachCommits` gives.
 				.onConflictDoNothing();
 		}
 		return githubService.listAttachedPullRequestActivity(ctx, entry.id);
@@ -1726,11 +1853,16 @@ export const githubService = {
 	},
 
 	detachPullRequestActivity: async (ctx: Ctx, activityId: string) => {
+		if (rowIds([activityId]).length === 0) {
+			throw new Error("Pull request activity not found");
+		}
 		const [row] = await db
 			.select({
 				id: timeEntryGithubPrActivity.id,
 				timeEntryId: timeEntry.id,
 				date: timeEntry.date,
+				eventId: timeEntryGithubPrActivity.eventId,
+				occurredAt: timeEntryGithubPrActivity.occurredAt,
 			})
 			.from(timeEntryGithubPrActivity)
 			.innerJoin(
@@ -1748,7 +1880,9 @@ export const githubService = {
 		if (!row) {
 			throw new Error("Pull request activity not found");
 		}
+		const tz = await ctxTimezone(ctx);
 		await withCtxTx(ctx, async (txCtx) => {
+			await lockDetachTombstones(txCtx);
 			const heldBefore = await reviewsHeldBy(txCtx, row.timeEntryId);
 			await ctxDb(txCtx)
 				.delete(timeEntryGithubPrActivity)
@@ -1762,6 +1896,74 @@ export const githubService = {
 				row.date,
 				heldBefore.filter((pullRequestUrl) => !heldAfter.has(pullRequestUrl)),
 			);
+			// The block tombstone above says no to a block. This one says no to the
+			// event, which the engine would otherwise attach again to the day's work.
+			await refuseEvents(txCtx, [
+				{ eventId: row.eventId, date: dayKeyInTz(row.occurredAt, tz) },
+			]);
 		});
+	},
+
+	/** The caller's own pull request events on entries dated in the span, with
+	 *  the id `detachPullRequestActivity` takes. Same shape as
+	 *  `listAttachedCommitsInRange`. */
+	listAttachedPullRequestActivityInRange: async (
+		ctx: Ctx,
+		input: AttachedEvidenceRangeInput,
+	) => {
+		const rows = await db
+			.select(attachedActivityColumns)
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
+			)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					gte(timeEntry.date, input.from),
+					lte(timeEntry.date, input.to),
+					input.timeEntryId ? eq(timeEntry.id, input.timeEntryId) : undefined,
+					input.repository
+						? sql`lower(${projectGithubRepo.fullName}) = ${input.repository.toLowerCase()}`
+						: undefined,
+				),
+			)
+			.orderBy(asc(timeEntryGithubPrActivity.occurredAt))
+			.limit(MAX_ATTACHED_ROWS + 1);
+		return {
+			rows: rows.slice(0, MAX_ATTACHED_ROWS),
+			truncated: rows.length > MAX_ATTACHED_ROWS,
+		};
+	},
+
+	/** The caller's own events among these ids, as `listAttachedCommitsByIds`. */
+	listAttachedPullRequestActivityByIds: async (ctx: Ctx, ids: string[]) => {
+		const valid = rowIds(ids);
+		if (valid.length === 0) return [];
+		return db
+			.select(attachedActivityColumns)
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.leftJoin(
+				projectGithubRepo,
+				eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
+			)
+			.where(
+				and(
+					inArray(timeEntryGithubPrActivity.id, valid),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.orderBy(asc(timeEntryGithubPrActivity.occurredAt));
 	},
 };

@@ -47,6 +47,7 @@
  * lock or run exactly one worker container at that point.
  */
 
+import { loggableErrorLine } from "../lib/loggable-error";
 import { refreshInstanceSettings } from "../services/instance-settings.service";
 import { runAuditSweepOnce } from "./audit-sweep";
 import { runAutomationSyncOnce } from "./automation-sync";
@@ -261,13 +262,10 @@ const startIntervalScheduler = (
 			const summary = await config.run(logger);
 			logger.info(`${config.name}: ${summary}`);
 		} catch (error) {
-			// A Drizzle query error has only the SQL and the parameters in its
-			// message. The real database error is in `cause`, so name it too.
-			const cause =
-				error instanceof Error && error.cause instanceof Error
-					? ` (cause: ${error.cause.message})`
-					: "";
-			logger.error(`${config.name} run failed: ${String(error)}${cause}`);
+			// A Drizzle query error has the SQL and its parameters in its
+			// message, and the parameters can hold a token or an email address.
+			// `loggableErrorLine` names the class, the code and the constraint.
+			logger.error(`${config.name} run failed: ${loggableErrorLine(error)}`);
 		} finally {
 			running = false;
 			const waiters = idleWaiters;
