@@ -36,8 +36,8 @@ const Mail = () => <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
 
 const PRIVACY: LegalDoc = {
 	title: "Privacy",
-	updated: "23 September 2026",
-	version: "1.0",
+	updated: "5 November 2026",
+	version: "1.1",
 	note: (
 		<>
 			This policy covers farmer.profi.co, the Farmer instance that Profico runs,
@@ -683,10 +683,12 @@ const DELETE_ACCOUNT: LegalDoc = {
 						the organization first.
 					</p>
 					<p>
-						The audit log of a workspace keeps the record of your changes and
-						sign-ins until its retention period ends: 90 days, 1 year, 2 years
-						or 7 years, as the administrators of that workspace choose. After
-						that time, Farmer deletes the entries.
+						The audit log of each workspace that you joined keeps the record of
+						your changes and sign-ins: your name as it was then, the IP address
+						and the browser's user agent. Nobody can change these entries. They
+						stay until the retention period of that workspace ends: 90 days, 1
+						year, 2 years or 7 years, as its administrators choose. After that
+						time, Farmer deletes the entries.
 					</p>
 				</>
 			),
