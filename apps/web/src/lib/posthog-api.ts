@@ -1,4 +1,5 @@
-// The REST API's requests and failures, as PostHog events.
+// The REST API's requests and failures, and the faults of server functions,
+// as PostHog events.
 //
 // The fourth PostHog adapter, beside `posthog-ai.ts` (the assistant's turns),
 // `posthog-mcp.ts` (the MCP server's requests) and the `capture` calls in
@@ -8,8 +9,9 @@
 //
 // This one covers the surface that had nothing at all: the CLI. Every `farmer`
 // command reaches the server through `serve` in `server/api-route.ts`, and that
-// is the only call site here — one event per request, rather than nineteen
-// routes that each have to remember to report. The CLI binary itself stays
+// is the only call site for those — one event per request, rather than nineteen
+// routes that each have to remember to report. The function middleware in
+// `start.ts` is the call site for server functions. The CLI binary itself stays
 // uninstrumented on purpose: a tool installed on somebody's laptop cannot be
 // asked to report truthfully, and an old binary would report nothing at all.
 //
@@ -180,6 +182,32 @@ export const claimServerFnError = (error: Error): boolean => {
 	if (capturedErrors.has(error)) return false;
 	capturedErrors.add(error);
 	return true;
+};
+
+/**
+ * Report the error of a server function, if it is a fault.
+ *
+ * The caller does not await this: a metric must not delay the answer, and
+ * the session lookup is one more query on a pool that may be the fault. The
+ * claim comes first and runs before any `await`, so the inner and the outer
+ * middleware of a nested call cannot both pass it. `headers` are read by the
+ * caller, while the request context is still current.
+ */
+export const reportServerFnError = async (
+	error: Error,
+	headers: Headers,
+	fn: { name: string; filename: string },
+): Promise<void> => {
+	if (!claimServerFnError(error)) return;
+	if (!(await isServerFnFault(error))) return;
+	const { auth } = await import("@farmer/core/auth");
+	const session = await auth.api.getSession({ headers }).catch(() => null);
+	captureServerFnFailure(error, {
+		userId: session?.user.id ?? null,
+		organizationId: session?.session.activeOrganizationId ?? null,
+		fn: fn.name,
+		file: fn.filename,
+	});
 };
 
 /** A server function that failed with an error not worded for the person.
