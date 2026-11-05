@@ -28,6 +28,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { When } from "#/components/when.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { WEBHOOKS_ITEM } from "#/lib/nav-items.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -70,14 +71,6 @@ const KIND_ITEMS = WEBHOOK_EVENT_KINDS.map((kind) => ({
 	id: kind,
 	label: kind,
 }));
-
-const formatWhen = (value: Date | null) =>
-	value
-		? new Date(value).toLocaleString(undefined, {
-				dateStyle: "medium",
-				timeStyle: "short",
-			})
-		: "—";
 
 /** A delivery's verdict, in the three words a pill has room for. */
 const outcomeOf = (delivery: {
@@ -194,7 +187,7 @@ function WebhookEndpointPage() {
 							<>
 								Secret ends in{" "}
 								<code className="font-mono">{endpoint.secretHint}</code>. Added{" "}
-								{formatWhen(endpoint.createdAt)}
+								<When date={endpoint.createdAt} />
 								{endpoint.createdByName ? ` by ${endpoint.createdByName}` : ""}.
 							</>
 						)}
@@ -283,7 +276,7 @@ function WebhookEndpointPage() {
 								return (
 									<TableRow key={delivery.id}>
 										<TableCell className="tnum text-muted-foreground">
-											{formatWhen(delivery.attemptedAt ?? delivery.createdAt)}
+											<When date={delivery.attemptedAt ?? delivery.createdAt} />
 										</TableCell>
 										<TableCell className="font-mono text-xs">
 											{delivery.kind}
@@ -308,9 +301,13 @@ function WebhookEndpointPage() {
 										>
 											{delivery.error ??
 												delivery.responseSample ??
-												(delivery.nextAttemptAt
-													? `Next try ${formatWhen(delivery.nextAttemptAt)}`
-													: "—")}
+												(delivery.nextAttemptAt ? (
+													<>
+														Next try <When date={delivery.nextAttemptAt} />
+													</>
+												) : (
+													"—"
+												))}
 										</TableCell>
 										<TableCell className="text-right">
 											<Button

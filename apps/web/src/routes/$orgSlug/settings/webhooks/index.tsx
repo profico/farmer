@@ -42,6 +42,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { When } from "#/components/when.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { webhookEndpointsQuery } from "#/queries/webhooks.ts";
@@ -83,14 +84,6 @@ const healthOf = (endpoint: {
 	}
 	return { tone: "warning" as const, label: "Untested" };
 };
-
-const formatWhen = (value: Date | null) =>
-	value
-		? new Date(value).toLocaleString(undefined, {
-				dateStyle: "medium",
-				timeStyle: "short",
-			})
-		: "—";
 
 function WebhooksSettingsPage() {
 	const orgSlug = useOrgSlug();
@@ -149,7 +142,11 @@ function WebhooksSettingsPage() {
 										<StatusPill tone={health.tone}>{health.label}</StatusPill>
 									</TableCell>
 									<TableCell className="tnum text-muted-foreground">
-										{formatWhen(endpoint.lastSuccessAt)}
+										{endpoint.lastSuccessAt ? (
+											<When date={endpoint.lastSuccessAt} />
+										) : (
+											"—"
+										)}
 									</TableCell>
 									<TableCell className="text-right">
 										<Button

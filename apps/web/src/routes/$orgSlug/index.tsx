@@ -4,6 +4,7 @@ import {
 	startOfWeekKey,
 	addDaysToKey,
 	dayKeyInTz,
+	timeKeyInTz,
 } from "@farmer/core/lib/time";
 import { ArrowRightIcon, PlusIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -130,6 +131,11 @@ function OrgHome() {
 
 	const autoTracked = summarizeAutoTracked(todayEntries);
 	const firstName = session.user.name.split(" ")[0];
+	// The org's hour, not the machine's: the server renders this text first,
+	// and an hour from its own clock is a hydration mismatch.
+	const hour = Number(
+		timeKeyInTz(new Date(), organization.timezone).slice(0, 2),
+	);
 
 	// `flex flex-col` on the page: it is what lets the body grid below claim the
 	// height the header and the band leave, and so what lets the rule between
@@ -142,7 +148,7 @@ function OrgHome() {
 			<RewindBanner orgSlug={organization.slug} today={today} />
 			<PageHeader
 				eyebrow={formatDayKey(today)}
-				title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
+				title={`${greetingForHour(hour)}, ${firstName}`}
 				action={
 					<div className="flex items-center gap-2">
 						{/* The same dialog the timesheet opens, on the screen people
