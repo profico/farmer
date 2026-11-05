@@ -239,12 +239,14 @@ describe("sending a push", () => {
 });
 
 describe("notification settings", () => {
-	test("a missing row means log reminders are on", async () => {
+	test("a missing row means log reminders are on, and in the app", async () => {
 		expect(await notificationsService.getSettings(ctx(ME))).toEqual({
 			logReminders: true,
+			remindersChannel: "app",
 		});
 		expect(await notificationsService.settingsFor(ORG_A, ME)).toEqual({
 			logReminders: true,
+			remindersChannel: "app",
 		});
 	});
 

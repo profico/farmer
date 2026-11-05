@@ -1,0 +1,29 @@
+{
+	"name": "@farmer/push-crypto",
+	"private": true,
+	"license": "AGPL-3.0-only",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./binding": "./src/binding.ts",
+		"./device": "./src/device.ts",
+		"./freshness": "./src/freshness.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"lint": "oxlint --config ../../oxlint.config.ts .",
+		"format": "oxfmt --write",
+		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"@hpke/core": "1.9.0",
+		"@noble/ciphers": "2.4.0",
+		"@noble/curves": "2.4.0",
+		"@noble/hashes": "2.4.0"
+	},
+	"devDependencies": {
+		"bun-types": "1.4.2",
+		"typescript": "^6.0.2"
+	}
+}

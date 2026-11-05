@@ -1,0 +1,133 @@
+import CryptoKit
+import UserNotifications
+
+// BUILT ON A MAC, NOT RUN ON A DEVICE: the iOS app built on a Mac on 6 Oct 2026.
+//
+// The relay sends an alert with a placeholder text ("Farmer", "New
+// notification") and the sealed payload in `e` (`apps/push-relay/README.md`).
+// This extension opens `e` with the device key and puts the real title and
+// body in the notification before iOS shows it. The relay never sees them.
+//
+// The suite is HPKE base mode, P256_SHA256_AES_GCM_256, with the info
+// "farmer push v1": the same as `@farmer/push-crypto`. The sealed value is
+// base64url(enc || ct), and `enc` is the 65-byte uncompressed point.
+//
+// The extension also checks the freshness fields
+// (`packages/push-crypto/src/freshness.ts`): `pushKind` must be "alert",
+// `sentAt` must be less than 24 hours old and not more than 30 minutes in
+// the future, and the extension must not have seen `id` before. It keeps
+// each id until its payload is stale, and at most 500 ids, in the app
+// group's UserDefaults, because each push can start a new process. If the
+// list is full, it forgets the oldest ids and refuses each payload that is
+// not newer than the newest one that it forgot. Without the
+// filtering entitlement an extension cannot drop a notification, so a
+// refused payload shows the relay's placeholder text and not the old one.
+class NotificationService: UNNotificationServiceExtension {
+  private var contentHandler: ((UNNotificationContent) -> Void)?
+  private var bestAttempt: UNMutableNotificationContent?
+
+  private static let info = Data("farmer push v1".utf8)
+  private static let encLength = 65
+  private static let appGroup = "group.com.profico.farmer"
+  private static let seenKey = "farmer.push.seen-ids"
+  private static let seenAtKey = "farmer.push.seen-at"
+  private static let seenFloorKey = "farmer.push.seen-floor"
+  private static let seenLimit = 500
+  private static let maxSkewMs: Double = 30 * 60 * 1000
+  private static let maxAgeMs: Double = 24 * 60 * 60 * 1000
+
+  private struct Alert: Decodable {
+    let title: String
+    let body: String
+    let url: String?
+    let pushKind: String
+    /// Unix milliseconds on the server's clock.
+    let sentAt: Double
+    let id: String
+  }
+
+  /// Whether the alert is fresh: the right kind, not old, not from the
+  /// future, and not seen before. An accepted id goes into the seen list.
+  private static func acceptFresh(_ alert: Alert) -> Bool {
+    guard alert.pushKind == "alert" else { return false }
+    let nowMs = Date().timeIntervalSince1970 * 1000
+    guard alert.sentAt - nowMs <= maxSkewMs else { return false }
+    guard nowMs - alert.sentAt <= maxAgeMs else { return false }
+    let defaults = UserDefaults(suiteName: appGroup)
+    var floor = defaults?.double(forKey: seenFloorKey) ?? 0
+    guard alert.sentAt > floor else { return false }
+    let ids = defaults?.stringArray(forKey: seenKey) ?? []
+    let times = (defaults?.array(forKey: seenAtKey) as? [Double]) ?? []
+    var entries: [(id: String, at: Double)] = []
+    if ids.count == times.count {
+      entries = Array(zip(ids, times))
+    }
+    guard !entries.contains(where: { $0.id == alert.id }) else { return false }
+    entries = entries.filter { nowMs - $0.at <= maxAgeMs }
+    entries.append((id: alert.id, at: alert.sentAt))
+    entries.sort { $0.at < $1.at }
+    if entries.count > seenLimit {
+      let dropped = entries.prefix(entries.count - seenLimit)
+      floor = max(floor, dropped.map { $0.at }.max() ?? floor)
+      entries = Array(entries.suffix(seenLimit))
+    }
+    defaults?.set(entries.map { $0.id }, forKey: seenKey)
+    defaults?.set(entries.map { $0.at }, forKey: seenAtKey)
+    defaults?.set(floor, forKey: seenFloorKey)
+    return true
+  }
+
+  override func didReceive(
+    _ request: UNNotificationRequest,
+    withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
+  ) {
+    self.contentHandler = contentHandler
+    guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
+      contentHandler(request.content)
+      return
+    }
+    bestAttempt = content
+    if let sealed = content.userInfo["e"] as? String,
+      let alert = Self.open(sealed),
+      Self.acceptFresh(alert)
+    {
+      content.title = alert.title
+      content.body = alert.body
+      if let url = alert.url {
+        // The app reads this on a tap (`src/push/push-bridge.tsx`).
+        content.userInfo["farmerUrl"] = url
+      }
+    }
+    contentHandler(content)
+  }
+
+  override func serviceExtensionTimeWillExpire() {
+    if let contentHandler, let bestAttempt {
+      contentHandler(bestAttempt)
+    }
+  }
+
+  private static func open(_ sealed: String) -> Alert? {
+    guard
+      let keyText = SharedKeychain.read("farmer.push.device-key"),
+      let keyBytes = SharedKeychain.base64UrlDecode(keyText),
+      let bytes = SharedKeychain.base64UrlDecode(sealed),
+      bytes.count > encLength + 16,
+      let privateKey = try? P256.KeyAgreement.PrivateKey(rawRepresentation: keyBytes)
+    else { return nil }
+    let enc = bytes.prefix(encLength)
+    let ciphertext = bytes.dropFirst(encLength)
+    do {
+      var recipient = try HPKE.Recipient(
+        privateKey: privateKey,
+        ciphersuite: .P256_SHA256_AES_GCM_256,
+        info: info,
+        encapsulatedKey: Data(enc)
+      )
+      let plaintext = try recipient.open(Data(ciphertext))
+      return try JSONDecoder().decode(Alert.self, from: plaintext)
+    } catch {
+      return nil
+    }
+  }
+}

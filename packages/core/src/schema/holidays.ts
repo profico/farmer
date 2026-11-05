@@ -5,6 +5,11 @@ import { dayKeySchema } from "./day-key";
 export const listHolidaysForYearInput = z.coerce.number().int();
 export type ListHolidaysForYearInput = z.infer<typeof listHolidaysForYearInput>;
 
+// The same year as an object, for a query string (`GET /api/v1/…/holidays`).
+export const holidaysYearQueryInput = z.object({
+	year: listHolidaysForYearInput,
+});
+
 // The widest span a holiday range read may cover. `holidaySetForRange`
 // evaluates the calendar once per year the range touches, so an unbounded span
 // (`1000-01-01 → 9999-12-31`) was thousands of synchronous rule evaluations in

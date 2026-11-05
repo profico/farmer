@@ -16,14 +16,24 @@ import type {
 	SavePushSubscriptionInput,
 	UpdateNotificationSettingsInput,
 } from "../schema/notifications";
+import { type AppReach, appReach } from "./native-push";
 import type { Ctx } from "./types";
+
+export type { AppReach };
+
+export type RemindersChannel = "app" | "slack";
 
 export type NotificationSettings = {
 	logReminders: boolean;
+	/** Where the Slack kinds go for a person with the mobile app: "app" sends
+	 *  them as a native push when a phone allows notifications, "slack" keeps
+	 *  them on Slack (ADR 0006). */
+	remindersChannel: RemindersChannel;
 };
 
 const DEFAULTS: NotificationSettings = {
 	logReminders: true,
+	remindersChannel: "app",
 };
 
 // The payload the service worker's `push` handler expects (see
@@ -67,6 +77,7 @@ const settingsFor = async (
 	if (!row) return { ...DEFAULTS };
 	return {
 		logReminders: row.logReminders,
+		remindersChannel: row.remindersChannel,
 	};
 };
 
@@ -118,6 +129,10 @@ export const notificationsService = {
 	getSettings: (ctx: Ctx): Promise<NotificationSettings> =>
 		settingsFor(ctx.organizationId, ctx.userId),
 
+	/** Whether a reminder can reach the person in the mobile app. Per person,
+	 *  not per workspace: a phone belongs to a person. */
+	appReach: (ctx: Ctx): Promise<AppReach> => appReach(ctx.userId),
+
 	// Also exposed for callers that only have (org, user) and no ctx, e.g. the
 	// background reminder job iterating members.
 	settingsFor,
@@ -132,6 +147,7 @@ export const notificationsService = {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				logReminders: input.logReminders ?? undefined,
+				remindersChannel: input.remindersChannel ?? undefined,
 			})
 			.onConflictDoUpdate({
 				target: [
@@ -140,6 +156,7 @@ export const notificationsService = {
 				],
 				set: {
 					logReminders: input.logReminders,
+					remindersChannel: input.remindersChannel,
 					updatedAt: new Date(),
 				},
 			})
@@ -147,6 +164,7 @@ export const notificationsService = {
 		if (!row) throw new Error("Failed to save notification settings");
 		return {
 			logReminders: row.logReminders,
+			remindersChannel: row.remindersChannel,
 		};
 	},
 

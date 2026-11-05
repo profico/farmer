@@ -630,16 +630,16 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_time_entries",
 		kind: "read",
-		// `listRange` recomputes and drops each day's fill block against the rows
-		// it just read (CLAUDE.md, Gotchas), so this read writes. Two of them over
-		// overlapping days would recompute the same day at once.
-		serial: true,
 		description:
 			"List the current user's own time entries between two dates (inclusive, yyyy-MM-dd, max 62 days apart). Returns each entry's date, duration, description, task and project.",
 		schema: listTimeEntriesRangeInput,
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
-			const rows = await timeEntriesService.listRange(ctx, input);
+			// Read-only: the fill block is computed but not stored, so an agent
+			// that reads a range again and again writes nothing.
+			const rows = await timeEntriesService.listRange(ctx, input, {
+				persist: false,
+			});
 			// Projected rather than passed through: the raw row carries ids, sync
 			// bookkeeping and commit counts that cost tokens and tell the model
 			// nothing it can use.
@@ -663,6 +663,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: listTimeEntriesRangeInput,
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
+			// Read-only: the fill block is computed but not stored, so an agent
+			// that reads a range again and again writes nothing.
 			const rows = await listUnfiledForUser(ctx, input);
 			return rows.map((row) => ({
 				id: row.id,
@@ -1233,6 +1235,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: listTimeEntriesRangeInput,
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
+			// Read-only: the fill block is computed but not stored, so an agent
+			// that reads a range again and again writes nothing.
 			const totals = await unfiledTotals(ctx, input, ctx.userId);
 			return { entries: totals.count, hours: totals.seconds / 3600 };
 		},

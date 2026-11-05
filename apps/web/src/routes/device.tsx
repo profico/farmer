@@ -28,6 +28,7 @@ import { AuthHead } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { getSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
+import { type DeviceClient, getDeviceClient } from "#/server/device.ts";
 
 /**
  * The approval half of `farmer login` — better-auth's device authorization
@@ -63,6 +64,37 @@ import { getPublicAppConfig } from "#/server/config.ts";
  * would arrive as the number 2e345678 — Infinity — and be sent to the server as
  * the wrong code.
  */
+
+/**
+ * The words that name the client on this page. The CLI shows a code in a
+ * terminal and the mobile app shows it on its sign-in screen, so the page must
+ * not say "terminal" to a person who holds a phone.
+ */
+const CLIENT_TEXT = {
+	cli: {
+		who: "A terminal",
+		place: "your terminal",
+		approved: "Terminal approved",
+		restart: <code className="fm-code">farmer login</code>,
+		verb: "Run",
+	},
+	mobile: {
+		who: "The Farmer app",
+		place: "the Farmer app",
+		approved: "App approved",
+		restart: "the sign-in in the app",
+		verb: "Start",
+	},
+} satisfies Record<
+	DeviceClient,
+	{
+		who: string;
+		place: string;
+		approved: string;
+		restart: ReactNode;
+		verb: string;
+	}
+>;
 
 /** Only letters and digits reach the server, upper-cased: the CLI shows the
  *  code in groups, people type it with dashes or spaces or in lower case, and
@@ -149,13 +181,19 @@ export const Route = createFileRoute("/device")({
 				search: { redirect: devicePath(codeFromSearch(location.searchStr)) },
 			});
 		}
-		return { email: session.user.email, brand: config.org };
+		const userCode = codeFromSearch(location.searchStr);
+		// A page with no code yet does not know its client. It words itself for
+		// both.
+		const client: DeviceClient | null = userCode
+			? await getDeviceClient({ data: { userCode } })
+			: null;
+		return { email: session.user.email, brand: config.org, client };
 	},
 	component: DevicePage,
 });
 
 function DevicePage() {
-	const { brand, email } = Route.useRouteContext();
+	const { brand, email, client } = Route.useRouteContext();
 	const userCode = useLocation({
 		select: (location) => codeFromSearch(location.searchStr),
 	});
@@ -165,21 +203,28 @@ function DevicePage() {
 			kind="device"
 			brand={brand}
 			terminalCode={userCode ? formatUserCode(userCode) : null}
+			client={client ?? "cli"}
 		>
 			{userCode ? (
 				// Keyed on the code: a code typed into the form below is a new
 				// mount, so it is opened (bound) afresh, and the result of approving
 				// one code never shows under the next.
-				<DeviceApproval key={userCode} userCode={userCode} />
+				<DeviceApproval
+					key={userCode}
+					userCode={userCode}
+					client={client ?? "cli"}
+				/>
 			) : (
 				<>
-					<AuthHead title="Enter the code from your terminal">
-						It was printed when you ran{" "}
-						<code className="fm-code">farmer login</code>.
+					<AuthHead title="Enter the code from your device">
+						A terminal prints it when you run{" "}
+						<code className="fm-code">farmer login</code>. The Farmer app shows
+						it on its sign-in screen.
 					</AuthHead>
 					<UserCodeForm />
 					<p className="fm-auth-fine">
-						Signed in as {email}. The terminal will act as you.
+						Signed in as {email}. The device that shows the code will act as
+						you.
 					</p>
 				</>
 			)}
@@ -187,7 +232,7 @@ function DevicePage() {
 	);
 }
 
-/** The code as the terminal prints it, read out a character at a time. */
+/** The code as the device prints it, read out a character at a time. */
 function CodeText({ userCode }: { userCode: string }) {
 	return (
 		<span aria-label={`Code ${userCode.split("").join(" ")}`}>
@@ -196,8 +241,15 @@ function CodeText({ userCode }: { userCode: string }) {
 	);
 }
 
-function DeviceApproval({ userCode }: { userCode: string }) {
+function DeviceApproval({
+	userCode,
+	client,
+}: {
+	userCode: string;
+	client: DeviceClient;
+}) {
 	const { email } = Route.useRouteContext();
+	const text = CLIENT_TEXT[client];
 	const posthog = usePostHog();
 	const navigate = useNavigate();
 	const [decision, setDecision] = useState<Outcome | null>(null);
@@ -285,10 +337,9 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 			return (
 				<>
 					<AuthHead title="Approve this sign-in?">
-						A terminal wants to read and log time as you. Approve only a code
-						that your own terminal shows, after you ran{" "}
-						<code className="fm-code">farmer login</code>. Farmer never asks you
-						for this code by email or chat.
+						{text.who} wants to read and log time as you. Approve only a code
+						that {text.place} shows, after you started the sign-in yourself.
+						Farmer never asks you for this code by email or chat.
 					</AuthHead>
 					<div className="fm-auth-table">
 						<div>
@@ -333,8 +384,8 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 			);
 		case "approved":
 			return (
-				<Result icon={CheckCircleIcon} tone="accent" title="Terminal approved">
-					Go back to your terminal. It finishes signing in on its own within a
+				<Result icon={CheckCircleIcon} tone="accent" title={text.approved}>
+					Go back to {text.place}. It finishes signing in on its own within a
 					few seconds, and you can close this tab.
 				</Result>
 			);
@@ -345,7 +396,7 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 					title="Sign-in denied"
 					action={{ label: "Enter another code", onClick: enterAnother }}
 				>
-					Nothing was signed in. Go back to your terminal, which stops waiting.
+					Nothing was signed in. Go back to {text.place}, which stops waiting.
 					If you did not start this sign-in, there is nothing else to do.
 				</Result>
 			);
@@ -356,9 +407,9 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 					title="This code was already used"
 					action={{ label: "Enter another code", onClick: enterAnother }}
 				>
-					It has already been approved or denied. Go back to your terminal. To
-					sign in again, run <code className="fm-code">farmer login</code> for a
-					new code.
+					It has already been approved or denied. Go back to {text.place}. To
+					sign in again, {text.verb.toLowerCase()} {text.restart} for a new
+					code.
 				</Result>
 			);
 		case "expired":
@@ -368,9 +419,8 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 					title="This code has expired"
 					action={{ label: "Enter another code", onClick: enterAnother }}
 				>
-					A code lasts ten minutes. Run{" "}
-					<code className="fm-code">farmer login</code> in your terminal again
-					for a new one.
+					A code lasts ten minutes. {text.verb} {text.restart} in {text.place}{" "}
+					again for a new one.
 				</Result>
 			);
 		case "invalid":
@@ -380,8 +430,8 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 					title="Farmer doesn't know this code"
 					action={{ label: "Try again", onClick: enterAnother }}
 				>
-					Check the code in your terminal and type it again, or run{" "}
-					<code className="fm-code">farmer login</code> for a new one.
+					Check the code in {text.place} and type it again, or{" "}
+					{text.verb.toLowerCase()} {text.restart} for a new one.
 				</Result>
 			);
 		case "not-yours":
@@ -392,8 +442,8 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 					action={{ label: "Enter another code", onClick: enterAnother }}
 				>
 					A different account opened this code first, so it cannot be approved
-					as {email}. Run <code className="fm-code">farmer login</code> again
-					and open the new link in this browser.
+					as {email}. {text.verb} {text.restart} again and open the new link in
+					this browser.
 				</Result>
 			);
 		case "failed":
@@ -459,7 +509,7 @@ function UserCodeForm() {
 		<form className="fm-auth-form" onSubmit={submit}>
 			<input
 				className="fm-auth-code-input"
-				aria-label="Code from your terminal"
+				aria-label="Code from your device"
 				value={value}
 				onChange={(event) => setValue(event.target.value.toUpperCase())}
 				placeholder="XXXX-XXXX"

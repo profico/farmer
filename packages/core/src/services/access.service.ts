@@ -91,6 +91,16 @@ export class Access {
 		return this.leadOf.size > 0;
 	}
 
+	/** Any PM or Team Lead assignment, or a people list. It gates Clients. */
+	get isLeadSomewhere(): boolean {
+		return (
+			this.isTeamLead ||
+			[...this.roleByProject.values()].some(
+				(role) => role === "pm" || role === "team_lead",
+			)
+		);
+	}
+
 	/** The people on the caller's list. */
 	peopleLed(): string[] {
 		return [...this.leadOf];

@@ -54,6 +54,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { startImpersonating } from "#/lib/impersonation.ts";
+import { isLastActiveOwner } from "#/lib/last-owner.ts";
 import { searchFlag } from "#/lib/search-flag.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
@@ -121,7 +122,10 @@ function MembersSettingsPage() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
 
-	const owners = membersData.members.filter((m) => m.role === "owner");
+	const owners = membersData.members.filter(
+		(m) =>
+			m.role === "owner" && personByUserId.get(m.userId)?.archivedAt == null,
+	);
 
 	const invalidate = () =>
 		Promise.all([
@@ -283,7 +287,7 @@ function MembersSettingsPage() {
 
 	const renderMemberRow = (m: (typeof membersData.members)[number]) => {
 		const isSelf = m.userId === session.user.id;
-		const isOnlyOwner = m.role === "owner" && owners.length <= 1;
+		const isOnlyOwner = isLastActiveOwner(m, owners);
 		const person = personByUserId.get(m.userId);
 		const type = person?.type ?? "employee_billable";
 		const archived = person?.archivedAt != null;
@@ -508,7 +512,7 @@ function MembersSettingsPage() {
 				eyebrow={<SettingsEyebrow />}
 				title="People"
 				className="shrink-0"
-				lede="Who has access, and what kind of person they are. Overhead employees are left out of reminders; hourly students and contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
+				lede="Overhead employees get no reminders. Hourly students and contractors have no Expected hours unless you set them. Archived people keep their entries."
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput

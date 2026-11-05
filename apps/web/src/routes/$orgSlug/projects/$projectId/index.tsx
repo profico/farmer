@@ -276,11 +276,6 @@ function ProjectPage() {
 					/>
 
 					<p className="mt-3 max-w-[72ch] text-sm text-muted-foreground">
-						{by === "teammate"
-							? "Open a name for their entries. Hours sorts the people; any other column sorts the entries inside."
-							: by === "task"
-								? "Open a task for its entries."
-								: "Open a day for its entries."}{" "}
 						Roles are edited on the Team page.
 					</p>
 				</>

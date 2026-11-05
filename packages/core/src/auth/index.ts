@@ -1,3 +1,4 @@
+import { expo } from "@better-auth/expo";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
@@ -20,7 +21,7 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { CLI_CLIENT_ID } from "../api/errors";
+import { DEVICE_CLIENT_IDS } from "../api/errors";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
@@ -81,6 +82,15 @@ import {
 	OAUTH_CONSENT_PATH,
 	oauthConsentRequest,
 } from "./mcp-consent";
+import { mobileConfirm } from "./mobile-confirm";
+import { mobileExchange } from "./mobile-exchange";
+import {
+	assertExpoProxyQuery,
+	assertExpoProxyTarget,
+	EXPO_PROXY_PATH,
+	mobileProxyUrl,
+	MOBILE_TRUSTED_ORIGINS,
+} from "./mobile-sign-in";
 import {
 	assertMayRegister,
 	PASSWORD_SIGN_UP_PATH,
@@ -95,9 +105,13 @@ import {
 } from "./sign-in-methods";
 
 export type { McpConsentRequest } from "./mcp-consent";
+export { memberAdmin } from "./member-admin";
+export { type MyInvitation, onboarding } from "./onboarding";
+export { sessionCookieHeader } from "./session-cookie";
 export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,
+	passwordOffered,
 	passwordSignIn,
 	type SignInProvider,
 	signInProviders,
@@ -330,6 +344,8 @@ const buildAuth = () => {
 	const singleOrg = singleOrgSlug() !== null;
 	return betterAuth({
 		database: drizzleAdapter(db, { provider: "pg", schema }),
+		// The mobile app's scheme, and nothing else. See `./mobile-sign-in.ts`.
+		trustedOrigins: MOBILE_TRUSTED_ORIGINS,
 		// On in every environment, and closed by two gates rather than by this
 		// switch, because production needs it for exactly one person:
 		//
@@ -500,6 +516,18 @@ const buildAuth = () => {
 							loggableError(error),
 						);
 					}
+					return;
+				}
+				// The mobile sign-in's browser leg; see `./mobile-sign-in.ts`.
+				// A query that does not parse is refused here, not passed on.
+				if (ctx.path === EXPO_PROXY_PATH) {
+					await assertExpoProxyTarget(
+						assertExpoProxyQuery(ctx.query),
+						async (state) =>
+							(await ctx.context.internalAdapter.findVerificationValue(state))
+								?.value ?? null,
+						(url) => ctx.context.isTrustedOrigin(url),
+					);
 					return;
 				}
 				// MCP consent, one check per endpoint; see `./mcp-consent.ts`.
@@ -841,6 +869,34 @@ const buildAuth = () => {
 						if (problem)
 							throw new APIError("BAD_REQUEST", { message: problem });
 					},
+					// The first row of the new workspace's log. The org switcher
+					// and `POST /api/v1/me/organizations` both come here. A signup's
+					// own workspace does not: the user hook writes it directly.
+					afterCreateOrganization: async ({ organization: org, user }) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, user.id), {
+							kind: "organization.created",
+							target: { type: "organization", id: org.id, label: org.name },
+						});
+					},
+					// The person who was invited said no. The workspace that sent
+					// the invitation sees it in its log.
+					afterRejectInvitation: async ({
+						invitation: declined,
+						user,
+						organization: org,
+					}) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, user.id), {
+							kind: "member.invitation_declined",
+							target: {
+								type: "invitation",
+								id: declined.id,
+								label: declined.email,
+							},
+							details: { role: declined.role },
+						});
+					},
 					// `memberJoined` writes `member.joined`. The person who joins
 					// is the actor when no session names one.
 					afterAcceptInvitation: async ({ member: newMember, user }) => {
@@ -1047,9 +1103,10 @@ const buildAuth = () => {
 			// one API surface needs, and it would break the credential order that
 			// `resolveMcpOrgContext` relies on.
 			//
-			// `validateClient` accepts only the CLI's own id. Nothing else in this app
-			// runs the device flow, and an open client list is a code any third party
-			// can start and then phish somebody into approving.
+			// `validateClient` accepts only the ids in `DEVICE_CLIENT_IDS`: the CLI
+			// and the mobile app. Nothing else in this app runs the device flow, and
+			// an open client list is a code any third party can start and then phish
+			// somebody into approving.
 			//
 			// `expiresIn: "10m"`, down from the plugin's 30. The code lifetime is the
 			// phishing window: an attacker who starts a flow must get the person to
@@ -1059,7 +1116,7 @@ const buildAuth = () => {
 			// Mounted whatever `CLI_ENABLED` says, like `mcp` above; the catch-all
 			// auth route answers 404 for these paths when the flag is off.
 			deviceAuthorization({
-				validateClient: (clientId) => clientId === CLI_CLIENT_ID,
+				validateClient: (clientId) => DEVICE_CLIENT_IDS.includes(clientId),
 				expiresIn: "10m",
 				verificationUri: "/device",
 			}),
@@ -1102,6 +1159,17 @@ const buildAuth = () => {
 				// session instead of leaving them at the login screen.
 				impersonationSessionDuration: 60 * 60,
 			}),
+			// The mobile app's sign-in (ADR 0005). See `./mobile-sign-in.ts`.
+			expo(),
+			// After `expo()`: it removes the session from the `farmer://` link and
+			// sends the browser to the confirmation page. See `./mobile-exchange.ts`.
+			mobileExchange(),
+			// The confirmation page, which makes the one-time code. See
+			// `./mobile-confirm.ts`.
+			mobileConfirm(),
+			// Stores the authorization URL of each sign-in start from the app, for
+			// the proxy's check. See `./mobile-sign-in.ts`.
+			mobileProxyUrl(),
 			// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 			tanstackStartCookies(),
 		],

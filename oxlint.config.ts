@@ -7,6 +7,10 @@ export default defineConfig({
 		"**/routeTree.gen.ts",
 		"**/src/db/schema/auth.ts",
 		"**/dist/**",
+		"apps/mobile/android/**",
+		"apps/mobile/ios/**",
+		"apps/mobile/.expo/**",
+		"packages/api-client/src/openapi.gen.ts",
 	],
 	plugins: ["react", "react-hooks", "jsx-a11y", "typescript", "oxc", "import"],
 	categories: { correctness: "error" },
@@ -63,6 +67,36 @@ export default defineConfig({
 	},
 	overrides: [
 		{
+			// The mobile app and its API client are clients of `api/v1` only
+			// (ADR 0005). Unlike the CLI they take nothing from the server, not
+			// even types: a store build outlives the server it was built against,
+			// so the shapes it reads are its own, parsed at the boundary.
+			files: ["apps/mobile/**", "packages/api-client/**"],
+			rules: {
+				"no-restricted-imports": [
+					"error",
+					{
+						patterns: [
+							{
+								group: [
+									"@farmer/core",
+									"@farmer/core/**",
+									"**/packages/core/**",
+								],
+								message:
+									"The mobile app and the API client talk to the server only through api/v1. Declare the shape in @farmer/api-client.",
+							},
+							{
+								group: ["web", "web/**", "**/apps/web/**", "\\#/**"],
+								message:
+									"The mobile app and the API client must not import the web app.",
+							},
+						],
+					},
+				],
+			},
+		},
+		{
 			// The CLI compiles into a binary that people download, so a runtime
 			// import of the server graph would ship the database driver, the auth
 			// config and every service inside it. It may use the modules that are
@@ -91,6 +125,35 @@ export default defineConfig({
 								group: ["**/packages/core/**"],
 								allowTypeImports: true,
 								message: "Import @farmer/core through its package exports.",
+							},
+						],
+					},
+				],
+			},
+		},
+		{
+			// The push relay serves every farmer server, and the push crypto
+			// package also goes into the mobile app. Neither may contain the
+			// server: not @farmer/core, not the web app. `import type` stays
+			// allowed, because the build erases it.
+			files: ["apps/push-relay/**", "packages/push-crypto/**"],
+			rules: {
+				"no-restricted-imports": [
+					"error",
+					{
+						patterns: [
+							{
+								group: [
+									"@farmer/core",
+									"@farmer/core/**",
+									"web",
+									"web/**",
+									"**/core/src/**",
+									"**/web/src/**",
+								],
+								allowTypeImports: true,
+								message:
+									"The push relay and @farmer/push-crypto must not import the farmer server (@farmer/core or apps/web).",
 							},
 						],
 					},

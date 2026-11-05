@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { disabledHoliday } from "../db/schema/schedule";
 import { orgCountry } from "../lib/org-country";
 import { recordAudit } from "./audit";
-import { ctxMemo } from "./context";
+import { ctxMemo, requireAdmin } from "./context";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -159,10 +159,14 @@ export const holidaysService = {
 	},
 
 	// Toggle a holiday on/off for the org. Row present = disabled.
+	//
+	// Admins only. The web app has `orgAdminMiddleware` in front of it, and
+	// the REST API has no middleware, so the service makes the check.
 	setHolidayDisabled: async (
 		ctx: Ctx,
 		input: { name: string; disabled: boolean },
 	): Promise<void> => {
+		await requireAdmin(ctx);
 		const client = ctxDb(ctx);
 		// Whether a row was written or removed, so a repeat call records nothing.
 		const changed = input.disabled

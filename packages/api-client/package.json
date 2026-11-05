@@ -1,0 +1,26 @@
+{
+	"name": "@farmer/api-client",
+	"version": "0.1.0",
+	"private": true,
+	"license": "AGPL-3.0-only",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"generate": "bun run ../../apps/web/scripts/openapi-snapshot.ts ./openapi.json && openapi-typescript ./openapi.json -o ./src/openapi.gen.ts && bun run scripts/fix-recursive-types.ts",
+		"lint": "oxlint --config ../../oxlint.config.ts .",
+		"format": "oxfmt --write",
+		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"zod": "4.4.3"
+	},
+	"devDependencies": {
+		"bun-types": "1.4.2",
+		"openapi-typescript": "7.13.0",
+		"typescript": "^6.0.2"
+	}
+}

@@ -3,6 +3,7 @@ import {
 	GoogleLogoIcon,
 	IdentificationCardIcon,
 	KeyIcon,
+	DeviceMobileIcon,
 	TerminalWindowIcon,
 } from "@phosphor-icons/react";
 import {
@@ -58,7 +59,10 @@ import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
 import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { myApiTokensQuery } from "#/queries/api-tokens.ts";
-import { notificationSettingsQuery } from "#/queries/notifications.ts";
+import {
+	appReachQuery,
+	notificationSettingsQuery,
+} from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
 import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
@@ -72,6 +76,7 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 			// PreferencesSettingsPage).
 			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(appReachQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
 			// Only where the section renders: the tokens call the API, and the
 			// API is off with the CLI (see ApiTokensSection).
@@ -131,55 +136,48 @@ function GoogleSignInMethod() {
 			<SignInMethodRow
 				icon={<GoogleLogoIcon className="size-5 text-muted-foreground" />}
 				title="Google"
-				description="Connect your Google account to sign in with one click."
+				description="Sign in with Google."
 				action={<Button onClick={connect}>Connect Google</Button>}
 			/>
 		);
 	}
 
 	// A Google-only account (no password) can't unlink its last way in — the
-	// server enforces this too, but disable the control so it never 400s.
+	// server enforces this too, so the control is not rendered.
 	const canDisconnect = methods.hasPassword;
 
 	return (
 		<SignInMethodRow
 			icon={<GoogleLogoIcon className="size-5 text-muted-foreground" />}
 			title="Google"
-			description={
-				canDisconnect
-					? "You can sign in with Google."
-					: "You can sign in with Google. Set a password before disconnecting — it's your only way in."
-			}
+			description="You can sign in with Google."
 			badge={<Badge variant="secondary">Connected</Badge>}
 			action={
-				<AlertDialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
-					<AlertDialogTrigger
-						render={
-							<Button
-								variant="outline"
-								className="hover:text-destructive"
-								disabled={!canDisconnect}
-							>
-								Disconnect
-							</Button>
-						}
-					/>
-					<AlertDialogContent>
-						<AlertDialogHeader>
-							<AlertDialogTitle>Disconnect Google sign-in?</AlertDialogTitle>
-							<AlertDialogDescription>
-								You'll no longer be able to sign in with Google. Your email and
-								password will still work, and you can reconnect any time.
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						<AlertDialogFooter>
-							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction variant="destructive" onClick={disconnect}>
-								Disconnect
-							</AlertDialogAction>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				</AlertDialog>
+				canDisconnect ? (
+					<AlertDialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
+						<AlertDialogTrigger
+							render={
+								<Button variant="outline" className="hover:text-destructive">
+									Disconnect
+								</Button>
+							}
+						/>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Disconnect Google sign-in?</AlertDialogTitle>
+								<AlertDialogDescription>
+									Your email and password still work.
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogAction variant="destructive" onClick={disconnect}>
+									Disconnect
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+				) : undefined
 			}
 		/>
 	);
@@ -192,8 +190,9 @@ function GoogleSignInMethod() {
  * On a deployed instance Google is the *only* identity: there is no endpoint
  * that could set the password this section reports on, and disconnecting Google
  * is refused because it would be the account's last way in. Both rows were
- * therefore permanently "Not set" and permanently disabled — a section that
- * asks to be read and then offers nothing to do.
+ * therefore a Password row that is never set and a Disconnect button that is
+ * never usable — a section that asks to be read and then offers nothing to do.
+ * Without a password the Password row and the Disconnect button are not drawn.
  */
 function SignInMethodsSection() {
 	const orgSlug = useOrgSlug();
@@ -202,23 +201,17 @@ function SignInMethodsSection() {
 	return (
 		<PageSection
 			title="Sign-in methods"
-			description="How you sign in to Farmer. These apply to your account everywhere, not just this workspace."
+			description="Applies to your account in every workspace."
 		>
 			<SettingList>
-				<SignInMethodRow
-					icon={<KeyIcon className="size-5 text-muted-foreground" />}
-					title="Password"
-					description={
-						methods.hasPassword
-							? "Sign in with your email and password."
-							: "No password set — you sign in with Google."
-					}
-					badge={
-						<Badge variant="secondary">
-							{methods.hasPassword ? "Set" : "Not set"}
-						</Badge>
-					}
-				/>
+				{methods.hasPassword ? (
+					<SignInMethodRow
+						icon={<KeyIcon className="size-5 text-muted-foreground" />}
+						title="Password"
+						description="Sign in with your email and password."
+						badge={<Badge variant="secondary">Set</Badge>}
+					/>
+				) : null}
 				{methods.google.configured || methods.google.linked ? (
 					<GoogleSignInMethod />
 				) : null}
@@ -297,7 +290,12 @@ function SessionRow({ session }: { session: MySession }) {
 			toast.error(error.message ?? "Could not sign out that device"),
 	});
 
-	const Icon = session.kind === "cli" ? TerminalWindowIcon : BrowserIcon;
+	const Icon =
+		session.kind === "cli"
+			? TerminalWindowIcon
+			: session.kind === "mobile"
+				? DeviceMobileIcon
+				: BrowserIcon;
 
 	return (
 		<SettingRow
@@ -337,7 +335,9 @@ function SessionRow({ session }: { session: MySession }) {
 								<AlertDialogDescription>
 									{session.kind === "cli"
 										? "The terminal is signed out at its next command, and it asks you to run farmer login again."
-										: "That browser is signed out the next time it loads a page."}
+										: session.kind === "mobile"
+											? "The app is signed out the next time it asks the server for data, and it asks you to sign in again."
+											: "That browser is signed out the next time it loads a page."}
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
@@ -361,7 +361,7 @@ function SessionRow({ session }: { session: MySession }) {
 }
 
 /**
- * Every browser and terminal signed in to this account, with a way to end each.
+ * Every browser, terminal and phone signed in to this account, with a way to end each.
  *
  * It exists for the CLI: `farmer login` stores a session token on a machine,
  * and it stays valid for as long as the session does. A person who loses that
@@ -377,7 +377,7 @@ function SignedInDevicesSection() {
 	return (
 		<PageSection
 			title="Signed-in devices"
-			description="Every browser and terminal signed in to your account, in every workspace. Revoke any you don't recognise, or one on a device you no longer have."
+			description="Every browser, terminal and phone signed in to your account, in every workspace."
 		>
 			<SettingList>
 				{sessions.map((session) => (
@@ -425,7 +425,7 @@ function SettingBlock({
 	children,
 }: {
 	title: string;
-	description: string;
+	description?: string;
 	labelId: string;
 	children: React.ReactNode;
 }) {
@@ -434,9 +434,11 @@ function SettingBlock({
 			<div id={labelId} className="text-base font-medium">
 				{title}
 			</div>
-			<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
-				{description}
-			</p>
+			{description ? (
+				<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
+					{description}
+				</p>
+			) : null}
 			<div className="mt-3">{children}</div>
 		</div>
 	);
@@ -501,7 +503,7 @@ function ColorsRow() {
 		<SettingBlock
 			labelId="colors-label"
 			title="Colors"
-			description="Vanilla is the palette Farmer ships with. Custom draws the whole app from one color you pick: round the wheel is the color, and out from the middle is how much of it. The ring is a set to start from."
+			description="Custom builds the whole palette from one color."
 		>
 			{supported ? (
 				<div
@@ -604,11 +606,7 @@ function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
 function FontRow() {
 	const [boring] = useDisplayPref("boringFont");
 	return (
-		<SettingBlock
-			labelId="font-label"
-			title="Font"
-			description="A face for text, one for page titles and large numbers, and one for durations and code. A face that is not already here is fetched the first time you pick it. A font from this device is never fetched."
-		>
+		<SettingBlock labelId="font-label" title="Font">
 			<div className="flex flex-wrap gap-4">
 				<FaceSelect face="body" label="Text" />
 				{boring ? null : <FaceSelect face="display" label="Titles" />}
@@ -628,7 +626,7 @@ function ScaleRow() {
 		<SettingBlock
 			labelId="scale-label"
 			title="Scale"
-			description="Draw everything larger or smaller, the way the browser's own zoom does. At a large scale a narrow window switches to the phone layout, which is the same thing zooming does."
+			description="A large scale can switch a narrow window to the phone layout."
 		>
 			<div role="radiogroup" aria-labelledby="scale-label">
 				<RadioChips
@@ -647,10 +645,7 @@ function ScaleRow() {
 
 function DisplaySection() {
 	return (
-		<PageSection
-			title="Display"
-			description="How Farmer looks on this device. Other devices keep their own setting."
-		>
+		<PageSection title="Display" description="Saved on this device only.">
 			<SettingList>
 				<ColorsRow />
 				<FontRow />
@@ -658,22 +653,22 @@ function DisplaySection() {
 				<DisplayPrefRow
 					pref="highContrast"
 					title="High contrast"
-					description="Draw text, lines and focus rings harder. Captions, placeholders and the rules between table rows stop being quiet."
+					description="Stronger text, lines and focus rings."
 				/>
 				<DisplayPrefRow
 					pref="boringFont"
 					title="Boring font"
-					description="Set page titles and large numbers in the text face, rather than in their own."
+					description="Use the text font for titles and large numbers."
 				/>
 				<DisplayPrefRow
 					pref="lessMotion"
 					title="Less movement"
-					description="Turn off animations. Menus, dialogs and lists appear at once."
+					description="Turn off animations."
 				/>
 				<DisplayPrefRow
 					pref="compactTables"
 					title="Compact tables"
-					description="Put less space in table rows, so more rows fit on the screen."
+					description="Tighter table rows."
 				/>
 			</SettingList>
 		</PageSection>
@@ -682,7 +677,8 @@ function DisplaySection() {
 
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
-	const { cliEnabled } = Route.useRouteContext();
+	const { cliEnabled, role } = Route.useRouteContext();
+	const isAdmin = role === "owner" || role === "admin";
 	const orgSlug = useOrgSlug();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 	// In development, and for an account that holds a password. Outside
@@ -708,7 +704,7 @@ function PreferencesSettingsPage() {
 
 			<SignedInDevicesSection />
 			{cliEnabled ? <ApiTokensSection /> : null}
-			<NotificationSettings />
+			<NotificationSettings isAdmin={isAdmin} />
 			<FilingRulesSettings />
 		</Page>
 	);

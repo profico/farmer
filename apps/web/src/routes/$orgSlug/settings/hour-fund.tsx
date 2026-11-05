@@ -184,7 +184,7 @@ function HourFundPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Monthly hour fund"
-				lede="The official number of working hours in each month. It's the denominator of everyone's expected hours, so a month left blank simply shows no expected figure rather than guessing one."
+				lede="The working hours in each month. Expected hours come from it, and a blank month shows none."
 				action={
 					<Button
 						variant="outline"

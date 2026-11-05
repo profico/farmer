@@ -30,3 +30,28 @@ dist
 # Spikes & scratch that don't belong in a build context
 apps/web/farmer
 apps/web/server.compiled.ts
+
+# The mobile app's generated native projects and Expo caches. Only its
+# manifest is needed in the image (see the Dockerfile).
+apps/mobile/android
+apps/mobile/ios
+apps/mobile/.expo
+
+# The relay's SQLite file when it runs from apps/push-relay.
+apps/push-relay/data
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+
+# Push credentials. Same patterns as .gitignore, at every level: a developer's
+# Firebase files, Apple .p8 key or Google service-account key must not enter
+# the build context.
+**/google-services.json
+**/GoogleService-Info.plist
+**/*.p8
+**/*service-account*.json
+**/*-firebase-adminsdk-*.json
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.mobileprovision

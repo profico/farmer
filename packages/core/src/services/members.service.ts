@@ -191,6 +191,36 @@ const memberTarget = async (ctx: Ctx, userId: string) => ({
 	label: await shownNameOf(db, ctx.organizationId, userId),
 });
 
+/** Refuse an act on the only active owner of the org. An archived owner does
+ *  not count: the org must keep one owner who can still sign in. The People page hides these
+ *  acts for that row; the REST routes have no page, so the service refuses. */
+const assertNotOnlyOwner = async (
+	ctx: Ctx,
+	userId: string,
+	message: string,
+) => {
+	const owners = await db
+		.select({ userId: member.userId })
+		.from(member)
+		.leftJoin(
+			memberProfile,
+			and(
+				eq(memberProfile.organizationId, member.organizationId),
+				eq(memberProfile.userId, member.userId),
+			),
+		)
+		.where(
+			and(
+				eq(member.organizationId, ctx.organizationId),
+				eq(member.role, "owner"),
+				isNull(memberProfile.archivedAt),
+			),
+		);
+	if (owners.length <= 1 && owners.some((o) => o.userId === userId)) {
+		throw new Error(message);
+	}
+};
+
 export const membersService = {
 	/** The caller's role in the org, or null when they may not enter it: no
 	 *  membership, or a membership with a pending claim (see
@@ -319,7 +349,7 @@ export const membersService = {
 	 *  immediately (it is the row `mth_current_uidx` allows), so joining on
 	 *  `effectiveUntil is null` reported next month's type as though it already
 	 *  applied — and this list is what the members screen draws. */
-	list: async (ctx: Ctx): Promise<PersonRow[]> => {
+	list: async (ctx: Ctx, only?: { userId: string }): Promise<PersonRow[]> => {
 		const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 		const rows = await db
 			.select({
@@ -355,7 +385,12 @@ export const membersService = {
 					),
 				),
 			)
-			.where(eq(member.organizationId, ctx.organizationId))
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					only ? eq(member.userId, only.userId) : undefined,
+				),
+			)
 			.orderBy(asc(shownName(ctx.organizationId)));
 
 		// Only the unverified few need the account check; everyone who signed in
@@ -378,7 +413,12 @@ export const membersService = {
 		const leadRows = await db
 			.select({ leadUserId: teamLeadPerson.leadUserId, people: count() })
 			.from(teamLeadPerson)
-			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
+			.where(
+				and(
+					eq(teamLeadPerson.organizationId, ctx.organizationId),
+					only ? eq(teamLeadPerson.leadUserId, only.userId) : undefined,
+				),
+			)
 			.groupBy(teamLeadPerson.leadUserId);
 		const leadsPeople = new Map(
 			leadRows.map((r) => [r.leadUserId, Number(r.people)]),
@@ -620,6 +660,13 @@ export const membersService = {
 		if (archived && userId === ctx.userId) {
 			throw new Error("You cannot archive yourself");
 		}
+		if (archived) {
+			await assertNotOnlyOwner(
+				ctx,
+				userId,
+				"You cannot archive the only owner",
+			);
+		}
 		const target = await memberTarget(ctx, userId);
 		const archivedAt = archived ? new Date() : null;
 		await db
@@ -671,6 +718,11 @@ export const membersService = {
 	confirmEmail: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, userId);
+		await assertNotOnlyOwner(
+			ctx,
+			userId,
+			"You cannot confirm the address of the only owner",
+		);
 		const profile = await db.query.memberProfile.findFirst({
 			where: and(
 				eq(memberProfile.organizationId, ctx.organizationId),
@@ -842,5 +894,55 @@ export const membersService = {
 			),
 			orderBy: asc(memberTypeHistory.effectiveFrom),
 		});
+	},
+
+	/** The People page: `list`, for an admin only. `list` itself has no check,
+	 *  because `whoami` and the assistant read the caller's own row from it.
+	 *  The REST route reads this one. */
+	people: async (ctx: Ctx): Promise<PersonRow[]> => {
+		await requireAdmin(ctx);
+		return membersService.list(ctx);
+	},
+
+	/** One person for an admin: their row, the history of their type and the
+	 *  people on their team lead list. */
+	profile: async (ctx: Ctx, userId: string) => {
+		await requireAdmin(ctx);
+		const [people, typeHistory, leads] = await Promise.all([
+			membersService.list(ctx, { userId }),
+			membersService.typeHistory(ctx, userId),
+			teamLeadsService.listPeople(ctx, userId),
+		]);
+		const person = people[0];
+		if (!person) throw new Error("Person not found");
+		return { person, typeHistory, leads };
+	},
+
+	/** The pending invitations of the organization, with the state of each
+	 *  email. Read from the table and not through better-auth's
+	 *  `listInvitations`, because that endpoint needs a browser session and a
+	 *  REST caller can hold an API token. Nothing is written here. */
+	listInvitations: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		const [rows, emails] = await Promise.all([
+			db.query.invitation.findMany({
+				where: and(
+					eq(invitation.organizationId, ctx.organizationId),
+					eq(invitation.status, "pending"),
+				),
+				orderBy: asc(invitation.createdAt),
+			}),
+			membersService.invitationEmails(ctx),
+		]);
+		return rows.map((row) => ({
+			id: row.id,
+			email: row.email,
+			role: row.role,
+			status: row.status,
+			expiresAt: row.expiresAt,
+			createdAt: row.createdAt,
+			// Null for an invitation made before delivery was tracked.
+			emailDelivery: emails.get(row.id) ?? null,
+		}));
 	},
 };

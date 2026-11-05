@@ -93,17 +93,27 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 
 ## Architecture
 
-Three workspaces — `apps/web` (TanStack Start/React), `apps/cli` (`@farmer/cli`, the `farmer` command-line tool, see `apps/cli/CLAUDE.md`) and `packages/core` (`@farmer/core`). The split is deliberate: `packages/core` must stay reusable from another process.
+Seven workspaces:
+
+- `apps/web` — the TanStack Start/React app and its Bun production host.
+- `apps/cli` — `@farmer/cli`, the `farmer` command-line tool (see `apps/cli/CLAUDE.md`).
+- `packages/core` — `@farmer/core`, the services, the schema, the jobs and the auth config.
+- `apps/push-relay` — `@farmer/push-relay`, the push relay at `push.farmer.profi.co`, its own image, never imports the server (see `apps/push-relay/README.md`, ADR 0006).
+- `apps/mobile` — `@farmer/mobile`, the Expo app for Android and iOS (see `docs/domains/mobile.md`, ADR 0005).
+- `packages/api-client` — `@farmer/api-client`, the typed client of `api/v1` that the app uses.
+- `packages/push-crypto` — `@farmer/push-crypto`, the HPKE seal/open for a push payload, shared by the server and the app, no `@farmer/core` imports.
+
+The split is deliberate: `packages/core` must stay reusable from another process.
 
 **Boundary rule:** `packages/core` never imports TanStack/React. All business logic lives in `src/services/`, one file per aggregate. Every exported service function takes an explicit `ctx: { organizationId, userId }` (`src/services/types.ts`) as its first argument — **tenancy is a parameter, never ambient** — so the same function is callable from a server function, a REST route, a background job or an MCP tool.
 
-The three workspaces each carry their own `CLAUDE.md`: `packages/core/CLAUDE.md`,
-`apps/web/CLAUDE.md` and `apps/cli/CLAUDE.md`. They hold the layout of the
-workspace and the rules that only apply inside it. Claude Code loads a nested
-file when it touches a file in that folder. Codex and similar tools read the
-`AGENTS.md` symlinks on the path from the root to the directory where they
-start. If your tool does not load a workspace file, read it before you change
-that workspace.
+`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`:
+`packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and `apps/cli/CLAUDE.md`. They
+hold the layout of the workspace and the rules that only apply inside it.
+Claude Code loads a nested file when it touches a file in that folder. Codex
+and similar tools read the `AGENTS.md` symlinks on the path from the root to
+the directory where they start. If your tool does not load a workspace file,
+read it before you change that workspace.
 
 ## Where the rest lives
 
@@ -123,6 +133,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/api-tokens.md` | `api-tokens.service.ts`, Preferences → API tokens, the bearer-token branch in `server/api-auth.ts`, or `FARMER_TOKEN` in the CLI |
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/audit-log.md` | `services/audit.ts`, `recordAudit` / `recordSecurityEvent`, the better-auth audit hooks, the Audit log page, or any new service function that changes an organization |
+| `docs/domains/mobile.md` | `mobile-devices.service.ts`, `native-push.ts`, `lib/push-relay.ts`, the `native` channel in `notify.ts`, `api/v1/me/devices` or the timer's Live Activity |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds
@@ -147,7 +158,7 @@ is in the file named beside it.
 
 - **Never read the org roster through better-auth's `auth.api.listMembers`.** It throws in an organization over 100 people, which a Harvest import makes routine — archived people count towards the total. `membersService.roster` (`members.service.ts`) queries the tables directly and is what `server/members.ts`'s `listMembers` server fn calls; `auth/index.ts` also raises `membershipLimit` to 10,000 for the paths that still go through better-auth. Don't confuse either with `projectsService.listMembers`, which is a per-project assignment read.
 - Bun does not walk up parent directories for `.env` in a workspace — `bun run` inside `packages/core` or `apps/web` won't see the root `.env`. Each workspace package has a symlink to the root `.env`; do the same for any new workspace that reads the environment.
-- `timeEntriesService.listRange` still performs writes on read — it recomputes (and drops) each day's fill block against the rows just read, bounded to the automation window. That is deliberate and commented, but a GET is not idempotent, including through `api/v1`, `farmer today` and the MCP server's `list_time_entries`. **The MCP case is the one to watch**: an agent loop re-reads a range far harder than a person opens a screen.
+- `timeEntriesService.listRange` still performs writes on read by default — it recomputes (and drops) each day's fill block against the rows just read, bounded to the automation window. That is deliberate and commented, but a GET is not idempotent, including through the web app, `api/v1` time-entries and `farmer today`. `listRange(ctx, range, { persist: false })` is the read-only variant: it returns the same rows and stores nothing. `/home`, the MCP server's `list_time_entries` and the assistant use it, because an agent loop re-reads a range far harder than a person opens a screen.
 
 ## Agent skills
 

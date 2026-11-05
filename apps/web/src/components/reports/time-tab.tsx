@@ -714,9 +714,6 @@ function TimeSummaryRows({
 						</TableBody>
 					</Table>
 					<p className="mt-3 text-sm text-muted-foreground">
-						{group === "projects"
-							? "A project opens its page; the hours open its entries by date."
-							: "A name opens it by project; the hours open the entries by date."}{" "}
 						Time-off is counted in Team only — it belongs to nobody's client.
 					</p>
 				</>

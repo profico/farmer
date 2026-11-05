@@ -143,7 +143,7 @@ function RecurringBlocksPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Recurring blocks"
-				lede="Blocks — a daily break, a standing meeting — that appear on your calendar without you logging them."
+				lede="Blocks that log themselves, such as a daily break."
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput

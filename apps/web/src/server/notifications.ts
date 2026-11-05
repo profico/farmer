@@ -26,6 +26,15 @@ export const getNotificationSettings = createServerFn({ method: "POST" })
 		return notificationsService.getSettings(context.ctx);
 	});
 
+// POST for the same reason. Per person: a phone belongs to a person, not to
+// a workspace.
+export const getAppReach = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { notificationsService } = await import("@farmer/core/services");
+		return notificationsService.appReach(context.ctx);
+	});
+
 export const updateNotificationSettings = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
 	.validator(updateNotificationSettingsInput)

@@ -106,7 +106,7 @@ export function ApiTokensSection() {
 			// (lib/openapi.ts), which opens the reader's own workspace.
 			id="api-tokens"
 			title="API tokens"
-			description="For a script or a scheduled job that calls the Farmer API. A token acts as you, so it sees what you see. Tokens belong to your account, and the list is the same in every workspace."
+			description="For scripts that call the Farmer API. A token acts as you. The list is the same in every workspace."
 			action={<CreateApiTokenDialog />}
 		>
 			{tokens.length === 0 ? (
@@ -279,8 +279,7 @@ function CreateApiTokenDialog() {
 						</DialogHeader>
 						<div className="grid gap-3">
 							<p className="text-sm text-muted-foreground">
-								Shown once. Keep it where you keep a password. If you lose it,
-								revoke it and make a new one.
+								Shown once. If you lose it, make a new one.
 							</p>
 							<code className="block rounded-md bg-muted p-3 font-mono text-xs break-all select-all">
 								{token}

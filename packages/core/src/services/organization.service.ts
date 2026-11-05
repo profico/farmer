@@ -10,7 +10,10 @@ import type { Ctx } from "./types";
 import { assertOwnUpload } from "./uploads.service";
 
 export const organizationService = {
+	// Admin only, for the reason written on `updateSettings`. A member reads
+	// the timezone and the week start from `ctxTimezone` and `whoami`.
 	getSettings: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.id, ctx.organizationId),
 		});

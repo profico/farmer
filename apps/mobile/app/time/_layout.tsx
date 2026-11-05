@@ -1,0 +1,29 @@
+import { Redirect, Stack } from "expo-router";
+
+import { useSignedIn } from "../../src/session/session";
+import { useMotionPreference } from "../../src/ui/motion";
+import { usePalette } from "../../src/ui/theme";
+
+/**
+ * The forms of the Time tab that are larger than one entry: time off over
+ * a range, the unfiled time, the notes of a week row and "Assemble my
+ * day". The root layout
+ * opens this stack as a sheet, and each form draws its own header
+ * (`forms/sheet.tsx`). A link that comes before a workspace is chosen goes
+ * to the tabs, as in `SectionStack`.
+ */
+export default function TimeFormsLayout() {
+	const { workspace } = useSignedIn();
+	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
+	if (!workspace) return <Redirect href="/" />;
+	return (
+		<Stack
+			screenOptions={{
+				headerShown: false,
+				animation: reduceMotion ? "fade" : "default",
+				contentStyle: { backgroundColor: palette.surface },
+			}}
+		/>
+	);
+}

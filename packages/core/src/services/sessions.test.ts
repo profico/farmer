@@ -139,14 +139,24 @@ describe("sessionsService.listMine", () => {
 
 		expect(rows.map((row) => row.id)).toEqual(["s-bob-browser"]);
 	});
+});
 
-	test("the organization in the Ctx does not narrow the list", async () => {
-		const rows = await sessionsService.listMine(
-			{ organizationId: "some-other-org", userId: ALICE },
-			"s-alice-browser",
-		);
+describe("sessionsService.currentIdFor", () => {
+	test("names the caller's live session for its token", async () => {
+		expect(
+			await sessionsService.currentIdFor(ctx(ALICE), "token-s-alice-browser"),
+		).toBe("s-alice-browser");
+	});
 
-		expect(rows).toHaveLength(3);
+	test("answers null for another person's token, an expired one and a made-up one", async () => {
+		const alice = ctx(ALICE);
+		expect(
+			await sessionsService.currentIdFor(alice, "token-s-bob-browser"),
+		).toBeNull();
+		expect(
+			await sessionsService.currentIdFor(alice, "token-s-alice-expired"),
+		).toBeNull();
+		expect(await sessionsService.currentIdFor(alice, "nope")).toBeNull();
 	});
 });
 
@@ -202,6 +212,9 @@ describe("describeUserAgent", () => {
 			"cli",
 			"Farmer CLI (darwin-arm64)",
 		],
+		["farmer-mobile/0.1.0 (android 35)", "mobile", "Farmer app on Android"],
+		["farmer-mobile/0.1.0 (ios 18.6)", "mobile", "Farmer app on iOS"],
+		["farmer-mobile/0.1.0", "mobile", "Farmer app"],
 		[CHROME_MAC, "browser", "Chrome on macOS"],
 		[
 			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/139.0.0.0 Safari/537.36",

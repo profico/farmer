@@ -51,6 +51,10 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
  */
 export const AUDIT_KINDS = {
 	// ── The workspace ──────────────────────────────────────────────────────────
+	"organization.created": {
+		category: "change",
+		sentence: "created the workspace",
+	},
 	"organization.updated": {
 		category: "change",
 		sentence: "changed the workspace settings",
@@ -81,6 +85,10 @@ export const AUDIT_KINDS = {
 	"member.invitation_cancelled": {
 		category: "change",
 		sentence: "cancelled the invitation for {target}",
+	},
+	"member.invitation_declined": {
+		category: "change",
+		sentence: "declined the invitation for {target}",
 	},
 	"member.joined": {
 		category: "change",

@@ -4,9 +4,11 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -14,6 +16,10 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
+import {
+	SegmentedControl,
+	SegmentedControlItem,
+} from "#/components/ui/segmented-control.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import {
@@ -23,7 +29,11 @@ import {
 	isSubscribed,
 	pushSupported,
 } from "#/lib/push.ts";
-import { notificationSettingsQuery } from "#/queries/notifications.ts";
+import { APP_CHANNEL_NOTE, appChannelStatus } from "#/lib/reminders-channel.ts";
+import {
+	appReachQuery,
+	notificationSettingsQuery,
+} from "#/queries/notifications.ts";
 import { updateNotificationSettings } from "#/server/notifications.ts";
 
 // One notification-preference toggle, backed by notificationSettings. Same
@@ -70,7 +80,83 @@ function NotifyToggleRow({
 	);
 }
 
-export function NotificationSettings() {
+// Where the Slack kinds go for a person with the mobile app: the app, or
+// Slack. The words follow the mobile app's Preferences screen. "The app" stays
+// choosable with no phone, because the choice holds for the day a phone signs
+// in; the note under the row says where a reminder goes until then.
+function RemindersChannelRow({
+	channel,
+	isAdmin,
+}: {
+	channel: UpdateChannel;
+	isAdmin: boolean;
+}) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const { data: reach } = useSuspenseQuery(appReachQuery(orgSlug));
+	const mutation = useMutation({
+		mutationFn: (remindersChannel: UpdateChannel) =>
+			updateNotificationSettings({ data: { remindersChannel } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: notificationSettingsQuery(orgSlug).queryKey,
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not update setting");
+		},
+	});
+	// The server sends no native push without a relay, and the mobile app
+	// hides this choice then. Do the same.
+	if (!reach.relay) return null;
+	const status = appChannelStatus(reach);
+	return (
+		<SettingRow
+			title="Send reminders to"
+			description={
+				<>
+					{APP_CHANNEL_NOTE}
+					{status ? <span className="mt-1 block">{status}</span> : null}
+					{isAdmin ? (
+						<span className="mt-1 block">
+							When they go out is set under{" "}
+							<Link
+								to="/$orgSlug/settings/reminders"
+								params={{ orgSlug }}
+								className="underlined"
+							>
+								<MenuPath steps={["Workspace", "Reminders"]} />
+							</Link>
+							.
+						</span>
+					) : null}
+				</>
+			}
+			action={
+				<SegmentedControl aria-label="Send reminders to">
+					<SegmentedControlItem
+						active={channel === "app"}
+						disabled={mutation.isPending}
+						onClick={() => mutation.mutate("app")}
+					>
+						The app
+					</SegmentedControlItem>
+					<SegmentedControlItem
+						active={channel === "slack"}
+						disabled={mutation.isPending}
+						onClick={() => mutation.mutate("slack")}
+					>
+						Slack
+					</SegmentedControlItem>
+				</SegmentedControl>
+			}
+		/>
+	);
+}
+
+type UpdateChannel = "app" | "slack";
+
+export function NotificationSettings({ isAdmin }: { isAdmin: boolean }) {
 	const orgSlug = useOrgSlug();
 	const { data: settings } = useSuspenseQuery(
 		notificationSettingsQuery(orgSlug),
@@ -147,7 +233,7 @@ export function NotificationSettings() {
 					{subscribed && <Badge variant="secondary">On this device</Badge>}
 				</span>
 			}
-			description="Get OS-level notifications — they reach you even when Farmer isn't open. You enable them per device."
+			description="They reach you when Farmer is closed. Turn them on for each device."
 		>
 			{/* Rows, not tinted panels. Everything on this page is a setting with a
 			    label, a note and a control; giving each one a filled rectangle turned
@@ -192,6 +278,10 @@ export function NotificationSettings() {
 					checked={settings.logReminders}
 					patch={(value) => ({ logReminders: value })}
 					disabled={togglesDisabled}
+				/>
+				<RemindersChannelRow
+					channel={settings.remindersChannel}
+					isAdmin={isAdmin}
 				/>
 			</SettingList>
 		</PageSection>

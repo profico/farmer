@@ -6,6 +6,7 @@ import { task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { loggableError } from "../lib/loggable-error";
 import { formatDurationShort, safeTimezone, timeKeyInTz } from "../lib/time";
+import { publishTimerChange } from "../services/native-push";
 import { notify } from "../services/notify";
 import {
 	DEFAULT_TIMER_MAX_SECONDS,
@@ -93,13 +94,24 @@ export const runTimerSweepOnce = async (
 		if (elapsed <= cap) continue;
 
 		try {
-			await db
+			const changed = await db
 				.update(runningTimer)
 				.set({ droppedAt: now, updatedAt: now })
 				.where(
-					and(eq(runningTimer.id, row.id), isNull(runningTimer.droppedAt)),
-				);
+					and(
+						eq(runningTimer.id, row.id),
+						isNull(runningTimer.droppedAt),
+						isNotNull(runningTimer.runningSince),
+					),
+				)
+				.returning({ id: runningTimer.id });
+			// The row changed since the read: a confirm, a pause or another sweep.
+			// Count nothing, and send nothing: an `end` would close a newer Live
+			// Activity.
+			if (changed.length === 0) continue;
 			summary.dropped += 1;
+			// The phone's Live Activity ends now. It returns at once.
+			publishTimerChange(row.userId, { type: "end" });
 
 			const startedAtLabel = timeKeyInTz(
 				row.startedAt,

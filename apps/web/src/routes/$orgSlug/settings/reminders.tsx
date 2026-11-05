@@ -143,14 +143,10 @@ function RemindersPage() {
 				lede="When each reminder goes out, and to whom. Nothing goes out before 07:00 or after 20:00, and nobody who is archived gets any of them."
 			/>
 
-			<PageSection
-				title="Who can get a reminder"
-				description="Archived people never get a reminder. People imported from another tool often have never signed in here, and a reminder about a timesheet they have never seen is noise."
-			>
+			<PageSection title="Who can get a reminder">
 				<SettingList>
 					<SettingRow
 						title="People who have never signed in"
-						description="Off by default."
 						action={
 							<Switch
 								aria-label="Remind people who have never signed in"
@@ -230,7 +226,7 @@ function RemindersPage() {
 				key={draftKey(nudgeDraft(settings))}
 				kind="compliance-nudge"
 				title="Slack nudge"
-				description="A Slack message to people the Tracking rule calls behind — below the month's target so far by more than the tolerance set under Organization. Never on a weekend or a public holiday."
+				description="A Slack message to people behind the month's target by more than the tolerance under Organization. Never on a weekend or a holiday."
 				enabled={settings.nudgeEnabled}
 				onEnabledChange={(nudgeEnabled) => save.mutate({ nudgeEnabled })}
 				saved={nudgeDraft(settings)}

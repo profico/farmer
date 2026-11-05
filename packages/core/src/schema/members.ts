@@ -8,6 +8,13 @@ export const inviteMemberInput = z.object({
 });
 export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
 
+// An invitation that the caller answers: accept or decline. Only the id. The
+// person is always the session's own user.
+export const answerInvitationInput = z.object({
+	invitationId: z.string().min(1).max(64),
+});
+export type AnswerInvitationInput = z.infer<typeof answerInvitationInput>;
+
 // better-auth owns the invitation row and generates its id with its own
 // generator, not as a UUID — the column is `text`, so anything narrower than a
 // non-empty string rejects a valid id.
@@ -105,3 +112,11 @@ export const setMemberArchivedInput = z.object({
 	archived: z.boolean(),
 });
 export type SetMemberArchivedInput = z.infer<typeof setMemberArchivedInput>;
+
+// The REST route's role change. It names the person by user id, as every
+// other People route does; the service finds the membership row.
+export const setMemberRoleInput = z.object({
+	userId: z.string().min(1),
+	role: z.enum(["admin", "member"]),
+});
+export type SetMemberRoleInput = z.infer<typeof setMemberRoleInput>;

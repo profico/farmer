@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import { uploadImageInput } from "../schema/uploads";
 import {
+	bytesFromBase64,
 	isUploadedFile,
+	MAX_UPLOAD_BYTES,
 	sniffImage,
 	uploadContentType,
 	uploadKey,
@@ -62,5 +65,37 @@ describe("upload paths", () => {
 		);
 		expect(isUploadedFile("/api/files/orgs/../../etc/passwd")).toBe(false);
 		expect(uploadContentType(`orgs/org_1/org-logo/${ID}.exe`)).toBeNull();
+	});
+});
+
+describe("an upload as base64", () => {
+	const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+	test("gives back the bytes it was made from", () => {
+		const data = Buffer.from(PNG).toString("base64");
+		expect([...bytesFromBase64(data)]).toEqual(PNG);
+		expect(sniffImage(bytesFromBase64(data))).toBe("png");
+	});
+
+	test("the schema takes a file of the size limit", () => {
+		const data = Buffer.alloc(MAX_UPLOAD_BYTES).toString("base64");
+		expect(
+			uploadImageInput.safeParse({ purpose: "org-logo", data }).success,
+		).toBe(true);
+	});
+
+	test("the schema refuses a file larger than the limit", () => {
+		const data = Buffer.alloc(MAX_UPLOAD_BYTES + 3).toString("base64");
+		expect(
+			uploadImageInput.safeParse({ purpose: "org-logo", data }).success,
+		).toBe(false);
+	});
+
+	test("the schema refuses text that is not base64", () => {
+		for (const data of ["iVBO*w0K", "data:image/png;base64,iVBORw0K", "abc"]) {
+			expect(
+				uploadImageInput.safeParse({ purpose: "project-icon", data }).success,
+			).toBe(false);
+		}
 	});
 });

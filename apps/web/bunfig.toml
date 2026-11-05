@@ -1,0 +1,8 @@
+# Test-run configuration for apps/web.
+#
+# `api-guards.test.ts` uses the shared PGLite engine of `@farmer/core`. Left
+# open at the end of the run, that engine is a live handle, and `bun test`
+# exits with code 99 although every test passed. The core preload closes it
+# once, after the last file, and sets the secret that the suite needs.
+[test]
+preload = ["../../packages/core/src/test/preload.ts"]

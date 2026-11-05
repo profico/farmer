@@ -6,7 +6,7 @@ import {
 	isCliVersionSupported,
 } from "@farmer/core/api";
 import type { JsonValue } from "@farmer/core/lib/json";
-import type { Ctx } from "@farmer/core/services";
+import type { Ctx, CtxActor } from "@farmer/core/services";
 import { z } from "zod";
 
 import { SESSION_REQUEST_HEADER } from "#/lib/api-session-header.ts";
@@ -27,6 +27,11 @@ import {
 	callerAddress,
 	recordAuthFailure,
 } from "#/server/api-rate-limit.ts";
+import {
+	type BodyRead,
+	MAX_BODY_BYTES,
+	readBody,
+} from "#/server/request-body.ts";
 
 /**
  * The one pipeline every CLI route runs — `/api/v1/me`, `/api/v1/session` and
@@ -97,7 +102,27 @@ export type ApiRouteSpec<
 	 */
 	raw?: (request: ApiRequest<TParams>) => JsonValue | Promise<JsonValue>;
 	/** The service call. Returns the projection, never a row. */
-	run: (ctx: Ctx, input: z.output<TSchema>) => Promise<TResult>;
+	run: (
+		ctx: Ctx,
+		input: z.output<TSchema>,
+		caller: ApiCaller,
+	) => Promise<TResult>;
+};
+
+/** What a route may know about the credential, past its Ctx. */
+export type ApiCaller = {
+	via: ApiCredentialKind;
+	/** `read` for an API token made read-only; a GET it makes must write
+	 *  nothing. */
+	scope: ApiTokenScope;
+	/**
+	 * Request headers that name the caller's better-auth session, for a write
+	 * that only a better-auth endpoint may make (invitations, roles, removal).
+	 * A browser sends its own cookie. A device-flow or mobile token IS a
+	 * session token, so a cookie is signed from it. An API token has no
+	 * session, so it gets an `AccessError` that says so.
+	 */
+	sessionHeaders: () => Promise<Headers>;
 };
 
 /** The person behind a request to a route with no organization in its path. */
@@ -111,6 +136,12 @@ export type ApiUser = {
 	/** The one workspace an API token is bound to, or null for any. */
 	boundOrganizationId: string | null;
 	via: ApiCredentialKind;
+	/** The door of the request, for a Ctx that a `/me` route builds itself
+	 *  (a Harvest import's claim names its organization in the path). */
+	actor: CtxActor;
+	/** As `ApiCaller.sessionHeaders`: a cookie signed from a session token,
+	 *  else an `AccessError` that says an API token cannot do this. */
+	sessionHeaders: () => Promise<Headers>;
 };
 
 export type UserRouteSpec<TResult> = {
@@ -387,18 +418,124 @@ const serve = async <
 	}
 };
 
-/** The JSON body of a request that is not a GET, `{}` when it is empty, or
- *  null when it does not parse. */
-const readBody = async (request: Request): Promise<JsonValue | null> => {
-	if (request.method === "GET") return {};
-	const text = await request.text();
-	if (!text.trim()) return {};
-	try {
-		const body: JsonValue = JSON.parse(text);
-		return body;
-	} catch {
-		return null;
+/** The refusal of a body that `readBody` could not take: 413 over the
+ *  limit, 422 when it is not JSON. */
+const bodyRefusal = (read: Exclude<BodyRead, { kind: "json" }>): Response =>
+	read.kind === "too_large"
+		? refuse(413, {
+				error: `The request body is over ${MAX_BODY_BYTES / (1024 * 1024)} MB.`,
+				code: "invalid_input",
+			})
+		: refuse(422, {
+				error: "The request body is not JSON.",
+				code: "invalid_input",
+			});
+
+/** Step 4 for an org-scoped route: a bearer credential, else the session
+ *  cookie under `cookieUser`'s rules. */
+const orgPrincipal = async (request: Request, orgSlug: string) => {
+	const byToken = await resolveCliOrgContext(request, orgSlug);
+	if (byToken) {
+		return {
+			...byToken.ctx,
+			ctx: byToken.ctx,
+			scope: byToken.scope,
+			via: byToken.via,
+			sessionToken: byToken.sessionToken,
+		};
 	}
+	const user = await cookieUser(request, { writes: true });
+	if (!user) return null;
+	const { orgContextService } = await import("@farmer/core/services");
+	const ctx = await orgContextService.resolveBySlug(
+		user.id,
+		orgSlug,
+		requestActor(request, { via: "api" }),
+	);
+	// A write reaches here only through `provesSameOrigin`, where the
+	// person is at the keyboard on this site: the full reach of their
+	// own session, as in the web app.
+	return ctx
+		? {
+				...ctx,
+				ctx,
+				scope: "write" as const,
+				via: "cookie" as const,
+				sessionToken: null,
+			}
+		: null;
+};
+
+/** Step 6: the body, the `raw` step and the schema. A refusal is a Response;
+ *  anything else is the parsed input. */
+const parseInput = async <TParams extends OrgParams, TSchema extends z.ZodType>(
+	spec: Pick<ApiRouteSpec<TParams, TSchema, never>, "input" | "raw">,
+	request: Request,
+	ctx: Ctx,
+	params: TParams,
+): Promise<
+	{ ok: true; data: z.output<TSchema> } | { ok: false; response: Response }
+> => {
+	const read = await readBody(request);
+	if (read.kind !== "json") return { ok: false, response: bodyRefusal(read) };
+	const body = read.value;
+	const query = new URL(request.url).searchParams;
+	const raw = spec.raw
+		? await spec.raw({ ctx, params, query, body })
+		: request.method === "GET"
+			? Object.fromEntries(query)
+			: body;
+	const parsed = spec.input.safeParse(raw);
+	if (!parsed.success) {
+		return {
+			ok: false,
+			response: refuse(422, {
+				error: "The input is not valid.",
+				code: "invalid_input",
+				issues: issuesOf(parsed.error),
+			}),
+		};
+	}
+	return { ok: true, data: parsed.data };
+};
+
+/**
+ * The headers `ApiCaller.sessionHeaders` answers. The request's own headers
+ * are kept, so better-auth's audit hooks see the caller's address and
+ * browser, but never its bearer token.
+ */
+const sessionHeadersOf = async (
+	request: Request,
+	via: ApiCredentialKind,
+	sessionToken: string | null,
+): Promise<Headers> => {
+	if (via === "cookie") return request.headers;
+	if (via === "session" && sessionToken) {
+		const { sessionCookieHeader } = await import("@farmer/core/auth");
+		const headers = new Headers(request.headers);
+		headers.delete("authorization");
+		headers.set("cookie", await sessionCookieHeader(sessionToken));
+		return headers;
+	}
+	const { AccessError } = await import("@farmer/core/services");
+	throw new AccessError(
+		"An API token cannot manage people, invitations or workspaces. Sign in with `farmer login` or the mobile app.",
+	);
+};
+
+/**
+ * Refuses an API token on a route that manages a person's credentials: the
+ * signed-in devices and the API tokens. A token that could mint another one
+ * would turn a leaked key into a lasting one, which a revoke of the first
+ * would not end. A device-flow or mobile session, or a signed-in browser,
+ * may.
+ */
+export const requireSignIn = async (via: ApiCredentialKind): Promise<void> => {
+	if (via !== "api_token") return;
+	const { AccessError } = await import("@farmer/core/services");
+	throw new AccessError(
+		"An API token cannot manage sign-ins or API tokens. Sign in with `farmer login` or the mobile app.",
+	);
 };
 
 /**
@@ -415,57 +552,93 @@ export const apiRoute =
 	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
 		serve(
 			request,
-			async () => {
-				const byToken = await resolveCliOrgContext(request, params.orgSlug);
-				if (byToken) {
-					return {
-						...byToken.ctx,
-						ctx: byToken.ctx,
-						scope: byToken.scope,
-						via: byToken.via,
-					};
-				}
-				const user = await cookieUser(request, { writes: true });
-				if (!user) return null;
-				const { orgContextService } = await import("@farmer/core/services");
-				const ctx = await orgContextService.resolveBySlug(
-					user.id,
-					params.orgSlug,
-					requestActor(request, { via: "api" }),
-				);
-				// A write reaches here only through `provesSameOrigin`, where the
-				// person is at the keyboard on this site: the full reach of their
-				// own session, as in the web app.
-				return ctx
-					? { ...ctx, ctx, scope: "write" as const, via: "cookie" as const }
-					: null;
-			},
-			async ({ ctx }) => {
-				const body = await readBody(request);
-				if (body === null) {
-					return refuse(422, {
-						error: "The request body is not JSON.",
-						code: "invalid_input",
-					});
-				}
-				const query = new URL(request.url).searchParams;
-				const raw = spec.raw
-					? await spec.raw({ ctx, params, query, body })
-					: request.method === "GET"
-						? Object.fromEntries(query)
-						: body;
-				const parsed = spec.input.safeParse(raw);
-				if (!parsed.success) {
-					return refuse(422, {
-						error: "The input is not valid.",
-						code: "invalid_input",
-						issues: issuesOf(parsed.error),
-					});
-				}
-				return respond(await spec.run(ctx, parsed.data), 200);
+			() => orgPrincipal(request, params.orgSlug),
+			async ({ ctx, via, scope, sessionToken }) => {
+				const input = await parseInput(spec, request, ctx, params);
+				if (!input.ok) return input.response;
+				const caller: ApiCaller = {
+					via,
+					scope,
+					sessionHeaders: () => sessionHeadersOf(request, via, sessionToken),
+				};
+				return respond(await spec.run(ctx, input.data, caller), 200);
 			},
 			request.method !== "GET",
 		);
+
+export type ApiStreamRouteSpec<
+	TParams extends OrgParams,
+	TSchema extends z.ZodType,
+> = Pick<ApiRouteSpec<TParams, TSchema, never>, "input" | "raw"> & {
+	/** Answers with its own Response, a stream. An error it throws before the
+	 *  stream starts is mapped like any other route's. */
+	stream: (
+		ctx: Ctx,
+		input: z.output<TSchema>,
+		request: Request,
+	) => Promise<Response>;
+};
+
+/**
+ * `apiRoute` for a route that streams its answer: the same pipeline (the flag,
+ * the limits, the credential, the read-only refusal, the parse), and then a
+ * Response the route builds itself. Today only the assistant's turn.
+ */
+export const apiStreamRoute =
+	<TSchema extends z.ZodType, TParams extends OrgParams = OrgParams>(
+		spec: ApiStreamRouteSpec<TParams, TSchema>,
+	) =>
+	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
+		serve(
+			request,
+			() => orgPrincipal(request, params.orgSlug),
+			async ({ ctx }) => {
+				const input = await parseInput(spec, request, ctx, params);
+				if (!input.ok) return input.response;
+				return spec.stream(ctx, input.data, request);
+			},
+			request.method !== "GET",
+		);
+
+/** The person behind a request to a route with no organization in its path:
+ *  a bearer token, or the cookie on a GET. Never the cookie on a write: the
+ *  writes here act on the credential itself (`DELETE /session`, a phone's
+ *  registration), and a browser session has its own pages for that. */
+const userPrincipal = async (request: Request): Promise<ApiUser | null> => {
+	const byToken = await resolveCliUser(request);
+	if (byToken) {
+		const { credential } = byToken;
+		return {
+			...byToken,
+			via: credential.kind,
+			actor: requestActor(
+				request,
+				credential.kind === "api_token"
+					? { via: "api_token", apiTokenId: credential.principal.tokenId }
+					: { via: "cli" },
+			),
+			sessionHeaders: () =>
+				sessionHeadersOf(
+					request,
+					credential.kind,
+					credential.kind === "session" ? credential.token : null,
+				),
+		};
+	}
+	const user = await cookieUser(request, { writes: false });
+	return user
+		? {
+				userId: user.id,
+				credential: null,
+				user,
+				scope: "write",
+				boundOrganizationId: null,
+				via: "cookie",
+				actor: requestActor(request, { via: "api" }),
+				sessionHeaders: () => sessionHeadersOf(request, "cookie", null),
+			}
+		: null;
+};
 
 /**
  * A handler for a route with no organization in its path: `/api/v1/me` and
@@ -477,23 +650,7 @@ export const userApiRoute =
 	({ request }: { request: Request }): Promise<Response> =>
 		serve(
 			request,
-			async (): Promise<ApiUser | null> => {
-				const byToken = await resolveCliUser(request);
-				if (byToken) return { ...byToken, via: byToken.credential.kind };
-				// Never a write here: `DELETE /session` revokes the credential it
-				// was sent with, and a browser session has Sign out for that.
-				const user = await cookieUser(request, { writes: false });
-				return user
-					? {
-							userId: user.id,
-							credential: null,
-							user,
-							scope: "write",
-							boundOrganizationId: null,
-							via: "cookie",
-						}
-					: null;
-			},
+			() => userPrincipal(request),
 			async (caller) => {
 				const result = await spec.run(caller);
 				return spec.status === 204
@@ -526,3 +683,59 @@ export const rangeFromQuery = async ({
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 	return { from: query.get("from") ?? today, to: query.get("to") ?? today };
 };
+
+export type UserWriteRouteSpec<
+	TParams extends Record<string, string>,
+	TSchema extends z.ZodType,
+	TResult,
+> = {
+	input: TSchema;
+	/** Builds the value the schema parses from the path and the JSON body.
+	 *  Without it, the value is the body. It shapes; the schema validates. */
+	raw?: (request: { params: TParams; body: JsonValue }) => JsonValue;
+	run: (caller: ApiUser, input: z.output<TSchema>) => Promise<TResult>;
+	/** 204 answers with no body, whatever `run` returns. */
+	status?: 200 | 204;
+};
+
+/**
+ * A handler for a write with no organization in its path: the phone routes
+ * under `/api/v1/me/devices`. The pipeline of `userApiRoute`, plus the Zod
+ * parse of `apiRoute`, and counted as a write: a read-only API token gets
+ * the 403 before any service runs.
+ */
+export const userWriteRoute =
+	<
+		TSchema extends z.ZodType,
+		TResult,
+		TParams extends Record<string, string> = Record<string, never>,
+	>(
+		spec: UserWriteRouteSpec<TParams, TSchema, TResult>,
+	) =>
+	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
+		serve(
+			request,
+			() => userPrincipal(request),
+			async (caller) => {
+				const read = await readBody(request);
+				if (read.kind !== "json") return bodyRefusal(read);
+				const body = read.value;
+				const raw = spec.raw ? spec.raw({ params, body }) : body;
+				const parsed = spec.input.safeParse(raw);
+				if (!parsed.success) {
+					return refuse(422, {
+						error: "The input is not valid.",
+						code: "invalid_input",
+						issues: issuesOf(parsed.error),
+					});
+				}
+				const result = await spec.run(caller, parsed.data);
+				return spec.status === 204
+					? new Response(null, {
+							status: 204,
+							headers: { "Cache-Control": "no-store" },
+						})
+					: respond(result ?? null, 200);
+			},
+			true,
+		);
