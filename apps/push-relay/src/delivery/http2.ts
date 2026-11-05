@@ -65,6 +65,9 @@ export const createHttp2Transport = (
 
 	/** Send a PING. A session with no answer in time is dead: destroy it. */
 	const probe = (origin: string, session: http2.ClientHttp2Session) => {
+		// Bun throws on `ping` after a destroy. From a request timer that throw
+		// would skip the request's reject.
+		if (session.closed || session.destroyed) return;
 		const dead = () => destroy(origin, session);
 		const deadline = setTimeout(dead, timing.pingTimeoutMs);
 		deadline.unref();
