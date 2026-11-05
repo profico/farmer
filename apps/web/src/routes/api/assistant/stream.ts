@@ -152,6 +152,9 @@ export const Route = createFileRoute("/api/assistant/stream")({
 								const { loggableError } =
 									await import("@farmer/core/lib/loggable-error");
 								console.error("[assistant] turn failed", loggableError(error));
+								const { captureAssistantFailure } =
+									await import("#/lib/posthog-api.ts");
+								if (error instanceof Error) captureAssistantFailure(error, ctx);
 							}
 							send({
 								type: "error",
