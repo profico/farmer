@@ -15,7 +15,8 @@ import { apiRoute, rangeFromQuery } from "#/server/api-route.ts";
  * blocks of the days it reads, inside the automation window (see the note on
  * `listRange`). A person running `farmer today` is fine; `watch farmer today`
  * is a fill-block rewrite every two seconds, which is why the per-user limit
- * applies to reads too.
+ * applies to reads too. A read-only API token gets `persist: false`: the same
+ * rows, and no write.
  */
 export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/")({
 	server: {
@@ -23,9 +24,11 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/")({
 			GET: apiRoute({
 				input: listTimeEntriesRangeInput,
 				raw: rangeFromQuery,
-				run: async (ctx, range) => {
+				run: async (ctx, range, caller) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
-					const rows = await timeEntriesService.listRange(ctx, range);
+					const rows = await timeEntriesService.listRange(ctx, range, {
+						persist: caller.scope !== "read",
+					});
 					return rows.map(toApiTimeEntry);
 				},
 			}),

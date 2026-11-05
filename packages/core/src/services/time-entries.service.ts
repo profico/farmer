@@ -2402,10 +2402,12 @@ export const timeEntriesService = {
 	// unwindowed. Automation is what the lock governs.
 	//
 	// `opts.persist: false` is the read-only variant. It computes the same fill
-	// blocks in memory and returns the same rows, but it writes nothing and it
-	// does not move commit evidence. The mobile app and the other projections
-	// call it, because a phone refreshes often and a read-only API token may
-	// reach it.
+	// blocks in memory and returns the same rows, but it neither updates nor
+	// deletes a fill block and it does not move commit evidence. The caller
+	// chooses it: the home route (which a phone refreshes often) and the
+	// org-scoped time-entries GET for a read-only API token pass `false`. The
+	// default is `true`, and the cookie-only `GET /api/v1/time-entries` and the
+	// web server functions use it.
 	listRange: async (
 		ctx: Ctx,
 		range: { from: string; to: string },

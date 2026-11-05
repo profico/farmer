@@ -112,6 +112,9 @@ export type ApiRouteSpec<
 /** What a route may know about the credential, past its Ctx. */
 export type ApiCaller = {
 	via: ApiCredentialKind;
+	/** `read` for an API token made read-only; a GET it makes must write
+	 *  nothing. */
+	scope: ApiTokenScope;
 	/**
 	 * Request headers that name the caller's better-auth session, for a write
 	 * that only a better-auth endpoint may make (invitations, roles, removal).
@@ -550,11 +553,12 @@ export const apiRoute =
 		serve(
 			request,
 			() => orgPrincipal(request, params.orgSlug),
-			async ({ ctx, via, sessionToken }) => {
+			async ({ ctx, via, scope, sessionToken }) => {
 				const input = await parseInput(spec, request, ctx, params);
 				if (!input.ok) return input.response;
 				const caller: ApiCaller = {
 					via,
+					scope,
 					sessionHeaders: () => sessionHeadersOf(request, via, sessionToken),
 				};
 				return respond(await spec.run(ctx, input.data, caller), 200);
