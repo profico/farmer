@@ -112,6 +112,7 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	const { store, senders, limiters, log, now } = deps;
 
 	let warnedMissingHeader = false;
+	let warnedInvalidHeader = false;
 	const addressOf = (request: Request, socketAddress: string | null) => {
 		const header = deps.trustedIpHeader;
 		if (header && !warnedMissingHeader && !request.headers.has(header)) {
@@ -121,7 +122,13 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 				`[push-relay] a request has no ${header} header: check TRUSTED_IP_HEADER and the proxy`,
 			);
 		}
-		return clientAddress(request.headers, header, socketAddress);
+		return clientAddress(request.headers, header, socketAddress, () => {
+			if (warnedInvalidHeader) return;
+			warnedInvalidHeader = true;
+			log(
+				`[push-relay] the ${header} header holds no IP address: check TRUSTED_IP_HEADER and the proxy`,
+			);
+		});
 	};
 
 	/** The device that `relayId` names, when the bearer secret is its own. */

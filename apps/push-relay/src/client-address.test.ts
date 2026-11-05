@@ -42,6 +42,24 @@ describe("clientAddress", () => {
 		);
 	});
 
+	test("a header value that is not an IP address gives the socket address", () => {
+		let warned = 0;
+		const headers = new Headers({ "cf-connecting-ip": "attacker-bucket-17" });
+		const address = clientAddress(headers, "cf-connecting-ip", "10.0.1.6", () => {
+			warned += 1;
+		});
+		expect(address).toBe("10.0.1.6");
+		expect(warned).toBe(1);
+		const forwarded = new Headers({ "x-forwarded-for": "1.2.3.4, not-an-ip" });
+		expect(clientAddress(forwarded, "x-forwarded-for", "10.0.1.6")).toBe(
+			"10.0.1.6",
+		);
+		const good = new Headers({ "x-forwarded-for": "evil, 203.0.113.9" });
+		expect(clientAddress(good, "x-forwarded-for", "10.0.1.6")).toBe(
+			"203.0.113.9",
+		);
+	});
+
 	test("a mapped IPv4 socket address is the IPv4 address", () => {
 		expect(clientAddress(new Headers(), null, "::ffff:10.0.1.6")).toBe(
 			"10.0.1.6",

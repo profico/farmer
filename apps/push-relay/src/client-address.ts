@@ -20,6 +20,8 @@
  * through the proxy that sets it (README, "Environment").
  */
 
+import { isIP } from "node:net";
+
 /** The header `TRUSTED_IP_HEADER` names, lower-case, or null for the socket
  *  address only. */
 export const trustedIpHeader = (
@@ -81,6 +83,7 @@ const resolveAddress = (
 	headers: Headers,
 	trustedHeader: string | null,
 	socketAddress: string | null,
+	onInvalidHeader?: () => void,
 ): string => {
 	if (trustedHeader) {
 		const value = headers.get(trustedHeader);
@@ -88,16 +91,24 @@ const resolveAddress = (
 			trustedHeader === "x-forwarded-for"
 				? value?.split(",").at(-1)?.trim()
 				: value?.trim();
-		if (address) return unmapIpv4(address);
+		// A value that is not an IP address would give a caller a bucket of its
+		// own choice, so use the socket address in its place.
+		if (address && isIP(address) !== 0) return unmapIpv4(address);
+		if (address) onInvalidHeader?.();
 	}
 	const socket = socketAddress?.trim();
 	return socket ? unmapIpv4(socket) : "unknown";
 };
 
-/** The rate-limit bucket of a request: see the comment at the top. */
+/** The rate-limit bucket of a request: see the comment at the top.
+ *  `onInvalidHeader` runs when the trusted header holds a value that is not
+ *  an IP address. */
 export const clientAddress = (
 	headers: Headers,
 	trustedHeader: string | null,
 	socketAddress: string | null,
+	onInvalidHeader?: () => void,
 ): string =>
-	rateLimitBucket(resolveAddress(headers, trustedHeader, socketAddress));
+	rateLimitBucket(
+		resolveAddress(headers, trustedHeader, socketAddress, onInvalidHeader),
+	);
