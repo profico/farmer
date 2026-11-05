@@ -619,6 +619,48 @@ describe("a claim", () => {
 		});
 	});
 
+	test("accept does not count a fill block towards the day cap", async () => {
+		const email = "cap@example.com";
+		const { placeholder } = await importPerson(email);
+		const caller = await signUp(email, true);
+		await db.insert(member).values({
+			id: "m-ip-cap",
+			organizationId: ORG,
+			userId: caller.userId,
+			role: "member",
+			createdAt: new Date(),
+		});
+		await entry(caller.userId, "2025-03-11", 2 * 3600);
+		await db.insert(timeEntry).values({
+			organizationId: ORG,
+			userId: caller.userId,
+			date: "2025-03-11",
+			taskId,
+			projectId,
+			description: "rest of day",
+			durationSeconds: 6 * 3600,
+			fillsDay: true,
+		});
+		// 2h + 20h is 22h: under the cap. With the fill block it would be 28h.
+		await entry(placeholder, "2025-03-11", 20 * 3600);
+
+		await importClaimsService.accept(caller);
+
+		const [merged] = await db
+			.select()
+			.from(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.kind, "member.claim_merged"),
+					eq(auditEvent.subjectUserId, caller.userId),
+				),
+			);
+		expect(present(merged, "merge row").details).toEqual({
+			role: "member",
+			daysOverCap: 0,
+		});
+	});
+
 	test("accept drops a lead link between the caller and the placeholder", async () => {
 		for (const [email, callerLeads] of [
 			["lead.of@example.com", true],
@@ -683,6 +725,17 @@ describe("a claim", () => {
 			.from(importPendingPerson)
 			.where(eq(importPendingPerson.userId, placeholder));
 		expect(pending?.declinedAt).toBeInstanceOf(Date);
+		// The history stays with the placeholder, so the audit row names it.
+		const [declined] = await db
+			.select()
+			.from(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.kind, "member.claim_declined"),
+					eq(auditEvent.subjectUserId, placeholder),
+				),
+			);
+		expect(present(declined, "decline row").targetId).toBe(placeholder);
 		await expect(importClaimsService.accept(caller)).rejects.toThrow(
 			NoPendingClaimError,
 		);
