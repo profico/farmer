@@ -779,6 +779,8 @@ async function initializeServer() {
 	setupGracefulShutdown(server, schedulersHandle);
 }
 
+const POSTHOG_SHUTDOWN_MS = 3_000;
+
 /**
  * Start the schedulers from @farmer/core/jobs.
  *
@@ -803,8 +805,6 @@ async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
  * in-flight tick finish (bounded by a grace period so a stuck tick can't hang
  * the process forever), stop accepting HTTP connections, then exit.
  */
-const POSTHOG_SHUTDOWN_MS = 3_000;
-
 function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
 	schedulersHandle: Promise<SchedulerHandle[]>,
