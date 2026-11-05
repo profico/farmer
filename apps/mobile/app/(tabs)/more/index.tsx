@@ -32,6 +32,10 @@ type Entry = {
 
 const always = () => true;
 
+/** The store listing names Profico as the developer, so the privacy policy and
+ *  the account deletion page come from Profico's site, whatever the server. */
+const LEGAL_SITE = "https://farmer.profi.co";
+
 /** The pages that are not settings. On the web, each is its own page, not a
  *  row of the settings hub. */
 const PAGES: (Entry & {
@@ -214,6 +218,19 @@ export default function MoreScreen() {
 			],
 		);
 
+	const confirmDeleteAccount = () =>
+		showDialog(
+			"Delete your account?",
+			"The web page tells you how to ask for the deletion, and what the organization keeps.",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Open the page",
+					onPress: () => void Linking.openURL(`${LEGAL_SITE}/delete-account`),
+				},
+			],
+		);
+
 	return (
 		<Screen title="More" largeTitle>
 			{assistant || pageRows.length > 0 ? (
@@ -350,6 +367,19 @@ export default function MoreScreen() {
 					tint="gray"
 					title="Version"
 					value={APP_VERSION}
+				/>
+				<SettingsLink
+					icon="lock"
+					tint="gray"
+					title="Privacy policy"
+					external
+					onPress={() => void Linking.openURL(`${LEGAL_SITE}/privacy`)}
+				/>
+				<SettingsLink
+					icon="delete"
+					tint="red"
+					title="Delete account"
+					onPress={confirmDeleteAccount}
 				/>
 				<SettingsLink
 					icon="signOut"
