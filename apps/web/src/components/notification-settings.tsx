@@ -233,7 +233,7 @@ export function NotificationSettings({ isAdmin }: { isAdmin: boolean }) {
 					{subscribed && <Badge variant="secondary">On this device</Badge>}
 				</span>
 			}
-			description="Get OS-level notifications — they reach you even when Farmer isn't open. You enable them per device."
+			description="They reach you when Farmer is closed. Turn them on for each device."
 		>
 			{/* Rows, not tinted panels. Everything on this page is a setting with a
 			    label, a note and a control; giving each one a filled rectangle turned

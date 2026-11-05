@@ -405,10 +405,8 @@ function FileEntriesDialog({
 					<DialogTitle>
 						{allMeetings ? "Add your meetings to a project" : "File your time"}
 					</DialogTitle>
-					<DialogDescription>
-						{allMeetings
-							? "Tick the meetings that belong to one project, pick it, and add them in one go. Change the task only if Meeting isn't right."
-							: "Tick the entries that belong to one project, pick it, and file them in one go. Change the task only if it isn't right."}
+					<DialogDescription className="sr-only">
+						File entries to a project.
 					</DialogDescription>
 				</DialogHeader>
 

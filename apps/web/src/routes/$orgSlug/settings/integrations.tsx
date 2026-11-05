@@ -205,11 +205,7 @@ function IntegrationsSettingsPage() {
 
 	return (
 		<Page>
-			<PageHeader
-				eyebrow={<SettingsEyebrow />}
-				title="Integrations"
-				lede="Connect external accounts to enrich your time entries."
-			/>
+			<PageHeader eyebrow={<SettingsEyebrow />} title="Integrations" />
 
 			{/* GitHub — personal identity and per-user toggles. The organization's
 			    App installations are under Workspace → Integrations. */}
@@ -241,7 +237,7 @@ function IntegrationsSettingsPage() {
 							? "GitHub no longer accepts this connection, so your commits and pull requests have stopped reaching your time entries. That happens when the authorisation is revoked or expires. Connecting again is the whole fix — nothing else is lost."
 							: status.unreachable
 								? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit/pull-request sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
-								: "Identifies you so commits and pull requests you author or review can be matched to your time entries."
+								: "Matches your commits and pull requests to your time entries."
 					}
 					action={
 						status.needsReconnect ? (
@@ -270,8 +266,7 @@ function IntegrationsSettingsPage() {
 									<AlertDialogHeader>
 										<AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
 										<AlertDialogDescription>
-											Commits and pull requests will no longer be matched to you
-											when logging time. You can reconnect at any time.
+											Your commits and pull requests stop matching your time.
 										</AlertDialogDescription>
 									</AlertDialogHeader>
 									<AlertDialogFooter>
@@ -295,7 +290,7 @@ function IntegrationsSettingsPage() {
 					<SettingList className="mt-1">
 						<SettingToggleRow
 							title="Auto-load commits"
-							description="Show the day's commits and pull request activity automatically in the add-block dialog — no 'Find activity' click."
+							description="Show the day's commits and pull requests in the add-block dialog."
 							checked={settings.githubAutoLoadCommits}
 							patch={(value) => ({ githubAutoLoadCommits: value })}
 						/>
@@ -329,7 +324,7 @@ function IntegrationsSettingsPage() {
 					description={
 						googleStatus.unreachable
 							? "Your account is still linked — Google isn't reachable right now, so meeting autofill and calendar sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
-							: "Lets you pick a meeting from your calendar when logging time — it autofills the start/end and captures the join link."
+							: "Pick a calendar meeting when you log time."
 					}
 					action={
 						googleStatus.connected ? (
@@ -353,8 +348,7 @@ function IntegrationsSettingsPage() {
 											Disconnect Google Calendar?
 										</AlertDialogTitle>
 										<AlertDialogDescription>
-											You'll no longer be able to autofill meetings from your
-											calendar when logging time. You can reconnect at any time.
+											Calendar meetings stop filling in your time.
 										</AlertDialogDescription>
 									</AlertDialogHeader>
 									<AlertDialogFooter>
@@ -384,7 +378,7 @@ function IntegrationsSettingsPage() {
 						/>
 						<SettingRow
 							title="Sync now"
-							description="Import and reconcile your calendar meetings right now, without waiting for the next automatic sync."
+							description="Sync calendar meetings now."
 							action={
 								<Button
 									variant="outline"
@@ -458,7 +452,7 @@ function McpSection({ appOrigin }: { appOrigin: string }) {
 			<SettingRow
 				icon={<PlugsConnectedIcon className="size-5" />}
 				title="Model Context Protocol"
-				description="Connect Claude Code, or any MCP client, to this workspace. It gets the same tools the Assistant has and sees exactly what you are allowed to see — your own time entries, the projects you are on, the reports your role allows. Signing in happens in your browser, as you."
+				description="Connect Claude Code or any MCP client. It gets the Assistant's tools and sees what you see."
 			/>
 
 			<SettingList className="mt-1">
@@ -526,7 +520,7 @@ function CliSection({ appOrigin }: { appOrigin: string }) {
 			<SettingRow
 				icon={<TerminalWindowIcon className="size-5" />}
 				title="Command-line tool"
-				description="Log and read your time from a terminal with the farmer command. The installer signs you in at the end: approve the code in your browser, as you. It sees exactly what you see here."
+				description="Log and read time from a terminal. The installer signs you in through the browser."
 			/>
 
 			<SettingList className="mt-1">

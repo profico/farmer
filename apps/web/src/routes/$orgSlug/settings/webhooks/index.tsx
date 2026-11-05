@@ -111,9 +111,7 @@ function WebhooksSettingsPage() {
 			/>
 
 			{endpoints.length === 0 ? (
-				<p className="text-sm text-muted-foreground">
-					No endpoints yet. Add one to start sending events.
-				</p>
+				<p className="text-sm text-muted-foreground">No endpoints yet.</p>
 			) : (
 				<Table>
 					<TableHeader>

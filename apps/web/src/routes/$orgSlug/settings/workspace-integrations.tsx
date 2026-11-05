@@ -126,11 +126,7 @@ function WorkspaceIntegrationsPage() {
 
 	return (
 		<Page>
-			<PageHeader
-				eyebrow={<SettingsEyebrow />}
-				title="Integrations"
-				lede="What this workspace is connected to: GitHub accounts for repositories, Slack for reminders, and the assistant's model provider."
-			/>
+			<PageHeader eyebrow={<SettingsEyebrow />} title="Integrations" />
 
 			{/* Per-org GitHub App installations — repo & commit access */}
 			<PageSection>
@@ -193,10 +189,7 @@ function HouseRulesRow({ stored }: { stored: string }) {
 			<div>
 				<h3 className="text-sm font-medium">House rules</h3>
 				<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
-					Added to the assistant's instructions for everyone in this workspace —
-					billing conventions, how you name projects, what to ask before acting.
-					It is appended to the built-in instructions, not a replacement for
-					them, and the built-in ones win any disagreement.
+					Added to the built-in instructions. The built-in ones win a conflict.
 				</p>
 			</div>
 			<Textarea
@@ -400,7 +393,7 @@ function OpenRouterSection() {
 						unreadable && <Badge variant="destructive">Connect again</Badge>
 					)
 				}
-				description="Powers the Assistant. Everyone in the workspace asks through this one account, and every answer is scoped to what that person is allowed to see."
+				description="Powers the Assistant for the whole workspace. Each answer uses only what the asker can see."
 				action={
 					configured || unreadable ? (
 						<AlertDialog>
@@ -419,11 +412,8 @@ function OpenRouterSection() {
 								<AlertDialogHeader>
 									<AlertDialogTitle>Disconnect OpenRouter</AlertDialogTitle>
 									<AlertDialogDescription>
-										The Assistant stops working for everyone in this workspace
-										and the stored key is forgotten. Past conversations are kept
-										— they belong to the people who had them. Revoke the key
-										itself from your OpenRouter dashboard if you want it dead
-										everywhere.
+										The Assistant stops for everyone. Past conversations stay.
+										To revoke the key, use OpenRouter.
 									</AlertDialogDescription>
 								</AlertDialogHeader>
 								<AlertDialogFooter>
@@ -455,7 +445,7 @@ function OpenRouterSection() {
 							? `Currently ${settings?.keyHint ?? ""}. Pasting a new one replaces it; the old key is not recoverable from here.`
 							: unreadable
 								? "The stored key can no longer be read, because the server's secret changed after it was saved. The Assistant is off for everyone until a key is saved again — the same one or a new one."
-								: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
+								: "Create a key at openrouter.ai/keys. It is never shown again."
 					}
 					action={
 						<div className="flex items-center gap-2">
@@ -481,7 +471,7 @@ function OpenRouterSection() {
 				{configured && (
 					<SettingRow
 						title="Default model"
-						description="What a new conversation starts on. Only models that support tool calling are listed. The quality and output of the model will determine how the assistant responds."
+						description="The default for new conversations. Only models with tool calling are listed."
 						action={
 							<ModelPicker
 								models={models}
@@ -663,7 +653,7 @@ function SlackSection() {
 					/>
 					<SettingRow
 						title="Matched people"
-						description="People are matched to Slack by email when they join, automatically. Anyone whose work email isn't in the workspace simply doesn't get reminders — nothing breaks. Re-match by hand only if someone joined Slack after joining here."
+						description="People are matched to Slack by email when they join. Anyone without a matching email gets no reminders. Re-match if someone joined Slack later."
 						badge={
 							<Badge variant="outline">
 								{status?.connected ? status.mappedPeople : 0} matched

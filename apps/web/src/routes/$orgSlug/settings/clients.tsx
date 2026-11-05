@@ -341,7 +341,7 @@ function ClientsPage() {
 				eyebrow={<SettingsEyebrow />}
 				title="Clients"
 				className="shrink-0"
-				lede={`Every project belongs to a client, which is what makes the Time report's "by client" view add up. The Internal client is created automatically and holds work that is never invoiced.`}
+				lede="The Internal client holds work that is never invoiced."
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput

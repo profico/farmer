@@ -133,11 +133,7 @@ const copy = async (value: string) => {
 function SignInSettingsPage() {
 	return (
 		<Page>
-			<PageHeader
-				eyebrow={<SettingsEyebrow />}
-				title="Sign-in"
-				lede="Who may create an account on this deployment, and the accounts they can sign in with."
-			/>
+			<PageHeader eyebrow={<SettingsEyebrow />} title="Sign-in" />
 
 			<InstanceSettingsForm
 				section="sign-in"

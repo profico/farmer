@@ -289,10 +289,7 @@ function SettingsPage() {
 			<PageHeader eyebrow={back} title={title} />
 			<Form {...form}>
 				<form onSubmit={form.handleSubmit((values) => save.mutate(values))}>
-					<PageSection
-						title="Icon"
-						description="How the project looks in the list, on its page, in the picker and on the timesheet."
-					>
+					<PageSection title="Icon">
 						<FormField
 							control={form.control}
 							name="icon"

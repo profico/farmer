@@ -158,16 +158,9 @@ function OrganizationSettingsPage() {
 
 	return (
 		<Page>
-			<PageHeader
-				eyebrow={<SettingsEyebrow />}
-				title="Organization"
-				lede="General settings for this organization."
-			/>
+			<PageHeader eyebrow={<SettingsEyebrow />} title="Organization" />
 
-			<PageSection
-				title="Name"
-				description="The organization's display name, shown in the sidebar and switcher."
-			>
+			<PageSection title="Name">
 				<form
 					className="flex w-full max-w-sm gap-2"
 					onSubmit={(e) => {
@@ -192,10 +185,7 @@ function OrganizationSettingsPage() {
 				</form>
 			</PageSection>
 
-			<PageSection
-				title="Country"
-				description="Used to determine public holidays across the organization."
-			>
+			<PageSection title="Country" description="Sets the public holidays.">
 				<Select
 					value={settings.country}
 					onValueChange={(value) =>
@@ -219,7 +209,7 @@ function OrganizationSettingsPage() {
 
 			<PageSection
 				title="Timezone"
-				description="Decides which day an entry or a synced meeting falls on, the meeting times shown, and when today starts. On the next sync, synced meetings in the automation window move to the right day; other entries keep their day."
+				description="Decides which day an entry falls on. After a change, the next sync moves recent meetings; other entries keep their day."
 			>
 				<TimezonePicker
 					value={settings.timezone}
@@ -228,10 +218,7 @@ function OrganizationSettingsPage() {
 				/>
 			</PageSection>
 
-			<PageSection
-				title="Week starts on"
-				description="The first day of every week in this organization: the timesheet, the home page, week reports, date pickers and the CLI."
-			>
+			<PageSection title="Week starts on">
 				<Select
 					value={String(settings.weekStartsOn)}
 					onValueChange={(value) =>
@@ -257,8 +244,8 @@ function OrganizationSettingsPage() {
 				title={uploadsEnabled ? "Logo" : "Logo URL"}
 				description={
 					uploadsEnabled
-						? "The organization's logo, shown in the sidebar. Upload an image, or paste a public image URL (SVG or PNG work best). Leave it empty to fall back to the organization initials."
-						: "A public image URL for the organization's logo, shown in the sidebar (SVG or PNG work best). Leave empty to fall back to the organization initials."
+						? "Upload an image or paste a public URL. SVG or PNG work best."
+						: "A public image URL. SVG or PNG work best."
 				}
 			>
 				<form
@@ -496,7 +483,7 @@ function TrackingToleranceSection() {
 	return (
 		<PageSection
 			title="Tracking tolerance"
-			description="How far below the target so far someone may be and still count as only slightly behind. Beyond it they are behind — on the Tracking report and in every reminder. The target is the month's hour fund spread over its working days (8h each, public holidays excluded); a person's total is work plus time-off."
+			description="How far below the month's target so far someone may be before they count as behind. Time off counts toward the target."
 		>
 			<form
 				className="flex w-full max-w-sm items-center gap-2"
@@ -573,7 +560,7 @@ function AutomationLockSection() {
 	return (
 		<PageSection
 			title="Automation lock"
-			description="The last day the sync engines may not touch. Recurring blocks, calendar meetings and commit work-time blocks stop at this date, so a month you've already closed can't quietly gain hours. People can still edit their own entries in those months — this only holds back the automations. Leave it empty for no lock."
+			description="Automations add nothing on or before this date, so a closed month cannot gain hours. People can still edit their own entries."
 		>
 			<form
 				className="flex w-full max-w-sm items-center gap-2"
