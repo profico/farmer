@@ -285,9 +285,12 @@ export function ProviderButtons({
 /** The switch that shows the other ways to sign in. */
 export function OthersToggle({
 	shown,
+	busy,
 	onToggle,
 }: {
 	shown: boolean;
+	/** Hiding the running button would hide its spinner too. */
+	busy: boolean;
 	onToggle: () => void;
 }) {
 	return (
@@ -299,6 +302,7 @@ export function OthersToggle({
 				variant="text"
 				wide
 				onPress={onToggle}
+				disabled={busy}
 			/>
 		</View>
 	);

@@ -160,7 +160,7 @@ function Methods({
 			) : null}
 			{/* Android draws the spinner in the button that runs. */}
 			{flow.busy && IOS ? <Busy /> : null}
-			<OthersToggle shown={showOthers} onToggle={onToggle} />
+			<OthersToggle shown={showOthers} busy={flow.busy} onToggle={onToggle} />
 			{showOthers ? <Fallbacks flow={flow} hasMethods /> : null}
 		</>
 	);
