@@ -17,6 +17,9 @@ export type ActionButtonProps = {
 	/** iOS: the button fills the width, as the main button of a form does.
 	 *  Android ignores it. */
 	wide?: boolean;
+	/** Android: a spinner takes the place of the label, and the button keeps
+	 *  its width. iOS ignores it. */
+	busy?: boolean;
 };
 
 /** The width that a full-width button takes, more than any screen. */
