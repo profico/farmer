@@ -1,4 +1,4 @@
-import { ShieldCheckIcon } from "@phosphor-icons/react";
+import { ShieldCheckIcon, UserMinusIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQuery,
@@ -11,11 +11,23 @@ import { toast } from "sonner";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "#/components/ui/alert-dialog.tsx";
+import {
 	Avatar,
 	AvatarFallback,
 	AvatarImage,
 } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { Input } from "#/components/ui/input.tsx";
+import { Label } from "#/components/ui/label.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { SearchInput } from "#/components/ui/search-input.tsx";
 import { getInitials } from "#/lib/utils.ts";
@@ -24,7 +36,10 @@ import {
 	platformAdminsQuery,
 	platformPeopleSearchQuery,
 } from "#/queries/platform-admins.ts";
-import { setPlatformAdmin } from "#/server/platform-admins.ts";
+import {
+	anonymiseAccount,
+	setPlatformAdmin,
+} from "#/server/platform-admins.ts";
 
 /**
  * Who operates this deployment.
@@ -98,12 +113,99 @@ function PlatformPersonCell({
 	);
 }
 
+type PlatformPersonRow = {
+	id: string;
+	name: string;
+	email: string;
+	image: string | null;
+};
+
+/**
+ * Confirm the anonymise action. The admin types the person's address, so a
+ * click on the wrong row cannot start it. The server compares the address
+ * again.
+ */
+function AnonymiseDialog({
+	person,
+	onClose,
+}: {
+	person: PlatformPersonRow | null;
+	onClose: () => void;
+}) {
+	const queryClient = useQueryClient();
+	const [typed, setTyped] = useState("");
+	const matches =
+		person !== null &&
+		typed.trim().toLowerCase() === person.email.toLowerCase();
+
+	const anonymise = useMutation({
+		mutationFn: (input: PlatformPersonRow) =>
+			anonymiseAccount({ data: { userId: input.id, email: input.email } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: platformKeys.people });
+			toast.success("The account is anonymised.");
+			onClose();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+
+	return (
+		<AlertDialog
+			open={person !== null}
+			onOpenChange={(open) => {
+				if (open) return;
+				setTyped("");
+				onClose();
+			}}
+		>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Anonymise this account?</AlertDialogTitle>
+					<AlertDialogDescription>
+						{person?.name} can never sign in again. Their name, email address
+						and picture are replaced by "Deleted user". Their time entries stay
+						in each workspace. You cannot undo this.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<div className="grid gap-2">
+					<Label htmlFor="anonymise-email">
+						Type <strong>{person?.email}</strong> to confirm
+					</Label>
+					<Input
+						id="anonymise-email"
+						value={typed}
+						onChange={(event) => setTyped(event.target.value)}
+						autoComplete="off"
+						spellCheck={false}
+					/>
+				</div>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						disabled={!matches || anonymise.isPending}
+						onClick={() => {
+							if (person) anonymise.mutate(person);
+						}}
+					>
+						<UserMinusIcon />
+						Anonymise
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+}
+
 function PlatformAdminsPage() {
 	const queryClient = useQueryClient();
 	const { session } = Route.useRouteContext();
 	const { data: admins } = useSuspenseQuery(platformAdminsQuery());
 
 	const [term, setTerm] = useState("");
+	const [toAnonymise, setToAnonymise] = useState<PlatformPersonRow | null>(
+		null,
+	);
 	const { data: results = [], isFetching } = useQuery(
 		platformPeopleSearchQuery(term),
 	);
@@ -169,7 +271,7 @@ function PlatformAdminsPage() {
 				</ul>
 			</PageSection>
 
-			<PageSection title="Add somebody">
+			<PageSection title="Find somebody">
 				<SearchInput
 					value={term}
 					onValueChange={setTerm}
@@ -183,6 +285,16 @@ function PlatformAdminsPage() {
 							<li key={person.id} className="flex items-center gap-3 py-3">
 								<PlatformPersonCell person={person} />
 								<span className="flex-1" />
+								<Button
+									variant="outline"
+									size="sm"
+									className="hover:text-destructive"
+									disabled={busy}
+									onClick={() => setToAnonymise(person)}
+								>
+									<UserMinusIcon />
+									Anonymise
+								</Button>
 								<Button
 									size="sm"
 									disabled={busy}
@@ -208,6 +320,10 @@ function PlatformAdminsPage() {
 					</ul>
 				)}
 			</PageSection>
+			<AnonymiseDialog
+				person={toAnonymise}
+				onClose={() => setToAnonymise(null)}
+			/>
 		</Page>
 	);
 }
