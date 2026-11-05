@@ -9,7 +9,7 @@ import { useToday } from "#/hooks/use-today.ts";
 import { dateSearch } from "#/lib/time-search.ts";
 
 import { AnswerChart, ChartPlaceholder } from "./answer-chart.tsx";
-import { type Align, parseBlocks } from "./answer-parse.ts";
+import { type Align, parseBlocks, safeHref } from "./answer-parse.ts";
 import { useTypeset } from "./typeset.ts";
 
 // A deliberately small markdown reader.
@@ -69,12 +69,6 @@ import { useTypeset } from "./typeset.ts";
 // pairs with `useTypeset` in `typeset.ts` — the reveal is the frame-level half
 // of one effect, and the drain is the part that decides when a word is there to
 // reveal.
-
-/** Anything that isn't a plain web link is rendered as text rather than as an
- *  anchor. The model composes these from data it read, so `javascript:` is
- *  reachable from a project name if nothing checks. */
-const safeHref = (href: string) =>
-	/^(https?:\/\/|mailto:|\/)/i.test(href.trim()) ? href.trim() : null;
 
 /** The host an `http(s)` link goes to, or null for a path or a `mailto:`.
  *  The label of a link is text the model wrote, so it can name one site and

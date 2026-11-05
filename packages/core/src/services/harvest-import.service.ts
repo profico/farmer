@@ -288,10 +288,10 @@ const heldElsewhere = async (
 /**
  * The people an earlier run of this org invited and who have not joined yet:
  * a person mapping to a user with no membership here, and a pending
- * invitation of this org to that user's address. With several organizations
- * on the instance an existing user is invited rather than attached (see
- * `start`), and their hours are written at once, so until they accept they
- * are a mapped person with no `member` row. A second run matches them, as it
+ * invitation of this org to that user's address. Only a run from before the
+ * claim change wrote such an invitation: `start` now attaches the user with a
+ * pending claim. Until they accept, that older person is a mapped person
+ * with no `member` row. A second run matches them, as it
  * matches a member, rather than calling them gone. Only people this org's own
  * import mapped are read, so this says nothing about any other address.
  */
@@ -1439,7 +1439,7 @@ export const harvestImportService = {
 			where: eq(organization.id, org),
 			columns: { name: true, slug: true },
 		});
-		// With several organizations, an existing user is invited, not added.
+		// With several organizations, each person gets a pending claim.
 		const multiOrg = !isSingleOrgMode();
 		// The people the run makes members at once (single-org mode). A
 		// pending claim is not here: `importClaimsService.accept` records it.

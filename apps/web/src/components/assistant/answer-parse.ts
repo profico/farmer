@@ -313,3 +313,11 @@ export const parseBlocks = (source: string, streaming: boolean): Block[] => {
 	}
 	return blocks;
 };
+
+/** Anything that isn't a plain web link is rendered as text rather than as an
+ *  anchor. The model composes these from data it read, so `javascript:` is
+ *  reachable from a project name if nothing checks. */
+export const safeHref = (href: string) =>
+	// A path is one `/` and no second `/` or `\`: a browser reads `//host` and
+	// `/\host` as another site, which `externalHost` would not label.
+	/^(https?:\/\/|mailto:|\/(?![/\\]))/i.test(href.trim()) ? href.trim() : null;
