@@ -1,3 +1,4 @@
+import { normalizeOrigin } from "@farmer/api-client";
 import { z } from "zod";
 
 import { USER_AGENT } from "../config";
@@ -43,6 +44,31 @@ const pushRelaySchema = z.object({
 	pushRelay: z.object({ enabled: z.boolean(), url: z.string().nullable() }),
 });
 
+declare const __DEV__: boolean;
+
+/**
+ * The relay URL when the app may call it, else null. The Server names the
+ * relay, and the app sends the push token and the relay secret there, so the
+ * URL must be https. Plain http works only for a local host in a dev build.
+ * `normalizeOrigin` checks the host; the URL keeps its path.
+ */
+export const acceptRelayUrl = (
+	url: string,
+	allowHttp = __DEV__,
+): string | null => {
+	const text = url.trim();
+	const isHttps = /^https:\/\//i.test(text);
+	if (!isHttps && !(allowHttp && /^http:\/\//i.test(text))) return null;
+	try {
+		normalizeOrigin(text);
+		return text;
+	} catch {
+		return null;
+	}
+};
+
+let refusedLogged = false;
+
 /** The relay that the Server uses, or null when push is off. */
 export const serverRelayUrl = async (
 	origin: string,
@@ -53,7 +79,15 @@ export const serverRelayUrl = async (
 	const parsed = pushRelaySchema.safeParse(await response.json());
 	if (!parsed.success) return null;
 	const { enabled, url } = parsed.data.pushRelay;
-	return enabled && url ? url : null;
+	if (!enabled || !url) return null;
+	const accepted = acceptRelayUrl(url);
+	if (!accepted && !refusedLogged) {
+		refusedLogged = true;
+		console.warn(
+			"[push] the Server names a relay that is not https, so no push",
+		);
+	}
+	return accepted;
 };
 
 /** The body of `POST /api/v1/me/devices`. */
