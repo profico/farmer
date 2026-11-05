@@ -29,7 +29,7 @@ export const posthogJobFailureSink = ({
 			organization_id: organizationId,
 			// `background-job` is a bucket, not somebody: it must not mint a person
 			// (see `propertiesOf` in `posthog-api.ts`).
-			...(userId ? {} : { $process_person_profile: false }),
+			$process_person_profile: userId ? undefined : false,
 		},
 	);
 };
