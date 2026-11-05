@@ -1,9 +1,10 @@
-import { eq, ilike, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { db } from "../db";
 import { apiToken } from "../db/schema/api-tokens";
 import { assistantConversation } from "../db/schema/assistant";
+import { auditEvent } from "../db/schema/audit";
 import {
 	account,
 	deviceCode,
@@ -20,6 +21,7 @@ import {
 	notificationSettings,
 	pushSubscription,
 } from "../db/schema/notifications";
+import { memberProfile } from "../db/schema/people";
 import {
 	commitDetachTombstone,
 	commitFillTombstone,
@@ -51,17 +53,18 @@ import type { Ctx, CtxActor } from "./types";
  * Order, so that a failure never leaves a person who can still sign in:
  *
  * 1. Guards. They read only, so a refusal changes nothing.
- * 2. Revoke API tokens and remove phones through their services. They use the
- *    ambient connection and cannot join a transaction. A failure here leaves
- *    an account that is still whole, not a half-anonymised one.
- * 3. One transaction: scrub the `user` row, ban it, and delete every
- *    credential (sessions, sign-in methods, OAuth grants, device codes, the
- *    tokens that carry the old address).
- * 4. Archive each membership (audit row and `member.*` webhook).
- * 5. One transaction: delete the personal rows.
+ * 2. One transaction: scrub the `user` row (and any claim name), ban it, and
+ *    delete every credential (sessions, sign-in methods, OAuth grants, device
+ *    codes, the tokens that carry the old address).
+ * 3. Revoke API tokens and remove phones through their services. They use the
+ *    ambient connection and cannot join a transaction. They run after the
+ *    ban, so a live session cannot make a new token in the gap.
+ * 4. Archive each membership (audit row and `member.*` webhook). A membership
+ *    that is archived with no `member.anonymised` row gets the row.
+ * 5. One transaction: delete the personal rows, and any token or phone left.
  *
- * Every step is safe to run again, so a failure after step 3 is finished by
- * the same call. The person is banned and has no credential from step 3 on.
+ * Every step is safe to run again, so a failure after step 2 is finished by
+ * the same call. The person is banned and has no credential from step 2 on.
  */
 
 export type AnonymiseRefusal =
@@ -94,6 +97,9 @@ export const deletedEmailFor = (userId: string): string =>
  *  assistant history (its messages cascade). Time entries, absences,
  *  assignments, member rows and team-lead links are NOT here. */
 const PERSONAL_ROWS: readonly (readonly [PgTable, PgColumn])[] = [
+	// Orphans the services missed, so a re-run cleans them.
+	[apiToken, apiToken.userId],
+	[mobileDevice, mobileDevice.userId],
 	[pushSubscription, pushSubscription.userId],
 	[notificationSettings, notificationSettings.userId],
 	[assistantConversation, assistantConversation.userId],
@@ -110,6 +116,8 @@ const PERSONAL_ROWS: readonly (readonly [PgTable, PgColumn])[] = [
 	[memberSlackIdentity, memberSlackIdentity.userId],
 	[slackReminderLog, slackReminderLog.recipientUserId],
 ];
+
+const OTP_TYPES = ["sign-in", "email-verification", "forget-password"];
 
 const refuse = (reason: AnonymiseRefusal, message: string): never => {
 	throw new AnonymiseRefusedError(reason, message);
@@ -144,6 +152,22 @@ const assertAllowed = async (
 	return person.email;
 };
 
+/** The verification rows that carry one address, matched exactly so that
+ *  `xa@b.co` survives the removal of `a@b.co`. The forms are the ones
+ *  better-auth writes: the bare address, and `<type>-otp-<address>` of the
+ *  email-otp plugin (`change-email` appends `-<new address>`). */
+const verificationIdentifierOf = (email: string) => {
+	const lowered = email.toLowerCase();
+	const exact = [lowered, ...OTP_TYPES.map((t) => `${t}-otp-${lowered}`)];
+	// `%` and `_` are wildcards to `like`: escape them.
+	const escaped = lowered.replace(/[\\%_]/g, "\\$&");
+	const changeEmail = `change-email-otp-${escaped}-%`;
+	return sql`(lower(${verification.identifier}) in (${sql.join(
+		exact.map((f) => sql`${f}`),
+		sql`, `,
+	)}) or lower(${verification.identifier}) like ${changeEmail})`;
+};
+
 /** Step 2: the user row and every way back in, in one transaction. */
 const scrubAccess = async (userId: string, oldEmail: string) => {
 	await db.transaction(async (tx) => {
@@ -168,13 +192,14 @@ const scrubAccess = async (userId: string, oldEmail: string) => {
 			.where(eq(oauthAccessToken.userId, userId));
 		await tx.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
 		await tx.delete(deviceCode).where(eq(deviceCode.userId, userId));
+		// `claim_name` is what the roster shows in place of `user.name`.
+		await tx
+			.update(memberProfile)
+			.set({ claimName: null, claimPendingSince: null })
+			.where(eq(memberProfile.userId, userId));
 		// A second run finds the placeholder address, and nothing is keyed by it.
 		if (oldEmail === deletedEmailFor(userId)) return;
-		// `%` and `_` are wildcards to `ilike`: escape them, as the search does.
-		const pattern = `%${oldEmail.replace(/[\\%_]/g, "\\$&")}%`;
-		await tx
-			.delete(verification)
-			.where(ilike(verification.identifier, pattern));
+		await tx.delete(verification).where(verificationIdentifierOf(oldEmail));
 		await tx
 			.delete(invitation)
 			.where(sql`lower(${invitation.email}) = lower(${oldEmail})`);
@@ -206,6 +231,18 @@ const revokeDevicesAndTokens = async (userId: string) => {
 	}
 };
 
+const hasAnonymisedRow = async (organizationId: string, userId: string) => {
+	const row = await db.query.auditEvent.findFirst({
+		where: and(
+			eq(auditEvent.organizationId, organizationId),
+			eq(auditEvent.subjectUserId, userId),
+			eq(auditEvent.kind, "member.anonymised"),
+		),
+		columns: { id: true },
+	});
+	return row !== undefined;
+};
+
 /** Step 3b: archive each workspace membership, then say so once per
  *  workspace. The platform admin is the actor of both rows. */
 const archiveMemberships = async (
@@ -219,7 +256,11 @@ const archiveMemberships = async (
 		.where(eq(member.userId, targetId));
 	for (const { organizationId } of rows) {
 		const ctx: Ctx = { organizationId, userId: byUserId, actor };
-		if (!(await membersService.archiveForAnonymise(ctx, targetId))) continue;
+		const archivedNow = await membersService.archiveForAnonymise(ctx, targetId);
+		// An archive without its audit row is a crash between the two: repair it.
+		if (!archivedNow && (await hasAnonymisedRow(organizationId, targetId))) {
+			continue;
+		}
 		await recordAudit(ctx, {
 			kind: "member.anonymised",
 			target: { type: "member", id: targetId, label: DELETED_USER_NAME },
@@ -248,8 +289,8 @@ export const anonymiseService = {
 		targetId: string,
 	): Promise<void> => {
 		const oldEmail = await assertAllowed(by.userId, targetId);
-		await revokeDevicesAndTokens(targetId);
 		await scrubAccess(targetId, oldEmail);
+		await revokeDevicesAndTokens(targetId);
 		await archiveMemberships(by.userId, by.actor ?? { via: "web" }, targetId);
 		await deletePersonalRows(targetId);
 	},

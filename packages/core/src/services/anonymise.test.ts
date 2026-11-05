@@ -4,7 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { toApiPerson } from "../api/people";
@@ -15,6 +15,7 @@ import { assistantConversation } from "../db/schema/assistant";
 import { auditEvent } from "../db/schema/audit";
 import {
 	account,
+	invitation,
 	member,
 	organization,
 	session,
@@ -207,7 +208,41 @@ beforeAll(async () => {
 			value: "x",
 			expiresAt: new Date(Date.now() + 1e6),
 		},
+		{
+			id: "v-an-3",
+			identifier: `sign-in-otp-${OLD_EMAIL.toLowerCase()}`,
+			value: "x",
+			expiresAt: new Date(Date.now() + 1e6),
+		},
+		{
+			// A neighbour whose address ends with the leaver's address.
+			id: "v-an-4",
+			identifier: `x${OLD_EMAIL.toLowerCase()}`,
+			value: "x",
+			expiresAt: new Date(Date.now() + 1e6),
+		},
+		{
+			id: "v-an-5",
+			identifier: `sign-in-otp-x${OLD_EMAIL.toLowerCase()}`,
+			value: "x",
+			expiresAt: new Date(Date.now() + 1e6),
+		},
 	]);
+	await db.insert(invitation).values({
+		id: "i-an-1",
+		organizationId: ORG_TWO,
+		email: OLD_EMAIL.toUpperCase(),
+		status: "pending",
+		expiresAt: new Date(Date.now() + 1e6),
+		inviterId: OWNER,
+	});
+	// A pending claim holds the person's real name; the roster reads it first.
+	await db.insert(memberProfile).values({
+		organizationId: ORG,
+		userId: leaverId,
+		claimName: "Leaving Person",
+		claimPendingSince: now,
+	});
 });
 
 afterAll(async () => {
@@ -304,7 +339,37 @@ describe("anonymise", () => {
 			}),
 		).toEqual([]);
 		const left = await db.query.verification.findMany();
-		expect(left.map((v) => v.identifier)).toEqual(["unrelated@example.com"]);
+		expect(left.map((v) => v.identifier).sort()).toEqual(
+			[
+				"unrelated@example.com",
+				`x${OLD_EMAIL.toLowerCase()}`,
+				`sign-in-otp-x${OLD_EMAIL.toLowerCase()}`,
+			].sort(),
+		);
+	});
+
+	test("deletes the invitations to the old address", async () => {
+		expect(await db.query.invitation.findMany()).toEqual([]);
+	});
+
+	test("clears the claim name, so the roster shows Deleted user", async () => {
+		const profile = present(
+			await db.query.memberProfile.findFirst({
+				where: and(
+					eq(memberProfile.userId, leaverId),
+					eq(memberProfile.organizationId, ORG),
+				),
+			}),
+			"the leaver's profile",
+		);
+		expect(profile.claimName).toBeNull();
+		expect(profile.claimPendingSince).toBeNull();
+		const { members } = await membersService.roster(orgCtx);
+		const person = present(
+			members.find((m) => m.userId === leaverId),
+			"the leaver in the roster",
+		);
+		expect(person.user.name).toBe("Deleted user");
 	});
 
 	test("archives each membership and records it in each workspace", async () => {
@@ -365,5 +430,40 @@ describe("anonymise", () => {
 		expect(
 			(await db.query.user.findFirst({ where: eq(user.id, leaverId) }))?.email,
 		).toBe(deletedEmailFor(leaverId));
+	});
+
+	test("a re-run repairs a missing audit row and a leftover token", async () => {
+		const anonymised = () =>
+			db.query.auditEvent.findMany({
+				where: and(
+					eq(auditEvent.subjectUserId, leaverId),
+					eq(auditEvent.kind, "member.anonymised"),
+					eq(auditEvent.organizationId, ORG),
+				),
+			});
+		await db
+			.delete(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.subjectUserId, leaverId),
+					eq(auditEvent.kind, "member.anonymised"),
+					eq(auditEvent.organizationId, ORG),
+				),
+			);
+		await db.insert(apiToken).values({
+			userId: leaverId,
+			organizationId: ORG,
+			name: "Orphan",
+			tokenHash: hashApiToken("token-orphan"),
+			hint: "orph",
+			scope: "write",
+		});
+		await anonymiseService.anonymise(admin, leaverId);
+		expect(await anonymised()).toHaveLength(1);
+		expect(
+			await db.query.apiToken.findMany({
+				where: eq(apiToken.userId, leaverId),
+			}),
+		).toEqual([]);
 	});
 });

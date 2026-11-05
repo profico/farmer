@@ -140,7 +140,7 @@ function AnonymiseDialog({
 
 	const anonymise = useMutation({
 		mutationFn: (input: PlatformPersonRow) =>
-			anonymiseAccount({ data: { userId: input.id, email: input.email } }),
+			anonymiseAccount({ data: { userId: input.id, email: typed } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: platformKeys.people });
 			toast.success("The account is anonymised.");
