@@ -394,8 +394,15 @@ export function toRulePayload(values: FormValues) {
  *  exactly what is sent. */
 export function toEntryPayload(
 	values: FormValues,
-	pick: { meetingUrl: string | null; calendarEventId: string | null },
+	pick: {
+		meetingUrl: string | null;
+		calendarEventId: string | null;
+		meetingTaskId?: string;
+	},
 ) {
+	// The meeting sync owns an entry that holds an event id, and it overwrites
+	// or removes it. Only a Meeting entry may carry the link.
+	const isMeeting = !values.fillsDay && values.taskId === pick.meetingTaskId;
 	const parsed = parseDuration(values.duration);
 	const seconds =
 		parsed !== null && parsed > 0 ? snapToQuarterHour(parsed) : undefined;
@@ -409,10 +416,8 @@ export function toEntryPayload(
 		durationSeconds: values.fillsDay ? undefined : seconds,
 		overtime: values.overtime,
 		fillsDay: values.fillsDay,
-		meetingUrl: values.fillsDay ? undefined : pick.meetingUrl || undefined,
-		calendarEventId: values.fillsDay
-			? undefined
-			: pick.calendarEventId || undefined,
+		meetingUrl: isMeeting ? pick.meetingUrl || undefined : undefined,
+		calendarEventId: isMeeting ? pick.calendarEventId || undefined : undefined,
 	};
 }
 

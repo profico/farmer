@@ -360,7 +360,9 @@ function AddBlockDialogBody({
 		fillsDay,
 		isAbsence,
 		hasProject,
-		meetingTaskId,
+		// An edit keeps its task, and only a Meeting entry may hold an event link.
+		meetingTaskId:
+			isEdit && selectedTask?.id !== meetingTaskId ? undefined : meetingTaskId,
 		github: githubStatus,
 		google: googleStatus,
 		linkedRepos,
@@ -581,7 +583,11 @@ function AddBlockDialogBody({
 
 	const mutation = useMutation<{ id: string }, Error, FormValues>({
 		mutationFn: (values: FormValues) =>
-			submitEntry(values, entry, { meetingUrl, calendarEventId }),
+			submitEntry(values, entry, {
+				meetingUrl,
+				calendarEventId,
+				meetingTaskId,
+			}),
 		onSuccess: (savedEntry, values) =>
 			finishSave(
 				{
