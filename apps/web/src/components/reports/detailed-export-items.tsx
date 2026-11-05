@@ -47,6 +47,9 @@ export function DetailedExportItems({
 	const queryClient = useQueryClient();
 
 	const run = async (by: DetailedBy, format: "csv" | "pdf") => {
+		// Up to 5000 entries are fetched and, for a PDF, laid out: that takes
+		// seconds, and the menu has closed by then.
+		const loading = toast.loading("Building the export");
 		try {
 			const detail = await queryClient.fetchQuery(
 				timeReportDetailQuery(orgSlug, input),
@@ -94,6 +97,8 @@ export function DetailedExportItems({
 		} catch (error) {
 			console.error(error);
 			toast.error("Could not build the detailed export");
+		} finally {
+			toast.dismiss(loading);
 		}
 	};
 
