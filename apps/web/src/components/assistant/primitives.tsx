@@ -132,6 +132,21 @@ const TOOL_LABELS = new Map(
 		absence_totals: "Checked absence taken",
 		list_absences: "Read absence entries",
 		absence_report: "Ran the absence report",
+		list_assignable_people: "Read who can be assigned",
+		list_calendar_events: "Read your calendar",
+		list_filing_rules: "Read the filing rules",
+		list_attached_commits: "Read attached commits",
+		list_attached_pull_requests: "Read attached pull requests",
+		list_linked_github_repos: "Read linked repositories",
+		list_available_github_repos: "Read available repositories",
+		integration_status: "Checked the integrations",
+		get_timer: "Checked the timer",
+		get_hour_fund: "Read the hour fund",
+		my_targets: "Checked your targets",
+		tracking_report: "Ran the tracking report",
+		project_overview: "Read a project overview",
+		suggest_commits: "Matched commits to entries",
+		suggest_pull_requests: "Matched pull requests to entries",
 		// writes
 		create_time_entry: "Log time",
 		update_time_entry: "Change an entry",
@@ -153,6 +168,16 @@ const TOOL_LABELS = new Map(
 		create_recurring_block_rule: "Create a recurring block",
 		update_recurring_block_rule: "Change a recurring block",
 		unarchive: "Restore from the archive",
+		start_timer: "Start the timer",
+		pause_timer: "Pause the timer",
+		resume_timer: "Resume the timer",
+		stop_timer: "Stop the timer",
+		set_hour_fund: "Set the hour fund",
+		remember_filing_rule: "Save a filing rule",
+		update_filing_rule: "Change a filing rule",
+		link_github_repo: "Link a repository",
+		update_integration_settings: "Change integration settings",
+		sync_now: "Sync now",
 		// destructive
 		delete_time_entry: "Delete an entry",
 		remove_absence: "Delete an absence entry",
@@ -160,11 +185,22 @@ const TOOL_LABELS = new Map(
 		archive_project: "Archive a project",
 		archive_client: "Archive a client",
 		archive_task: "Archive a task type",
+		discard_timer: "Discard the timer",
+		clear_hour_fund: "Clear the hour fund",
+		delete_filing_rule: "Delete a filing rule",
+		unlink_commits: "Detach commits",
+		unlink_pull_requests: "Detach pull requests",
+		unlink_github_repo: "Unlink a repository",
 	}),
 );
 
-export const toolLabel = (name: string) =>
-	TOOL_LABELS.get(name) ?? name.replaceAll("_", " ");
+// The fallback is sentence case, so a tool with no label still reads as a step.
+export const toolLabel = (name: string) => {
+	const label = TOOL_LABELS.get(name);
+	if (label) return label;
+	const words = name.replaceAll("_", " ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 /**
  * The arguments a trace row can say something about.
