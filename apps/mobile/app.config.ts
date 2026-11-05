@@ -223,6 +223,9 @@ const config: ExpoConfig = {
 	},
 	android: {
 		package: "com.profico.farmer",
+		// The app keeps the session token and the device key. Android must not
+		// copy them into a cloud backup.
+		allowBackup: false,
 		// Lets Android play the back-to-home preview. `modules/back-gesture`
 		// hands the gesture to the system where the app would only exit.
 		predictiveBackGestureEnabled: true,
