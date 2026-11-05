@@ -30,6 +30,16 @@ import { useCallback, useSyncExternalStore } from "react";
 // catalogue knows is acted on. A family name or a CSS value read from storage
 // and written into a style property would be a way to put arbitrary CSS on the
 // page; an id checked against a table is not.
+//
+// ONE EXCEPTION, and it is narrow: a font from the device is stored as
+// `local:<family>`. That id is acted on only when <family> matches
+// `LOCAL_FAMILY` (letters, marks, digits, space, `-`, `_`, `.`, `(`, `)` and
+// `+`, 1 to 64 long). The pattern has no quote, backslash, semicolon, brace
+// or colon, so the family
+// can only ever be one quoted name inside the stack that is built here. Both
+// `fontsInitScript` and `readStored` check it, and anything else is the default.
+// Nothing is downloaded for such a face: the device either has it or the stack
+// falls back.
 
 export type FaceRole = "body" | "display" | "mono";
 
@@ -136,6 +146,17 @@ const BODY_FACES: readonly Face[] = [
 		family: "Atkinson Hyperlegible",
 		google: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400",
 	},
+	// Faces the device may already hold. `google` is empty, so nothing is
+	// downloaded, and the stack falls back when the device lacks the face.
+	{
+		id: "comic-sans",
+		label: "Comic Sans MS",
+		family: "Comic Sans MS",
+		google: "",
+	},
+	{ id: "calibri", label: "Calibri", family: "Calibri", google: "" },
+	{ id: "arial", label: "Arial", family: "Arial", google: "" },
+	{ id: "verdana", label: "Verdana", family: "Verdana", google: "" },
 	{ id: "system", label: "System", family: "", google: "" },
 ];
 
@@ -199,6 +220,28 @@ const DISPLAY_FACES: readonly Face[] = [
 		// Runs wide and large. It takes the tracking back rather than adding it.
 		b: "-0.015em",
 	},
+	{
+		id: "times",
+		label: "Times New Roman",
+		family: "Times New Roman",
+		google: "",
+		b: "0",
+	},
+	{
+		id: "georgia",
+		label: "Georgia",
+		family: "Georgia",
+		google: "",
+		b: "0",
+	},
+	{
+		id: "impact",
+		label: "Impact",
+		family: "Impact",
+		google: "",
+		// Drawn heavy and tight: a little air keeps a large number legible.
+		b: "0.01em",
+	},
 	{ id: "system", label: "System", family: "", google: "", b: "0" },
 ];
 
@@ -239,6 +282,14 @@ const MONO_FACES: readonly Face[] = [
 		google: "Space+Mono:wght@400;700",
 		a: "-0.03em",
 	},
+	// Courier is a wide face: the mono tracking would run its figures together.
+	{
+		id: "courier",
+		label: "Courier New",
+		family: "Courier New",
+		google: "",
+		a: "0",
+	},
 	{ id: "system", label: "System", family: "", google: "", a: "0" },
 ];
 
@@ -263,11 +314,66 @@ const BORING_KEY = "farmer-boring-font";
 
 const CHANGE_EVENT = "farmer:fonts";
 
-const faceOf = (role: FaceRole, id: string | null): Face | undefined =>
-	FACES[role].find((f) => f.id === id);
+const LOCAL_PREFIX = "local:";
+
+/** The one pattern a family from storage or from the text box must match. */
+const LOCAL_FAMILY = /^[\p{L}\p{M}\p{N} _.()+-]{1,64}$/u;
+
+export const isLocalFamily = (family: string) => LOCAL_FAMILY.test(family);
+
+export const localId = (family: string) => `${LOCAL_PREFIX}${family}`;
+
+/** The family of a `local:` id, or null when the id is not one or is unsafe. */
+export const localFamilyOf = (id: string | null): string | null => {
+	if (!id?.startsWith(LOCAL_PREFIX)) return null;
+	const family = id.slice(LOCAL_PREFIX.length);
+	return isLocalFamily(family) ? family : null;
+};
+
+/** The corrections a device face takes, as `[a, b]`: the same as System, since
+ *  nothing is known about the face. */
+const LOCAL_CORRECTIONS = {
+	body: ["", ""],
+	display: ["", "0"],
+	mono: ["0", ""],
+} satisfies Record<FaceRole, [string, string]>;
+
+const faceOf = (role: FaceRole, id: string | null): Face | undefined => {
+	const family = localFamilyOf(id);
+	if (family && id) {
+		const [a, b] = LOCAL_CORRECTIONS[role];
+		return { id, label: family, family, google: "", a, b };
+	}
+	return FACES[role].find((f) => f.id === id);
+};
 
 const stackOf = (role: FaceRole, face: Face) =>
 	face.family ? `'${face.family}', ${FALLBACK[role]}` : FALLBACK[role];
+
+/** The CSS stack for a stored id, or null when the id is not acted on. */
+export const stackForId = (role: FaceRole, id: string): string | null => {
+	const face = faceOf(role, id);
+	return face ? stackOf(role, face) : null;
+};
+
+/** Every family name the device reports, once each and sorted. The browser
+ *  asks the person for permission and rejects when it is refused. */
+export const queryDeviceFamilies = async (): Promise<string[]> => {
+	if (!window.queryLocalFonts) return [];
+	const fonts = await window.queryLocalFonts();
+	const families = new Set(fonts.map((f) => f.family).filter(isLocalFamily));
+	return [...families].sort((a, b) => a.localeCompare(b));
+};
+
+export const canQueryDeviceFamilies = () =>
+	!import.meta.env.SSR && Boolean(window.queryLocalFonts);
+
+declare global {
+	interface Window {
+		/** Local Font Access API (Chromium). Needs a user gesture. */
+		queryLocalFonts?: () => Promise<{ family: string }[]>;
+	}
+}
 
 const GOOGLE_BASE = "https://fonts.googleapis.com/css2?family=";
 
@@ -306,11 +412,13 @@ var R=${JSON.stringify(
 		ROLES[role].b,
 	]),
 )};
+var F=${JSON.stringify(FALLBACK)},K=${JSON.stringify(LOCAL_CORRECTIONS)},V=new RegExp(${JSON.stringify(LOCAL_FAMILY.source)},"u");
 var d=document.documentElement,L=[],boring=localStorage.getItem(${JSON.stringify(BORING_KEY)})==="1";
 for(var i=0;i<R.length;i++){
 var r=R[i];
 if(r[0]==="display"&&boring)continue;
-var e=C[r[0]][localStorage.getItem(r[1])];
+var s=localStorage.getItem(r[1]),e=s&&Object.hasOwn(C[r[0]],s)?C[r[0]][s]:null;
+if(!e&&s&&s.indexOf(${JSON.stringify(LOCAL_PREFIX)})===0){var f=s.slice(${LOCAL_PREFIX.length});if(V.test(f))e=["'"+f+"', "+F[r[0]],"",K[r[0]][0],K[r[0]][1]];}
 if(!e)continue;
 d.style.setProperty(r[2],e[0]);
 if(e[1])L.push(e[1]);
@@ -322,7 +430,8 @@ if(L.length){var k=document.createElement("link");k.id=${JSON.stringify(LINK_ID)
 
 const readStored = (role: FaceRole): string => {
 	try {
-		return localStorage.getItem(storageKey(role)) ?? defaultId(role);
+		const stored = localStorage.getItem(storageKey(role));
+		return stored && faceOf(role, stored) ? stored : defaultId(role);
 	} catch {
 		return defaultId(role);
 	}
@@ -450,6 +559,7 @@ const preloadFace = async (role: FaceRole, face: Face) => {
 /** Store a pick, show it in the selector at once, and apply it once its face
  *  is here. Resolves when the pick is drawn, for the selector's "Loading". */
 export const setFace = async (role: FaceRole, id: string) => {
+	if (!faceOf(role, id)) return;
 	try {
 		if (id === defaultId(role)) localStorage.removeItem(storageKey(role));
 		else localStorage.setItem(storageKey(role), id);
@@ -471,7 +581,7 @@ export const setFace = async (role: FaceRole, id: string) => {
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
-if (!import.meta.env.SSR) {
+if (!import.meta.env.SSR && "window" in globalThis) {
 	// Another tab's choice. Listened for here rather than in `subscribe`: that
 	// runs only where the selector is on screen, and every open tab has to
 	// follow whatever page it is showing.
