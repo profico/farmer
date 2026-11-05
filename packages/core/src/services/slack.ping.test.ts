@@ -1,17 +1,30 @@
 // `slackService.pingBehind`: a Slack DM to a person who is behind their target,
 // at most once in 24 hours, only by somebody who sees them on Tracking.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	spyOn,
+	test,
+} from "bun:test";
 
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member, organization, user } from "../db/schema/auth";
-import { memberTypeHistory } from "../db/schema/people";
+import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { monthlyHourFund } from "../db/schema/settings";
-import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
+import {
+	memberSlackIdentity,
+	slackInstallation,
+	slackPing,
+} from "../db/schema/slack";
 import { createTestDb, type TestDb } from "../test/harness";
+import * as notifyModule from "./notify";
 import { setNotifyAdaptersForTests } from "./notify";
 import { PingTooSoonError, slackService } from "./slack.service";
 import type { Ctx } from "./types";
@@ -27,6 +40,8 @@ const NO_TARGET = "u-ping-no-target";
 const PLAIN = "u-ping-plain";
 /** Behind, in the other organization. */
 const STRANGER = "u-ping-stranger";
+/** Behind, matched to Slack, and a Harvest import member who has not accepted. */
+const CLAIMING = "u-ping-claiming";
 
 const NOW = new Date("2026-04-16T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -51,7 +66,7 @@ beforeAll(async () => {
 			createdAt: new Date(),
 		})),
 	);
-	const everyone = [ADMIN, BEHIND, NO_TARGET, PLAIN, STRANGER];
+	const everyone = [ADMIN, BEHIND, NO_TARGET, PLAIN, STRANGER, CLAIMING];
 	await db.insert(user).values(
 		everyone.map((id) => ({
 			id,
@@ -93,18 +108,30 @@ beforeAll(async () => {
 		})),
 	);
 	await db.insert(memberSlackIdentity).values(
-		[BEHIND, NO_TARGET, PLAIN, ADMIN, STRANGER].map((userId) => ({
+		[BEHIND, NO_TARGET, PLAIN, ADMIN, STRANGER, CLAIMING].map((userId) => ({
 			organizationId: userId === STRANGER ? OTHER_ORG : ORG,
 			userId,
 			slackUserId: `S-${userId}`,
 		})),
 	);
-	setNotifyAdaptersForTests({
-		slack: async (to) => {
-			sent.push(to.userId);
-			return true;
-		},
+	await db.insert(memberProfile).values({
+		organizationId: ORG,
+		userId: CLAIMING,
+		claimPendingSince: new Date("2026-01-01T00:00:00Z"),
 	});
+});
+
+const deliveringAdapter = {
+	slack: async (to: { userId: string }) => {
+		sent.push(to.userId);
+		return true;
+	},
+};
+
+beforeEach(async () => {
+	sent.length = 0;
+	await db.delete(slackPing);
+	setNotifyAdaptersForTests(deliveringAdapter);
 });
 
 afterAll(async () => {
@@ -143,6 +170,7 @@ describe("pingBehind", () => {
 	});
 
 	test("allows a new ping after 24 hours", async () => {
+		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW });
 		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, {
 			now: new Date(NOW.getTime() + 25 * HOUR),
 		});
@@ -179,13 +207,43 @@ describe("pingBehind", () => {
 		await expect(
 			slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: later }),
 		).rejects.toThrow("could not be sent");
-		setNotifyAdaptersForTests({
-			slack: async (to) => {
-				sent.push(to.userId);
-				return true;
-			},
-		});
+		setNotifyAdaptersForTests(deliveringAdapter);
 		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: later });
-		expect(sent).toHaveLength(3);
+		expect(sent).toEqual([BEHIND]);
+	});
+
+	test("says the person cannot be reached when Slack calls them unreachable", async () => {
+		setNotifyAdaptersForTests({ slack: async () => "unreachable" });
+		await expect(
+			slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW }),
+		).rejects.toThrow("cannot be reached");
+		expect(await db.query.slackPing.findFirst()).toBeUndefined();
+	});
+
+	test("refuses a person that notify holds back, and does not list them", async () => {
+		await expect(
+			slackService.pingBehind(ctxOf(ADMIN), CLAIMING, { now: NOW }),
+		).rejects.toThrow("cannot be reached");
+		expect(sent).toEqual([]);
+		expect(await db.query.slackPing.findFirst()).toBeUndefined();
+		const states = await slackService.pingStates(ctxOf(ADMIN), { now: NOW });
+		expect(states.people.some((s) => s.userId === CLAIMING)).toBe(false);
+		expect(states.people.some((s) => s.userId === BEHIND)).toBe(true);
+	});
+
+	test("gives the ping back when the send throws", async () => {
+		const spy = spyOn(notifyModule, "notify").mockRejectedValueOnce(
+			new Error("boom"),
+		);
+		try {
+			await expect(
+				slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW }),
+			).rejects.toThrow("boom");
+		} finally {
+			spy.mockRestore();
+		}
+		expect(await db.query.slackPing.findFirst()).toBeUndefined();
+		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW });
+		expect(sent).toEqual([BEHIND]);
 	});
 });

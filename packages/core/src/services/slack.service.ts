@@ -30,10 +30,9 @@ import type { Ctx } from "./types";
 /** How long a person is left alone after a ping. */
 export const PING_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
-/** A ping was refused because the person got one less than 24 hours ago.
- *  `pingedAt` is when, so a screen can say so. */
+/** A ping was refused because the person got one less than 24 hours ago. */
 export class PingTooSoonError extends UserFacingError {
-	constructor(readonly pingedAt: Date) {
+	constructor() {
 		super("This person was pinged less than 24 hours ago.");
 		this.name = "PingTooSoonError";
 	}
@@ -80,18 +79,10 @@ const claimPing = async (ctx: Ctx, userId: string, now: Date) => {
 			),
 		})
 		.returning({ id: slackPing.id });
-	if (claimed.length > 0) return;
-	const last = await db.query.slackPing.findFirst({
-		where: and(
-			eq(slackPing.organizationId, ctx.organizationId),
-			eq(slackPing.userId, userId),
-		),
-		columns: { pingedAt: true },
-	});
-	throw new PingTooSoonError(last?.pingedAt ?? now);
+	if (claimed.length === 0) throw new PingTooSoonError();
 };
 
-const sendPing = async (ctx: Ctx, userId: string): Promise<boolean> => {
+const sendPing = async (ctx: Ctx, userId: string) => {
 	const [sender, org] = await Promise.all([
 		db.query.user.findFirst({
 			where: eq(user.id, ctx.userId),
@@ -105,19 +96,38 @@ const sendPing = async (ctx: Ctx, userId: string): Promise<boolean> => {
 	// Imported here, not at the top: `notify` imports this module for its Slack
 	// adapter, and a static cycle would leave one of the two in its temporal
 	// dead zone at call time (the same reason `sendTest` does it).
-	const { notify, wasDelivered } = await import("./notify");
-	return wasDelivered(
-		await notify(
-			{ organizationId: ctx.organizationId, userId },
-			{
-				kind: "ping",
-				title: "Please track your time",
-				body: `${sender?.name ?? "A colleague"} asks you to track your time. You are behind your target for this month.`,
-				url: org ? `/${org.slug}/time` : undefined,
-			},
-		),
+	const { notify, wasDelivered, wasUnreachable } = await import("./notify");
+	const outcome = await notify(
+		{ organizationId: ctx.organizationId, userId },
+		{
+			kind: "ping",
+			title: "Please track your time",
+			body: `${sender?.name ?? "A colleague"} asks you to track your time. You are behind your target for this month.`,
+			url: org ? `/${org.slug}/time` : undefined,
+		},
 	);
+	if (wasDelivered(outcome)) return "sent";
+	return wasUnreachable(outcome) ? "unreachable" : "failed";
 };
+
+/** The people of `userIds` that a ping cannot reach (not yet a member, archived,
+ *  never signed in). Imported here for the same cycle reason as `sendPing`. */
+const pingBlocked = async (organizationId: string, userIds: string[]) => {
+	const { deliveryBlocks } = await import("./notify");
+	return deliveryBlocks(organizationId, userIds, "ping");
+};
+
+const releasePing = (ctx: Ctx, userId: string) =>
+	db
+		.delete(slackPing)
+		.where(
+			and(
+				eq(slackPing.organizationId, ctx.organizationId),
+				eq(slackPing.userId, userId),
+			),
+		);
+
+const CANNOT_REACH = "This person cannot be reached on Slack.";
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
@@ -577,9 +587,14 @@ export const slackService = {
 				),
 			)
 			.where(eq(memberSlackIdentity.organizationId, ctx.organizationId));
-		const people = rows.filter(
+		const inScope = rows.filter(
 			(r) => r.userId !== ctx.userId && (scope === null || scope.has(r.userId)),
 		);
+		const blocked = await pingBlocked(
+			ctx.organizationId,
+			inScope.map((r) => r.userId),
+		);
+		const people = inScope.filter((r) => !blocked.has(r.userId));
 		return { ...current, people };
 	},
 
@@ -603,16 +618,20 @@ export const slackService = {
 		if (!reachable) {
 			throw new UserFacingError("This person is not connected to Slack.");
 		}
+		if ((await pingBlocked(ctx.organizationId, [userId])).has(userId)) {
+			throw new UserFacingError(CANNOT_REACH);
+		}
 		await claimPing(ctx, userId, now);
-		if (!(await sendPing(ctx, userId))) {
-			await db
-				.delete(slackPing)
-				.where(
-					and(
-						eq(slackPing.organizationId, ctx.organizationId),
-						eq(slackPing.userId, userId),
-					),
-				);
+		// The claim stays only when the message went out, also when a step
+		// before the send throws.
+		let result: Awaited<ReturnType<typeof sendPing>> | undefined;
+		try {
+			result = await sendPing(ctx, userId);
+		} finally {
+			if (result !== "sent") await releasePing(ctx, userId);
+		}
+		if (result === "unreachable") throw new UserFacingError(CANNOT_REACH);
+		if (result === "failed") {
 			throw new UserFacingError("The message could not be sent. Try again.");
 		}
 		await recordAudit(ctx, {
