@@ -118,6 +118,14 @@ export const syncedMeetingTombstone = pgTable(
 // Any fill block counts, not just this engine's — there is no marker
 // distinguishing one it wrote from one made by hand, and "I deleted the
 // rest-of-day block, don't put another one back" is the right reading of both.
+//
+// `projectId` narrows the no to one project. The engine splits a day across the
+// projects its commits name, so deleting the block on project P (the fill, a
+// split entry, or any Development entry holding P's GitHub evidence) says "not
+// P", and the other projects still share the day. A NULL project is the old
+// meaning, kept for every row written before the column existed: a project-less
+// fill block was deleted, and no block at all is filed that day. NULLS NOT
+// DISTINCT makes the day-level row unique too.
 export const commitFillTombstone = pgTable(
 	"commit_fill_tombstone",
 	{
@@ -128,10 +136,15 @@ export const commitFillTombstone = pgTable(
 			.references(() => user.id, { onDelete: "cascade" }),
 		/** yyyy-MM-dd, in the org timezone — the same key `timeEntry.date` uses. */
 		date: text("date").notNull(),
+		projectId: uuid("project_id").references(() => project.id, {
+			onDelete: "cascade",
+		}),
 		createdAt: ts("created_at").notNull().defaultNow(),
 	},
 	(t) => [
-		unique("cft_org_user_date_unq").on(t.organizationId, t.userId, t.date),
+		unique("cft_org_user_date_project_unq")
+			.on(t.organizationId, t.userId, t.date, t.projectId)
+			.nullsNotDistinct(),
 	],
 );
 

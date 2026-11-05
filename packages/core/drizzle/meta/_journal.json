@@ -554,6 +554,13 @@
       "when": 1793865029567,
       "tag": "0078_cultured_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793867700111,
+      "tag": "0079_slim_blindfold",
+      "breakpoints": true
     }
   ]
 }

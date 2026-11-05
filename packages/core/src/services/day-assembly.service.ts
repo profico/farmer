@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -179,6 +179,23 @@ const findEngineTask = (ctx: Ctx, key: TaskSystemKey) =>
 	tasksService.findBySystemKey(ctx, key);
 
 type EngineTask = NonNullable<Awaited<ReturnType<typeof findEngineTask>>>;
+
+/** The projects whose commit block the person deleted on this day. */
+const deletedWorkProjects = async (
+	ctx: Ctx,
+	date: string,
+): Promise<Set<string>> => {
+	const rows = await db.query.commitFillTombstone.findMany({
+		where: and(
+			eq(commitFillTombstone.organizationId, ctx.organizationId),
+			eq(commitFillTombstone.userId, ctx.userId),
+			eq(commitFillTombstone.date, date),
+			isNotNull(commitFillTombstone.projectId),
+		),
+		columns: { projectId: true },
+	});
+	return new Set(rows.flatMap((row) => (row.projectId ? [row.projectId] : [])));
+};
 type PullRequestEvents = Awaited<
 	ReturnType<
 		ReturnType<typeof pullRequestSource>["listUserPullRequestActivityForDay"]
@@ -771,12 +788,18 @@ const workSuggestionFor = (
 // ── Work: one entry per project with commits or PR activity that day ──────
 const suggestWork = async (
 	ctx: Ctx,
+	date: string,
 	evidenceByProject: Map<string, ProjectEvidence>,
 	workTask: EngineTask,
 	remaining: number,
-): Promise<DaySuggestion[]> => {
+	includeDismissed: boolean,
+): Promise<{
+	suggestions: DaySuggestion[];
+	dismissed: number;
+	seconds: number;
+}> => {
 	if (evidenceByProject.size === 0 || remaining < QUARTER_HOUR_SECONDS) {
-		return [];
+		return { suggestions: [], dismissed: 0, seconds: 0 };
 	}
 	const projectIds = [...evidenceByProject.keys()];
 	const [access, projects] = await Promise.all([
@@ -805,23 +828,41 @@ const suggestWork = async (
 	// A pull request somebody opened, merged or reviewed weighs what one
 	// commit does. Neither measures time; the split only needs a ratio
 	// that leaves a review-only project with a share rather than none.
+	//
+	// A project whose block the person deleted (see `commitFillTombstone`)
+	// does not take part, as in the commit engine: the others share the day
+	// without it. It is still proposed, dismissed, with the share it would
+	// have had, for the toggle that brings dismissed rows back.
+	const deletedProjects = await deletedWorkProjects(ctx, date);
+	const weights = groups.map((g) => g.commits.length + g.pullRequests.length);
 	const shares = splitProportionally(
 		remaining,
-		groups.map((g) => g.commits.length + g.pullRequests.length),
+		weights.map((w, i) =>
+			deletedProjects.has(groups[i]?.projectId ?? "") ? 0 : w,
+		),
 	);
+	const dismissedShares = splitProportionally(remaining, weights);
 
-	return groups.flatMap((group, index) => {
-		const share = shares[index] ?? 0;
-		if (share <= 0) return [];
-		return [
-			workSuggestionFor(
-				group,
-				nameById.get(group.projectId) ?? null,
-				workTask,
-				share,
-			),
-		];
+	let dismissed = 0;
+	let seconds = 0;
+	const suggestions: DaySuggestion[] = [];
+	groups.forEach((group, index) => {
+		const deleted = deletedProjects.has(group.projectId);
+		const share = (deleted ? dismissedShares : shares)[index] ?? 0;
+		if (share <= 0) return;
+		if (deleted) dismissed++;
+		if (deleted && !includeDismissed) return;
+		const suggestion = workSuggestionFor(
+			group,
+			nameById.get(group.projectId) ?? null,
+			workTask,
+			share,
+		);
+		if (deleted) suggestion.dismissed = true;
+		else seconds += share;
+		suggestions.push(suggestion);
 	});
+	return { suggestions, dismissed, seconds };
 };
 
 // ── Fill: whatever the signals above did not account for ──────────────────
@@ -852,9 +893,12 @@ const suggestFill = async (
 			eq(commitFillTombstone.organizationId, ctx.organizationId),
 			eq(commitFillTombstone.userId, ctx.userId),
 			eq(commitFillTombstone.date, date),
+			isNull(commitFillTombstone.projectId),
 		),
 		columns: { id: true },
 	});
+	// The fill row is one more suggestion that includeDismissed adds back,
+	// beside the project's work row when that one was deleted too.
 	const dismissed = deletedFill ? 1 : 0;
 	if (deletedFill && !includeDismissed) return { suggestion: null, dismissed };
 	return {
@@ -995,9 +1039,16 @@ export const dayAssemblyService = {
 		const evidenceByProject = collectEvidence(unlinked, reviews.accounted);
 		const work =
 			workTask && !hasFillBlock
-				? await suggestWork(ctx, evidenceByProject, workTask, remaining)
-				: [];
-		const workSeconds = work.reduce((sum, s) => sum + s.durationSeconds, 0);
+				? await suggestWork(
+						ctx,
+						date,
+						evidenceByProject,
+						workTask,
+						remaining,
+						includeDismissed,
+					)
+				: { suggestions: [], dismissed: 0, seconds: 0 };
+		const workSeconds = work.seconds;
 
 		const unaccounted = remainingSeconds(remaining, workSeconds);
 		const fill =
@@ -1009,7 +1060,7 @@ export const dayAssemblyService = {
 			...meetings.suggestions,
 			...(breakSuggestion ? [breakSuggestion] : []),
 			...reviews.suggestions,
-			...work,
+			...work.suggestions,
 			...(fill.suggestion ? [fill.suggestion] : []),
 		]);
 
@@ -1030,6 +1081,7 @@ export const dayAssemblyService = {
 				unlinked.dismissed +
 				meetings.dismissed +
 				reviews.dismissed +
+				work.dismissed +
 				fill.dismissed,
 		};
 	},

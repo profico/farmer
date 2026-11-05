@@ -33,7 +33,7 @@ Bun + Turborepo, three workspaces. `apps/web` is a [TanStack Start](https://tans
 
 ## Running it locally
 
-You need [Bun](https://bun.sh) and Docker (or a Postgres you already have).
+You need [Bun](https://bun.sh) and Docker (or a Postgres 15 or later that you already have).
 
 ```bash
 bun install
