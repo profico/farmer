@@ -117,19 +117,20 @@ function FamilyList({
 			autoHighlight
 			defaultOpen
 		>
-			<ComboboxTrigger className="w-full sm:w-56">
+			<ComboboxTrigger
+				className="w-full sm:w-56"
+				// The one preview. A style on each row would load every installed face
+				// when the list opens. `selected` passed `isLocalFamily`, so it has no
+				// quote to break out.
+				style={selected ? { fontFamily: `'${selected}'` } : undefined}
+			>
 				<ComboboxValue placeholder="Pick a device font" />
 			</ComboboxTrigger>
 			<ComboboxContent searchPlaceholder="Search fonts…">
 				<ComboboxEmpty>No font matches.</ComboboxEmpty>
 				<ComboboxList>
 					{(family: string) => (
-						<ComboboxItem
-							key={family}
-							value={family}
-							// Each family passed `isLocalFamily`, so it has no quote to break out.
-							style={{ fontFamily: `'${family}'` }}
-						>
+						<ComboboxItem key={family} value={family}>
 							<span className="truncate">{family}</span>
 						</ComboboxItem>
 					)}

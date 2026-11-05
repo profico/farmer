@@ -33,8 +33,9 @@ import { useCallback, useSyncExternalStore } from "react";
 //
 // ONE EXCEPTION, and it is narrow: a font from the device is stored as
 // `local:<family>`. That id is acted on only when <family> matches
-// `LOCAL_FAMILY` (letters, digits, space, `-`, `_` and `.`, 1 to 64 long). The
-// pattern has no quote, backslash, semicolon, bracket or colon, so the family
+// `LOCAL_FAMILY` (letters, marks, digits, space, `-`, `_`, `.`, `(`, `)` and
+// `+`, 1 to 64 long). The pattern has no quote, backslash, semicolon, brace
+// or colon, so the family
 // can only ever be one quoted name inside the stack that is built here. Both
 // `fontsInitScript` and `readStored` check it, and anything else is the default.
 // Nothing is downloaded for such a face: the device either has it or the stack
@@ -316,7 +317,7 @@ const CHANGE_EVENT = "farmer:fonts";
 const LOCAL_PREFIX = "local:";
 
 /** The one pattern a family from storage or from the text box must match. */
-const LOCAL_FAMILY = /^[\p{L}\p{N} _.-]{1,64}$/u;
+const LOCAL_FAMILY = /^[\p{L}\p{M}\p{N} _.()+-]{1,64}$/u;
 
 export const isLocalFamily = (family: string) => LOCAL_FAMILY.test(family);
 
@@ -416,7 +417,7 @@ var d=document.documentElement,L=[],boring=localStorage.getItem(${JSON.stringify
 for(var i=0;i<R.length;i++){
 var r=R[i];
 if(r[0]==="display"&&boring)continue;
-var s=localStorage.getItem(r[1]),e=C[r[0]][s];
+var s=localStorage.getItem(r[1]),e=s&&Object.hasOwn(C[r[0]],s)?C[r[0]][s]:null;
 if(!e&&s&&s.indexOf(${JSON.stringify(LOCAL_PREFIX)})===0){var f=s.slice(${LOCAL_PREFIX.length});if(V.test(f))e=["'"+f+"', "+F[r[0]],"",K[r[0]][0],K[r[0]][1]];}
 if(!e)continue;
 d.style.setProperty(r[2],e[0]);

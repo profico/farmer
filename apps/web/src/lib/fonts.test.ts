@@ -10,6 +10,8 @@ describe("device font ids", () => {
 			"Noto Sans-2",
 			"Fira_Code.v2",
 			"思源黑体",
+			"हिन्दी Sans",
+			"Foo (Bold) +1",
 		]) {
 			expect(isLocalFamily(name)).toBe(true);
 		}
@@ -25,7 +27,7 @@ describe("device font ids", () => {
 			"a;b",
 			"a:b",
 			"a\nb",
-			"a)b",
+			"a{b}",
 		];
 		for (const name of bad) expect(isLocalFamily(name)).toBe(false);
 	});
