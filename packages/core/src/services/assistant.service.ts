@@ -766,7 +766,7 @@ const argumentsPayload = z.record(z.string(), z.json());
  *  again") sent the model back to the PERSON, who then had to re-ask a question
  *  they had already asked because a cap they cannot see was hit. */
 const droppedRowsNote = (kept: number, total: number) =>
-	`…${total - kept} of ${total} rows were dropped to fit; the first ${kept} are above. Do not ask the user to repeat themselves. Either answer from these and say which part you used, or call the tool again over a narrower range.`;
+	`…${total - kept} of ${total} rows were dropped to fit; the first ${kept} are above. Do not ask the user to repeat themselves. Either answer from these and say which part you used, or call the tool again over a narrower range. A tool with a filter (such as q) can be called again with it.`;
 
 /** The same, for a result that is not a list and can only be cut mid-text. */
 const CUT_SHORT =
