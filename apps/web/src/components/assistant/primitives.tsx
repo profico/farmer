@@ -24,6 +24,7 @@ import { selectableTasksQuery } from "#/queries/tasks.ts";
 
 import { MONTHS, printDayKey } from "./answer.tsx";
 import type { PendingApproval, ToolTrace } from "./assistant-runs.tsx";
+import { toolLabel } from "./tool-labels.ts";
 
 /* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
 
@@ -101,70 +102,6 @@ export function AssistantLoader({ label = "Thinking" }: { label?: string }) {
 }
 
 /* ── the tool trace (ThinkingState, "Coding" variant) ─────────────────────── */
-
-// Written as the step reads in a trace, not as the tool is named: "Read time
-// entries", not "list_time_entries". Unlabelled tools fall back to their name
-// with the underscores taken out, which is legible but reads as plumbing — so a
-// tool added to `assistant-tools.ts` belongs here too.
-// A Map, not an object: the lookup key is a tool name off a stored transcript,
-// so `get` answering `string | undefined` is the honest contract — an object
-// would have to claim every string is a key.
-const TOOL_LABELS = new Map(
-	Object.entries({
-		// reads
-		whoami: "Checked who you are",
-		list_time_entries: "Read time entries",
-		list_unfiled_entries: "Read unfiled time",
-		list_projects: "Read projects",
-		list_tasks: "Read tasks",
-		list_clients: "Read clients",
-		list_members: "Read the team",
-		list_project_members: "Read a project's team",
-		list_holidays: "Checked the holidays",
-		list_recurring_block_rules: "Read your recurring blocks",
-		list_commits: "Read your commits",
-		list_pull_requests: "Read your pull requests",
-		suggest_day: "Assembled the day",
-		time_report_summary: "Ran a time report",
-		time_report_detail: "Read the report's entries",
-		overtime_report: "Ran the overtime report",
-		unfiled_summary: "Checked unfiled time",
-		absence_totals: "Checked absence taken",
-		list_absences: "Read absence entries",
-		absence_report: "Ran the absence report",
-		// writes
-		create_time_entry: "Log time",
-		update_time_entry: "Change an entry",
-		update_entry_description: "Reword an entry",
-		set_overtime: "Flag overtime",
-		file_time_entries: "File entries onto a project",
-		copy_day: "Copy a day",
-		copy_week: "Copy a week",
-		log_absence: "Book absence",
-		apply_day_assembly: "Log the day's entries",
-		attach_commits: "Attach commits",
-		attach_pull_requests: "Attach pull requests",
-		create_client: "Create a client",
-		create_project: "Create a project",
-		update_project: "Change a project",
-		assign_project_member: "Change a project's team",
-		create_task: "Create a task type",
-		update_task: "Change a task type",
-		create_recurring_block_rule: "Create a recurring block",
-		update_recurring_block_rule: "Change a recurring block",
-		unarchive: "Restore from the archive",
-		// destructive
-		delete_time_entry: "Delete an entry",
-		remove_absence: "Delete an absence entry",
-		delete_recurring_block_rule: "Delete a recurring block",
-		archive_project: "Archive a project",
-		archive_client: "Archive a client",
-		archive_task: "Archive a task type",
-	}),
-);
-
-export const toolLabel = (name: string) =>
-	TOOL_LABELS.get(name) ?? name.replaceAll("_", " ");
 
 /**
  * The arguments a trace row can say something about.

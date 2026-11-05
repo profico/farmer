@@ -34,7 +34,7 @@ import {
 export function submitEntry(
 	values: FormValues,
 	entry: ExistingTimeEntry | undefined,
-	pick: { meetingUrl: string | null; calendarEventId: string | null },
+	pick: Parameters<typeof toEntryPayload>[1],
 ) {
 	if (!entry && values.repeatEnabled) {
 		return createRecurringBlockRule({ data: toRulePayload(values) });
