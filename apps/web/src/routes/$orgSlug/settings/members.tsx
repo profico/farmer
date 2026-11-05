@@ -424,7 +424,7 @@ function MembersSettingsPage() {
 					<div className="flex justify-end gap-2">
 						<MemberProjectsDialog
 							person={{ userId: m.userId, name: m.user.name }}
-							archived={personByUserId.get(m.userId)?.archivedAt != null}
+							archived={archived}
 							trigger={
 								<Button variant="outline" size="sm">
 									Projects

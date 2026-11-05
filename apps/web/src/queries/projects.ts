@@ -55,6 +55,8 @@ export const userProjectsQuery = (org: string, userId: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).projects, "by-user", userId],
 		queryFn: () => listUserProjects({ data: userId }),
+		// The Add button trusts this list, so never serve it from the cache.
+		staleTime: 0,
 	});
 
 export const assignableMembersQuery = (org: string, projectId: string) =>

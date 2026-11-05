@@ -92,15 +92,23 @@ export function MemberProjectsDialog({
 		...userProjectsQuery(orgSlug, person.userId),
 		enabled: open,
 	});
-	const all = useQuery({ ...projectsQuery(orgSlug), enabled: open });
+	const all = useQuery({
+		...projectsQuery(orgSlug),
+		enabled: open && !archived,
+	});
 
-	// `assignMember` is an upsert: until the assignments load, an "add" of a
-	// project the person already has would silently overwrite its role.
-	const canAdd = !archived && assigned.isSuccess;
+	// `assignMember` is an upsert: while the assignments load or refetch, an
+	// "add" of a project the person already has would silently overwrite its
+	// role. A cached list is not enough, so a refetch blocks the add as well.
+	const canAdd = !archived && assigned.isSuccess && !assigned.isFetching;
 	const taken = new Set((assigned.data ?? []).map((a) => a.projectId));
 	const addable = (all.data ?? [])
 		.filter((p) => p.status === "active" && !taken.has(p.id))
 		.map((p) => ({ value: p.id, label: `${p.client.name} / ${p.name}` }));
+	// A project that was just added leaves `addable`; do not keep it selected.
+	const picked = addable.some((p) => p.value === newProject)
+		? newProject
+		: null;
 
 	// The project page reads the same assignments under the projects and
 	// time-entries roots, and what the person may open under access.
@@ -126,12 +134,31 @@ export function MemberProjectsDialog({
 		onError: (error: Error) => toast.error(error.message),
 	});
 
+	const removeAssignment = (a: {
+		projectId: string;
+		projectName: string;
+		role: ProjectRoleValue;
+	}) =>
+		remove.mutate(a.projectId, {
+			onSuccess: () =>
+				toast.success(
+					`Removed from ${a.projectName}`,
+					// An archived person cannot be assigned again, so nothing can be undone.
+					archived
+						? undefined
+						: {
+								action: {
+									label: "Undo",
+									onClick: () =>
+										assign.mutate({ projectId: a.projectId, role: a.role }),
+								},
+							},
+				),
+		});
+
 	const add = () => {
-		if (!newProject) return;
-		assign.mutate(
-			{ projectId: newProject, role: newRole },
-			{ onSuccess: () => setNewProject(null) },
-		);
+		if (!picked) return;
+		assign.mutate({ projectId: picked, role: newRole });
 	};
 
 	return (
@@ -183,7 +210,7 @@ export function MemberProjectsDialog({
 								size="icon-sm"
 								aria-label={`Remove from ${a.projectName}`}
 								disabled={remove.isPending}
-								onClick={() => remove.mutate(a.projectId)}
+								onClick={() => removeAssignment(a)}
 							>
 								<XIcon />
 							</Button>
@@ -195,7 +222,7 @@ export function MemberProjectsDialog({
 						<Select
 							items={addable}
 							disabled={!canAdd}
-							value={newProject}
+							value={picked}
 							onValueChange={(next: string | null) => setNewProject(next)}
 						>
 							<SelectTrigger className="h-8 min-w-0 flex-1 text-sm">
@@ -217,7 +244,7 @@ export function MemberProjectsDialog({
 						<Button
 							size="sm"
 							onClick={add}
-							disabled={!canAdd || !newProject || assign.isPending}
+							disabled={!canAdd || !picked || assign.isPending}
 						>
 							Add
 						</Button>
