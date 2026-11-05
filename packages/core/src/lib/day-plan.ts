@@ -63,6 +63,39 @@ export const splitProportionally = (
 	return units.map((u) => u * SLOT_SECONDS);
 };
 
+// Divide a day's rest across the projects its evidence names, for the commit
+// engine's fill block. The ratio is `splitProportionally`'s, the same one
+// Assemble my day uses, so the two disagree about nothing.
+//
+// The project with the largest share (the first of equals) comes first: it
+// owns the fill block, which `recomputeDayFill` resizes later, so it also takes
+// the part of the day that is not a whole quarter hour and the shares sum to
+// `totalSeconds` exactly. A project whose share is zero is left out.
+export const splitRestOfDay = (
+	totalSeconds: number,
+	projects: { projectId: string; weight: number }[],
+): { projectId: string; seconds: number }[] => {
+	const shares = splitProportionally(
+		totalSeconds,
+		projects.map((p) => p.weight),
+	);
+	const planned = projects.map((p, index) => ({
+		projectId: p.projectId,
+		seconds: shares[index] ?? 0,
+	}));
+	let largest = 0;
+	for (let index = 1; index < planned.length; index++) {
+		if ((planned[index]?.seconds ?? 0) > (planned[largest]?.seconds ?? 0)) {
+			largest = index;
+		}
+	}
+	const [owner] = planned.splice(largest, 1);
+	if (!owner) return [];
+	const others = planned.filter((p) => p.seconds > 0);
+	const othersSeconds = others.reduce((sum, p) => sum + p.seconds, 0);
+	return [{ ...owner, seconds: totalSeconds - othersSeconds }, ...others];
+};
+
 // One-line summary of a day's commits, used as the description of the entry
 // they produced. Mandatory descriptions mean the engines have to write one and
 // the commit subjects are the only raw material they have; the person edits it
