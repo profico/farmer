@@ -2,6 +2,7 @@ CREATE TABLE "import_pending_person" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"organization_id" text NOT NULL,
 	"email" text NOT NULL,
+	"confirmed" boolean DEFAULT false NOT NULL,
 	"declined_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,

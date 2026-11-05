@@ -16,6 +16,7 @@ import {
 
 import { db } from "../db";
 import { account, invitation, member, user } from "../db/schema/auth";
+import { importPendingPerson } from "../db/schema/import";
 import {
 	invitationEmail,
 	type invitationEmailStatus,
@@ -160,6 +161,22 @@ const whyEmailNotConfirmable = async (
 		.limit(1);
 	return elsewhere ? "elsewhere" : null;
 };
+
+/** An admin vouches for the address of a person whose claim is pending. For a
+ *  placeholder person it opens the claim to the owner of the address
+ *  (`import_pending_person.confirmed`); for an existing account there is
+ *  nothing to confirm. The answer is the same for both, or the call would
+ *  tell an admin which addresses have an account (issue #158). */
+const confirmPendingAddress = (ctx: Ctx, userId: string) =>
+	db
+		.update(importPendingPerson)
+		.set({ confirmed: true, updatedAt: new Date() })
+		.where(
+			and(
+				eq(importPendingPerson.organizationId, ctx.organizationId),
+				eq(importPendingPerson.userId, userId),
+			),
+		);
 
 const markEmailVerified = (userId: string) =>
 	db
@@ -637,9 +654,12 @@ export const membersService = {
 		// Restoring a person who has never signed in is where an admin confirms
 		// an address an import guessed. Silent when that is not allowed: the
 		// restore itself is what was asked for.
-		if (await whyEmailNotConfirmable(ctx, userId)) {
-			return { emailConfirmed: false };
+		const why = await whyEmailNotConfirmable(ctx, userId);
+		if (why === "pending") {
+			await confirmPendingAddress(ctx, userId);
+			return { emailConfirmed: true };
 		}
+		if (why) return { emailConfirmed: false };
 		await markEmailVerified(userId);
 		return { emailConfirmed: true };
 	},
@@ -665,9 +685,13 @@ export const membersService = {
 			case "confirmed":
 				throw new Error("This address is confirmed already");
 			case "pending":
-				throw new Error(
-					"This person has not accepted the workspace yet, so the address cannot be confirmed",
-				);
+				await confirmPendingAddress(ctx, userId);
+				await recordAudit(ctx, {
+					kind: "member.email_confirmed",
+					target: await memberTarget(ctx, userId),
+					subjectUserId: userId,
+				});
+				return { emailConfirmed: true };
 			case "signed-in":
 				throw new Error(
 					"This person has signed in, so nothing is left to confirm",

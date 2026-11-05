@@ -721,7 +721,11 @@ const resolvePlaceholder = async (
 		}
 		await tx
 			.update(importPendingPerson)
-			.set({ declinedAt: null, updatedAt: new Date() })
+			.set({
+				declinedAt: null,
+				confirmed: sql`${importPendingPerson.confirmed} or ${p.emailConfirmed}`,
+				updatedAt: new Date(),
+			})
 			.where(eq(importPendingPerson.userId, pending.userId));
 		return pending.userId;
 	}
@@ -729,9 +733,12 @@ const resolvePlaceholder = async (
 	await tx
 		.insert(user)
 		.values({ id: userId, name: p.name, email: placeholderEmail(userId) });
-	await tx
-		.insert(importPendingPerson)
-		.values({ userId, organizationId: org, email });
+	await tx.insert(importPendingPerson).values({
+		userId,
+		organizationId: org,
+		email,
+		confirmed: p.emailConfirmed,
+	});
 	return userId;
 };
 

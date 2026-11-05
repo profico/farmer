@@ -5,9 +5,10 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { and, count, eq, is } from "drizzle-orm";
+import { and, asc, count, eq, is } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 
+import { assertMayRegister } from "../auth/registration";
 import { db } from "../db";
 import * as apiTokenSchema from "../db/schema/api-tokens";
 import * as assistantSchema from "../db/schema/assistant";
@@ -29,7 +30,11 @@ import { importMapping, importPendingPerson } from "../db/schema/import";
 import * as instanceSchema from "../db/schema/instance";
 import * as notificationSchema from "../db/schema/notifications";
 import * as peopleSchema from "../db/schema/people";
-import { memberProfile, teamLeadPerson } from "../db/schema/people";
+import {
+	memberProfile,
+	memberTypeHistory,
+	teamLeadPerson,
+} from "../db/schema/people";
 import * as scheduleSchema from "../db/schema/schedule";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import * as settingsSchema from "../db/schema/settings";
@@ -446,10 +451,19 @@ describe("a claim", () => {
 			role: "admin",
 			createdAt: new Date(),
 		});
+		// A profile with a claim of its own still open, and a later start date
+		// than the import's (2024-01-01).
 		await db.insert(memberProfile).values({
 			organizationId: ORG,
 			userId: caller.userId,
-			startDate: "2020-01-01",
+			startDate: "2025-01-01",
+			claimPendingSince: new Date(),
+		});
+		await db.insert(memberTypeHistory).values({
+			organizationId: ORG,
+			userId: caller.userId,
+			type: "contractor_hourly",
+			effectiveFrom: "2025-01-01",
 		});
 		await db.insert(projectMember).values({
 			organizationId: ORG,
@@ -499,18 +513,49 @@ describe("a claim", () => {
 				.from(projectMember)
 				.where(eq(projectMember.userId, caller.userId)),
 		).toHaveLength(1);
-		// Nobody joined, and the merge is in the audit log.
-		expect(
-			await db
-				.select()
-				.from(auditEvent)
-				.where(
-					and(
-						eq(auditEvent.kind, "member.claim_merged"),
-						eq(auditEvent.subjectUserId, caller.userId),
-					),
+		// Nobody joined, and the merge is in the audit log with the number of
+		// days that passed the cap.
+		const [merged] = await db
+			.select()
+			.from(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.kind, "member.claim_merged"),
+					eq(auditEvent.subjectUserId, caller.userId),
 				),
-		).toHaveLength(1);
+			);
+		expect(present(merged, "merge row").details).toEqual({
+			role: "admin",
+			daysOverCap: 1,
+		});
+
+		// The imported months keep the imported type; the person's own rows
+		// stand from their first day.
+		const types = await db
+			.select()
+			.from(memberTypeHistory)
+			.where(eq(memberTypeHistory.userId, caller.userId))
+			.orderBy(asc(memberTypeHistory.effectiveFrom));
+		expect(
+			types.map((t) => [t.type, t.effectiveFrom, t.effectiveUntil]),
+		).toEqual([
+			["employee_billable", "2024-01-01", "2025-01-01"],
+			["contractor_hourly", "2025-01-01", null],
+		]);
+
+		// The earlier start date wins, and the open claim is closed at once.
+		const profile = present(
+			await db.query.memberProfile.findFirst({
+				where: and(
+					eq(memberProfile.organizationId, ORG),
+					eq(memberProfile.userId, caller.userId),
+				),
+			}),
+			"profile",
+		);
+		expect(profile.startDate).toBe("2024-01-01");
+		expect(profile.claimPendingSince).toBeNull();
+		expect(await importClaimsService.pendingFor(caller.userId)).toEqual([]);
 	});
 
 	test("decline keeps the history, and the offer does not return", async () => {
@@ -544,5 +589,111 @@ describe("a claim", () => {
 		await expect(importClaimsService.accept(caller)).rejects.toThrow(
 			NoPendingClaimError,
 		);
+	});
+});
+
+describe("a guessed address", () => {
+	test("is not offered or accepted until an admin confirms it", async () => {
+		const email = "guess.claim@example.com";
+		const { placeholder } = await importPerson(email, false);
+		const caller = await signUp(email, true);
+
+		expect(await importClaimsService.pendingFor(caller.userId)).toEqual([]);
+		await expect(importClaimsService.accept(caller)).rejects.toThrow(
+			NoPendingClaimError,
+		);
+
+		expect(await membersService.confirmEmail(admin, placeholder)).toEqual({
+			emailConfirmed: true,
+		});
+		expect(
+			(await importClaimsService.pendingFor(caller.userId)).map(
+				(c) => c.organizationId,
+			),
+		).toEqual([ORG]);
+		await importClaimsService.accept(caller);
+		expect(await holdersOf(placeholder)).toEqual([]);
+	});
+
+	test("restoring an archived guess confirms it", async () => {
+		const email = "guess.restore@example.com";
+		const { placeholder } = await importPerson(email, false);
+		await membersService.setArchived(admin, placeholder, true);
+		const caller = await signUp(email, true);
+		expect(await importClaimsService.pendingFor(caller.userId)).toEqual([]);
+
+		expect(await membersService.setArchived(admin, placeholder, false)).toEqual(
+			{ emailConfirmed: true },
+		);
+		expect(await importClaimsService.pendingFor(caller.userId)).toHaveLength(1);
+	});
+
+	test("confirming gives the same answer for an existing account", async () => {
+		const email = "has.account@example.com";
+		const owner = await signUp(email, true);
+		await harvestImportService.start(admin, plan(email, false));
+		expect(await membersService.confirmEmail(admin, owner.userId)).toEqual({
+			emailConfirmed: true,
+		});
+	});
+});
+
+const CLOSED = "does not accept new accounts";
+
+describe("registration while it is closed", () => {
+	const savedOpen = process.env.REGISTRATION_OPEN;
+
+	beforeAll(() => {
+		delete process.env.REGISTRATION_OPEN;
+	});
+	afterAll(() => {
+		if (savedOpen !== undefined) process.env.REGISTRATION_OPEN = savedOpen;
+	});
+
+	const mayRegister = (email: string, emailVerified: boolean) =>
+		assertMayRegister({ email, emailVerified }, undefined);
+
+	test("a stranger is refused", async () => {
+		await expect(mayRegister("stranger@example.com", true)).rejects.toThrow(
+			CLOSED,
+		);
+	});
+
+	test("the verified owner of a confirmed address may sign up", async () => {
+		await importPerson("owner.signup@example.com", true);
+		await mayRegister("owner.signup@example.com", true);
+		await mayRegister("Owner.Signup@example.com", true);
+	});
+
+	test("an unverified owner is refused outside development", async () => {
+		await importPerson("owner.unverified@example.com", true);
+		const previous = process.env.NODE_ENV;
+		process.env.NODE_ENV = "production";
+		try {
+			await expect(
+				mayRegister("owner.unverified@example.com", false),
+			).rejects.toThrow(CLOSED);
+		} finally {
+			process.env.NODE_ENV = previous;
+		}
+	});
+
+	test("a guessed address is refused until it is confirmed", async () => {
+		const { placeholder } = await importPerson(
+			"owner.guess@example.com",
+			false,
+		);
+		await expect(mayRegister("owner.guess@example.com", true)).rejects.toThrow(
+			CLOSED,
+		);
+		await membersService.confirmEmail(admin, placeholder);
+		await mayRegister("owner.guess@example.com", true);
+	});
+
+	test("an address that declined is refused", async () => {
+		const email = "owner.declined@example.com";
+		await importPerson(email, true);
+		await importClaimsService.decline(await signUp(email, true));
+		await expect(mayRegister(email, true)).rejects.toThrow(CLOSED);
 	});
 });

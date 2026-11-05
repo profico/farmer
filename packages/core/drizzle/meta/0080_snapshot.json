@@ -1,5 +1,5 @@
 {
-  "id": "7002819c-d9d1-4ac9-a807-70a759921a82",
+  "id": "56a01c47-389d-4225-925d-ac9bf0c70dd4",
   "prevId": "e7f66179-efba-4e92-9b74-c87d34227662",
   "version": "7",
   "dialect": "postgresql",
@@ -4017,6 +4017,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "confirmed": {
+          "name": "confirmed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "declined_at": {
           "name": "declined_at",

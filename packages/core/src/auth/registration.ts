@@ -1,6 +1,7 @@
 import { APIError } from "better-auth/api";
 
 import { isDevAuthEnabled } from "../lib/dev-auth";
+import { hasClaimableImport } from "../lib/import-claimable";
 import { settingEnabled } from "../lib/instance-settings";
 import {
 	findPendingInvitation,
@@ -83,6 +84,14 @@ const inviteOnly = () =>
 export const mayClaimInvitation = (emailVerified: boolean): boolean =>
 	emailVerified || isDevAuthEnabled();
 
+/** The owner of an address that a Harvest import holds history for signs up
+ *  to claim it, with the same verified-address rule as an invitation. */
+const claimsImport = async (user: {
+	email: string;
+	emailVerified: boolean;
+}): Promise<boolean> =>
+	mayClaimInvitation(user.emailVerified) && hasClaimableImport(user.email);
+
 export const assertMayRegister = async (
 	user: { email: string; emailVerified: boolean },
 	path: string | undefined,
@@ -105,7 +114,7 @@ export const assertMayRegister = async (
 		throw registrationClosed();
 	}
 	if (empty) return;
-	if (await invited(null)) return;
+	if ((await invited(null)) || (await claimsImport(user))) return;
 	if (settingEnabled("REGISTRATION_OPEN")) return;
 	throw registrationClosed();
 };

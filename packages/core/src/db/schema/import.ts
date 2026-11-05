@@ -83,6 +83,10 @@ export const importPendingPerson = pgTable(
 		organizationId: org(),
 		// Lower case.
 		email: text("email").notNull(),
+		// Whether the address is the person's own: typed or listed, not a guess
+		// (`emailConfirmed` on the person plan, or an admin who confirmed it). A
+		// guess is not offered to anybody and cannot be claimed.
+		confirmed: boolean("confirmed").notNull().default(false),
 		declinedAt: ts("declined_at"),
 		...stamps,
 	},

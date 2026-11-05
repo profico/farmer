@@ -24,6 +24,7 @@ import {
 	asc,
 	eq,
 	getTableName,
+	inArray,
 	isNotNull,
 	isNull,
 	sql,
@@ -46,6 +47,7 @@ import {
 } from "../db/schema/people";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import { UserFacingError } from "../lib/user-facing-error";
+import { MAX_DAY_SECONDS } from "../lib/working-day";
 import { recordAudit } from "./audit";
 import { memberJoined } from "./member-joined";
 import { teamLeadsService } from "./team-leads.service";
@@ -188,11 +190,6 @@ const MOVES: readonly Move[] = [
 		clash: "any",
 	},
 	{
-		user: memberTypeHistory.userId,
-		org: memberTypeHistory.organizationId,
-		clash: "any",
-	},
-	{
 		user: projectMember.userId,
 		org: projectMember.organizationId,
 		clash: [projectMember.projectId],
@@ -248,6 +245,57 @@ const moveRows = (
 	);
 };
 
+/** The person type is effective-dated, and the imported months must keep the
+ *  type they had. The caller's own rows stand for the days they cover. A row
+ *  of the placeholder that starts before the caller's first row is cut to end
+ *  there, so the imported months before it keep the imported type. Then every
+ *  row that overlaps nothing the caller holds moves. Dates are yyyy-MM-dd
+ *  text, so a string comparison orders them. */
+const moveTypeHistory = async (
+	tx: DbClient,
+	org: string,
+	from: string,
+	to: string,
+) => {
+	const t = memberTypeHistory;
+	const table = sql.identifier(getTableName(t));
+	const u = sql.identifier(t.userId.name);
+	const o = sql.identifier(t.organizationId.name);
+	const start = sql.identifier(t.effectiveFrom.name);
+	const end = sql.identifier(t.effectiveUntil.name);
+	const first = sql`(select min(x.${start}) from ${table} x where x.${u} = ${to} and x.${o} = ${org})`;
+	await tx.execute(
+		sql`update ${table} set ${end} = ${first} where ${u} = ${from} and ${o} = ${org} and ${start} < ${first} and (${end} is null or ${end} > ${first})`,
+	);
+	await tx.execute(
+		sql`update ${table} set ${u} = ${to} where ${u} = ${from} and ${o} = ${org} and not exists (select 1 from ${table} x where x.${u} = ${to} and x.${o} = ${org} and x.${start} < coalesce(${table}.${end}, '9999-12-31') and coalesce(x.${end}, '9999-12-31') > ${table}.${start})`,
+	);
+};
+
+/** The days that hold more than 24 hours once the placeholder's entries join
+ *  the caller's. Counted before the move, for the audit row. */
+const daysOverCap = async (
+	tx: DbClient,
+	org: string,
+	from: string,
+	to: string,
+): Promise<number> => {
+	const rows = await tx
+		.select({ date: timeEntry.date })
+		.from(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, org),
+				inArray(timeEntry.userId, [from, to]),
+			),
+		)
+		.groupBy(timeEntry.date)
+		.having(
+			sql`sum(${timeEntry.durationSeconds}) > ${MAX_DAY_SECONDS} and bool_or(${timeEntry.userId} = ${from})`,
+		);
+	return rows.length;
+};
+
 type PlaceholderClaim = { userId: string; email: string };
 
 /** The placeholder in `ctx.organizationId` that the caller verifiably owns:
@@ -279,6 +327,7 @@ const ownedPlaceholder = async (
 			and(
 				eq(importPendingPerson.organizationId, ctx.organizationId),
 				eq(importPendingPerson.email, me.email.toLowerCase()),
+				eq(importPendingPerson.confirmed, true),
 				isNull(importPendingPerson.declinedAt),
 			),
 		)
@@ -295,33 +344,40 @@ const adoptPlaceholder = async (
 	tx: DbClient,
 	ctx: Ctx,
 	placeholder: PlaceholderClaim,
-): Promise<{ role: string; name: string; joined: boolean }> => {
+): Promise<{
+	role: string;
+	name: string;
+	joined: boolean;
+	daysOverCap: number;
+}> => {
 	const org = ctx.organizationId;
 	const row = await placeholderMembership(tx, org, placeholder.userId);
 	const [mine] = await tx
 		.select({ role: member.role })
 		.from(member)
 		.where(and(eq(member.organizationId, org), eq(member.userId, ctx.userId)));
+	const overCap = await daysOverCap(tx, org, placeholder.userId, ctx.userId);
 	for (const m of MOVES) {
 		await moveRows(tx, m, org, placeholder.userId, ctx.userId);
 	}
-	if (mine) {
-		// Undo reads `claimName` to tell an accepted import from an attached
-		// member; the surviving profile gets it, so undo keeps the member.
-		await tx
-			.update(memberProfile)
-			.set({
-				claimName: sql`coalesce(${memberProfile.claimName}, ${row.claimName})`,
-			})
-			.where(
-				and(
-					eq(memberProfile.organizationId, org),
-					eq(memberProfile.userId, ctx.userId),
-				),
-			);
-	} else {
-		await clearClaim(tx, org, ctx.userId);
-	}
+	await moveTypeHistory(tx, org, placeholder.userId, ctx.userId);
+	// A profile the caller holds already (a member, or a leftover of a
+	// decline) stays. It takes the earlier start date and, for undo, the
+	// claim name: undo reads `claimName` to tell an accepted import from an
+	// attached member.
+	await tx
+		.update(memberProfile)
+		.set({
+			startDate: sql`least(${memberProfile.startDate}, (select p.start_date from member_profile p where p.organization_id = ${org} and p.user_id = ${placeholder.userId}))`,
+			claimName: sql`coalesce(${memberProfile.claimName}, ${row.claimName})`,
+		})
+		.where(
+			and(
+				eq(memberProfile.organizationId, org),
+				eq(memberProfile.userId, ctx.userId),
+			),
+		);
+	await clearClaim(tx, org, ctx.userId);
 	await tx
 		.update(importMapping)
 		.set({ localId: ctx.userId })
@@ -333,7 +389,12 @@ const adoptPlaceholder = async (
 			),
 		);
 	await tx.delete(user).where(eq(user.id, placeholder.userId));
-	return { role: mine?.role ?? row.role, name: row.name, joined: !mine };
+	return {
+		role: mine?.role ?? row.role,
+		name: row.name,
+		joined: !mine,
+		daysOverCap: overCap,
+	};
 };
 
 /** The placeholder persons whose address the caller owns and has verified. */
@@ -373,6 +434,7 @@ const pendingPlaceholders = async (userId: string): Promise<PendingClaim[]> => {
 		.where(
 			and(
 				eq(importPendingPerson.email, me.email.toLowerCase()),
+				eq(importPendingPerson.confirmed, true),
 				isNull(importPendingPerson.declinedAt),
 				isNotNull(memberProfile.claimPendingSince),
 			),
@@ -421,12 +483,17 @@ const pendingOwn = async (userId: string): Promise<PendingClaim[]> => {
 const acceptClaim = async (
 	tx: DbClient,
 	ctx: Ctx,
-): Promise<{ role: string; name: string; joined: boolean }> => {
+): Promise<{
+	role: string;
+	name: string;
+	joined: boolean;
+	daysOverCap: number;
+}> => {
 	const placeholder = await ownedPlaceholder(tx, ctx);
 	if (placeholder) return adoptPlaceholder(tx, ctx, placeholder);
 	const pending = await pendingMembership(tx, ctx);
 	await clearClaim(tx, ctx.organizationId, ctx.userId);
-	return { ...pending, joined: true };
+	return { ...pending, joined: true, daysOverCap: 0 };
 };
 
 /** Ends a claim as a decline. The `member` row goes and the history stays,
@@ -483,7 +550,7 @@ export const importClaimsService = {
 	 *  has committed. Returns the slug to enter. A caller who was a member
 	 *  already joins nothing, so nothing is announced. */
 	accept: async (ctx: Ctx): Promise<{ slug: string }> => {
-		const { role, name, joined } = await db.transaction((tx) =>
+		const { role, name, joined, daysOverCap } = await db.transaction((tx) =>
 			acceptClaim(tx, ctx),
 		);
 		if (joined) {
@@ -497,7 +564,9 @@ export const importClaimsService = {
 				kind: "member.claim_merged",
 				subjectUserId: ctx.userId,
 				target: { type: "member", id: ctx.userId, label: name },
-				details: { role },
+				// The moved entries are kept whole, so a day may pass the 24-hour
+				// cap; the count says how many did.
+				details: { role, daysOverCap },
 			});
 		}
 		const org = await db.query.organization.findFirst({
