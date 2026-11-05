@@ -110,8 +110,9 @@ const sendPing = async (ctx: Ctx, userId: string) => {
 	return wasUnreachable(outcome) ? "unreachable" : "failed";
 };
 
-/** The people of `userIds` that a ping cannot reach (not yet a member, archived,
- *  never signed in). Imported here for the same cycle reason as `sendPing`. */
+/** The people of `userIds` that a ping cannot reach (not a member, or a Harvest
+ *  import claim that is not accepted). Imported here for the same cycle reason
+ *  as `sendPing`. */
 const pingBlocked = async (organizationId: string, userIds: string[]) => {
 	const { deliveryBlocks } = await import("./notify");
 	return deliveryBlocks(organizationId, userIds, "ping");
