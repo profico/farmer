@@ -1,9 +1,20 @@
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
-import type { ErrorComponentProps } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import {
+	Link,
+	useParams,
+	type ErrorComponentProps,
+} from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
-import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
+import {
+	ErrorCard,
+	ErrorIcon,
+	ErrorRef,
+	ErrorScreen,
+} from "#/components/error-screen.tsx";
+import { Button } from "#/components/ui/button.tsx";
+import { useInsideSidebar } from "#/components/ui/sidebar.tsx";
 import {
 	browserEnv,
 	claimStaleChunkFault,
@@ -11,8 +22,6 @@ import {
 	isReloadPending,
 	reloadIfStaleChunk,
 } from "#/lib/stale-chunk.ts";
-
-import "./site/errors.css";
 
 /** A short, per-render correlation id plus a UTC timestamp, so a person can
  *  read it to an administrator over chat without attaching a screenshot. Not
@@ -29,17 +38,15 @@ const makeErrorRef = () => {
  * Any `useSuspenseQuery`/loader rejection anywhere under the router lands
  * here instead of TanStack Router's unstyled default error screen.
  *
- * Renders both fully outside the app shell (the root route itself threw) and
- * nested inside a matched route's own layout, so — like `RouteNotFound` — it
- * draws a complete page of its own rather than assuming any ancestor chrome,
- * and never calls a loader (`SiteBrand` needs no visitor).
+ * Renders both inside the workspace layout and with no layout at all (the
+ * root route itself threw); `ErrorScreen` draws the frame for each.
  */
 export function RouteError({ error, reset }: ErrorComponentProps) {
 	const posthog = usePostHog();
 	const message = error instanceof Error ? error.message : String(error);
 	const [errorRef] = useState(makeErrorRef);
-	const pageRef = useRef<HTMLDivElement>(null);
-	useEmSheen(pageRef);
+	const inside = useInsideSidebar();
+	const { orgSlug } = useParams({ strict: false });
 
 	useEffect(() => {
 		// A chunk that a deploy removed is not a fault: reload to get the new
@@ -55,42 +62,53 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 	}, [error, posthog]);
 
 	return (
-		<div ref={pageRef} className="fm-site fm-error-page">
-			<header className="fm-error-header">
-				<SiteBrand size={24} />
-			</header>
-			<main className="fm-error-main">
-				<span className="fm-mono fm-error-code">500 · server error</span>
-				<h1 className="fm-error-h1">
-					Something broke <span className="fm-em">on our side.</span>
-				</h1>
-				<p className="fm-lede fm-error-lede">
-					Your time entries are safe. Try again in a moment.
-				</p>
-				<div className="fm-error-actions">
-					<button
-						type="button"
-						className="fm-btn"
-						onClick={() => {
-							posthog.capture("route_error_retry_clicked");
-							// A stale chunk error is cached by the lazy component, so a
-							// re-render throws it again. Only a new page can fix it.
-							if (isStaleChunkError(error)) browserEnv().reload();
-							else reset();
-						}}
-					>
-						<ArrowsClockwiseIcon size={16} aria-hidden />
-						Try again
-					</button>
-				</div>
-				<p className="fm-error-ref">
-					If it keeps happening, send this to your administrator:{" "}
-					<span className="fm-code">ref {errorRef}</span>
+		<ErrorScreen>
+			<ErrorCard
+				icon={
+					<ErrorIcon tone="fault">
+						<WarningCircleIcon size={22} />
+					</ErrorIcon>
+				}
+				title={inside ? "This page did not load" : "Farmer did not load"}
+				actions={
+					<>
+						<Button
+							onClick={() => {
+								posthog.capture("route_error_retry_clicked");
+								// A stale chunk error is cached by the lazy component, so a
+								// re-render throws it again. Only a new page can fix it.
+								if (isStaleChunkError(error)) browserEnv().reload();
+								else reset();
+							}}
+						>
+							<ArrowsClockwiseIcon aria-hidden />
+							Try again
+						</Button>
+						{inside && orgSlug && (
+							<Button
+								variant="outline"
+								nativeButton={false}
+								render={
+									<Link to="/$orgSlug" params={{ orgSlug }}>
+										Go to today
+									</Link>
+								}
+							/>
+						)}
+					</>
+				}
+				after={<ErrorRef value={errorRef} />}
+			>
+				<p className="text-sm text-muted-foreground">
+					The server had a problem. Your time entries are safe. If it keeps
+					happening, send the ref below to your administrator.
 				</p>
 				{import.meta.env.DEV && message && (
-					<pre className="fm-mono fm-error-detail">{message}</pre>
+					<pre className="mt-2 overflow-x-auto font-mono text-xs text-muted-foreground">
+						{message}
+					</pre>
 				)}
-			</main>
-		</div>
+			</ErrorCard>
+		</ErrorScreen>
 	);
 }

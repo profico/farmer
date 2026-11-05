@@ -53,6 +53,11 @@ function useSidebar() {
 	return context;
 }
 
+/** True under the workspace layout, so an error screen can skip its own brand. */
+function useInsideSidebar() {
+	return React.useContext(SidebarContext) !== null;
+}
+
 function SidebarProvider({
 	defaultOpen = true,
 	open: openProp,
@@ -762,5 +767,6 @@ export {
 	SidebarRail,
 	SidebarSeparator,
 	SidebarTrigger,
+	useInsideSidebar,
 	useSidebar,
 };
