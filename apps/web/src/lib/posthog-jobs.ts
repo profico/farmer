@@ -27,6 +27,9 @@ export const posthogJobFailureSink = ({
 			job,
 			// Undefined when the failure belongs to no organization; JSON drops it.
 			organization_id: organizationId,
+			// `background-job` is a bucket, not somebody: it must not mint a person
+			// (see `propertiesOf` in `posthog-api.ts`).
+			...(userId ? {} : { $process_person_profile: false }),
 		},
 	);
 };
