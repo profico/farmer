@@ -268,9 +268,11 @@ export function PushBridge() {
 		return () => subscription.remove();
 	}, [signedIn]);
 
-	// Stop on a timer surface: hold the clock, in the timer's workspace,
-	// before the stop sheet reads it. On a cold start the link that opened
-	// the app is read once the session is ready.
+	// Stop on a timer surface: move to the timer's workspace, so the stop
+	// sheet finds the timer. The link only opens the sheet. Any web page or
+	// app can open this link, so it must not change the timer: the sheet's
+	// own Save is the only action. On a cold start the link that opened the
+	// app is read once the session is ready.
 	const initialUrlRead = useRef(false);
 	useEffect(() => {
 		if (!signedIn) return;
@@ -283,8 +285,6 @@ export function PushBridge() {
 				const timer = await readTimer(c, o, current, queryClient);
 				if (!timer || timer.droppedAt) return;
 				const slug = timer.organization.slug;
-				const held = timer.paused ? { timer } : await c.pauseTimer(slug);
-				queryClient.setQueryData(["farmer", o, slug, "timer"], held);
 				if (slug !== current) await live.current.setWorkspace(slug);
 			} catch {
 				// The sheet reads the timer itself and says what it finds.

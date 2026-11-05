@@ -29,10 +29,11 @@ import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
 
 /**
- * Stop and log (ADR 0003). The timer is already held when this opens. The
- * figure offered is the server's `snappedSeconds`, the measured time on the
- * nearest quarter hour, and the person can change it before anything is
- * saved. Closing this sheet leaves the timer held.
+ * Stop and log (ADR 0003). The in-app Stop holds the timer before it opens
+ * this sheet. A link from a timer surface does not: it only opens the sheet,
+ * and the timer keeps running until the person saves. The figure offered is
+ * the server's `snappedSeconds`, the measured time on the nearest quarter
+ * hour, and the person can change it before anything is saved.
  */
 export default function StopTimerSheet() {
 	const timer = useTimer({ fresh: true });
