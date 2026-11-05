@@ -31,7 +31,7 @@ import type {
 	MemberTypeValue,
 } from "../schema/members";
 import { diffFields, recordAudit } from "./audit";
-import { shownImage, shownName, shownNameOf } from "./claim-name";
+import { shownEmail, shownImage, shownName, shownNameOf } from "./claim-name";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { emitEvent, memberWebhookPayload } from "./events";
 import { assertUserInOrg } from "./guards";
@@ -275,7 +275,7 @@ export const membersService = {
 				role: member.role,
 				createdAt: member.createdAt,
 				name: shownName(ctx.organizationId),
-				email: user.email,
+				email: shownEmail(),
 				image: shownImage(ctx.organizationId),
 			})
 			.from(member)
@@ -308,7 +308,7 @@ export const membersService = {
 			.select({
 				userId: member.userId,
 				name: shownName(ctx.organizationId),
-				email: user.email,
+				email: shownEmail(),
 				emailVerified: user.emailVerified,
 				orgRole: member.role,
 				startDate: memberProfile.startDate,

@@ -68,6 +68,30 @@ export const importRun = pgTable(
 	(t) => [index("import_run_org_idx").on(t.organizationId, t.createdAt)],
 );
 
+// The real address of a person an import made while the address had no account
+// (multi-org mode). The `user` row it points at is a placeholder with an
+// address that matches no sign-in (`lib/import-placeholder.ts`), so the import
+// cannot block anybody's sign-in. The verified owner of `email` claims the
+// history in `import-claims.service.ts`, which moves the rows to their own user.
+// `declinedAt` stops the offer from coming back after a decline.
+export const importPendingPerson = pgTable(
+	"import_pending_person",
+	{
+		userId: text("user_id")
+			.primaryKey()
+			.references(() => user.id, { onDelete: "cascade" }),
+		organizationId: org(),
+		// Lower case.
+		email: text("email").notNull(),
+		declinedAt: ts("declined_at"),
+		...stamps,
+	},
+	(t) => [
+		unique("import_pending_person_org_email_unq").on(t.organizationId, t.email),
+		index("import_pending_person_email_idx").on(t.email),
+	],
+);
+
 // The source's name for a thing, and the row it became here. A second import
 // resolves through this rather than by name again, so a rename in this app does
 // not fork the history. `created` separates a row the run made (undo deletes

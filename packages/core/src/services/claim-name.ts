@@ -2,6 +2,7 @@ import { type SQL, eq, sql } from "drizzle-orm";
 
 import type { db } from "../db";
 import { member, user } from "../db/schema/auth";
+import { importPendingPerson } from "../db/schema/import";
 import { memberProfile } from "../db/schema/people";
 
 // What an organization may show of a person whose claim is pending
@@ -21,6 +22,13 @@ export const shownImage = (orgId: string): SQL<string | null> =>
 	sql<
 		string | null
 	>`case when exists (select 1 ${pendingClaim(orgId)}) then null else ${user.image} end`;
+
+/** The address an organization may show for a person. A person an import made
+ *  has a placeholder `user.email` (`lib/import-placeholder.ts`) and the real
+ *  address in `import_pending_person`. Use this in place of `user.email` in
+ *  each read that a person or a screen sees. */
+export const shownEmail = (): SQL<string> =>
+	sql<string>`coalesce((select ${importPendingPerson.email} from ${importPendingPerson} where ${importPendingPerson.userId} = ${user.id}), ${user.email})`;
 
 /** The name an audit label or an event payload may carry for `userId`. */
 export const shownNameOf = async (

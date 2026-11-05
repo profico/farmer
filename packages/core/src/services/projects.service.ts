@@ -25,7 +25,7 @@ import type {
 } from "../schema/projects";
 import { AccessError, type Access, accessService } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
-import { shownName } from "./claim-name";
+import { shownEmail, shownName } from "./claim-name";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { emitEvent, projectWebhookPayload } from "./events";
 import {
@@ -346,7 +346,7 @@ export const projectsService = {
 				.select({
 					userId: projectMember.userId,
 					name: shownName(ctx.organizationId),
-					email: user.email,
+					email: shownEmail(),
 					role: projectMember.role,
 					active: projectMember.active,
 				})
@@ -806,7 +806,7 @@ export const projectsService = {
 			.select({
 				userId: user.id,
 				name: shownName(ctx.organizationId),
-				email: user.email,
+				email: shownEmail(),
 			})
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))

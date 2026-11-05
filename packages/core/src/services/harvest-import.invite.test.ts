@@ -28,7 +28,9 @@ import {
 	user,
 } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
+import { importPendingPerson } from "../db/schema/import";
 import { memberProfile } from "../db/schema/people";
+import { placeholderEmail } from "../lib/import-placeholder";
 import { setInstanceSettingsForTests } from "../lib/instance-settings";
 import type { HarvestStartInput } from "../schema/harvest-import";
 import { createTestDb, present, type TestDb } from "../test/harness";
@@ -215,12 +217,24 @@ describe("harvest import with several organizations", () => {
 			expect(await membershipOf(id)).toBeDefined();
 			expect((await profileOf(id))?.claimPendingSince).toBeInstanceOf(Date);
 		}
+		// The address has no account, so the user is a placeholder (issue #162).
+		const [pending] = await db
+			.select({ userId: importPendingPerson.userId })
+			.from(importPendingPerson)
+			.where(eq(importPendingPerson.email, "fresh@example.com"));
 		const made = present(
 			await db.query.user.findFirst({
-				where: eq(user.email, "fresh@example.com"),
+				where: eq(user.id, present(pending, "the pending row").userId),
 			}),
 			"the made user",
 		);
+		expect(made.email).toBe(placeholderEmail(made.id));
+		expect(made.emailVerified).toBe(false);
+		expect(
+			await db.query.user.findFirst({
+				where: eq(user.email, "fresh@example.com"),
+			}),
+		).toBeUndefined();
 		expect((await profileOf(made.id))?.claimPendingSince).toBeInstanceOf(Date);
 
 		// No invitation, no email, no `member.invited` row for any of them.

@@ -4,6 +4,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { z } from "zod";
 
 import { externalFetch } from "./http";
+import { isPlaceholderEmail } from "./import-placeholder";
 import { setting, settingEnabled } from "./instance-settings";
 
 // Two ways out, one chosen per process:
@@ -201,6 +202,12 @@ export const invitationMail = (input: {
 };
 
 export const sendMail = async (input: MailInput) => {
+	// A Harvest import's placeholder user has no mailbox (issue #162).
+	if (isPlaceholderEmail(input.to)) {
+		throw new Error(
+			"The address belongs to an imported person who has no account",
+		);
+	}
 	const provider = emailProvider();
 	if (provider === "resend") return sendWithResend(input);
 	if (provider === "smtp") return sendWithSmtp(input);

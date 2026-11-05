@@ -43,7 +43,11 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { importMapping, importRun } from "../db/schema/import";
+import {
+	importMapping,
+	importPendingPerson,
+	importRun,
+} from "../db/schema/import";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import type {
 	HarvestFinishResult,
@@ -52,6 +56,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
+import { placeholderEmail } from "../lib/import-placeholder";
 import { findSingleOrg, isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
@@ -69,7 +74,7 @@ import type {
 	HarvestTaskPlan,
 } from "../schema/harvest-import";
 import { recordAudit } from "./audit";
-import { shownName } from "./claim-name";
+import { shownEmail, shownName } from "./claim-name";
 import { clientsService } from "./clients.service";
 import { type DbClient, requireAdmin } from "./context";
 import { emitEvent } from "./events";
@@ -678,6 +683,58 @@ const startMatchedPerson = async (
 	await remember(st, "person", p.sourceKey, p.localId, false);
 };
 
+/** With several organizations, the user for an address that has no account.
+ *  Never a row that holds the address: an unverified row for it would refuse
+ *  the owner's first OAuth sign-in (issue #162), and the flag that says
+ *  "verified" comes from the browser. The row is a placeholder, and the
+ *  owner claims the history later (`import-claims.service.ts`). A placeholder
+ *  this org made earlier is reused, so a second import (or a person who
+ *  declined) does not make a second one. */
+const resolvePlaceholder = async (
+	st: StartTx,
+	p: PersonCreatePlan,
+	email: string,
+): Promise<string> => {
+	const { tx, org } = st;
+	const [pending] = await tx
+		.select({ userId: importPendingPerson.userId })
+		.from(importPendingPerson)
+		.where(
+			and(
+				eq(importPendingPerson.organizationId, org),
+				eq(importPendingPerson.email, email),
+			),
+		)
+		.limit(1);
+	if (pending) {
+		const [membership] = await tx
+			.select({ id: member.id })
+			.from(member)
+			.where(
+				and(eq(member.organizationId, org), eq(member.userId, pending.userId)),
+			)
+			.limit(1);
+		if (membership) {
+			throw new Error(
+				`${email} is a member already. Match the person instead.`,
+			);
+		}
+		await tx
+			.update(importPendingPerson)
+			.set({ declinedAt: null, updatedAt: new Date() })
+			.where(eq(importPendingPerson.userId, pending.userId));
+		return pending.userId;
+	}
+	const userId = generateId();
+	await tx
+		.insert(user)
+		.values({ id: userId, name: p.name, email: placeholderEmail(userId) });
+	await tx
+		.insert(importPendingPerson)
+		.values({ userId, organizationId: org, email });
+	return userId;
+};
+
 /** The user a created person maps to: a user that holds the address, or a
  *  new one. */
 const resolveImportUser = async (
@@ -692,6 +749,9 @@ const resolveImportUser = async (
 		.where(sql`lower(${user.email}) = ${email}`)
 		.limit(1);
 	if (!found) {
+		if (st.multiOrg) return resolvePlaceholder(st, p, email);
+		// Single-org mode: the instance owner controls every user and invites
+		// the people who sign in, so the address is safe to hold.
 		const userId = generateId();
 		await tx.insert(user).values({
 			id: userId,
@@ -1207,7 +1267,7 @@ export const harvestImportService = {
 			.select({
 				userId: member.userId,
 				name: shownName(org),
-				email: user.email,
+				email: shownEmail(),
 				role: member.role,
 				archivedAt: memberProfile.archivedAt,
 				startDate: memberProfile.startDate,

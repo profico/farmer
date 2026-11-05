@@ -6,7 +6,7 @@ import { memberProfile, teamLeadPerson } from "../db/schema/people";
 import type { SetTeamLeadPeopleInput } from "../schema/team-leads";
 import { AccessError } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
-import { shownName, shownNameOf } from "./claim-name";
+import { shownEmail, shownName, shownNameOf } from "./claim-name";
 import { ctxAccess, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
@@ -25,7 +25,7 @@ export const teamLeadsService = {
 			.select({
 				userId: teamLeadPerson.personUserId,
 				name: shownName(ctx.organizationId),
-				email: user.email,
+				email: shownEmail(),
 			})
 			.from(teamLeadPerson)
 			.innerJoin(user, eq(teamLeadPerson.personUserId, user.id))
