@@ -25,6 +25,14 @@ bun run format              # oxfmt --write
 
 # Database (packages/core, run through root turbo)
 bun run db:generate         # drizzle-kit generate → packages/core/drizzle/*.sql
+                            # then deletes all but the newest snapshot in drizzle/meta.
+                            # Never run bare `drizzle-kit generate`, never `drizzle-kit drop` (it deletes
+                            # the snapshot): after an undo, restore the previous snapshot from git.
+                            # Before the drizzle-kit v1 upgrade (0.31's `up` needs no restore), restore the snapshots first,
+                            # then run `drizzle-kit up`. This works from any folder:
+                            # `git checkout 0b6f8713 -- ':(top,glob)packages/core/drizzle/meta/*_snapshot.json'`
+                            # (it needs every snapshot; 0000-0075 are there, later ones from their own commit).
+                            # Do not restore `_journal.json`: it would drop every migration after 0076.
 bun run db:migrate          # drizzle-kit migrate
 bun run db:check            # `select 1` sanity check
 bun run db:studio           # drizzle-kit studio
