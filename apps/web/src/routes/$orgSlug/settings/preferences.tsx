@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { ApiTokensSection } from "#/components/api-tokens-settings.tsx";
 import { ColorWheel } from "#/components/color-wheel.tsx";
+import { DeviceFontPicker } from "#/components/device-font-picker.tsx";
 import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
 import { YourTasksSection } from "#/components/pickers/your-tasks.tsx";
@@ -53,7 +54,7 @@ import { When } from "#/components/when.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { type DisplayPref, useDisplayPref } from "#/lib/display-prefs.ts";
-import { FACES, type FaceRole, useFace } from "#/lib/fonts.ts";
+import { FACES, type FaceRole, localFamilyOf, useFace } from "#/lib/fonts.ts";
 import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
 import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
@@ -567,35 +568,42 @@ function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
 		value: face.id,
 		label: face.label,
 	}));
+	// A font picked from the device is not in the catalogue; list it so the
+	// trigger shows its name.
+	const deviceFamily = localFamilyOf(id);
+	if (deviceFamily) items.push({ value: id, label: deviceFamily });
 	return (
-		<label className="flex flex-col gap-1.5">
-			<span className="flex items-baseline gap-2 text-sm text-muted-foreground">
-				{label}
-				{/* Always mounted: a live region announces a change to its text,
+		<div className="flex flex-col gap-2">
+			<label className="flex flex-col gap-1.5">
+				<span className="flex items-baseline gap-2 text-sm text-muted-foreground">
+					{label}
+					{/* Always mounted: a live region announces a change to its text,
 				    not its own arrival. */}
-				<span className="text-xs text-faint" aria-live="polite">
-					{loading ? "Loading…" : null}
+					<span className="text-xs text-faint" aria-live="polite">
+						{loading ? "Loading…" : null}
+					</span>
 				</span>
-			</span>
-			<Select
-				value={id}
-				// Base UI's `onValueChange` is nullable because a Select may be
-				// clearable. This one is not — every role always has a face.
-				onValueChange={(value) => pick(value ?? id)}
-				items={items}
-			>
-				<SelectTrigger className="w-full bg-card sm:w-56">
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{items.map((item) => (
-						<SelectItem key={item.value} value={item.value}>
-							{item.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-		</label>
+				<Select
+					value={id}
+					// Base UI's `onValueChange` is nullable because a Select may be
+					// clearable. This one is not — every role always has a face.
+					onValueChange={(value) => pick(value ?? id)}
+					items={items}
+				>
+					<SelectTrigger className="w-full bg-card sm:w-56">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{items.map((item) => (
+							<SelectItem key={item.value} value={item.value}>
+								{item.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</label>
+			<DeviceFontPicker id={id} onPick={pick} />
+		</div>
 	);
 }
 
@@ -611,7 +619,7 @@ function FontRow() {
 		<SettingBlock
 			labelId="font-label"
 			title="Font"
-			description="A face for text, one for page titles and large numbers, and one for durations and code. A face that is not already here is fetched the first time you pick it."
+			description="A face for text, one for page titles and large numbers, and one for durations and code. A face that is not already here is fetched the first time you pick it. A font from this device is never fetched."
 		>
 			<div className="flex flex-wrap gap-4">
 				<FaceSelect face="body" label="Text" />

@@ -516,6 +516,7 @@ function AssistantPage() {
 										: undefined
 								}
 								autoFocus
+								focusKey={conversationId}
 							/>
 						</div>
 					</div>
