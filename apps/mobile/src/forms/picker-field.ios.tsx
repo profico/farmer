@@ -10,7 +10,9 @@ import type { PickerFieldProps } from "./picker-field";
 /**
  * A select field as a row of a form: the label at the start, the value in
  * the secondary colour at the end, and a chevron, as in iOS Settings. A
- * tap pushes the selector.
+ * tap pushes the selector. The `leading` mark (a project icon) sits after
+ * the value, next to the chevron, so the value text lines up with the
+ * other rows.
  */
 export function PickerField({
 	label,
@@ -43,7 +45,6 @@ export function PickerField({
 						gap: 8,
 					}}
 				>
-					{leading}
 					<View style={{ flexShrink: 1, alignItems: "flex-end" }}>
 						<Text
 							variant="bodyLarge"
@@ -64,6 +65,7 @@ export function PickerField({
 							</Text>
 						) : null}
 					</View>
+					{leading}
 				</View>
 				<Icon
 					name="forward"
