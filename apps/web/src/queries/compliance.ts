@@ -1,6 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 
-import { getMyTargets, getTrackingReport } from "#/server/compliance.ts";
+import {
+	getMyTargets,
+	getPingStates,
+	getTrackingReport,
+} from "#/server/compliance.ts";
 
 import { queryKeys } from "./keys.ts";
 
@@ -16,6 +20,14 @@ export const trackingReportQuery = (
 			input.month,
 		],
 		queryFn: () => getTrackingReport({ data: input }),
+	});
+
+export const pingStatesQuery = (org: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).compliance, "ping-states"],
+		queryFn: () => getPingStates(),
+		// A tab left open must see a cooldown end and a month change.
+		refetchInterval: 5 * 60 * 1000,
 	});
 
 // In the TIME-ENTRIES family, not the compliance one the service belongs to:

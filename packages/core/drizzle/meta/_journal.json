@@ -568,6 +568,13 @@
       "when": 1793873381253,
       "tag": "0080_great_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793915815438,
+      "tag": "0081_natural_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }

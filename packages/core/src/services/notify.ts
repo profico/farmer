@@ -97,6 +97,7 @@ export type NotifyKind =
 	| "admin-digest"
 	| "webhook-disabled"
 	| "timer-dropped"
+	| "ping"
 	| "test";
 
 // The whole policy, in one table. `preference` names the column in
@@ -162,6 +163,15 @@ const KINDS = {
 		appInsteadOfSlack: false,
 	},
 	test: {
+		channels: ["slack"],
+		preference: null,
+		reminder: false,
+		appInsteadOfSlack: false,
+	},
+	// A person asked a colleague to track their time (`slackService.pingBehind`).
+	// Not a reminder: a person chose to send it, so the reminder opt-out and the
+	// other reminder gates do not apply.
+	ping: {
 		channels: ["slack"],
 		preference: null,
 		reminder: false,

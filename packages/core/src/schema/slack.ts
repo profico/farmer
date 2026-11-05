@@ -10,3 +10,8 @@ export const sendTestSlackMessageInput = z.object({
 export type SendTestSlackMessageInput = z.infer<
 	typeof sendTestSlackMessageInput
 >;
+
+export const pingPersonInput = z.object({
+	userId: z.string().min(1),
+});
+export type PingPersonInput = z.infer<typeof pingPersonInput>;

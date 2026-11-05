@@ -1,9 +1,13 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, user } from "../db/schema/auth";
+import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
-import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
+import {
+	memberSlackIdentity,
+	slackInstallation,
+	slackPing,
+} from "../db/schema/slack";
 import { setting } from "../lib/instance-settings";
 import { loggableError } from "../lib/loggable-error";
 import { signOrgState } from "../lib/oauth-state";
@@ -15,9 +19,105 @@ import {
 	slackLink,
 	slackRedirectUri,
 } from "../lib/slack-client";
+import { dayKeyInTz } from "../lib/time";
+import { UserFacingError } from "../lib/user-facing-error";
+import { accessService } from "./access.service";
 import { recordAudit } from "./audit";
-import { requireAdmin } from "./context";
+import { complianceService } from "./compliance.service";
+import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import type { Ctx } from "./types";
+
+/** How long a person is left alone after a ping. */
+export const PING_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/** A ping was refused because the person got one less than 24 hours ago.
+ *  `pingedAt` is when, so a screen can say so. */
+export class PingTooSoonError extends UserFacingError {
+	constructor(readonly pingedAt: Date) {
+		super("This person was pinged less than 24 hours ago.");
+		this.name = "PingTooSoonError";
+	}
+}
+
+/** The row of the person to ping, when the caller may see it and it is behind.
+ *  Reads the Tracking report, so the caller's scope and the verdict are the
+ *  ones the report shows. */
+const behindRowFor = async (ctx: Ctx, userId: string, now: Date) => {
+	const [year, month] = dayKeyInTz(now, await ctxTimezone(ctx))
+		.split("-")
+		.map(Number);
+	const report = await complianceService.tracking(
+		ctx,
+		{ year: year ?? 0, month: month ?? 0 },
+		{ now },
+	);
+	const row = report.rows.find((r) => r.userId === userId);
+	if (!row) throw new UserFacingError("You cannot see this person.");
+	if (row.status === null || row.status === "on_track") {
+		throw new UserFacingError("This person is not behind their target.");
+	}
+	return row;
+};
+
+/** Take the right to ping, or throw. One statement: the conflict update only
+ *  applies to a stored ping older than the cooldown, so two callers at once
+ *  cannot both pass. */
+const claimPing = async (ctx: Ctx, userId: string, now: Date) => {
+	const claimed = await db
+		.insert(slackPing)
+		.values({
+			organizationId: ctx.organizationId,
+			userId,
+			pingedByUserId: ctx.userId,
+			pingedAt: now,
+		})
+		.onConflictDoUpdate({
+			target: [slackPing.organizationId, slackPing.userId],
+			set: { pingedByUserId: ctx.userId, pingedAt: now },
+			setWhere: lt(
+				slackPing.pingedAt,
+				new Date(now.getTime() - PING_COOLDOWN_MS),
+			),
+		})
+		.returning({ id: slackPing.id });
+	if (claimed.length > 0) return;
+	const last = await db.query.slackPing.findFirst({
+		where: and(
+			eq(slackPing.organizationId, ctx.organizationId),
+			eq(slackPing.userId, userId),
+		),
+		columns: { pingedAt: true },
+	});
+	throw new PingTooSoonError(last?.pingedAt ?? now);
+};
+
+const sendPing = async (ctx: Ctx, userId: string): Promise<boolean> => {
+	const [sender, org] = await Promise.all([
+		db.query.user.findFirst({
+			where: eq(user.id, ctx.userId),
+			columns: { name: true },
+		}),
+		db.query.organization.findFirst({
+			where: eq(organization.id, ctx.organizationId),
+			columns: { slug: true },
+		}),
+	]);
+	// Imported here, not at the top: `notify` imports this module for its Slack
+	// adapter, and a static cycle would leave one of the two in its temporal
+	// dead zone at call time (the same reason `sendTest` does it).
+	const { notify, wasDelivered } = await import("./notify");
+	return wasDelivered(
+		await notify(
+			{ organizationId: ctx.organizationId, userId },
+			{
+				kind: "ping",
+				title: "Please track your time",
+				body: `${sender?.name ?? "A colleague"} asks you to track your time. You are behind your target for this month.`,
+				url: org ? `/${org.slug}/time` : undefined,
+			},
+		),
+	);
+};
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
@@ -437,6 +537,88 @@ export const slackService = {
 			});
 			return false;
 		}
+	},
+
+	/** Who the caller may ping, for the Tracking report: the people in the
+	 *  caller's scope (never the caller) who are matched to Slack, with when each
+	 *  was last pinged. `year` and `month` are the org's current month, the only
+	 *  month `pingBehind` judges, so the screen shows the button for that month
+	 *  only. `people` is empty when the org has no working Slack install. */
+	pingStates: async (
+		ctx: Ctx,
+		opts: { now?: Date } = {},
+	): Promise<{
+		year: number;
+		month: number;
+		people: { userId: string; pingedAt: Date | null }[];
+	}> => {
+		const [year, month] = dayKeyInTz(
+			opts.now ?? new Date(),
+			await ctxTimezone(ctx),
+		)
+			.split("-")
+			.map(Number);
+		const current = { year: year ?? 0, month: month ?? 0 };
+		if (!(await slackService.installationFor(ctx.organizationId))) {
+			return { ...current, people: [] };
+		}
+		const scope = await accessService.peopleScope(ctx, await ctxAccess(ctx));
+		const rows = await db
+			.select({
+				userId: memberSlackIdentity.userId,
+				pingedAt: slackPing.pingedAt,
+			})
+			.from(memberSlackIdentity)
+			.leftJoin(
+				slackPing,
+				and(
+					eq(slackPing.organizationId, memberSlackIdentity.organizationId),
+					eq(slackPing.userId, memberSlackIdentity.userId),
+				),
+			)
+			.where(eq(memberSlackIdentity.organizationId, ctx.organizationId));
+		const people = rows.filter(
+			(r) => r.userId !== ctx.userId && (scope === null || scope.has(r.userId)),
+		);
+		return { ...current, people };
+	},
+
+	/** DM a person who is behind their target, asking them to track their time.
+	 *  The caller must see the person on the Tracking report, and the person must
+	 *  be behind on it now. A second ping inside 24 hours throws
+	 *  `PingTooSoonError`. A send that fails gives the ping back. */
+	pingBehind: async (
+		ctx: Ctx,
+		userId: string,
+		opts: { now?: Date } = {},
+	): Promise<void> => {
+		const now = opts.now ?? new Date();
+		if (userId === ctx.userId) {
+			throw new UserFacingError("You cannot ping yourself.");
+		}
+		const row = await behindRowFor(ctx, userId, now);
+		const reachable =
+			(await slackService.installationFor(ctx.organizationId)) &&
+			(await slackService.slackIdFor(ctx.organizationId, userId));
+		if (!reachable) {
+			throw new UserFacingError("This person is not connected to Slack.");
+		}
+		await claimPing(ctx, userId, now);
+		if (!(await sendPing(ctx, userId))) {
+			await db
+				.delete(slackPing)
+				.where(
+					and(
+						eq(slackPing.organizationId, ctx.organizationId),
+						eq(slackPing.userId, userId),
+					),
+				);
+			throw new UserFacingError("The message could not be sent. Try again.");
+		}
+		await recordAudit(ctx, {
+			kind: "slack.pinged",
+			target: { type: "member", id: userId, label: row.name },
+		});
 	},
 
 	sendTest: async (ctx: Ctx, userId: string) => {
