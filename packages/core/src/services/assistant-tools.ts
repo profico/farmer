@@ -49,7 +49,7 @@ import {
 	createProjectInput,
 	createRecurringBlockRuleInput,
 	createTaskInput,
-	createTimeEntryInput,
+	createTimeEntryToolInput,
 	deleteFilingRuleInput,
 	deleteRecurringBlockRuleInput,
 	deleteTimeEntryInput,
@@ -83,7 +83,7 @@ import {
 	updateRecurringBlockRuleInput,
 	updateTaskInput,
 	updateTimeEntryDescriptionInput,
-	updateTimeEntryInput,
+	updateTimeEntryToolInput,
 	unlinkCommitsInput,
 	unlinkPullRequestsInput,
 	userCommitsRangeInput,
@@ -401,6 +401,27 @@ const projectNameFor = (ctx: Ctx, projectId: JsonValue | undefined) =>
 const normalizedName = (name: string) =>
 	foldForSearch(name).replace(/\s+/g, " ");
 
+const listProjectsInput = z.object({
+	q: z.string().trim().max(100).optional(),
+	clientId: z.uuid().optional(),
+});
+
+const compactFold = (text: string) =>
+	foldForSearch(text).replace(/[^\p{L}\p{N}]+/gu, "");
+
+// Tokens are matched against a compact haystack, so "ABWEB" finds "AB web"
+// and "[PA]" finds the code "PA". Every token must match.
+const projectMatchesQuery = (
+	query: string,
+	fields: readonly (string | null | undefined)[],
+) => {
+	const haystack = compactFold(fields.filter(Boolean).join(" "));
+	return foldForSearch(query)
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter(Boolean)
+		.every((token) => haystack.includes(token));
+};
+
 /** The email of a person, only where another person shares the name. Every
  *  tool result goes to the model provider, and a list of addresses is a
  *  mailing list. */
@@ -658,10 +679,21 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		kind: "read",
 		readsThirdPartyText: false,
 		description:
-			"List the projects the current user may log time against, with their ids, codes, type and clients. Call this before creating a time entry — a project must be named by id.",
-		schema: z.object({}),
-		run: async (ctx) => {
-			const rows = await projectsService.listMine(ctx);
+			"List the projects the current user may log time against, with their ids, codes, type and clients. Call this before creating a time entry — a project must be named by id. Pass q with the name, the code or the client name that the user wrote, because without a filter a long list is cut and the project may be missing. Pass clientId to list the projects of one client. If no project matches, the user may not be an active member of it: tell the user that, and that a PM or an Admin can add them. Never ask the user for an id.",
+		schema: listProjectsInput,
+		run: async (ctx, args) => {
+			const input = listProjectsInput.parse(args);
+			const all = await projectsService.listMine(ctx);
+			const rows = all.filter(
+				(row) =>
+					(!input.clientId || row.clientId === input.clientId) &&
+					(!input.q ||
+						projectMatchesQuery(input.q, [
+							row.name,
+							row.code,
+							row.client?.name,
+						])),
+			);
 			return rows.map((row) => ({
 				id: row.id,
 				name: row.name,
@@ -1271,24 +1303,24 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		kind: "write",
 		description:
 			"Log a new time entry for the current user. Durations are in seconds and must be a multiple of 900 (15 minutes). Needs a taskId; needs a projectId unless it is an absence.",
-		schema: createTimeEntryInput,
+		schema: createTimeEntryToolInput,
 		summarize: (_ctx, args) =>
 			`Log ${hours(args.durationSeconds)} on ${args.date}${
 				args.description ? ` — ${String(args.description).slice(0, 80)}` : ""
 			}`,
 		run: async (ctx, args) =>
-			timeEntriesService.create(ctx, createTimeEntryInput.parse(args)),
+			timeEntriesService.create(ctx, createTimeEntryToolInput.parse(args)),
 	},
 	{
 		name: "update_time_entry",
 		kind: "write",
 		description:
 			"Change an existing time entry of the current user. Send every field, not just the changed one. To change only the note, use update_entry_description.",
-		schema: updateTimeEntryInput,
+		schema: updateTimeEntryToolInput,
 		summarize: (_ctx, args) =>
 			`Change an entry on ${args.date} to ${hours(args.durationSeconds)}`,
 		run: async (ctx, args) =>
-			timeEntriesService.update(ctx, updateTimeEntryInput.parse(args)),
+			timeEntriesService.update(ctx, updateTimeEntryToolInput.parse(args)),
 	},
 	{
 		name: "update_entry_description",
@@ -2766,11 +2798,12 @@ export const systemPrompt = async (
 		// number somebody acts on, and an invented one disagrees with the same
 		// figure on the home page.
 		'- Being "behind" is a rule, not arithmetic. A target is the month\'s hour fund spread over its working days, minus public holidays and time off, and some people have no target at all. Never work one out from hours and a guess at a full day: my_targets answers it for yourself, tracking_report for the people you lead.',
+		'- A working day is 8 hours unless the user\'s working hours say otherwise. The 24-hour day cap is a limit, never a target: "fill the day" means top up to the working day.',
 		"",
 		"You answer questions about the user's tracked time and act on their behalf: logging and correcting time, booking absence, and creating clients, projects and task types. Everything you do runs as them and with their permissions, so a tool that refuses is a real answer about what they are allowed to do — report it, don't work around it. You are only offered the tools their role allows, so there is nothing to try around the edges.",
 		"Rules:",
 		"- Durations are seconds, always a multiple of 900 (15 minutes). Round to the nearest quarter hour and say that you did.",
-		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. Your own user id is above; whoami adds your working hours, member type and the projects you are on, for a question that turns on those.",
+		"- Never invent an id. Call list_projects (with q for the name, code or client the user wrote) / list_tasks / list_clients / list_members first and use what comes back. Your own user id is above; whoami adds your working hours, member type and the projects you are on, for a question that turns on those.",
 		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken.",
 		"- Logging and correcting single entries happens immediately, so just do what was asked rather than checking first. Deleting and archiving are shown to the user for approval, and so is anything that changes the organization or somebody's access (clients, projects, task types, project roles, unarchiving, GitHub repo links, the hour fund) or writes across many days or goes on writing by itself (log_absence, copy_week, recurring block rules, filing rules, integration switches) — still call the tool, they will be asked.",
 		// Tool results carry text other people wrote — an invite's title, a commit
