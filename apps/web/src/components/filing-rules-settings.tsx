@@ -79,7 +79,7 @@ export function FilingRulesSettings() {
 	return (
 		<PageSection
 			title="Automatic filing"
-			description="Entries with these names are filed against their project and task: meetings as soon as they sync, and blocks as Assemble my day proposes them, instead of waiting for you in File your time. Changing or removing a rule leaves entries it already filed alone."
+			description="Meetings and blocks with these names go straight to their project and task. A changed rule leaves filed entries alone."
 		>
 			<SettingList>
 				{rules.map((rule) => (

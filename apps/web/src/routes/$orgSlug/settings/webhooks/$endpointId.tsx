@@ -241,10 +241,7 @@ function WebhookEndpointPage() {
 				}
 			/>
 
-			<PageSection
-				title="Events"
-				description="These events will be sent to the webhook."
-			>
+			<PageSection title="Events">
 				<PillToggleGroup
 					items={KIND_ITEMS}
 					selectedIds={endpoint.enabledEvents}
@@ -265,10 +262,7 @@ function WebhookEndpointPage() {
 				/>
 			</PageSection>
 
-			<PageSection
-				title="Deliveries"
-				description="Webhook delivery attempts, history kept for 14 days."
-			>
+			<PageSection title="Deliveries" description="Kept for 14 days.">
 				{deliveries.length === 0 ? (
 					<p className="text-sm text-muted-foreground">No attempts yet.</p>
 				) : (

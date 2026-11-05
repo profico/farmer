@@ -230,8 +230,7 @@ export function StartTimerDialog({
 				<DialogHeader>
 					<DialogTitle>Start a timer</DialogTitle>
 					<p className="text-sm text-muted-foreground">
-						Farmer measures while you work. Stopping shows you the figure,
-						rounded to the nearest 15 minutes, before anything is logged.
+						Rounded to the nearest 15 minutes when you stop.
 					</p>
 				</DialogHeader>
 
@@ -488,8 +487,8 @@ export function StopTimerDialog({
 					</DialogTitle>
 					<p className="text-sm text-muted-foreground">
 						{continuing
-							? `The entry held ${formatClock(timer.entrySeconds)}. With the time measured since, the clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it is saved, or resume and keep measuring.`
-							: `The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it goes on your timesheet, or resume and keep measuring.`}
+							? `The entry held ${formatClock(timer.entrySeconds)}. With the time measured since, the clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes.`
+							: `The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes.`}
 					</p>
 				</DialogHeader>
 

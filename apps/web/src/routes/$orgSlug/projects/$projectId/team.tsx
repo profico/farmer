@@ -156,7 +156,7 @@ function TeamPage() {
 			<PageHeader
 				eyebrow={back}
 				title={title}
-				lede={`Who may log time on ${project.name}, and who runs it. A PM manages the project; a Team Lead here holds it as a PM does. Changes save straight away.`}
+				lede="A Team Lead here runs the project as a PM does."
 			/>
 			<OpenToOrg
 				orgSlug={orgSlug}
@@ -478,8 +478,7 @@ function Roster({
 				</span>
 			</div>
 			<p className="mt-4 max-w-[72ch] text-sm text-muted-foreground">
-				Removing someone keeps their history on the project; they just can't log
-				more time on it.
+				Their history stays. They cannot log more time.
 			</p>
 		</>
 	);

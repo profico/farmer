@@ -272,11 +272,9 @@ function ProjectsPage() {
 									: "No projects yet"
 							}
 							description={
-								me.canCreateProjects
-									? noClients
-										? "Every project belongs to a client. Create a client first, then come back to add a project."
-										: "Create your first project to start tracking time against it."
-									: "No projects have been created yet."
+								me.canCreateProjects && noClients
+									? "A project needs a client. Create a client first."
+									: "No projects yet."
 							}
 							action={
 								me.canCreateProjects ? (
