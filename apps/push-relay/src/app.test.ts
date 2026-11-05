@@ -361,6 +361,27 @@ describe("push routing", () => {
 		expect(store.find(relayId)).toBeNull();
 	});
 
+	test("a device that changed its token during a dead push survives", async () => {
+		let during = () => {};
+		const { call, store } = setup({
+			ios: async () => {
+				during();
+				return { outcome: "device_gone" };
+			},
+		});
+		const { relayId } = await register(call);
+		during = () => store.update(relayId, { pushToken: "f".repeat(64) }, 1);
+
+		const response = await call("POST", "/v1/push", {
+			relayId,
+			kind: "alert",
+			ciphertext: CIPHERTEXT,
+		});
+
+		expect(response.status).toBe(410);
+		expect(store.find(relayId)?.pushToken).toBe("f".repeat(64));
+	});
+
 	test("a dead activity token keeps the device and answers 409", async () => {
 		const { call, store } = setup({
 			ios: async () => ({ outcome: "activity_gone" }),

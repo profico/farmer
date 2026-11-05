@@ -350,7 +350,9 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 				store.removeActivityToken(device.relayId, activityToken);
 			}
 		} else if (result.outcome === "device_gone") {
-			store.delete(device.relayId);
+			// The token that the push used. A phone that sent a new token while
+			// the push was in flight keeps its registration.
+			store.deleteWithToken(device.relayId, device.pushToken);
 			log(
 				`[push-relay] token dead, device forgotten platform=${device.platform} relay=${relayIdHint(device.relayId)}`,
 			);

@@ -294,6 +294,16 @@ export class DeviceStore {
 			.run({ relayId });
 	}
 
+	/** Delete a device only while it still holds `pushToken`. A device that
+	 *  changed its token during a push keeps its row. */
+	deleteWithToken(relayId: string, pushToken: string): void {
+		this.#db
+			.query(
+				"DELETE FROM device WHERE relay_id = $relayId AND push_token = $pushToken",
+			)
+			.run({ relayId, pushToken });
+	}
+
 	/** The relay id that a per-activity token is bound to, or null. */
 	activityTokenOwner(token: string): string | null {
 		return (
