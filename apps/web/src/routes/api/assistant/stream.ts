@@ -148,7 +148,20 @@ export const Route = createFileRoute("/api/assistant/stream")({
 							// here and the person gets a generic line.
 							const message =
 								error instanceof Error ? userFacingAssistantError(error) : null;
-							if (!message) console.error("[assistant] turn failed", error);
+							if (!message) {
+								console.error("[assistant] turn failed", error);
+								// To error tracking as well, as `posthog-api.ts` does for the
+								// CLI's 500s. Never awaited and never allowed to throw: the
+								// person's error event goes out regardless.
+								void import("#/lib/posthog-server.ts")
+									.then(({ getPostHogClient }) =>
+										getPostHogClient()?.captureException(error, ctx.userId, {
+											organization_id: ctx.organizationId,
+											assistant_turn_failed: true,
+										}),
+									)
+									.catch(() => {});
+							}
 							send({
 								type: "error",
 								message:
