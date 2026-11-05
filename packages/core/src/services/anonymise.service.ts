@@ -192,6 +192,9 @@ const scrubAccess = async (userId: string, oldEmail: string) => {
 			.where(eq(oauthAccessToken.userId, userId));
 		await tx.delete(oauthConsent).where(eq(oauthConsent.userId, userId));
 		await tx.delete(deviceCode).where(eq(deviceCode.userId, userId));
+		// A password reset (`reset-password:<token>`) or an account deletion
+		// request keeps the user id as its value, not the email.
+		await tx.delete(verification).where(eq(verification.value, userId));
 		// `claim_name` is what the roster shows in place of `user.name`.
 		await tx
 			.update(memberProfile)

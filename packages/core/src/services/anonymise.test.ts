@@ -215,6 +215,13 @@ beforeAll(async () => {
 			expiresAt: new Date(Date.now() + 1e6),
 		},
 		{
+			// A password reset keeps the user id, not the email.
+			id: "v-an-reset",
+			identifier: "reset-password:tok",
+			value: leaverId,
+			expiresAt: new Date(Date.now() + 1e6),
+		},
+		{
 			// A neighbour whose address ends with the leaver's address.
 			id: "v-an-4",
 			identifier: `x${OLD_EMAIL.toLowerCase()}`,
