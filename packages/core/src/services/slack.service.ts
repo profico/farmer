@@ -9,14 +9,15 @@ import {
 	slackPing,
 } from "../db/schema/slack";
 import { setting } from "../lib/instance-settings";
+import type { JsonValue } from "../lib/json";
 import { loggableError } from "../lib/loggable-error";
 import { signOrgState } from "../lib/oauth-state";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import {
 	SLACK_BOT_SCOPES,
+	slackBlocks,
 	slackClient,
 	slackEscape,
-	slackLink,
 	slackRedirectUri,
 } from "../lib/slack-client";
 import { dayKeyInTz } from "../lib/time";
@@ -490,6 +491,7 @@ export const slackService = {
 		organizationId: string,
 		userId: string,
 		text: string,
+		blocks?: JsonValue[],
 	): Promise<boolean | "unreachable"> => {
 		const installation = await slackService.installationFor(organizationId);
 		if (!installation) return false;
@@ -499,6 +501,7 @@ export const slackService = {
 			installation.botToken,
 			slackUserId,
 			text,
+			blocks,
 		);
 		if (result === "sent") return true;
 		if (result === "revoked") await slackService.rejectToken(installation);
@@ -533,12 +536,15 @@ export const slackService = {
 				invite.email,
 			);
 			if (!slackUserId) return false;
-			const link = slackLink(invite.path, "Accept the invitation");
-			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.${link ? `\n${link}` : ""}`;
+			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.`;
 			const result = await slackClient.postMessage(
 				installation.botToken,
 				slackUserId,
 				text,
+				slackBlocks(text, {
+					path: invite.path,
+					label: "Accept the invitation",
+				}),
 			);
 			if (result === "revoked") await slackService.rejectToken(installation);
 			return result === "sent";
