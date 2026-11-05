@@ -52,6 +52,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { When } from "#/components/when.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { auditEventsQuery, auditRetentionQuery } from "#/queries/audit.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -93,12 +94,6 @@ const RETENTION_ITEMS = AUDIT_RETENTION_DAYS.map((days) => ({
 
 const toRetention = (value: string): AuditRetentionDays | null =>
 	AUDIT_RETENTION_DAYS.find((days) => String(days) === value) ?? null;
-
-const formatWhen = (iso: string) =>
-	new Date(iso).toLocaleString(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	});
 
 const formatValue = (value: AuditValue): string => {
 	if (value === null || value === "") return "—";
@@ -329,7 +324,7 @@ function AuditLogPage() {
 												</Button>
 											</TableCell>
 											<TableCell className="tnum whitespace-nowrap text-muted-foreground">
-												{formatWhen(event.occurredAt)}
+												<When date={event.occurredAt} />
 											</TableCell>
 											<TableCell>
 												<div className="flex items-center gap-2">
