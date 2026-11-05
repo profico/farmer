@@ -8,6 +8,7 @@ import {
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { filingRule } from "../db/schema/settings";
+import { loggableError } from "../lib/loggable-error";
 import type {
 	DeleteFilingRuleInput,
 	RememberFilingRuleInput,
@@ -164,7 +165,10 @@ export const filingRulesService = {
 		} catch (error) {
 			// Without the check an evidence-bearing entry could become a rule, so
 			// remember nothing rather than guess.
-			console.error("[filing-rules] could not check entries", error);
+			console.error(
+				"[filing-rules] could not check entries",
+				loggableError(error),
+			);
 			return 0;
 		}
 		// One row per distinct (task, title). A month of stand-ups is one rule.
