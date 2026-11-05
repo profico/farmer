@@ -209,7 +209,7 @@ const scrubAccess = async (userId: string, oldEmail: string) => {
 	});
 };
 
-/** Step 3a: the tokens and phones, through the services that own them. */
+/** Step 3: the tokens and phones, through the services that own them. */
 const revokeDevicesAndTokens = async (userId: string) => {
 	const actor: CtxActor = { via: "system" };
 	const tokens = await db
@@ -246,7 +246,7 @@ const hasAnonymisedRow = async (organizationId: string, userId: string) => {
 	return row !== undefined;
 };
 
-/** Step 3b: archive each workspace membership, then say so once per
+/** Step 4: archive each workspace membership, then say so once per
  *  workspace. The platform admin is the actor of both rows. */
 const archiveMemberships = async (
 	byUserId: string,
@@ -272,7 +272,7 @@ const archiveMemberships = async (
 	}
 };
 
-/** Step 4. */
+/** Step 5: the personal rows. */
 const deletePersonalRows = async (userId: string) => {
 	await db.transaction(async (tx) => {
 		for (const [table, column] of PERSONAL_ROWS) {
