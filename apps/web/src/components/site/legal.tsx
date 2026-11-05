@@ -655,21 +655,46 @@ const DELETE_ACCOUNT: LegalDoc = {
 			h: "What happens next",
 			body: (
 				<p>
-					We reply to confirm that the request comes from you. Then we delete
-					your account within 30 days. You do not need the app for any of these
-					steps.
+					We reply to confirm that the request comes from you. Then we anonymise
+					your account within 30 days. After this, nobody can sign in to the
+					account again. You do not need the app for any of these steps.
 				</p>
 			),
 		},
 		{
 			h: "What we delete",
 			body: (
-				<ul>
-					<li>Your name, email address and profile picture.</li>
-					<li>Your sessions, API tokens and sign-in methods.</li>
-					<li>The phones and browsers that get your notifications.</li>
-					<li>Your assistant conversations and your own preferences.</li>
-				</ul>
+				<>
+					<p>We replace these data with "Deleted user":</p>
+					<ul>
+						<li>Your name. We also remove your profile picture.</li>
+						<li>
+							Your email address. We replace it with an address that does not
+							belong to you and does not receive email.
+						</li>
+					</ul>
+					<p>We delete these data:</p>
+					<ul>
+						<li>
+							Your sessions, your sign-in methods (password, Google and other
+							providers) and your API tokens.
+						</li>
+						<li>
+							Your access grants to other apps, and any sign-in request or
+							invitation for your email address.
+						</li>
+						<li>The phones and browsers that get your notifications.</li>
+						<li>Your assistant conversations and your running timer.</li>
+						<li>
+							Your own preferences, your saved filing rules and your hidden
+							tasks.
+						</li>
+						<li>
+							Your links to Google Calendar, GitHub and Slack, and the settings
+							of these links.
+						</li>
+					</ul>
+				</>
 			),
 		},
 		{
@@ -678,17 +703,20 @@ const DELETE_ACCOUNT: LegalDoc = {
 				<>
 					<p>
 						The time data inside a workspace belongs to the organization that
-						runs that workspace, usually your employer. Your time entries stay
-						in that workspace as the organization's records. To delete them, ask
-						the organization first.
+						runs that workspace, usually your employer. Your time entries, your
+						absences, your project assignments and your place in the people list
+						stay in that workspace as the organization's records. They show
+						under "Deleted user", and Farmer marks you as a person who left. To
+						delete them, ask the organization first.
 					</p>
 					<p>
 						The audit log of each workspace that you joined keeps the record of
-						your changes and sign-ins: your name as it was then, the IP address
-						and the browser's user agent. Nobody can change these entries. They
-						stay until the retention period of that workspace ends: 90 days, 1
-						year, 2 years or 7 years, as its administrators choose. After that
-						time, Farmer deletes the entries.
+						your changes and sign-ins before the anonymisation: your name as it
+						was then, the IP address and the browser's user agent. Nobody can
+						change these entries. The anonymisation adds new entries, which show
+						"Deleted user". The old entries stay until the retention period of
+						that workspace ends: 90 days, 1 year, 2 years or 7 years, as its
+						administrators choose. After that time, Farmer deletes the entries.
 					</p>
 				</>
 			),
