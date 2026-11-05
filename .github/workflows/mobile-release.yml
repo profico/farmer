@@ -263,15 +263,17 @@ jobs:
       # reads this file. The file does not change the project, so the AAB step
       # uses it too.
       #
-      # A private repository's `ubuntu-latest` runner has 7 GB of RAM. The
-      # Kotlin daemon stays alive while R8 runs in the Gradle process, so the
-      # two heaps together must stay below that, or the runner stops.
+      # A private repository's `ubuntu-latest` runner has 7 GB of RAM. A
+      # separate Kotlin daemon stays alive with its own heap while R8 runs, and
+      # with a 6 GB heap the two JVMs used more than 7 GB and the runner
+      # stopped. Kotlin compiles in the Gradle process, so one JVM uses at
+      # most about 5.5 GB (heap, metaspace and native memory).
       - name: Configure Gradle
         run: |
           mkdir -p ~/.gradle
           {
             echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g"
-            echo "kotlin.daemon.jvmargs=-Xmx1536m"
+            echo "kotlin.compiler.execution.strategy=in-process"
             echo "org.gradle.caching=true"
           } >> ~/.gradle/gradle.properties
 
