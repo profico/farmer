@@ -2,6 +2,7 @@ import {
 	assignProjectMemberInput,
 	createProjectInput,
 	listProjectMembersInput,
+	memberUserIdInput,
 	projectIdInput,
 	removeProjectMemberInput,
 	updateProjectInput,
@@ -63,6 +64,15 @@ export const listAssignableMembers = createServerFn({ method: "GET" })
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
 		return projectsService.listAssignable(context.ctx, projectId);
+	});
+
+// One person's assignments, for the Members page.
+export const listUserProjects = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(memberUserIdInput)
+	.handler(async ({ data: userId, context }) => {
+		const { projectsService } = await import("@farmer/core/services");
+		return projectsService.listForUser(context.ctx, userId);
 	});
 
 export const assignProjectMember = createServerFn({ method: "POST" })

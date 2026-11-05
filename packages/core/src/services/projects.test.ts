@@ -827,3 +827,26 @@ describe("a project open to the organization", () => {
 		).rejects.toBeInstanceOf(AccessError);
 	});
 });
+
+describe("listForUser", () => {
+	test("an Admin sees the active assignments of a person", async () => {
+		const rows = await projectsService.listForUser(ctx(ADMIN), PM);
+		expect(rows.map((r) => [r.projectName, r.role])).toEqual([
+			["Assigned", "pm"],
+		]);
+	});
+
+	test("a caller sees only the projects they may manage", async () => {
+		const asPm = await projectsService.listForUser(ctx(PM), LEAD);
+		expect(asPm.map((r) => r.projectName)).toEqual(["Assigned"]);
+		expect(await projectsService.listForUser(ctx(PLAIN), LEAD)).toEqual([]);
+	});
+
+	test("a removed assignment is left out", async () => {
+		await projectsService.removeMember(ctx(ADMIN), {
+			projectId: assignedId,
+			userId: PLAIN,
+		});
+		expect(await projectsService.listForUser(ctx(ADMIN), PLAIN)).toEqual([]);
+	});
+});

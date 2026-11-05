@@ -17,6 +17,7 @@ import { z } from "zod";
 
 import { ArchivedSection } from "#/components/archived-section.tsx";
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
+import { MemberProjectsDialog } from "#/components/member-projects-dialog.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { TeamLeadPeopleDialog } from "#/components/team-lead-people-dialog.tsx";
@@ -421,6 +422,15 @@ function MembersSettingsPage() {
 				</TableCell>
 				<TableCell>
 					<div className="flex justify-end gap-2">
+						<MemberProjectsDialog
+							person={{ userId: m.userId, name: m.user.name }}
+							archived={personByUserId.get(m.userId)?.archivedAt != null}
+							trigger={
+								<Button variant="outline" size="sm">
+									Projects
+								</Button>
+							}
+						/>
 						{/* Outside the `!isOnlyOwner` gate below, and deliberately: that
 						    gate protects the workspace from losing its last owner, and
 						    impersonating somebody takes nothing away from them. The only

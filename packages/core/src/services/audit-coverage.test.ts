@@ -84,6 +84,7 @@ const SERVICES = {
 				"overview",
 				"listTasks",
 				"listAssignable",
+				"listForUser",
 			],
 		},
 	},
