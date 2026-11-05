@@ -26,22 +26,27 @@ export const captureFailure = async <T>(
 		return await next();
 	} catch (error) {
 		if (error instanceof Error) {
-			await reportInBackground(error, serverFnMeta, readHeaders);
+			reportInBackground(error, serverFnMeta, readHeaders);
 		}
 		throw error;
 	}
 };
 
-const reportInBackground = async (
+const reportInBackground = (
 	error: Error,
 	meta: { name: string; filename: string },
 	readHeaders: () => Headers,
-): Promise<void> => {
+): void => {
+	const fail = (captureError: Error) =>
+		console.error("server function capture failed", captureError);
 	try {
-		const { reportServerFnError } = await import("./posthog-api");
-		void reportServerFnError(error, readHeaders(), meta).catch((captureError) =>
-			console.error("server function capture failed", captureError),
-		);
+		// Read at once, while the request context is current.
+		const headers = readHeaders();
+		void import("./posthog-api")
+			.then(({ reportServerFnError }) =>
+				reportServerFnError(error, headers, meta),
+			)
+			.catch(fail);
 	} catch (captureError) {
 		console.error("server function capture failed", captureError);
 	}
