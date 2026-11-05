@@ -59,6 +59,10 @@ const relay = createRelay({
 
 const server = Bun.serve({
 	port: config.port,
+	// Bun closes a connection that is idle for this many seconds (default
+	// 10), also while a handler waits on APNs or FCM. It must stay above the
+	// longest push deadline (10 s for one APNs or FCM call).
+	idleTimeout: 60,
 	// The handler reads at most MAX_BODY_BYTES too; this stops a large body
 	// before it reaches the handler.
 	maxRequestBodySize: MAX_BODY_BYTES * 2,

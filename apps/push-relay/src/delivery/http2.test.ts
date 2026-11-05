@@ -53,14 +53,19 @@ describe("createHttp2Transport", () => {
 		expect(counts.sessions).toBe(1);
 	});
 
-	test("a request that times out drops its session; the next push opens a new one", async () => {
+	test("a request that times out at its own deadline keeps a live session", async () => {
 		const { origin, counts } = await startServer();
 		const transport = createHttp2Transport(timing);
 		expect((await call(transport, origin, "/a")).status).toBe(200);
+		const started = Date.now();
 		await expect(call(transport, origin, "/hang")).rejects.toThrow(
 			"The HTTP/2 request timed out.",
 		);
+		// Not twice the value, as `stream.setTimeout` does under Bun.
+		expect(Date.now() - started).toBeLessThan(
+			timing.requestTimeoutMs * 1.5,
+		);
 		expect((await call(transport, origin, "/b")).status).toBe(200);
-		expect(counts.sessions).toBe(2);
+		expect(counts.sessions).toBe(1);
 	});
 });

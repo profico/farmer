@@ -305,7 +305,10 @@ HTTP/1.1 to it and fails with `Malformed_HTTP_Response`. Thus the relay uses
 host got a real `403 InvalidProviderToken` back through `node:http2`. No push
 with a real key has gone through yet. The relay keeps one session for each
 host and drops it on `error`, `goaway` or `close`. Each request has a timeout
-of 10 seconds.
+of 10 seconds. A request that times out cancels only its own stream. The
+relay then sends a PING, and it destroys the session only if the PING has no
+answer. Under Bun, `setTimeout` on a stream or a session fires at about twice
+its value, so the relay uses a plain timer. `Bun.serve` has `idleTimeout: 60`.
 
 ### Android (FCM)
 
