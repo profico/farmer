@@ -306,18 +306,12 @@ export function ComplianceTab({
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
-				The fund for the month comes from{" "}
-				<MenuPath steps={["Settings", "Hour fund"]} /> — the official monthly
-				figure, working days × 8h. Target so far = fund × working days before
-				today ÷ working days in the month, where a working day is Monday to
-				Friday and not a public holiday, so every working day is worth 8h. Today
-				itself is not counted until it has passed, but a finished month counts
-				every one of its working days. A person's total is work plus time-off,
-				up to and including today. On track when the total reaches the target;
-				slightly behind when it is within {data.tolerancePct}% of it (
-				<MenuPath steps={["Settings", "Organization"]} />
-				); behind otherwise. Hourly people are listed with their hours and no
-				target unless an expected-hours figure was set for them.
+				Target so far: the month's fund (
+				<MenuPath steps={["Settings", "Hour fund"]} />) shared out over its
+				working days, up to yesterday. The total is work plus time off, today
+				included. Slightly behind means within {data.tolerancePct}% of the
+				target (<MenuPath steps={["Settings", "Organization"]} />
+				). Hourly people have no target unless they have expected hours.
 			</p>
 		</div>
 	);

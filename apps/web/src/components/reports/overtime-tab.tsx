@@ -311,9 +311,7 @@ function OvertimeRows({ input }: { input: OvertimeReportInput }) {
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
-				Only entries the person flagged as overtime when logging them, in the
-				selected period. Nothing is inferred from the hour fund. Open a name for
-				the entries.
+				Only entries flagged as overtime. Nothing comes from the hour fund.
 			</p>
 		</>
 	);
