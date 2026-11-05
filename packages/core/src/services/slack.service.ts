@@ -101,8 +101,9 @@ const sendPing = async (ctx: Ctx, userId: string) => {
 		{ organizationId: ctx.organizationId, userId },
 		{
 			kind: "ping",
-			title: "Please track your time",
-			body: `${sender?.name ?? "A colleague"} asks you to track your time. You are behind your target for this month.`,
+			// The name tells the person that someone pinged them by hand.
+			title: `${sender?.name ?? "A colleague"} pinged you`,
+			body: "Please track your time. You are behind your target for this month.",
 			url: org ? `/${org.slug}/time` : undefined,
 		},
 	);

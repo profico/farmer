@@ -53,6 +53,7 @@ const ctxOf = (userId: string, organizationId = ORG): Ctx => ({
 
 let harness: TestDb;
 const sent: string[] = [];
+const titles: (string | undefined)[] = [];
 
 beforeAll(async () => {
 	harness = await createTestDb();
@@ -122,14 +123,16 @@ beforeAll(async () => {
 });
 
 const deliveringAdapter = {
-	slack: async (to: { userId: string }) => {
+	slack: async (to: { userId: string }, event: { title?: string }) => {
 		sent.push(to.userId);
+		titles.push(event.title);
 		return true;
 	},
 };
 
 beforeEach(async () => {
 	sent.length = 0;
+	titles.length = 0;
 	await db.delete(slackPing);
 	setNotifyAdaptersForTests(deliveringAdapter);
 });
@@ -143,6 +146,7 @@ describe("pingBehind", () => {
 	test("sends a DM, records an audit entry, and refuses a second ping within 24 hours", async () => {
 		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW });
 		expect(sent).toEqual([BEHIND]);
+		expect(titles).toEqual([`${ADMIN} pinged you`]);
 
 		const audit = await db.query.auditEvent.findFirst({
 			where: and(
