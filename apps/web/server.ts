@@ -786,7 +786,11 @@ async function initializeServer() {
  * it out of module scope and only touch the DB layer once the server is up.
  */
 async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
-	const { startSchedulers } = await import("@farmer/core/jobs");
+	const { startSchedulers, setJobFailureSink } =
+		await import("@farmer/core/jobs");
+	// The standalone worker installs no sink: core holds no PostHog client.
+	const { posthogJobFailureSink } = await import("./src/lib/posthog-jobs.ts");
+	setJobFailureSink(posthogJobFailureSink);
 	return startSchedulers({
 		info: log.info,
 		warn: log.warning,
@@ -799,6 +803,8 @@ async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
  * in-flight tick finish (bounded by a grace period so a stuck tick can't hang
  * the process forever), stop accepting HTTP connections, then exit.
  */
+const POSTHOG_SHUTDOWN_MS = 3_000;
+
 function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
 	schedulersHandle: Promise<SchedulerHandle[]>,
@@ -832,6 +838,15 @@ function setupGracefulShutdown(
 			log.success("HTTP server closed");
 		} catch (error) {
 			log.error(`Error while closing HTTP server: ${String(error)}`);
+		}
+
+		// Send the queued events, for example a job failure. The timeout stops a
+		// hung PostHog from blocking the exit.
+		try {
+			const { getPostHogClient } = await import("./src/lib/posthog-server.ts");
+			await getPostHogClient()?.shutdown(POSTHOG_SHUTDOWN_MS);
+		} catch (error) {
+			log.error(`Error while closing PostHog: ${String(error)}`);
 		}
 
 		process.exit(0);
