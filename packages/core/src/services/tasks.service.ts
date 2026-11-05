@@ -229,6 +229,24 @@ export const tasksService = {
 			);
 	},
 
+	/** Switch every task in the caller's list off, in this org only. A task
+	 *  added later stays on, as with `setHidden`. */
+	hideAll: async (ctx: Ctx) => {
+		await ctxAccess(ctx);
+		const rows = await tasksService.listSelectable(ctx);
+		if (rows.length === 0) return;
+		await db
+			.insert(hiddenTask)
+			.values(
+				rows.map((r) => ({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					taskId: r.id,
+				})),
+			)
+			.onConflictDoNothing();
+	},
+
 	/**
 	 * Resolve the task an engine binds to, by its stable key rather than its
 	 * display name. Three engines depend on this — the calendar sync files

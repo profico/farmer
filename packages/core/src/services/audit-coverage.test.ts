@@ -93,6 +93,7 @@ const SERVICES = {
 			exempt: {
 				setHidden: "a person's own task picker",
 				showAll: "a person's own task picker",
+				hideAll: "a person's own task picker",
 			},
 			reads: [
 				"listAbsenceTasks",
