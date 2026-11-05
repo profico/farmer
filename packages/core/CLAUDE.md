@@ -96,7 +96,7 @@ Engines resolve tasks by **`systemKey`**, never by name (`meeting`, `development
 
 `assertTaskAvailable` (guards.ts) lets any live non-absence task of the org, or any site task, go on any project. An absence task must carry no project; archived tasks and other orgs' tasks are refused.
 
-**A person can switch tasks off** (Preferences → Your tasks, `hiddenTask`; `tasksService.hiddenIds` / `setHidden` / `showAll`). It is per person per org and stored as what is hidden, so a task added later reaches everyone. It only narrows the web task picker, which filters itself: `listForProject`, `assertTaskAvailable`, reports, the API and the engines never read it, and a switched-off task can still be logged.
+**A person can switch tasks off** (Preferences → Your tasks, `hiddenTask`; `tasksService.hiddenIds` / `setHidden` / `showAll` / `hideAll`). It is per person per org and stored as what is hidden, so a task added later reaches everyone. It only narrows the web task picker, which filters itself: `listForProject`, `assertTaskAvailable`, reports, the API and the engines never read it, and a switched-off task can still be logged.
 
 
 ## Notifications

@@ -237,7 +237,8 @@ export function YourTasksDialog({
 				</DialogHeader>
 				<TaskChips tasks={tasks} hidden={hidden} onToggle={setHidden} />
 				<DialogFooter className="sm:justify-between">
-					<div className="flex gap-1">
+					{/* On a sheet the footer is a full-width stack, so these stack too. */}
+					<div className="flex gap-1 in-data-[slot=drawer-content]:flex-col in-data-[slot=drawer-content]:gap-2">
 						{offCount > 0 && (
 							<Button variant="ghost" onClick={showAll}>
 								Show all
