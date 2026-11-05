@@ -53,6 +53,9 @@ const call = async (
 			headers,
 			body: body ?? undefined,
 			signal: controller.signal,
+			// A redirect could send the push token and the relay id to another
+			// address, in clear text: Android allows cleartext in this app.
+			redirect: "manual",
 		});
 	} finally {
 		clearTimeout(timer);
