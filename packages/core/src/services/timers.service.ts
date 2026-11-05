@@ -13,6 +13,11 @@ import type {
 } from "../schema/timer";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
+import {
+	publishTimerChange,
+	type TimerChange,
+	type TimerSnapshot,
+} from "./native-push";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -186,6 +191,27 @@ const viewOf = (
 	};
 };
 
+/** The timer as the phone shows it (ADR 0006). The figure is taken at
+ *  `serverNow`, so the widget's sum `accumulatedSeconds + (now -
+ *  runningSinceMs)` is the elapsed figure at any later moment. */
+const snapshotOf = (view: TimerView): TimerSnapshot => ({
+	state: view.paused ? "held" : "running",
+	runningSinceMs: view.paused ? null : view.serverNow.getTime(),
+	accumulatedSeconds: view.elapsedSeconds,
+	workspace: view.organizationSlug,
+	labels: {
+		workspace: view.organizationName,
+		project: view.projectName,
+		task: view.taskName,
+	},
+});
+
+/** Tell the person's phones, after the write. It returns at once and never
+ *  throws, so a relay that is down cannot fail or slow a timer write. */
+const announce = (ctx: Ctx, change: TimerChange): void => {
+	publishTimerChange(ctx.userId, change);
+};
+
 const readSettings = async (ctx: Ctx): Promise<{ maxSeconds: number }> => {
 	const row = await ctxDb(ctx).query.timerSettings.findFirst({
 		where: and(
@@ -332,6 +358,7 @@ export const timersService = {
 
 		const started = await read(ctx, now);
 		if (!started) throw new Error("Failed to start the timer");
+		announce(ctx, { type: "start", timer: snapshotOf(started) });
 
 		return started;
 	},
@@ -393,6 +420,7 @@ export const timersService = {
 
 		const updated = await read(ctx, now);
 		if (!updated) throw new Error("Failed to update the timer");
+		announce(ctx, { type: "update", timer: snapshotOf(updated) });
 
 		return updated;
 	},
@@ -428,6 +456,7 @@ export const timersService = {
 
 		const paused = await read(ctx, now);
 		if (!paused) throw new Error("Failed to pause the timer");
+		announce(ctx, { type: "update", timer: snapshotOf(paused) });
 
 		return paused;
 	},
@@ -446,6 +475,7 @@ export const timersService = {
 
 		const resumed = await read(ctx, now);
 		if (!resumed) throw new Error("Failed to resume the timer");
+		announce(ctx, { type: "update", timer: snapshotOf(resumed) });
 
 		return resumed;
 	},
@@ -482,6 +512,10 @@ export const timersService = {
 	 * a new entry, as `on delete set null` promises — or has to wait for this
 	 * write to commit. Deleting the timer's row last, and requiring that it
 	 * still be there, is what stops two surfaces confirming one timer twice.
+	 *
+	 * The phones hear of it after the transaction commits. A caller that
+	 * already holds a transaction would send before its commit; no caller
+	 * does that today.
 	 */
 	confirm: async (
 		ctx: Ctx,
@@ -492,7 +526,7 @@ export const timersService = {
 		// Resolved before the transaction opens: a cold lookup from inside it
 		// would queue behind the transaction on a single connection.
 		const timezone = input.date ? null : await ctxTimezone(ctx);
-		return withCtxTx(ctx, async (txCtx) => {
+		const entry = await withCtxTx(ctx, async (txCtx) => {
 			const [row] = await rowOf(txCtx, ctx.userId);
 			if (!row) throw new Error("No timer is running");
 			if (row.droppedAt) {
@@ -603,11 +637,14 @@ export const timersService = {
 
 			return entry;
 		});
+		announce(ctx, { type: "end" });
+
+		return entry;
 	},
 
 	/** Throw the timer away — or clear the notice a dropped one left. */
 	discard: async (ctx: Ctx): Promise<void> => {
-		await ctxDb(ctx)
+		const cleared = await ctxDb(ctx)
 			.delete(runningTimer)
 			.where(
 				and(
@@ -617,7 +654,12 @@ export const timersService = {
 						? eq(runningTimer.organizationId, ctx.organizationId)
 						: undefined,
 				),
-			);
+			)
+			.returning({ droppedAt: runningTimer.droppedAt });
+		// A dropped timer's activity ended when the sweep dropped it.
+		if (cleared.some((row) => row.droppedAt === null)) {
+			announce(ctx, { type: "end" });
+		}
 	},
 
 	settings: readSettings,

@@ -1,0 +1,276 @@
+import { ApiClientError, type AssistantThreadDetail } from "@farmer/api-client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+
+import { threadKey, threadsKey } from "../api/assistant";
+import { scope, useWorkspace, type Workspace } from "../api/queries";
+import { applyEvent, IDLE, ranWriteTool, type Run, startRun } from "./turn";
+
+/**
+ * The turns in flight, one for each thread. The store lives outside the
+ * screens, so a turn goes on when the person leaves the chat, and the answer
+ * waits in the thread when they come back. One turn at a time for each
+ * thread, as on the web.
+ */
+
+type Entry = { run: Run; controller: AbortController | null };
+
+const entries = new Map<string, Entry>();
+const listeners = new Set<() => void>();
+
+/** The frame that will tell the screens about the stream, if one waits. */
+let frame: ReturnType<typeof requestAnimationFrame> | null = null;
+
+const tell = () => {
+	for (const listener of listeners) listener();
+};
+
+/** Tell the screens now. A frame that waits is not needed any more. */
+const notify = () => {
+	if (frame !== null) {
+		cancelAnimationFrame(frame);
+		frame = null;
+	}
+	tell();
+};
+
+/**
+ * Tell the screens at the next frame. A model can send many deltas in one
+ * frame, and the screen can show only one of them, so one render for each
+ * frame is enough.
+ */
+const notifySoon = () => {
+	if (frame !== null) return;
+	frame = requestAnimationFrame(() => {
+		frame = null;
+		tell();
+	});
+};
+
+const subscribe = (listener: () => void) => {
+	listeners.add(listener);
+	return () => {
+		listeners.delete(listener);
+	};
+};
+
+const keyOf = (w: Workspace, threadId: string) =>
+	`${w.origin}\n${w.slug}\n${threadId}`;
+
+const set = (key: string, run: Run, controller: AbortController | null) => {
+	entries.set(key, { run, controller });
+	notify();
+};
+
+const patch = (key: string, change: (run: Run) => Run) => {
+	const entry = entries.get(key);
+	if (!entry) return;
+	set(key, change(entry.run), entry.controller);
+};
+
+/** `patch` for an event of the stream: the screens hear of it at the next
+ *  frame. */
+const patchSoon = (key: string, change: (run: Run) => Run) => {
+	const entry = entries.get(key);
+	if (!entry) return;
+	entries.set(key, { run: change(entry.run), controller: entry.controller });
+	notifySoon();
+};
+
+/** A stored answer can arrive a moment after the stream ends. */
+const SETTLE_TRIES = 8;
+const SETTLE_WAIT_MS = 250;
+
+const pause = (ms: number) =>
+	new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+type Turn =
+	| { kind: "send"; message: string }
+	| {
+			kind: "resolve";
+			toolCallId: string;
+			decision: "approved" | "rejected";
+			selectedRowIds?: string[];
+	  };
+
+/** The text for a turn that failed before its first event. */
+const failureText = (error: Error) => {
+	if (error instanceof ApiClientError && error.code === "rate_limited") {
+		return error.message;
+	}
+	if (error instanceof ApiClientError && error.kind === "unreachable") {
+		return "The server cannot be reached. Check the connection, then try again.";
+	}
+	return error.message || "The assistant failed. Try again.";
+};
+
+export type RunActions = {
+	/** True when the message reached the server. The composer gives the
+	 *  draft back when it did not. */
+	send: (
+		threadId: string,
+		message: string,
+		/** Called when the server has stored the message, before the turn
+		 *  ends. */
+		onDelivered?: () => void,
+	) => Promise<boolean>;
+	resolve: (
+		threadId: string,
+		toolCallId: string,
+		decision: "approved" | "rejected",
+		selectedRowIds?: string[],
+	) => Promise<void>;
+	stop: (threadId: string) => void;
+};
+
+/** The actions of the turns in the current workspace. */
+export const useRunActions = (): RunActions => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+
+	/** The turn is over: read the stored thread, then drop the live copy.
+	 *  `wrote` is true when a tool of the turn may have changed data. */
+	const settle = useCallback(
+		async (
+			key: string,
+			threadId: string,
+			awaitAnswer: boolean,
+			wrote: boolean,
+		) => {
+			// A write tool can change entries, projects, clients and tasks, and
+			// the key of the workspace holds the assistant threads as well.
+			// Otherwise only the thread list and this thread are stale.
+			await (wrote
+				? queryClient.invalidateQueries({ queryKey: scope(w) })
+				: Promise.all([
+						queryClient.invalidateQueries({ queryKey: threadsKey(w) }),
+						queryClient.invalidateQueries({ queryKey: threadKey(w, threadId) }),
+					]));
+			for (let tries = 0; awaitAnswer && tries < SETTLE_TRIES; tries++) {
+				const thread = queryClient.getQueryData<AssistantThreadDetail>(
+					threadKey(w, threadId),
+				);
+				const last = thread?.messages.at(-1);
+				if (last?.role === "assistant" && last.content.trim()) break;
+				await pause(SETTLE_WAIT_MS);
+				await queryClient.refetchQueries({ queryKey: threadKey(w, threadId) });
+			}
+			const entry = entries.get(key);
+			if (!entry || entry.controller) return;
+			// An error stays until the next turn, so the person can read it.
+			// The rest is in the stored thread now, or back in the composer.
+			set(
+				key,
+				entry.run.error ? { ...IDLE, error: entry.run.error } : IDLE,
+				null,
+			);
+		},
+		[queryClient, w],
+	);
+
+	const run = useCallback(
+		async (
+			threadId: string,
+			turn: Turn,
+			onDelivered?: () => void,
+		): Promise<boolean> => {
+			const key = keyOf(w, threadId);
+			entries.get(key)?.controller?.abort();
+			const controller = new AbortController();
+			set(
+				key,
+				startRun(turn.kind === "send" ? turn.message : null),
+				controller,
+			);
+			const mine = () => entries.get(key)?.controller === controller;
+			let delivered = turn.kind === "resolve";
+
+			try {
+				const stream =
+					turn.kind === "send"
+						? w.client.sendAssistantMessage(
+								w.slug,
+								threadId,
+								{ message: turn.message },
+								controller.signal,
+							)
+						: w.client.answerAssistantApproval(
+								w.slug,
+								threadId,
+								{
+									toolCallId: turn.toolCallId,
+									decision: turn.decision,
+									selectedRowIds: turn.selectedRowIds,
+								},
+								controller.signal,
+							);
+				for await (const event of stream) {
+					if (!mine()) break;
+					if (event.type === "message" && event.role === "user") {
+						delivered = true;
+						onDelivered?.();
+					}
+					patchSoon(key, (state) => applyEvent(state, event));
+				}
+			} catch (caught) {
+				const error =
+					caught instanceof Error ? caught : new Error(String(caught));
+				// A stop aborts the request. It is not a failure to explain.
+				// `expo/fetch` reports an abort as a `FetchError` or as the
+				// signal's reason, so the signal is the test, not the error.
+				if (mine() && !controller.signal.aborted) {
+					patch(key, (state) => ({ ...state, error: failureText(error) }));
+				}
+			} finally {
+				if (mine()) {
+					const entry = entries.get(key);
+					if (entry) set(key, { ...entry.run, isStreaming: false }, null);
+				}
+			}
+			const finished = entries.get(key)?.run;
+			const streamed = finished?.streamed ?? false;
+			if (!entries.get(key)?.controller) {
+				await settle(
+					key,
+					threadId,
+					controller.signal.aborted && streamed,
+					ranWriteTool(finished?.traces ?? []),
+				);
+			}
+			return delivered;
+		},
+		[settle, w],
+	);
+
+	return useMemo(
+		() => ({
+			send: (threadId, message, onDelivered) =>
+				run(threadId, { kind: "send", message }, onDelivered),
+			resolve: async (threadId, toolCallId, decision, selectedRowIds) => {
+				await run(threadId, {
+					kind: "resolve",
+					toolCallId,
+					decision,
+					selectedRowIds,
+				});
+			},
+			stop: (threadId) => entries.get(keyOf(w, threadId))?.controller?.abort(),
+		}),
+		[run, w],
+	);
+};
+
+/** The live turn of one thread, or the idle state. */
+export const useRun = (threadId: string): Run => {
+	const w = useWorkspace();
+	const key = keyOf(w, threadId);
+	return useSyncExternalStore(
+		subscribe,
+		() => entries.get(key)?.run ?? IDLE,
+		() => IDLE,
+	);
+};
+
+/** True while a turn of the thread runs. The thread list shows it. */
+export const useThreadRunning = (threadId: string): boolean =>
+	useRun(threadId).isStreaming;

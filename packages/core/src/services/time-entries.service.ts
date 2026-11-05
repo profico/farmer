@@ -2400,7 +2400,20 @@ export const timeEntriesService = {
 	// thing entirely — a deliberate human act, which the app deliberately permits
 	// in closed months — so the WRITE path's recompute (`recomputeDayFill`) stays
 	// unwindowed. Automation is what the lock governs.
-	listRange: async (ctx: Ctx, range: { from: string; to: string }) => {
+	//
+	// `opts.persist: false` is the read-only variant. It computes the same fill
+	// blocks in memory and returns the same rows, but it neither updates nor
+	// deletes a fill block and it does not move commit evidence. The caller
+	// chooses it: the home route (which a phone refreshes often) and the
+	// org-scoped time-entries GET for a read-only API token pass `false`. The
+	// default is `true`, and the cookie-only `GET /api/v1/time-entries` and the
+	// web server functions use it.
+	listRange: async (
+		ctx: Ctx,
+		range: { from: string; to: string },
+		opts: { persist?: boolean } = {},
+	) => {
+		const persist = opts.persist ?? true;
 		const tz = await ctxTimezone(ctx);
 
 		const rows = await db.query.timeEntry.findMany({
@@ -2464,19 +2477,23 @@ export const timeEntriesService = {
 					continue;
 				}
 				if (next === fill.durationSeconds) continue;
-				await db
-					.update(timeEntry)
-					.set({ durationSeconds: next, updatedAt: new Date() })
-					.where(eq(timeEntry.id, fill.id));
+				if (persist) {
+					await db
+						.update(timeEntry)
+						.set({ durationSeconds: next, updatedAt: new Date() })
+						.where(eq(timeEntry.id, fill.id));
+				}
 				fill.durationSeconds = next;
 			}
 			if (emptied.length > 0) {
 				const dropped = new Set(emptied);
-				await rehomeDroppedFillEvidence(
-					ctx,
-					stale.filter((fill) => dropped.has(fill.id)),
-				);
-				await db.delete(timeEntry).where(inArray(timeEntry.id, emptied));
+				if (persist) {
+					await rehomeDroppedFillEvidence(
+						ctx,
+						stale.filter((fill) => dropped.has(fill.id)),
+					);
+					await db.delete(timeEntry).where(inArray(timeEntry.id, emptied));
+				}
 				visible = rows.filter((r) => !dropped.has(r.id));
 			}
 		}

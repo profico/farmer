@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { INTEGRATION_PROVIDERS } from "../auth/audit-hooks";
 import { googleCredentials, signInProviders } from "../auth/sign-in-methods";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -25,6 +26,9 @@ export type SignInMethods = {
 	providers: { id: string; name: string; linked: boolean }[];
 };
 
+/** The account rows that connect an integration, not a way to sign in. */
+export type IntegrationProvider = "github" | "google-calendar";
+
 export const accountService = {
 	signInMethods: async (ctx: Ctx): Promise<SignInMethods> => {
 		// Read the account table directly rather than auth.api.listUserAccounts,
@@ -48,6 +52,49 @@ export const accountService = {
 					linked: providers.has(provider.id),
 				})),
 		};
+	},
+
+	/**
+	 * Disconnect the caller's GitHub or Google Calendar grant. The web page
+	 * does this through better-auth's `/unlink-account`, which needs a browser
+	 * session; the REST API has only a `Ctx`, so it comes here.
+	 *
+	 * Only the two integration providers are accepted, so this can never
+	 * remove a sign-in row (Google sign-in is `unlinkGoogle`, with its own
+	 * rule). The guard counts only the sign-in rows (not
+	 * `INTEGRATION_PROVIDERS`): a grant is refused only when the person has
+	 * no sign-in row at all. Then the grant row is the last row that
+	 * better-auth can sign the person in with, and its removal locks the
+	 * person out. A count of all rows let a person with two grants and no
+	 * sign-in method remove one, and refused nothing that mattered.
+	 *
+	 * Not in the audit log: an integration grant is not a sign-in method (see
+	 * `docs/domains/audit-log.md`). Answers whether a row was removed.
+	 */
+	unlinkIntegration: async (
+		ctx: Ctx,
+		providerId: IntegrationProvider,
+	): Promise<boolean> => {
+		const rows = await db.query.account.findMany({
+			where: eq(account.userId, ctx.userId),
+			columns: { providerId: true },
+		});
+		if (!rows.some((row) => row.providerId === providerId)) return false;
+		const signInRows = rows.filter(
+			(row) => !INTEGRATION_PROVIDERS.has(row.providerId),
+		);
+		if (signInRows.length === 0) {
+			throw new Error(
+				"This is your only way to sign in. Add another sign-in method before you disconnect it.",
+			);
+		}
+		const removed = await db
+			.delete(account)
+			.where(
+				and(eq(account.userId, ctx.userId), eq(account.providerId, providerId)),
+			)
+			.returning({ id: account.id });
+		return removed.length > 0;
 	},
 
 	// Guarded server-side unlink for the Google login identity. Refuses to remove

@@ -23,6 +23,7 @@ import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
 import { importClaimsService } from "./import-claims.service";
 import { membersService } from "./members.service";
+import { mobileDevicesService } from "./mobile-devices.service";
 import { orgSettingsService } from "./org-settings.service";
 import { organizationService } from "./organization.service";
 import { projectsService } from "./projects.service";
@@ -132,6 +133,9 @@ const SERVICES = {
 				"pendingInvitation",
 				"invitationEmails",
 				"typeHistory",
+				"people",
+				"profile",
+				"listInvitations",
 			],
 		},
 	},
@@ -177,14 +181,18 @@ const SERVICES = {
 	},
 	orgSettingsService: {
 		service: orgSettingsService,
-		coverage: { recorded: { update: true }, exempt: {}, reads: ["get"] },
+		coverage: {
+			recorded: { update: true },
+			exempt: {},
+			reads: ["get", "getForAdmin"],
+		},
 	},
 	reminderSettingsService: {
 		service: reminderSettingsService,
 		coverage: {
 			recorded: { update: true },
 			exempt: {},
-			reads: ["get", "preview"],
+			reads: ["get", "getForAdmin", "preview"],
 		},
 	},
 	assistantSettings: {
@@ -227,6 +235,7 @@ const SERVICES = {
 			reads: [
 				"connectionStatus",
 				"listInstallations",
+				"installUrl",
 				"listAvailableRepos",
 				"listLinkedRepos",
 				"projectsForRepository",
@@ -337,13 +346,34 @@ const SERVICES = {
 	},
 	sessionsService: {
 		service: sessionsService,
-		coverage: { recorded: { revoke: true }, exempt: {}, reads: ["listMine"] },
+		coverage: {
+			recorded: { revoke: true },
+			exempt: {},
+			reads: ["listMine", "currentIdFor"],
+		},
+	},
+	mobileDevicesService: {
+		service: mobileDevicesService,
+		coverage: {
+			recorded: {},
+			exempt: {
+				register:
+					"a person's own phone, like a web push subscription; it changes no workspace, and the sign-in that made its session is recorded",
+				update:
+					"the app reports its own permission and Live Activity token; no workspace changes",
+				remove: "a person's own phone; it changes no workspace",
+			},
+			reads: [],
+		},
 	},
 	accountService: {
 		service: accountService,
 		coverage: {
 			recorded: { unlinkGoogle: true },
-			exempt: {},
+			exempt: {
+				unlinkIntegration:
+					"removes a GitHub or Google Calendar grant, which is an integration and not a sign-in method (docs/domains/audit-log.md)",
+			},
 			reads: ["signInMethods"],
 		},
 	},

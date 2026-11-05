@@ -45,9 +45,9 @@ import {
  * answer.
  *
  * `idempotentHint` is deliberately absent rather than false. It would be a lie
- * on both sides: `list_time_entries` reads and yet writes (see the write-on-read
- * note in CLAUDE.md's Gotchas), and several writes upsert and so ARE repeatable
- * — a single flag per tier would be wrong for some member of every tier.
+ * on both sides: `integration_status` reads and yet can refresh and store an
+ * OAuth token, and several writes upsert and so ARE repeatable — a single
+ * flag per tier would be wrong for some member of every tier.
  * `openWorldHint` is likewise absent: it describes whether a tool reaches a
  * system the server does not control, and "sometimes, if the org connected
  * Google Calendar" is not a static answer.

@@ -2586,11 +2586,7 @@ describe("a step that asks for several reads", () => {
 			turn({
 				toolCalls: [
 					{ id: "call-1", name: "list_projects", arguments: "{}" },
-					{
-						id: "call-2",
-						name: "list_time_entries",
-						arguments: JSON.stringify({ from: "2026-03-01", to: "2026-03-05" }),
-					},
+					{ id: "call-2", name: "integration_status", arguments: "{}" },
 					{ id: "call-3", name: "list_clients", arguments: "{}" },
 				],
 			}),
@@ -2602,14 +2598,14 @@ describe("a step that asks for several reads", () => {
 			message: "everything",
 		});
 
-		// `list_time_entries` recomputes the day's fill block, so it is claimed
+		// `integration_status` can refresh an OAuth token, so it is claimed
 		// alone — and the read after it waits, rather than being reordered in
 		// front of it.
 		expect(stepOrder(events)).toEqual([
 			"start:list_projects",
 			"result:list_projects",
-			"start:list_time_entries",
-			"result:list_time_entries",
+			"start:integration_status",
+			"result:integration_status",
 			"start:list_clients",
 			"result:list_clients",
 		]);

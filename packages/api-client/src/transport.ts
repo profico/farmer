@@ -1,0 +1,287 @@
+import { ApiClientError } from "./errors";
+
+/** What the client puts in a request: a subset of `RequestInit` that both
+ *  the global `fetch` and `expo/fetch` take. */
+export type FetchInit = {
+	method: string;
+	headers: Headers;
+	body?: string;
+	signal: AbortSignal;
+	/** The client never follows a redirect: a hop to another origin drops the
+	 *  bearer token, and the answer would read as "signed out". */
+	redirect: "manual";
+};
+
+/** The part of a `Response` the client reads. `expo/fetch` answers its own
+ *  class, which has these members but not every one of the DOM type. */
+export type FetchResponse = Pick<
+	Response,
+	"ok" | "status" | "headers" | "json" | "text" | "body" | "url"
+>;
+
+export type FetchLike = (
+	url: string,
+	init: FetchInit,
+) => Promise<FetchResponse>;
+
+/** Everything a request needs besides a token. `fetch` and `sleep` are here
+ *  so the tests can run the client against a fake server. */
+export type Transport = {
+	/** The Server address, as `normalizeOrigin` returns it. */
+	origin: string;
+	fetch: FetchLike;
+	/**
+	 * The fetch for a streamed answer (the assistant). It must give a
+	 * `Response` whose `body` is a `ReadableStream` that fills as the bytes
+	 * arrive. React Native's own `fetch` does not, so the app passes
+	 * `expo/fetch` here. Without it, `fetch` is used, and the events arrive
+	 * together when the answer is complete.
+	 */
+	streamFetch?: FetchLike;
+	sleep: (ms: number) => Promise<void>;
+	/** `farmer-mobile/0.1.0 (android 15)`. */
+	userAgent: string;
+};
+
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
+export type SendOptions = {
+	method: HttpMethod;
+	path: string;
+	token: string | null;
+	body?: string;
+	timeoutMs?: number;
+};
+
+const REQUEST_TIMEOUT_MS = 20_000;
+/** For a call that does slow work on the server: a Slack match, a read of
+ *  the repositories from GitHub, an audit export. */
+export const SLOW_REQUEST_TIMEOUT_MS = 60_000;
+/** A wait up to this long is sat out; a longer one is reported. */
+const MAX_RATE_LIMIT_WAIT_SECONDS = 15;
+const MAX_RATE_LIMIT_RETRIES = 2;
+
+/** Seconds from a `Retry-After` header: a number of seconds or an HTTP date. */
+export const retryAfterSeconds = (
+	header: string | null,
+	nowMs: number,
+): number | null => {
+	if (!header) return null;
+	const trimmed = header.trim();
+	if (/^\d+$/.test(trimmed)) return Number(trimmed);
+	const at = Date.parse(trimmed);
+	return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - nowMs) / 1000));
+};
+
+const timedOut = (transport: Transport, timeoutMs: number) =>
+	new ApiClientError(
+		"unreachable",
+		`${transport.origin} did not answer within ${Math.round(timeoutMs / 1000)} seconds. The server may be busy: try again in a moment.`,
+	);
+
+/** A redirect. The client does not follow it, and names it. */
+const redirected = (transport: Transport, response: FetchResponse) =>
+	new ApiClientError(
+		"redirected",
+		`${transport.origin} redirects to ${response.headers.get("location") ?? "another address"} (status ${response.status}). Use that address, and check the proxy of the server.`,
+		{ status: response.status },
+	);
+
+/** The redirect error for a fetch that followed the redirect itself. */
+const followed = (transport: Transport, response: FetchResponse) =>
+	new ApiClientError(
+		"redirected",
+		`${transport.origin} redirects to ${response.url}. Use that address, and check the proxy of the server.`,
+	);
+
+/** The fetch of React Native can ignore `redirect: "manual"` and follow the
+ *  redirect, and it does not keep the 3xx status. Its `response.url` is then
+ *  the final address, so a different origin or path shows the hop. */
+const wasFollowed = (requestUrl: string, response: FetchResponse): boolean => {
+	if (!response.url) return false;
+	try {
+		const sent = new URL(requestUrl);
+		const received = new URL(response.url);
+		return (
+			sent.origin !== received.origin || sent.pathname !== received.pathname
+		);
+	} catch {
+		return false;
+	}
+};
+
+/** Throw the redirect error when the answer is a 3xx, or when the fetch
+ *  followed a redirect. */
+const rejectRedirect = (
+	transport: Transport,
+	requestUrl: string,
+	response: FetchResponse,
+): void => {
+	if (response.status >= 300 && response.status < 400) {
+		throw redirected(transport, response);
+	}
+	if (wasFollowed(requestUrl, response)) throw followed(transport, response);
+};
+
+const fetchWithTimeout = async (
+	transport: Transport,
+	url: string,
+	init: Omit<FetchInit, "signal" | "redirect">,
+	timeoutMs: number,
+): Promise<FetchResponse> => {
+	// `AbortSignal.timeout` is not in React Native, so the timer is our own.
+	const controller = new AbortController();
+	let expired = false;
+	const timer = setTimeout(() => {
+		expired = true;
+		controller.abort();
+	}, timeoutMs);
+	try {
+		return await transport.fetch(url, {
+			...init,
+			signal: controller.signal,
+			redirect: "manual",
+		});
+	} catch (error) {
+		throw expired
+			? timedOut(transport, timeoutMs)
+			: unreachable(transport, error instanceof Error ? error : String(error));
+	} finally {
+		clearTimeout(timer);
+	}
+};
+
+const headersFor = (
+	transport: Transport,
+	options: SendOptions,
+	accept: string,
+): Headers => {
+	const headers = new Headers({
+		accept,
+		"user-agent": transport.userAgent,
+	});
+	if (options.token) headers.set("authorization", `Bearer ${options.token}`);
+	if (options.body !== undefined) {
+		headers.set("content-type", "application/json");
+	}
+	return headers;
+};
+
+const unreachable = (transport: Transport, error: Error | string) =>
+	new ApiClientError(
+		"unreachable",
+		`Cannot reach ${transport.origin}. Check the address and your connection. (${error instanceof Error ? error.message : error})`,
+	);
+
+/**
+ * One request with the headers every call carries. A 429 with a short
+ * `Retry-After` is waited out here; every other status is the caller's.
+ */
+export const send = async (
+	transport: Transport,
+	options: SendOptions,
+): Promise<FetchResponse> => {
+	const headers = headersFor(transport, options, "application/json");
+
+	for (let attempt = 0; ; attempt++) {
+		const url = `${transport.origin}${options.path}`;
+		const response = await fetchWithTimeout(
+			transport,
+			url,
+			{ method: options.method, headers, body: options.body },
+			options.timeoutMs ?? REQUEST_TIMEOUT_MS,
+		);
+		rejectRedirect(transport, url, response);
+		if (response.status !== 429) return response;
+
+		const wait = retryAfterSeconds(
+			response.headers.get("retry-after"),
+			Date.now(),
+		);
+		if (
+			wait === null ||
+			wait > MAX_RATE_LIMIT_WAIT_SECONDS ||
+			attempt >= MAX_RATE_LIMIT_RETRIES
+		) {
+			throw new ApiClientError(
+				"http",
+				wait === null
+					? "The server is limiting requests. Try again in a minute."
+					: `The server is limiting requests. Try again in ${wait} seconds.`,
+				{ status: 429, code: "rate_limited" },
+			);
+		}
+		await transport.sleep(wait * 1000);
+	}
+};
+
+/** What `openStream` throws for a failed request. The caller's own stop is
+ *  its own result, not a network failure to report. */
+const streamFailure = (
+	transport: Transport,
+	error: Error | string,
+	state: { callerStopped: boolean; expired: boolean; timeoutMs: number },
+) => {
+	if (error instanceof ApiClientError) return error;
+	if (state.callerStopped) return error;
+	if (state.expired) return timedOut(transport, state.timeoutMs);
+	return unreachable(transport, error);
+};
+
+/**
+ * A request for a streamed answer (`text/event-stream`). The timeout covers
+ * only the wait for the headers: after them, the stream can stay open as long
+ * as the server writes, and `signal` is the way to stop it. A 429 is not
+ * waited out, because the server's sentence already says when to try again.
+ */
+export const openStream = async (
+	transport: Transport,
+	options: SendOptions & { signal?: AbortSignal },
+): Promise<FetchResponse> => {
+	const controller = new AbortController();
+	const stop = () => controller.abort();
+	if (options.signal?.aborted) stop();
+	options.signal?.addEventListener("abort", stop, { once: true });
+	const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+	let expired = false;
+	const timer = setTimeout(() => {
+		expired = true;
+		stop();
+	}, timeoutMs);
+	const fetcher = transport.streamFetch ?? transport.fetch;
+	try {
+		const url = `${transport.origin}${options.path}`;
+		const response = await fetcher(url, {
+			method: options.method,
+			headers: headersFor(transport, options, "text/event-stream"),
+			body: options.body,
+			signal: controller.signal,
+			redirect: "manual",
+		});
+		rejectRedirect(transport, url, response);
+		return response;
+	} catch (error) {
+		throw streamFailure(
+			transport,
+			error instanceof Error ? error : String(error),
+			{
+				callerStopped: options.signal?.aborted === true,
+				expired,
+				timeoutMs,
+			},
+		);
+	} finally {
+		clearTimeout(timer);
+	}
+};
+
+/** The JSON body, or null when there is none or it does not parse. */
+export const readJson = async (
+	response: FetchResponse,
+): Promise<ReturnType<typeof JSON.parse> | null> => {
+	try {
+		return await response.json();
+	} catch {
+		return null;
+	}
+};

@@ -143,7 +143,7 @@ describe("the membership rule", () => {
 			{ organizationId: ORG, userId: OUTSIDER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
-		expect(outcome).toEqual({ push: false, slack: false });
+		expect(outcome).toEqual({ push: false, native: false, slack: false });
 		expect(r.calls).toHaveLength(0);
 	});
 
@@ -231,7 +231,7 @@ describe("the fan-out", () => {
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "log-reminder", title: "Log your hours", body: "x" },
 		);
-		expect(outcome).toEqual({ push: true, slack: false });
+		expect(outcome).toEqual({ push: true, native: false, slack: false });
 		expect(r.calls.map((c) => c.channel)).toEqual(["push"]);
 	});
 
@@ -247,7 +247,7 @@ describe("the fan-out", () => {
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
-		expect(outcome).toEqual({ push: false, slack: true });
+		expect(outcome).toEqual({ push: false, native: false, slack: true });
 		expect(wasDelivered(outcome)).toBe(true);
 	});
 
@@ -261,7 +261,7 @@ describe("the fan-out", () => {
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
-		expect(outcome).toEqual({ push: false, slack: false });
+		expect(outcome).toEqual({ push: false, native: false, slack: false });
 		expect(wasDelivered(outcome)).toBe(false);
 	});
 });
@@ -339,12 +339,18 @@ describe("the Slack text", () => {
 
 describe("wasDelivered", () => {
 	test("is true when any channel got through", () => {
-		expect(wasDelivered({ push: false, slack: true })).toBe(true);
-		expect(wasDelivered({ push: true, slack: false })).toBe(true);
+		expect(wasDelivered({ push: false, native: false, slack: true })).toBe(
+			true,
+		);
+		expect(wasDelivered({ push: true, native: false, slack: false })).toBe(
+			true,
+		);
 	});
 
 	test("is false when none did", () => {
-		expect(wasDelivered({ push: false, slack: false })).toBe(false);
+		expect(wasDelivered({ push: false, native: false, slack: false })).toBe(
+			false,
+		);
 	});
 });
 

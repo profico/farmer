@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
 	pgTable,
 	text,
 	timestamp,
@@ -63,9 +65,21 @@ export const notificationSettings = pgTable(
 		// push must fire even on a day a nudge already went out.
 		lastSlackNudgeDay: text("last_slack_nudge_day"),
 		lastMonthEndPushDay: text("last_month_end_push_day"),
+		// Where the three Slack kinds (the compliance nudge, the month-end
+		// reminder and the admin digest) go for a person who has the mobile app
+		// (ADR 0006). "app": a native push when a phone of the person allows
+		// notifications, else Slack. "slack": always Slack.
+		remindersChannel: text("reminders_channel")
+			.$type<"app" | "slack">()
+			.notNull()
+			.default("app"),
 		...stamps,
 	},
 	(t) => [
 		unique("notification_settings_org_user_unq").on(t.organizationId, t.userId),
+		check(
+			"notification_settings_reminders_channel_check",
+			sql`${t.remindersChannel} in ('app', 'slack')`,
+		),
 	],
 );

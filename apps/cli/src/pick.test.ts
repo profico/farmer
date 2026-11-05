@@ -24,6 +24,7 @@ const entry = (id: string, date: string): ApiTimeEntry => ({
 	commitCount: 0,
 	task: { id: "task-1", name: "Development", isAbsence: false },
 	project: null,
+	calendarChange: null,
 });
 
 const DAY = "2026-09-14";

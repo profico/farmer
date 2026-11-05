@@ -12,7 +12,8 @@
 		"./schema": "./src/schema/index.ts",
 		"./lib/*": "./src/lib/*.ts",
 		"./api": "./src/api/index.ts",
-		"./db/seed-tasks": "./src/db/seed-tasks.ts"
+		"./db/seed-tasks": "./src/db/seed-tasks.ts",
+		"./test/*": "./src/test/*.ts"
 	},
 	"scripts": {
 		"test": "bun test",
@@ -35,9 +36,12 @@
 	},
 	"dependencies": {
 		"@better-auth/core": "1.6.23",
+		"@better-auth/expo": "1.6.23",
 		"@date-fns/tz": "1.5.0",
+		"@farmer/push-crypto": "workspace:*",
 		"aws4fetch": "1.0.20",
 		"better-auth": "1.6.23",
+		"better-call": "1.3.7",
 		"date-fns": "4.4.0",
 		"date-holidays": "3.32.0",
 		"drizzle-orm": "0.45.2",

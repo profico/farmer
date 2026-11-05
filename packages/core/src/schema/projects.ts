@@ -153,3 +153,13 @@ export const removeProjectMemberInput = z.object({
 	userId: z.string().min(1),
 });
 export type RemoveProjectMemberInput = z.infer<typeof removeProjectMemberInput>;
+
+// A change of role on the REST API names the role it sets. Without
+// `required`, the default above would turn a body with no role into a
+// demotion to member.
+export const changeProjectMemberRoleInput = assignProjectMemberInput.required({
+	role: true,
+});
+export type ChangeProjectMemberRoleInput = z.infer<
+	typeof changeProjectMemberRoleInput
+>;

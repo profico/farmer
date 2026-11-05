@@ -59,6 +59,7 @@ export const queryKeys = (org: string) =>
 		integrationSettings: ["integration-settings", org],
 		members: ["members", org],
 		notificationSettings: ["notification-settings", org],
+		appReach: ["app-reach", org],
 		organization: ["organization", org],
 		projects: ["projects", org],
 		recurringBlockRules: ["recurring-block-rules", org],

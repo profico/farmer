@@ -1,0 +1,125 @@
+import type { FilingRule } from "@farmer/api-client";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { View } from "react-native";
+
+import { useFilingRules, useUpdateFilingRule } from "../../src/api/you";
+import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
+import { FormSection, Sheet } from "../../src/forms/sheet";
+import {
+	EmptyState,
+	ErrorBanner,
+	ListRow,
+	Skeleton,
+	Text,
+} from "../../src/ui/components";
+import { DestructiveButton } from "../../src/ui/destructive-button";
+import { messageOf } from "../../src/ui/errors";
+import { Icon } from "../../src/ui/icon";
+import { usePalette } from "../../src/ui/theme";
+import { useConfirmRemoveRule } from "../../src/you/confirm-delete";
+
+/** One filing rule: where its entries go, or remove it. */
+export default function FilingRuleSheet() {
+	const { id } = useLocalSearchParams<{ id?: string }>();
+	const rules = useFilingRules();
+	const rule = rules.data?.find((row) => row.id === id);
+
+	if (rules.isPending) {
+		return (
+			<Sheet title="Filing rule" actionLabel="Save" onAction={() => {}} busy>
+				<Skeleton height={56} radius={16} />
+				<Skeleton height={56} radius={16} />
+			</Sheet>
+		);
+	}
+	if (!rule) {
+		return (
+			<Sheet
+				title="Filing rule"
+				actionLabel="Save"
+				onAction={() => {}}
+				actionDisabled
+			>
+				{rules.error ? (
+					<ErrorBanner message={messageOf(rules.error) ?? ""} />
+				) : (
+					<EmptyState
+						icon="inbox"
+						title="This rule is gone"
+						message="It was changed or removed somewhere else."
+					/>
+				)}
+			</Sheet>
+		);
+	}
+	return <RuleForm rule={rule} />;
+}
+
+function RuleForm({ rule }: { rule: FilingRule }) {
+	const palette = usePalette();
+	const router = useRouter();
+	const update = useUpdateFilingRule();
+	const remove = useConfirmRemoveRule();
+	const [projectId, setProjectId] = useState(rule.project.id);
+	const [targetTaskId, setTargetTaskId] = useState(rule.targetTask?.id ?? null);
+	const busy = update.isPending || remove.pending;
+	const failure = messageOf(update.error);
+
+	const save = () =>
+		update.mutate(
+			{ id: rule.id, patch: { projectId, targetTaskId } },
+			{ onSuccess: () => router.back() },
+		);
+
+	const confirmRemove = () => remove.confirm(rule, () => router.back());
+
+	return (
+		<Sheet title="Filing rule" actionLabel="Save" onAction={save} busy={busy}>
+			{failure ? <ErrorBanner message={failure} /> : null}
+			<View style={{ gap: 4 }}>
+				<Text variant="titleMedium">{rule.title}</Text>
+				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+					Entries with this name arrive as {rule.task.name}.
+				</Text>
+			</View>
+			<ProjectPicker
+				value={projectId}
+				allowNone={false}
+				onChange={(next) => {
+					if (next) setProjectId(next);
+				}}
+			/>
+			<FormSection label="Task">
+				<View
+					style={{
+						borderRadius: 16,
+						overflow: "hidden",
+						backgroundColor: palette.surfaceContainer,
+					}}
+				>
+					<ListRow
+						title={`Keep ${rule.task.name}`}
+						subtitle="File it with the task it arrives with"
+						selected={targetTaskId === null}
+						onPress={() => setTargetTaskId(null)}
+						trailing={
+							targetTaskId === null ? (
+								<Icon name="check" size={20} color={palette.primary} />
+							) : undefined
+						}
+					/>
+				</View>
+				<TaskPicker
+					value={targetTaskId}
+					onChange={(task) => setTargetTaskId(task.id)}
+				/>
+			</FormSection>
+			<DestructiveButton
+				label="Remove rule"
+				onPress={confirmRemove}
+				disabled={busy}
+			/>
+		</Sheet>
+	);
+}

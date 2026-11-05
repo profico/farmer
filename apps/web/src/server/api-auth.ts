@@ -158,7 +158,8 @@ export const resolveMcpOrgContext = async (
  * Which bearer credential a request presented. `DELETE /api/v1/session` needs
  * it to revoke exactly that credential and no other.
  *
- *  - `session`: a device-flow token, which IS a better-auth session token.
+ *  - `session`: a better-auth session token: the CLI's device-flow token or
+ *    the token of a mobile sign-in.
  *  - `api_token`: a personal API token (`fmr_…`) from Preferences → API
  *    tokens. See `docs/domains/api-tokens.md`.
  */
@@ -171,7 +172,7 @@ export type CliUser = {
 	userId: string;
 	user: { id: string; name: string; email: string };
 	credential: CliCredential;
-	/** `read` only for an API token made read-only. A device-flow token can do
+	/** `read` only for an API token made read-only. A session token can do
 	 *  everything its owner can. */
 	scope: ApiTokenScope;
 	/** The one workspace an API token is bound to, or null for any. Not named
@@ -339,5 +340,13 @@ export const resolveCliOrgContext = async (
 		return null;
 	}
 	if (cliUser.boundOrganizationId) ctx.boundToOrganization = true;
-	return { ctx, scope: cliUser.scope, via: cliUser.credential.kind };
+	return {
+		ctx,
+		scope: cliUser.scope,
+		via: cliUser.credential.kind,
+		// The member management routes sign a cookie from it, because only
+		// better-auth's endpoints may write those rows (see `memberAdmin`).
+		sessionToken:
+			cliUser.credential.kind === "session" ? cliUser.credential.token : null,
+	};
 };

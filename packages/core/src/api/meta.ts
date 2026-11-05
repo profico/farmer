@@ -5,6 +5,8 @@
  * binary asking is new enough to read the answers.
  */
 
+import type { ApiPushRelay } from "./mobile";
+
 /**
  * The oldest CLI that can read this server's responses.
  *
@@ -15,10 +17,48 @@
  */
 export const MIN_CLI_VERSION = "0.1.0";
 
+/**
+ * The version of the `/api/v1` contract. The CLI does not read it. The mobile
+ * app reads it to know that the routes it needs exist. A server from before
+ * this field answers no `apiVersion`, and the client reads that as 0.
+ *
+ * Raise it when a route group is added that the mobile app must find. Raise
+ * `REQUIRED_API_VERSION` in `packages/api-client/src/meta.ts` to the same
+ * number when the app needs that group.
+ */
+export const API_VERSION = 1;
+
+/** The oldest mobile app that can read this server's responses. Raise it for
+ *  the same reasons as `MIN_CLI_VERSION`. */
+export const MIN_MOBILE_VERSION = "0.1.0";
+
+/** `social` is a built-in provider such as Google. `oidc` is an OpenID
+ *  Connect source that an administrator added. */
+export type ApiSignInMethod = {
+	id: string;
+	name: string;
+	kind: "social" | "oidc";
+};
+
 export type ApiMeta = {
 	app: "farmer";
 	cliEnabled: boolean;
 	minCliVersion: string;
+	apiVersion: number;
+	minMobileVersion: string;
+	/** The provider buttons, in the order the login page draws them. */
+	signInMethods: ApiSignInMethod[];
+	/** Whether this server offers an email and password form. */
+	passwordSignIn: boolean;
+	/** Whether this server sends native push, and through which relay. */
+	pushRelay: ApiPushRelay;
+	/** Whether this server stores uploaded images (a project icon, an
+	 *  organization logo). Without a store, `POST …/uploads` refuses each
+	 *  file. */
+	uploadsEnabled: boolean;
+	/** Whether a person may make a new workspace (`POST /me/organizations`).
+	 *  False in single-org mode. */
+	organizationCreation: boolean;
 };
 
 const parts = (version: string): [number, number, number] | null => {

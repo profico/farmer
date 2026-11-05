@@ -3,6 +3,7 @@ import {
 	GoogleLogoIcon,
 	IdentificationCardIcon,
 	KeyIcon,
+	DeviceMobileIcon,
 	TerminalWindowIcon,
 } from "@phosphor-icons/react";
 import {
@@ -58,7 +59,10 @@ import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
 import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { myApiTokensQuery } from "#/queries/api-tokens.ts";
-import { notificationSettingsQuery } from "#/queries/notifications.ts";
+import {
+	appReachQuery,
+	notificationSettingsQuery,
+} from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
 import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
@@ -72,6 +76,7 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 			// PreferencesSettingsPage).
 			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(appReachQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
 			// Only where the section renders: the tokens call the API, and the
 			// API is off with the CLI (see ApiTokensSection).
@@ -285,7 +290,12 @@ function SessionRow({ session }: { session: MySession }) {
 			toast.error(error.message ?? "Could not sign out that device"),
 	});
 
-	const Icon = session.kind === "cli" ? TerminalWindowIcon : BrowserIcon;
+	const Icon =
+		session.kind === "cli"
+			? TerminalWindowIcon
+			: session.kind === "mobile"
+				? DeviceMobileIcon
+				: BrowserIcon;
 
 	return (
 		<SettingRow
@@ -325,7 +335,9 @@ function SessionRow({ session }: { session: MySession }) {
 								<AlertDialogDescription>
 									{session.kind === "cli"
 										? "The terminal is signed out at its next command, and it asks you to run farmer login again."
-										: "That browser is signed out the next time it loads a page."}
+										: session.kind === "mobile"
+											? "The app is signed out the next time it asks the server for data, and it asks you to sign in again."
+											: "That browser is signed out the next time it loads a page."}
 								</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
@@ -349,7 +361,7 @@ function SessionRow({ session }: { session: MySession }) {
 }
 
 /**
- * Every browser and terminal signed in to this account, with a way to end each.
+ * Every browser, terminal and phone signed in to this account, with a way to end each.
  *
  * It exists for the CLI: `farmer login` stores a session token on a machine,
  * and it stays valid for as long as the session does. A person who loses that
@@ -365,7 +377,7 @@ function SignedInDevicesSection() {
 	return (
 		<PageSection
 			title="Signed-in devices"
-			description="Every browser and terminal signed in to your account, in every workspace."
+			description="Every browser, terminal and phone signed in to your account, in every workspace."
 		>
 			<SettingList>
 				{sessions.map((session) => (
@@ -665,7 +677,8 @@ function DisplaySection() {
 
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
-	const { cliEnabled } = Route.useRouteContext();
+	const { cliEnabled, role } = Route.useRouteContext();
+	const isAdmin = role === "owner" || role === "admin";
 	const orgSlug = useOrgSlug();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 	// In development, and for an account that holds a password. Outside
@@ -691,7 +704,7 @@ function PreferencesSettingsPage() {
 
 			<SignedInDevicesSection />
 			{cliEnabled ? <ApiTokensSection /> : null}
-			<NotificationSettings />
+			<NotificationSettings isAdmin={isAdmin} />
 			<FilingRulesSettings />
 		</Page>
 	);

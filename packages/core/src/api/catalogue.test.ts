@@ -1,11 +1,43 @@
-// The period projection feeds `farmer status` and the scripts on top of its
-// `--json`. The goal through today is a field that an installed binary reads,
-// so a refactor of the projection must not drop it.
+// The projections in `catalogue.ts`, for the reason `time-entries.test.ts`
+// gives: a column added to `client` next month must not become a field that a
+// mobile app starts to depend on. The period projection feeds `farmer status`
+// and the scripts on top of its `--json`. The goal through today is a field
+// that an installed binary reads, so a refactor of the projection must not
+// drop it.
 
 import { describe, expect, test } from "bun:test";
 
 import type { PeriodTarget } from "../services/compliance.service";
-import { toApiPeriod } from "./catalogue";
+import { toApiClient, toApiPeriod } from "./catalogue";
+
+describe("toApiClient", () => {
+	test("keeps exactly the fields it names", () => {
+		const row = {
+			id: "c-1",
+			name: "Acme",
+			isInternal: false,
+			organizationId: "org-1",
+			archivedAt: null,
+			createdAt: new Date("2026-09-14T08:00:00Z"),
+		};
+		expect(toApiClient(row)).toStrictEqual({
+			id: "c-1",
+			name: "Acme",
+			isInternal: false,
+			archivedAt: null,
+		});
+	});
+
+	test("sends the archive date as ISO 8601", () => {
+		const row = {
+			id: "c-2",
+			name: "Gone",
+			isInternal: false,
+			archivedAt: new Date("2026-09-20T10:00:00Z"),
+		};
+		expect(toApiClient(row).archivedAt).toBe("2026-09-20T10:00:00.000Z");
+	});
+});
 
 /** The first working day of a week: the verdict has nothing due, and the goal
  *  through today is one day. */

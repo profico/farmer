@@ -6,9 +6,11 @@ import { slackReminderLog } from "../db/schema/slack";
 import { loggableError } from "../lib/loggable-error";
 import { dayKeyInTz, safeTimezone, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
+import { orgHasNotifiablePhone } from "../services/native-push";
 import {
 	deliveryBlocks,
 	notify,
+	reachableByApp,
 	wasDelivered,
 	wasUnreachable,
 } from "../services/notify";
@@ -63,6 +65,15 @@ export type SlackReminderSummary = {
 // is on the row (`attempts`), so a restart does not start it again. A
 // permanent refusal keeps its claim and counts as neither sent nor failed:
 // counting it would add three failures a day per deactivated account.
+//
+// A workspace with no Slack installation is still run when one of its people
+// has a phone that allows notifications. The pass then sends through the app
+// channel only (`notify` with `appOnly`), and never tries Slack. A person
+// without such a phone is skipped before the claim. A workspace with no such
+// phone at all is not run, and does not count as finished, so its first phone
+// or a Slack install still reaches everyone the same day. A phone that
+// registers after a pass finished waits for the next day, because `finishedRuns`
+// ends the pass of that kind for the day.
 //
 // A refused bot token is neither case: it is about the credential, and every
 // send after it fails the same way. `sendDm` records it on the installation
@@ -161,6 +172,21 @@ type OrgRow = { id: string; slug: string; timezone: string | null };
 type SendResult = "delivered" | "unreachable" | "failed";
 type FailureOutcome = { retryLater: boolean; slackLost: boolean };
 
+/** Without Slack, only a person the app can reach is sent to. */
+const reachableRecipients = async <T extends { userId: string }>(
+	orgId: string,
+	recipients: T[],
+	appOnly: boolean,
+): Promise<T[]> => {
+	if (!appOnly) return recipients;
+	const reach = await Promise.all(
+		recipients.map((r) =>
+			reachableByApp({ organizationId: orgId, userId: r.userId }),
+		),
+	);
+	return recipients.filter((_, i) => reach[i]);
+};
+
 /** The kinds that are due now, in order. The fast check runs before any
  *  compliance query: what this process already finished today, then the send
  *  time, then the day. Only the month-end day costs a query (the holiday
@@ -188,14 +214,19 @@ const sendReminder = async (
 	orgId: string,
 	recipient: Recipient,
 	kind: ReminderKind,
+	appOnly: boolean,
 ): Promise<SendResult> => {
 	try {
 		const outcome = await notify(
 			{ organizationId: orgId, userId: recipient.userId },
 			recipient.event,
+			{ appOnly },
 		);
 		if (wasDelivered(outcome)) return "delivered";
 		if (wasUnreachable(outcome)) return "unreachable";
+		// The native push failed and Slack has no match. A retry can still
+		// reach the phone, so the claim must not settle.
+		if (outcome.retryable) return "failed";
 		const slackId = await slackService.slackIdFor(orgId, recipient.userId);
 		return slackId ? "failed" : "unreachable";
 	} catch (error) {
@@ -216,8 +247,9 @@ const handleFailedSend = async (
 	attempt: number,
 	orgId: string,
 	kind: ReminderKind,
+	appOnly: boolean,
 ): Promise<FailureOutcome> => {
-	const slackLost = !(await slackService.installationFor(orgId));
+	const slackLost = !appOnly && !(await slackService.installationFor(orgId));
 	let retryLater = false;
 	// Out of attempts: the claim stays settled, and the day gets no more.
 	if (attempt < MAX_SEND_ATTEMPTS) {
@@ -247,13 +279,12 @@ const runKindPass = async (
 	dashboard: Dashboard,
 	settings: Settings,
 	summary: SlackReminderSummary,
+	appOnly: boolean,
 ): Promise<FailureOutcome> => {
-	const recipients = await reminderRecipients(
-		ctx,
-		settings,
-		entry.kind,
-		moment,
-		dashboard,
+	const recipients = await reachableRecipients(
+		org.id,
+		await reminderRecipients(ctx, settings, entry.kind, moment, dashboard),
+		appOnly,
 	);
 	// `notify` applies these gates anyway. Asking first keeps a held-back
 	// person from spending the day's claim, so turning "include people
@@ -274,12 +305,18 @@ const runKindPass = async (
 		};
 		const attempt = await claim(key);
 		if (attempt === null) continue;
-		const result = await sendReminder(org.id, recipient, entry.kind);
+		const result = await sendReminder(org.id, recipient, entry.kind, appOnly);
 		if (result === "delivered") summary[entry.counter]++;
 		if (result !== "failed") continue;
 
 		summary.failed++;
-		const failure = await handleFailedSend(key, attempt, org.id, entry.kind);
+		const failure = await handleFailedSend(
+			key,
+			attempt,
+			org.id,
+			entry.kind,
+			appOnly,
+		);
 		retryLater ||= failure.retryLater;
 		if (failure.slackLost) return { retryLater, slackLost: true };
 	}
@@ -291,6 +328,7 @@ const runOrgPass = async (
 	org: OrgRow,
 	now: Date,
 	summary: SlackReminderSummary,
+	appOnly: boolean,
 ): Promise<void> => {
 	const tz = safeTimezone(org.timezone);
 	const today = dayKeyInTz(now, tz);
@@ -305,6 +343,12 @@ const runOrgPass = async (
 		const due = await dueKinds(ctx, org.id, settings, today, timeKey);
 		if (due.length === 0) return;
 
+		// The phone check is a query, so it runs after the cheap exit above.
+		if (appOnly) {
+			if (!(await orgHasNotifiablePhone(org.id))) return;
+			summary.organizations++;
+		}
+
 		const dashboard = dashboardLoader(ctx, settings, now);
 		const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
 		for (const entry of due) {
@@ -316,6 +360,7 @@ const runOrgPass = async (
 				dashboard,
 				settings,
 				summary,
+				appOnly,
 			);
 			// No Slack left to send with: stop the org, and leave every kind
 			// unfinished so a new install today still sends.
@@ -356,9 +401,10 @@ export const runSlackRemindersOnce = async (
 		// No Slack workspace connected = nothing this job can do, and no reason to
 		// run the (fairly expensive) compliance queries for that org at all.
 		const installation = await slackService.installationFor(org.id);
-		if (!installation) continue;
-		summary.organizations++;
-		await runOrgPass(org, now, summary);
+		// Without Slack, the pass still runs for an org with a phone to tell.
+		const appOnly = !installation;
+		if (!appOnly) summary.organizations++;
+		await runOrgPass(org, now, summary, appOnly);
 	}
 
 	return summary;

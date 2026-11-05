@@ -36,15 +36,24 @@ export const googleCredentials = () =>
 export const githubCredentials = () =>
 	credentials(setting("GITHUB_CLIENT_ID"), setting("GITHUB_CLIENT_SECRET"));
 
-export type SignInProvider = { id: string; name: string };
+/** `social` is a built-in provider (Google). `oidc` is an OpenID Connect
+ *  source that an administrator added. */
+export type SignInProvider = {
+	id: string;
+	name: string;
+	kind: "social" | "oidc";
+};
 
 /** The buttons on the login page: Google when it is configured, then every
  *  OpenID Connect source that is switched on. No secrets. */
 export const signInProviders = (): SignInProvider[] => [
-	...(googleCredentials() ? [{ id: "google", name: "Google" }] : []),
+	...(googleCredentials()
+		? [{ id: "google", name: "Google", kind: "social" as const }]
+		: []),
 	...enabledOAuthProviders().map((provider) => ({
 		id: provider.providerId,
 		name: provider.name,
+		kind: "oidc" as const,
 	})),
 ];
 
@@ -104,3 +113,11 @@ export const passwordSignIn = async (): Promise<PasswordSignIn> => {
 	if (await isInstanceEmpty()) return "first-account";
 	return (await passwordOnlyAdmins()).size > 0 ? "administrator" : null;
 };
+
+/**
+ * Whether any password form is offered: the development form, or one that
+ * `passwordSignIn` names. This is what the login page draws as a form, as one
+ * answer for a client that only needs yes or no.
+ */
+export const passwordOffered = async (): Promise<boolean> =>
+	isDevAuthEnabled() || (await passwordSignIn()) !== null;

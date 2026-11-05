@@ -21,6 +21,21 @@ export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
 /** 1 MB. An icon is drawn at 72px at the most, and a logo in a sidebar. */
 export const MAX_UPLOAD_BYTES = 1024 * 1024;
 
+/** The longest base64 text of a file of `MAX_UPLOAD_BYTES`. */
+export const MAX_UPLOAD_BASE64_LENGTH = 4 * Math.ceil(MAX_UPLOAD_BYTES / 3);
+
+/**
+ * The bytes of a base64 text that the schema already checked. `atob` and not
+ * `Buffer`, because this module is browser-safe. A copy into a new buffer,
+ * which is the type that `uploadsService.uploadImage` takes.
+ */
+export const bytesFromBase64 = (data: string): Uint8Array<ArrayBuffer> => {
+	const text = atob(data);
+	const bytes = new Uint8Array(text.length);
+	for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+	return bytes;
+};
+
 const IMAGE_TYPES = {
 	png: "image/png",
 	jpg: "image/jpeg",

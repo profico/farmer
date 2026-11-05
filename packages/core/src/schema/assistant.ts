@@ -69,6 +69,27 @@ export type RenameConversationInput = z.infer<typeof renameConversationInput>;
 export const conversationIdInput = z.object({ conversationId: z.uuid() });
 export type ConversationIdInput = z.infer<typeof conversationIdInput>;
 
+/** What a person types to the assistant. */
+export const assistantMessageText = z.string().trim().min(1).max(10_000);
+
+/** The answer to a write the assistant asked permission for. */
+export const assistantResolveInput = z.object({
+	toolCallId: z.string().min(1).max(200),
+	decision: z.enum(["approved", "rejected"]),
+	// Which rows of a batch the person actually ticked (see
+	// `ApprovalPreview` in assistant-tools.ts). Absent means the whole
+	// call, which is what every non-batch approval sends and what a
+	// client that predates this field sends. An EMPTY array is a real
+	// and different answer — "none of them" — and is handled as a
+	// rejection rather than as a write of nothing.
+	selectedRowIds: z.array(z.string().min(1).max(200)).max(200).optional(),
+});
+export type AssistantResolveInput = z.infer<typeof assistantResolveInput>;
+
+/** The body of `POST /api/v1/orgs/$slug/assistant/threads/$id/messages`. The
+ *  thread comes from the path. */
+export const assistantSendInput = z.object({ message: assistantMessageText });
+
 // One turn. Either a new user message, or the resolution of a write the
 // assistant asked permission for — never both, because they are two different
 // things to do with the same suspended conversation and accepting both would
@@ -76,20 +97,8 @@ export type ConversationIdInput = z.infer<typeof conversationIdInput>;
 export const runAssistantInput = z
 	.object({
 		conversationId: z.uuid(),
-		message: z.string().trim().min(1).max(10_000).optional(),
-		resolve: z
-			.object({
-				toolCallId: z.string().min(1).max(200),
-				decision: z.enum(["approved", "rejected"]),
-				// Which rows of a batch the person actually ticked (see
-				// `ApprovalPreview` in assistant-tools.ts). Absent means the whole
-				// call, which is what every non-batch approval sends and what a
-				// client that predates this field sends. An EMPTY array is a real
-				// and different answer — "none of them" — and is handled as a
-				// rejection rather than as a write of nothing.
-				selectedRowIds: z.array(z.string().min(1).max(200)).max(200).optional(),
-			})
-			.optional(),
+		message: assistantMessageText.optional(),
+		resolve: assistantResolveInput.optional(),
 	})
 	.refine((data) => Boolean(data.message) !== Boolean(data.resolve), {
 		message: "Send either a message or an approval decision",

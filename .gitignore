@@ -10,6 +10,23 @@ dist/
 !.env.example
 .DS_Store
 
+# The push relay's SQLite file when it runs from apps/push-relay
+# (RELAY_DB_PATH defaults to ./data/relay.sqlite).
+apps/push-relay/data/
+
 # Agent worktrees. Each one is a full checkout, including a second copy of
 # tools/oxlint/**, which oxlint loads as a duplicate plugin and refuses to run.
 .claude/worktrees/
+
+# Push credentials. The Firebase client files of the mobile app, the Apple
+# .p8 key of the relay, and a Google service-account key.
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
+*.p8
+*service-account*.json
+*-firebase-adminsdk-*.json
+# App signing: an Android keystore, an Apple certificate or profile.
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

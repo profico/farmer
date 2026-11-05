@@ -14,7 +14,7 @@ export const getReminderSettings = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { reminderSettingsService } = await import("@farmer/core/services");
-		return reminderSettingsService.get(context.ctx);
+		return reminderSettingsService.getForAdmin(context.ctx);
 	});
 
 export const updateReminderSettings = createServerFn({ method: "POST" })

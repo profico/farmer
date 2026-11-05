@@ -1,8 +1,29 @@
 import { z } from "zod";
 
+import { isValidTimezone } from "../lib/time";
 import { dayKeySchema } from "./day-key";
 import { httpUrlSchema } from "./http-url";
 import { uploadedFilePath } from "./uploads";
+
+// A new workspace, from `POST /api/v1/me/organizations`. better-auth makes
+// it (`onboarding.createOrganization`), with the fields that the org
+// switcher sends. The slug comes from the name when it is not given, and the
+// `beforeCreateOrganization` hook moves a reserved one. The timezone is
+// checked here, because a bad zone breaks each day calculation after it.
+export const createOrganizationInput = z.object({
+	name: z.string().trim().min(1).max(120),
+	slug: z.string().trim().min(1).max(64).optional(),
+	timezone: z
+		.string()
+		.trim()
+		.min(1)
+		.max(100)
+		.refine(isValidTimezone, "Not an IANA timezone")
+		.default("UTC"),
+	country: z.string().length(2).default("US"),
+	weekStartsOn: z.union([z.literal(0), z.literal(1)]).default(1),
+});
+export type CreateOrganizationInput = z.infer<typeof createOrganizationInput>;
 
 export const setActiveOrgBySlugInput = z.string().min(1);
 export type SetActiveOrgBySlugInput = z.infer<typeof setActiveOrgBySlugInput>;

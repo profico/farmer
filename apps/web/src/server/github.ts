@@ -42,18 +42,8 @@ export const listGithubInstallations = createServerFn({
 export const getGithubInstallUrl = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
-		const [{ setting }, { signOrgState }] = await Promise.all([
-			import("@farmer/core/lib/instance-settings"),
-			import("@farmer/core/lib/oauth-state"),
-		]);
-		const slug = setting("GITHUB_APP_SLUG");
-		if (!slug) throw new Error("GITHUB_APP_SLUG not configured");
-		const url = new URL(`https://github.com/apps/${slug}/installations/new`);
-		url.searchParams.set(
-			"state",
-			signOrgState(context.ctx.organizationId, context.ctx.userId),
-		);
-		return { url: url.toString() };
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.installUrl(context.ctx);
 	});
 
 // The second half of an install that GitHub started. An App installed (or

@@ -1,0 +1,8 @@
+# Made by `expo prebuild`. The app config is the source; a later step builds
+# the APK from a fresh prebuild.
+/android
+/ios
+.expo/
+expo-env.d.ts
+# `expo export`
+dist/

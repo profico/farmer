@@ -39,6 +39,14 @@ export const orgSettingsService = {
 		};
 	},
 
+	/** The same answer for Settings → Organization, admins only. `get` has
+	 *  no check, because the reports, the reminders and the automation window
+	 *  read it for each person. */
+	getForAdmin: async (ctx: Ctx): Promise<OrgSettings> => {
+		await requireAdmin(ctx);
+		return orgSettingsService.get(ctx);
+	},
+
 	update: async (ctx: Ctx, patch: Partial<OrgSettings>) => {
 		await requireAdmin(ctx);
 		const before = await orgSettingsService.get(ctx);

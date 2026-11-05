@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import Holidays from "date-holidays";
 
 import { db } from "../db";
-import { organization } from "../db/schema/auth";
+import { member, organization, user } from "../db/schema/auth";
 import { createTestDb, type TestDb } from "../test/harness";
 import { HOLIDAY_YEAR_CACHE_LIMIT, holidaysService } from "./holidays.service";
 import type { Ctx } from "./types";
@@ -63,6 +63,22 @@ beforeAll(async () => {
 			createdAt: new Date(),
 		},
 	]);
+	// Only an admin may switch a holiday off.
+	await db.insert(user).values({
+		id: "u-holidays",
+		name: "Holidays",
+		email: "u-holidays@example.com",
+		emailVerified: true,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+	await db.insert(member).values({
+		id: "m-holidays",
+		organizationId: HR_ORG,
+		userId: "u-holidays",
+		role: "owner",
+		createdAt: new Date(),
+	});
 });
 
 afterAll(async () => {

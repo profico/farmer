@@ -1,0 +1,96 @@
+import type { ProjectDetail } from "@farmer/api-client";
+import type { ReactNode } from "react";
+import { Platform, Pressable, View } from "react-native";
+
+import { formatReportHours, plural } from "../../reports/format";
+import { Text } from "../../ui/components";
+import { useRowMenu } from "../../ui/row-menu";
+import type { RowMenuEntry } from "../../ui/row-menu-items";
+import { usePalette } from "../../ui/theme";
+import { SPACE } from "../../ui/type";
+import { projectTitle } from "../model";
+import { ProjectMark } from "./project-mark";
+
+/** Whose hours the row sums: the project's, or only the person's own. */
+const teamLine = (project: ProjectDetail) =>
+	project.stats.scope === "own"
+		? "Your time only"
+		: project.stats.contributorCount === 0
+			? "Nobody on the team"
+			: plural(project.stats.contributorCount, "person", "people");
+
+/**
+ * One project in the list: its mark, `[CODE] Name`, the team and this
+ * month's hours. A member's figures are their own hours (`stats.scope`
+ * is `own`), and the row says so.
+ */
+export function ProjectRow({
+	project,
+	onPress,
+	trailing,
+	actions,
+}: {
+	project: ProjectDetail;
+	/** The long-press menu. The caller leaves out an action that the
+	 *  person may not do. */
+	actions?: readonly RowMenuEntry[];
+	onPress: () => void;
+	/** A control at the end of the row, such as "Restore". */
+	trailing?: ReactNode;
+}) {
+	const palette = usePalette();
+	const menu = useRowMenu(projectTitle(project), actions ?? []);
+	const archived = project.status === "archived";
+	const month = formatReportHours(project.stats.monthSeconds);
+	const subtitle = [teamLine(project), archived ? "Archived" : ""]
+		.filter((part) => part)
+		.join(", ");
+	return (
+		<View style={{ flexDirection: "row", alignItems: "center" }}>
+			{menu.wrap(
+				<Pressable
+					{...menu.props}
+					accessible
+					accessibilityRole="button"
+					accessibilityLabel={`${projectTitle(project)}, ${subtitle}, ${month} hours this month`}
+					onPress={onPress}
+					android_ripple={{ color: palette.outlineVariant }}
+					style={({ pressed }) => ({
+						flex: 1,
+						flexDirection: "row",
+						alignItems: "center",
+						gap: SPACE.l,
+						minHeight: 64,
+						paddingHorizontal: SPACE.l,
+						paddingVertical: SPACE.s,
+						opacity: archived ? 0.7 : 1,
+						backgroundColor:
+							Platform.OS === "ios" && pressed
+								? palette.surfaceContainerHigh
+								: undefined,
+					})}
+				>
+					<ProjectMark icon={project.icon} name={project.name} />
+					<View style={{ flex: 1 }}>
+						<Text variant="bodyLarge" numberOfLines={2}>
+							{projectTitle(project)}
+						</Text>
+						<Text variant="bodySmall" color={palette.onSurfaceVariant}>
+							{subtitle}
+						</Text>
+					</View>
+					<View style={{ alignItems: "flex-end" }}>
+						<Text variant="titleSmall">{month}</Text>
+						<Text variant="labelMedium" color={palette.onSurfaceVariant}>
+							this month
+						</Text>
+					</View>
+				</Pressable>,
+				{ style: { flex: 1 } },
+			)}
+			{trailing ? (
+				<View style={{ paddingRight: SPACE.s }}>{trailing}</View>
+			) : null}
+		</View>
+	);
+}
