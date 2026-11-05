@@ -1,0 +1,10 @@
+# The complexity gate: https://github.com/moznion/cccc
+# `bun run complexity` runs it from the repository root. It fails when one
+# function is over a limit. Split the function. Do not raise a limit.
+max-cognitive = 40
+max-cyclomatic = 40
+
+# Generated files. A person does not edit them.
+exclude = ["**/routeTree.gen.ts", "packages/core/src/db/schema/auth.ts"]
+
+table = true

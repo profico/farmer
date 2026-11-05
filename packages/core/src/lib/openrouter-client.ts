@@ -305,6 +305,363 @@ export const verifyKey = async (apiKey: string): Promise<void> => {
 	}
 };
 
+/** The turn of a call that produced nothing. */
+const emptyTurn = (): ChatTurn => ({
+	content: "",
+	costUsd: null,
+	toolCalls: [],
+	promptTokens: null,
+	completionTokens: null,
+	finishReason: null,
+});
+
+/** The no-progress watchdog. It aborts its own controller, so the caller's
+ *  signal stays unfired and a stall is told apart from a Stop. */
+const startStallWatchdog = (stallMs: number) => {
+	const controller = new AbortController();
+	let stalled = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const disarm = () => {
+		if (timer) clearTimeout(timer);
+		timer = undefined;
+	};
+	const arm = () => {
+		disarm();
+		if (!(stallMs > 0)) return;
+		timer = setTimeout(() => {
+			stalled = true;
+			controller.abort();
+		}, stallMs);
+	};
+	return {
+		signal: controller.signal,
+		arm,
+		disarm,
+		hasStalled: () => stalled,
+	};
+};
+
+/** The deadline can also fire before the headers arrive. That is the same
+ *  cut with nothing received, so it takes the same path as a mid-body one.
+ *  A stall before the headers is a cut too. A refused connection, a TLS fault
+ *  or a reset, before any header, is a network error. Any other failure of
+ *  the request travels unchanged. */
+const rethrowHeaderFailure = (
+	error: Error,
+	signal: AbortSignal | undefined,
+	stalled: boolean,
+): never => {
+	if (signal?.aborted === true) throw error;
+	if (stalled) {
+		throw new OpenRouterStreamCutError(emptyTurn(), null, false, false, {
+			stalled: true,
+			outputStarted: false,
+		});
+	}
+	if (error instanceof DOMException && error.name === "TimeoutError") {
+		throw new OpenRouterStreamCutError(emptyTurn(), null, true, true);
+	}
+	if (error instanceof Error && error.name !== "AbortError")
+		throw new OpenRouterNetworkError(error);
+	throw error;
+};
+
+const throwHttpError = async (response: Response): Promise<never> => {
+	// The error body is JSON on a well-formed rejection and an HTML error page
+	// when something in front of OpenRouter answered instead, so it is read as
+	// text and only then hopefully parsed.
+	const raw = await response.text().catch(() => "");
+	let detail = raw.slice(0, 300);
+	try {
+		// SAFETY: inside a try whose catch keeps the truncated raw body, and every
+		// field is optional — this is a best-effort read of an error body that may
+		// have come from a proxy rather than from OpenRouter at all.
+		const parsed = JSON.parse(raw) as { error?: { message?: string } };
+		if (parsed.error?.message) detail = parsed.error.message;
+	} catch {
+		// not JSON; the truncated body is the best message available
+	}
+	throw new OpenRouterError(
+		detail || `OpenRouter returned ${response.status}`,
+		response.status,
+	);
+};
+
+type ToolSlot = { id: string; name: string; arguments: string };
+
+type ToolCallDelta = {
+	index: number;
+	id?: string;
+	function?: { name?: string; arguments?: string };
+};
+
+type Chunk = {
+	/** Parsed below: the wire shape is not trusted. */
+	error?: JsonRecord;
+	model?: string;
+	provider?: string;
+	choices?: {
+		delta?: {
+			content?: string | null;
+			reasoning?: string | null;
+			reasoning_content?: string | null;
+			reasoning_details?: JsonRecord[];
+			tool_calls?: ToolCallDelta[];
+		};
+		finish_reason?: string | null;
+	}[];
+	usage?: {
+		prompt_tokens?: number;
+		completion_tokens?: number;
+		/** OpenRouter's own extension to the OpenAI usage row. */
+		cost?: number;
+	};
+};
+
+/** What the read loop has gathered so far. */
+type StreamState = {
+	content: string;
+	slots: Map<number, ToolSlot>;
+	promptTokens: number | null;
+	completionTokens: number | null;
+	costUsd: number | null;
+	finishReason: string | null;
+	upstream: UpstreamError | null;
+	servedModel: string | null;
+	provider: string | null;
+	/** Milliseconds from the request start to the first progress. */
+	firstProgressMs: number | null;
+	/** True when a content, reasoning or tool-call delta has arrived. */
+	outputStarted: boolean;
+	/** A fault while the body is read (a reset, a closed socket, a TLS error). */
+	readError: Error | null;
+	/** Set when the caller's `onDelta` threw. That is a bug in the caller, not a
+	 *  network fault, and it travels unchanged. */
+	callbackFailed: boolean;
+};
+
+const newStreamState = (): StreamState => ({
+	content: "",
+	slots: new Map(),
+	promptTokens: null,
+	completionTokens: null,
+	costUsd: null,
+	finishReason: null,
+	upstream: null,
+	servedModel: null,
+	provider: null,
+	firstProgressMs: null,
+	outputStarted: false,
+	readError: null,
+	callbackFailed: false,
+});
+
+/** One SSE line to one chunk, or null for a line that carries none. */
+const parseDataLine = (line: string): Chunk | null => {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith("data:")) return null;
+	const payload = trimmed.slice(5).trim();
+	if (payload === "[DONE]") return null;
+	try {
+		const chunk: Chunk = JSON.parse(payload);
+		return chunk;
+	} catch {
+		// A frame split across two network reads is the normal case here and
+		// is already handled by the `buffer` carry-over in the read loop; anything
+		// that still fails to parse is malformed, and dropping one frame is
+		// better than ending an otherwise-good answer.
+		return null;
+	}
+};
+
+/** Fold the fragments of the tool calls into their slots, keyed by index. */
+const applyToolCallDeltas = (
+	slots: Map<number, ToolSlot>,
+	calls: ToolCallDelta[],
+) => {
+	for (const call of calls) {
+		const slot = slots.get(call.index) ?? { id: "", name: "", arguments: "" };
+		if (call.id) slot.id = call.id;
+		if (call.function?.name) slot.name = call.function.name;
+		if (call.function?.arguments) slot.arguments += call.function.arguments;
+		slots.set(call.index, slot);
+	}
+};
+
+const upstreamOf = (error: JsonRecord): UpstreamError => {
+	const parsed = upstreamErrorSchema.safeParse(error);
+	return {
+		code: (parsed.success ? parsed.data.code : undefined) ?? null,
+		message: (parsed.success ? parsed.data.message : undefined) ?? "no message",
+	};
+};
+
+/** What `applyChunk` calls back into: the caller's text sink, and the signal
+ *  that a frame was progress (`output` is true for content, reasoning and
+ *  tool-call deltas). */
+type ChunkHooks = {
+	onDelta: ((text: string) => void) | undefined;
+	progress: (output: boolean) => void;
+};
+
+/** A thinking model streams reasoning before its answer. It is progress,
+ *  although nobody reads it. */
+const hasReasoning = (delta: NonNullable<Chunk["choices"]>[number]["delta"]) =>
+	Boolean(
+		delta?.reasoning ||
+		delta?.reasoning_content ||
+		delta?.reasoning_details?.length,
+	);
+
+const applyChoice = (
+	state: StreamState,
+	choice: NonNullable<Chunk["choices"]>[number],
+	hooks: ChunkHooks,
+) => {
+	if (choice.finish_reason) {
+		state.finishReason = choice.finish_reason;
+		hooks.progress(false);
+	}
+
+	const text = choice.delta?.content;
+	if (text) {
+		hooks.progress(true);
+		state.content += text;
+		try {
+			hooks.onDelta?.(text);
+		} catch (callbackError) {
+			state.callbackFailed = true;
+			throw callbackError;
+		}
+	}
+
+	if (hasReasoning(choice.delta)) hooks.progress(true);
+
+	const calls = choice.delta?.tool_calls ?? [];
+	if (calls.length > 0) hooks.progress(true);
+	applyToolCallDeltas(state.slots, calls);
+};
+
+const applyChunk = (state: StreamState, chunk: Chunk, hooks: ChunkHooks) => {
+	if (chunk.model) state.servedModel = chunk.model;
+	if (chunk.provider) state.provider = chunk.provider;
+
+	if (chunk.usage) {
+		hooks.progress(false);
+		state.promptTokens = chunk.usage.prompt_tokens ?? state.promptTokens;
+		state.completionTokens =
+			chunk.usage.completion_tokens ?? state.completionTokens;
+		state.costUsd = chunk.usage.cost ?? state.costUsd;
+	}
+
+	// A failure after the 200 is committed arrives as a top-level `error`
+	// object, usually with `finish_reason: "error"` on the same frame.
+	if (chunk.error) state.upstream = upstreamOf(chunk.error);
+
+	const choice = chunk.choices?.[0];
+	if (choice) applyChoice(state, choice, hooks);
+};
+
+/** How the read of the body ended, when it did not end by itself. */
+type ReadEnd = { aborted: boolean; timedOut: boolean };
+
+/** An abort is not a failure, and what had already arrived is not rubbish.
+ *
+ *  `reader.read()` rejects the moment the signal fires, and with no catch
+ *  here that rejection carried every token of a half-written answer out of
+ *  the function with it — so pressing Stop, or navigating away, threw away
+ *  work the org had already paid OpenRouter for and left the thread looking
+ *  as though the question had never been asked. The partial answer is
+ *  returned instead, under a finish reason that says what happened; the
+ *  caller decides whether it is worth storing. Any other error is a real
+ *  one and still travels: `null` says so, and the caller judges it. A stall
+ *  is not an error to judge: its watchdog abort is why the read failed. */
+const classifyReadError = (
+	error: Error | undefined,
+	signal: AbortSignal | undefined,
+	stalled: boolean,
+): ReadEnd | null => {
+	// Two shapes reach here: the `AbortError` a fetch body read rejects with,
+	// and whatever the runtime throws when a stream is torn down under it. The
+	// signal is the reliable half of the answer, so it is asked first.
+	// A signal aborted with a plain value rejects with that value, not an Error.
+	const aborted =
+		signal?.aborted === true || (!stalled && error?.name === "AbortError");
+	// The app's own deadline reaches the body read through `AbortSignal.any`
+	// in `externalFetch`. It rejects with a `TimeoutError`, not an
+	// `AbortError`, and the caller's signal stays unfired. It is a cut, so
+	// the partial turn is kept and reported by the caller.
+	const timedOut =
+		!aborted && error instanceof DOMException && error.name === "TimeoutError";
+	if (!aborted && !timedOut && !stalled) return null;
+	return { aborted, timedOut };
+};
+
+const toTurn = (state: StreamState): ChatTurn => ({
+	content: state.content,
+	costUsd: state.costUsd,
+	toolCalls: [...state.slots.entries()]
+		.sort(([a], [b]) => a - b)
+		.map(([, slot]) => slot)
+		.filter((slot) => slot.id && slot.name),
+	promptTokens: state.promptTokens,
+	completionTokens: state.completionTokens,
+	finishReason: state.finishReason,
+	servedModel: state.servedModel,
+	provider: state.provider,
+	firstProgressMs: state.firstProgressMs,
+});
+
+/** A close with the signal fired is a Stop, not a failure. Past that, two
+ *  things fail the call. The first is an error frame, or the finish reason
+ *  "error" that OpenRouter documents for it: the provider said it gave up.
+ *  The second is a stream that ended with no finish reason at all, which is
+ *  an upstream that closed the connection on a slow call. Returning either
+ *  as a turn made a cut answer, or no answer, look like a success. Even tool
+ *  calls that look whole are not trusted: the failure can come before the
+ *  last fragment of their arguments. */
+const assertFinished = (
+	turn: ChatTurn,
+	state: StreamState,
+	timedOut: boolean,
+	stalled: boolean,
+) => {
+	if (turn.finishReason === ABORTED) return;
+	const detail = { stalled, outputStarted: state.outputStarted };
+	if (state.upstream) {
+		throw new OpenRouterStreamCutError(
+			turn,
+			state.upstream,
+			false,
+			false,
+			detail,
+		);
+	}
+	if (turn.finishReason === "error") {
+		throw new OpenRouterStreamCutError(
+			turn,
+			{
+				code: null,
+				message: 'finish reason "error" with no error object',
+			},
+			false,
+			false,
+			detail,
+		);
+	}
+	if (turn.finishReason !== null) return;
+	if (state.readError) {
+		// With no output yet, the call is the same as one that failed before
+		// the headers, so it is retried. With output, it is a cut that is
+		// not retried, and the person gets the fixed line.
+		if (!state.outputStarted) throw new OpenRouterNetworkError(state.readError);
+		const cut = new OpenRouterStreamCutError(turn, null, false, false, detail);
+		cut.cause = state.readError;
+		throw cut;
+	}
+	throw new OpenRouterStreamCutError(turn, null, timedOut, false, detail);
+};
+
 /**
  * One streamed completion.
  *
@@ -329,53 +686,28 @@ export const streamChatCompletion = async (opts: {
 	 *  `OPENROUTER_STALL_TIMEOUT_MS`. A test passes a small value. */
 	stallTimeoutMs?: number;
 }): Promise<ChatTurn> => {
-	// The no-progress watchdog. It aborts its own controller, so the caller's
-	// signal stays unfired and a stall is told apart from a Stop.
-	const stallMs = opts.stallTimeoutMs ?? OPENROUTER_STALL_TIMEOUT_MS;
+	const state = newStreamState();
 	const startedAt = Date.now();
-	const stallController = new AbortController();
-	let stalled = false;
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const arm = () => {
-		if (timer) clearTimeout(timer);
-		if (!(stallMs > 0)) return;
-		timer = setTimeout(() => {
-			stalled = true;
-			stallController.abort();
-		}, stallMs);
+	const watchdog = startStallWatchdog(
+		opts.stallTimeoutMs ?? OPENROUTER_STALL_TIMEOUT_MS,
+	);
+	const hooks: ChunkHooks = {
+		onDelta: opts.onDelta,
+		progress: (output) => {
+			state.firstProgressMs ??= Date.now() - startedAt;
+			if (output) state.outputStarted = true;
+			watchdog.arm();
+		},
 	};
-	const disarm = () => {
-		if (timer) clearTimeout(timer);
-		timer = undefined;
-	};
-	let outputStarted = false;
-	let firstProgressMs: number | null = null;
-	let servedModel: string | null = null;
-	let provider: string | null = null;
-	const progress = (output: boolean) => {
-		firstProgressMs ??= Date.now() - startedAt;
-		if (output) outputStarted = true;
-		arm();
-	};
-	const emptyTurn = (): ChatTurn => ({
-		content: "",
-		costUsd: null,
-		toolCalls: [],
-		promptTokens: null,
-		completionTokens: null,
-		finishReason: null,
-	});
-	arm();
-	// The deadline can also fire before the headers arrive. That is the same
-	// cut with nothing received, so it takes the same path as a mid-body one.
+	watchdog.arm();
 	const response = await externalFetch(
 		`${BASE}/chat/completions`,
 		{
 			method: "POST",
 			headers: headers(opts.apiKey),
 			signal: opts.signal
-				? AbortSignal.any([opts.signal, stallController.signal])
-				: stallController.signal,
+				? AbortSignal.any([opts.signal, watchdog.signal])
+				: watchdog.signal,
 			body: JSON.stringify({
 				model: opts.model,
 				messages: opts.messages,
@@ -388,62 +720,17 @@ export const streamChatCompletion = async (opts: {
 		},
 		OPENROUTER_STREAM_TIMEOUT_MS,
 	).catch((error: unknown) => {
-		disarm();
-		if (opts.signal?.aborted === true) throw error;
-		if (stalled) {
-			throw new OpenRouterStreamCutError(emptyTurn(), null, false, false, {
-				stalled: true,
-				outputStarted: false,
-			});
+		watchdog.disarm();
+		if (error instanceof Error) {
+			rethrowHeaderFailure(error, opts.signal, watchdog.hasStalled());
 		}
-		if (error instanceof DOMException && error.name === "TimeoutError") {
-			throw new OpenRouterStreamCutError(emptyTurn(), null, true, true);
-		}
-		// A refused connection, a TLS fault or a reset, before any header.
-		if (error instanceof Error && error.name !== "AbortError")
-			throw new OpenRouterNetworkError(error);
 		throw error;
 	});
 
-	if (!response.ok || !response.body) {
-		// The error body is JSON on a well-formed rejection and an HTML error page
-		// when something in front of OpenRouter answered instead, so it is read as
-		// text and only then hopefully parsed.
-		const raw = await response.text().catch(() => "");
-		disarm();
-		let detail = raw.slice(0, 300);
-		try {
-			// SAFETY: inside a try whose catch keeps the truncated raw body, and every
-			// field is optional — this is a best-effort read of an error body that may
-			// have come from a proxy rather than from OpenRouter at all.
-			const parsed = JSON.parse(raw) as { error?: { message?: string } };
-			if (parsed.error?.message) detail = parsed.error.message;
-		} catch {
-			// not JSON; the truncated body is the best message available
-		}
-		throw new OpenRouterError(
-			detail || `OpenRouter returned ${response.status}`,
-			response.status,
-		);
-	}
+	if (!response.ok || !response.body)
+		return throwHttpError(response).finally(watchdog.disarm);
 
-	let content = "";
-	const slots = new Map<
-		number,
-		{ id: string; name: string; arguments: string }
-	>();
-	let promptTokens: number | null = null;
-	let completionTokens: number | null = null;
-	let costUsd: number | null = null;
-	let finishReason: string | null = null;
 	let timedOut = false;
-	let upstream: UpstreamError | null = null;
-	// A fault while the body is read (a reset, a closed socket, a TLS error).
-	let readError: Error | null = null;
-	// Set when the caller's `onDelta` threw. That is a bug in the caller, not a
-	// network fault, and it travels unchanged.
-	let callbackFailed = false;
-
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
@@ -462,149 +749,30 @@ export const streamChatCompletion = async (opts: {
 			buffer = lines.pop() ?? "";
 
 			for (const line of lines) {
-				const trimmed = line.trim();
-				if (!trimmed.startsWith("data:")) continue;
-				const payload = trimmed.slice(5).trim();
-				if (payload === "[DONE]") continue;
-
-				let chunk: {
-					/** Parsed below: the wire shape is not trusted. */
-					error?: JsonRecord;
-					model?: string;
-					provider?: string;
-					choices?: {
-						delta?: {
-							content?: string | null;
-							reasoning?: string | null;
-							reasoning_content?: string | null;
-							reasoning_details?: JsonRecord[];
-							tool_calls?: {
-								index: number;
-								id?: string;
-								function?: { name?: string; arguments?: string };
-							}[];
-						};
-						finish_reason?: string | null;
-					}[];
-					usage?: {
-						prompt_tokens?: number;
-						completion_tokens?: number;
-						/** OpenRouter's own extension to the OpenAI usage row. */
-						cost?: number;
-					};
-				};
-				try {
-					chunk = JSON.parse(payload);
-				} catch {
-					// A frame split across two network reads is the normal case here and
-					// is already handled by the `buffer` carry-over above; anything that
-					// still fails to parse is malformed, and dropping one frame is
-					// better than ending an otherwise-good answer.
-					continue;
-				}
-
-				if (chunk.model) servedModel = chunk.model;
-				if (chunk.provider) provider = chunk.provider;
-
-				if (chunk.usage) {
-					progress(false);
-					promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
-					completionTokens = chunk.usage.completion_tokens ?? completionTokens;
-					costUsd = chunk.usage.cost ?? costUsd;
-				}
-
-				// A failure after the 200 is committed arrives as a top-level `error`
-				// object, usually with `finish_reason: "error"` on the same frame.
-				if (chunk.error) {
-					const parsed = upstreamErrorSchema.safeParse(chunk.error);
-					upstream = {
-						code: (parsed.success ? parsed.data.code : undefined) ?? null,
-						message:
-							(parsed.success ? parsed.data.message : undefined) ??
-							"no message",
-					};
-				}
-
-				const choice = chunk.choices?.[0];
-				if (!choice) continue;
-				if (choice.finish_reason) {
-					finishReason = choice.finish_reason;
-					progress(false);
-				}
-
-				const text = choice.delta?.content;
-				if (text) {
-					progress(true);
-					content += text;
-					try {
-						opts.onDelta?.(text);
-					} catch (callbackError) {
-						callbackFailed = true;
-						throw callbackError;
-					}
-				}
-
-				// A thinking model streams reasoning before its answer. It is progress,
-				// although nobody reads it.
-				if (
-					choice.delta?.reasoning ||
-					choice.delta?.reasoning_content ||
-					choice.delta?.reasoning_details?.length
-				)
-					progress(true);
-
-				for (const call of choice.delta?.tool_calls ?? []) {
-					progress(true);
-					const slot = slots.get(call.index) ?? {
-						id: "",
-						name: "",
-						arguments: "",
-					};
-					if (call.id) slot.id = call.id;
-					if (call.function?.name) slot.name = call.function.name;
-					if (call.function?.arguments)
-						slot.arguments += call.function.arguments;
-					slots.set(call.index, slot);
-				}
+				const chunk = parseDataLine(line);
+				if (chunk) applyChunk(state, chunk, hooks);
 			}
 		}
 	} catch (error) {
-		// An abort is not a failure, and what had already arrived is not rubbish.
-		//
-		// `reader.read()` rejects the moment the signal fires, and with no catch
-		// here that rejection carried every token of a half-written answer out of
-		// the function with it — so pressing Stop, or navigating away, threw away
-		// work the org had already paid OpenRouter for and left the thread looking
-		// as though the question had never been asked. The partial answer is
-		// returned instead, under a finish reason that says what happened; the
-		// caller decides whether it is worth storing. Any other error is a real
-		// one and still travels.
-		// Two shapes reach here: the `AbortError` a fetch body read rejects with,
-		// and whatever the runtime throws when a stream is torn down under it. The
-		// signal is the reliable half of the answer, so it is asked first.
-		const aborted =
-			opts.signal?.aborted === true ||
-			(!stalled && error instanceof Error && error.name === "AbortError");
-		// The app's own deadline reaches the body read through `AbortSignal.any`
-		// in `externalFetch`. It rejects with a `TimeoutError`, not an
-		// `AbortError`, and the caller's signal stays unfired. It is a cut, so
-		// the partial turn is kept and reported below.
-		timedOut =
-			!aborted &&
-			error instanceof DOMException &&
-			error.name === "TimeoutError";
-		if (!aborted && !timedOut && !stalled) {
+		const classified = classifyReadError(
+			error instanceof Error ? error : undefined,
+			opts.signal,
+			watchdog.hasStalled(),
+		);
+		if (classified) {
+			timedOut = classified.timedOut;
+			if (classified.aborted) state.finishReason = ABORTED;
+		} else {
 			// Only a fault of the connection becomes a failed call. It is judged
 			// below, because a finish reason that already came means the answer
 			// is whole. Any other error is a real one and still travels.
-			if (callbackFailed || !(error instanceof Error)) throw error;
-			readError = error;
+			if (state.callbackFailed || !(error instanceof Error)) throw error;
+			state.readError = error;
 		}
-		if (aborted) finishReason = ABORTED;
 	} finally {
 		// Releasing the lock lets the connection be torn down when the caller
 		// aborts mid-answer, which is the common case for a user who navigates away.
-		disarm();
+		watchdog.disarm();
 		reader.releaseLock();
 	}
 
@@ -612,67 +780,12 @@ export const streamChatCompletion = async (opts: {
 	// runtime ended the read. Without this a clean close after a Stop would be
 	// reported as the upstream cutting the answer.
 	if (
-		(finishReason === null || finishReason === "error") &&
+		(state.finishReason === null || state.finishReason === "error") &&
 		opts.signal?.aborted
 	)
-		finishReason = ABORTED;
+		state.finishReason = ABORTED;
 
-	const turn: ChatTurn = {
-		content,
-		costUsd,
-		toolCalls: [...slots.entries()]
-			.sort(([a], [b]) => a - b)
-			.map(([, slot]) => slot)
-			.filter((slot) => slot.id && slot.name),
-		promptTokens,
-		completionTokens,
-		finishReason,
-		servedModel,
-		provider,
-		firstProgressMs,
-	};
-	const detail = { stalled, outputStarted };
-
-	// A close with the signal fired is a Stop, not a failure. Past that, two
-	// things fail the call. The first is an error frame, or the finish reason
-	// "error" that OpenRouter documents for it: the provider said it gave up.
-	// The second is a stream that ended with no finish reason at all, which is
-	// an upstream that closed the connection on a slow call. Returning either
-	// as a turn made a cut answer, or no answer, look like a success. Even tool
-	// calls that look whole are not trusted: the failure can come before the
-	// last fragment of their arguments.
-	if (finishReason !== ABORTED) {
-		if (upstream)
-			throw new OpenRouterStreamCutError(turn, upstream, false, false, detail);
-		if (finishReason === "error") {
-			throw new OpenRouterStreamCutError(
-				turn,
-				{
-					code: null,
-					message: 'finish reason "error" with no error object',
-				},
-				false,
-				false,
-				detail,
-			);
-		}
-		if (finishReason === null && readError) {
-			// With no output yet, the call is the same as one that failed before
-			// the headers, so it is retried. With output, it is a cut that is
-			// not retried, and the person gets the fixed line.
-			if (!outputStarted) throw new OpenRouterNetworkError(readError);
-			const cut = new OpenRouterStreamCutError(
-				turn,
-				null,
-				false,
-				false,
-				detail,
-			);
-			cut.cause = readError;
-			throw cut;
-		}
-		if (finishReason === null)
-			throw new OpenRouterStreamCutError(turn, null, timedOut, false, detail);
-	}
+	const turn = toTurn(state);
+	assertFinished(turn, state, timedOut, watchdog.hasStalled());
 	return turn;
 };

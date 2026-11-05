@@ -415,6 +415,39 @@ describe("parseHarvestFiles", () => {
 		expect(b?.key.endsWith(":1")).toBe(true);
 		expect(parsed.days).toHaveLength(1);
 	});
+
+	test("a second file of a seen kind is counted and not used", async () => {
+		const parsed = await parseHarvestFiles([
+			peopleList([{ first: "Ana", last: "Horvat", email: "ana@example.com" }]),
+			peopleList([
+				{ first: "Iva", last: "Kos", email: "iva@example.com" },
+				{ first: "Ivo", last: "Kos", email: "ivo@example.com" },
+			]),
+		]);
+		expect(parsed.files.map((f) => [f.kind, f.rows, f.used])).toEqual([
+			["people", 1, true],
+			["people", 2, false],
+		]);
+		expect(parsed.files[1]?.reason).toBe(
+			"Not used: an earlier file is already the people export",
+		);
+		expect(parsed.persons.map((p) => p.sourceKey)).toEqual(["ana horvat"]);
+	});
+
+	test("a listed absence project or a listed project with no name is skipped", async () => {
+		const parsed = await parseHarvestFiles([
+			projectList([
+				{ client: "Profico", project: "Vacation", code: "pvc" },
+				{ client: "Acme", project: " ", code: "AX" },
+				{ client: "", project: "Orphan", code: "OR" },
+				{ client: "Acme", project: "Web", code: "AW" },
+			]),
+		]);
+		expect(parsed.projects.map((p) => p.sourceKey)).toEqual([
+			JSON.stringify(["acme", "web", "AW"]),
+		]);
+		expect(parsed.clients.map((c) => c.sourceKey)).toEqual(["acme"]);
+	});
 });
 
 // --- Mapping ----------------------------------------------------------------
@@ -1722,6 +1755,126 @@ describe("negative correction rows", () => {
 		);
 		expect(allRows(plan).map((r) => r.durationSeconds)).toEqual([3600]);
 		expect(plan.review.negativeRows[0]?.against).toBeNull();
+	});
+});
+
+describe("blockers", () => {
+	const WEBSITE_KEY = JSON.stringify(["acme", "website", "ACW"]);
+
+	test("a mapping to a client, task or project that no longer exists blocks", async () => {
+		const snap = anaSnapshot({
+			mappings: [
+				{ kind: "client", sourceKey: "acme", localId: "gone-client" },
+				{ kind: "task", sourceKey: "frontend", localId: "gone-task" },
+				{ kind: "project", sourceKey: WEBSITE_KEY, localId: "gone-project" },
+			],
+		});
+		const { plan } = await planFor([timeReport([{}])], snap);
+		expect(plan.ready).toBe(false);
+		expect(plan.blocked).toEqual([
+			{
+				kind: "client",
+				sourceKey: "acme",
+				message:
+					'An earlier import mapped "Acme" to a client that no longer exists',
+			},
+			{
+				kind: "task",
+				sourceKey: "frontend",
+				message:
+					'An earlier import mapped "Frontend" to a task that no longer exists',
+			},
+			{
+				kind: "project",
+				sourceKey: WEBSITE_KEY,
+				message:
+					'An earlier import mapped "Acme :: Website" to a project that no longer exists',
+			},
+		]);
+		expect(plan.start.clients).toEqual([
+			{ action: "match", sourceKey: "acme", localId: "gone-client" },
+		]);
+		expect(plan.start.tasks).toEqual([
+			{ action: "match", sourceKey: "frontend", localId: "gone-task" },
+		]);
+		expect(plan.start.projects).toEqual([
+			{
+				action: "match",
+				sourceKey: WEBSITE_KEY,
+				localId: "gone-project",
+				archived: false,
+			},
+		]);
+	});
+
+	test("a cutoff that is not a date blocks", async () => {
+		const { plan } = await planFor([timeReport([{}])], snapshot(), {
+			cutoffDate: "2026-9-1",
+		});
+		expect(plan.ready).toBe(false);
+		expect(plan.blocked).toEqual([
+			{
+				kind: "choices",
+				sourceKey: "cutoffDate",
+				message: 'The cutoff "2026-9-1" is not a yyyy-MM-dd date',
+			},
+		]);
+	});
+
+	test("a day with more rows than a day carries blocks", async () => {
+		const rows = Array.from({ length: 501 }, () => ({ hours: "0,25" }));
+		const { parsed, plan } = await planFor([timeReport(rows)]);
+		expect(plan.ready).toBe(false);
+		expect(plan.blocked).toEqual([
+			{
+				kind: "day",
+				sourceKey: present(parsed.days[0], "day").dayKey,
+				message:
+					"ana horvat has 501 rows on 2026-08-03; a day carries at most 500",
+			},
+		]);
+		expect(plan.days[0]?.rows).toHaveLength(501);
+	});
+
+	test("the blockers keep their order", async () => {
+		const files = [
+			timeReport([
+				...Array.from({ length: 501 }, () => ({ hours: "0,25" })),
+				{ hours: "-0,25", date: "2026-08-04" },
+				{ first: "Marko", last: "Kovač" },
+				{ first: "Tin", last: "Primjerić" },
+				{ first: "Tin", last: "Primjeric" },
+			]),
+		];
+		const snap = anaSnapshot({
+			members: [member("u-marko", "Marko Old", guessed("mkovac"))],
+			mappings: [
+				{ kind: "client", sourceKey: "acme", localId: "gone-client" },
+				{ kind: "task", sourceKey: "frontend", localId: "gone-task" },
+				{ kind: "project", sourceKey: WEBSITE_KEY, localId: "gone-project" },
+				{ kind: "person", sourceKey: "ana horvat", localId: "u-gone" },
+			],
+		});
+		const { parsed, plan } = await planFor(files, snap, {
+			cutoffDate: "not a date",
+		});
+		const bigDay = present(
+			parsed.days.find((d) => d.rows.length === 501),
+			"the day of 501 rows",
+		);
+		expect(plan.blocked.map((b) => [b.kind, b.sourceKey])).toEqual([
+			["choices", "cutoffDate"],
+			["choices", "negativeRows"],
+			["client", "acme"],
+			["task", "frontend"],
+			["project", WEBSITE_KEY],
+			["person", "tinprimjeric"],
+			["person", "ana horvat"],
+			["person", "marko kovač"],
+			["person", "tin primjeric"],
+			["person", "tin primjerić"],
+			["day", bigDay.dayKey],
+		]);
 	});
 });
 

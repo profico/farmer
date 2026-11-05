@@ -333,52 +333,39 @@ const readStored = (role: FaceRole): string => {
 const boringFontOn = () =>
 	document.documentElement.getAttribute("data-font") === "sans";
 
-/**
- * Put every role's current face on <html>, and fetch whatever is missing.
- * Called on any change to a face AND whenever "Boring font" moves, since that
- * switch decides whether the display role writes anything at all.
- */
-export const applyFaces = () => {
-	const root = document.documentElement;
-	const wanted: string[] = [];
-	const boring = boringFontOn();
+/** Remove the property of a role and its two corrections from <html>. */
+const clearRole = (root: HTMLElement, spec: (typeof ROLES)[FaceRole]) => {
+	root.style.removeProperty(spec.property);
+	if (spec.a) root.style.removeProperty(spec.a);
+	if (spec.b) root.style.removeProperty(spec.b);
+};
 
-	for (const role of ROLE_ORDER) {
-		const spec = ROLES[role];
-		const face = faceOf(role, readStored(role));
-		const skip = !face || face.id === defaultId(role);
-
-		if (role === "display" && boring) {
-			// The switch owns `--serif` and both corrections while it is on.
-			root.style.removeProperty(spec.property);
-			if (spec.a) root.style.removeProperty(spec.a);
-			if (spec.b) root.style.removeProperty(spec.b);
-			continue;
-		}
-
-		if (skip) {
-			root.style.removeProperty(spec.property);
-			if (spec.a) root.style.removeProperty(spec.a);
-			if (spec.b) root.style.removeProperty(spec.b);
-			continue;
-		}
-
-		root.style.setProperty(spec.property, stackOf(role, face));
-		if (face.google) wanted.push(face.google);
-		if (spec.a) {
-			if (face.a) root.style.setProperty(spec.a, face.a);
-			else root.style.removeProperty(spec.a);
-		}
-		if (spec.b) {
-			if (face.b) root.style.setProperty(spec.b, face.b);
-			else root.style.removeProperty(spec.b);
-		}
+/** Write one face on <html>. A correction the face lacks is removed. */
+const writeRole = (
+	root: HTMLElement,
+	role: FaceRole,
+	spec: (typeof ROLES)[FaceRole],
+	face: Face,
+) => {
+	root.style.setProperty(spec.property, stackOf(role, face));
+	if (spec.a) {
+		if (face.a) root.style.setProperty(spec.a, face.a);
+		else root.style.removeProperty(spec.a);
 	}
+	if (spec.b) {
+		if (face.b) root.style.setProperty(spec.b, face.b);
+		else root.style.removeProperty(spec.b);
+	}
+};
 
-	// A face the person has moved away from stays in the document — a browser
-	// cannot unload a face, and removing the rule would only make the old text
-	// reflow twice. The href is rebuilt from what is wanted NOW, so the next
-	// cold load asks for nothing extra.
+/**
+ * Make the one stylesheet link match the faces that are wanted now.
+ * A face the person has moved away from stays in the document — a browser
+ * cannot unload a face, and removing the rule would only make the old text
+ * reflow twice. The href is rebuilt from what is wanted NOW, so the next
+ * cold load asks for nothing extra.
+ */
+const syncFaceLink = (wanted: string[]) => {
 	const existing = document.getElementById(LINK_ID);
 	if (!wanted.length) {
 		existing?.remove();
@@ -394,6 +381,34 @@ export const applyFaces = () => {
 	link.rel = "stylesheet";
 	link.href = href;
 	document.head.appendChild(link);
+};
+
+/**
+ * Put every role's current face on <html>, and fetch whatever is missing.
+ * Called on any change to a face AND whenever "Boring font" moves, since that
+ * switch decides whether the display role writes anything at all.
+ */
+export const applyFaces = () => {
+	const root = document.documentElement;
+	const wanted: string[] = [];
+	const boring = boringFontOn();
+
+	for (const role of ROLE_ORDER) {
+		const spec = ROLES[role];
+		const face = faceOf(role, readStored(role));
+
+		// The switch owns `--serif` and both corrections while it is on.
+		const ownedBySwitch = role === "display" && boring;
+		if (ownedBySwitch || !face || face.id === defaultId(role)) {
+			clearRole(root, spec);
+			continue;
+		}
+
+		writeRole(root, role, spec, face);
+		if (face.google) wanted.push(face.google);
+	}
+
+	syncFaceLink(wanted);
 };
 
 /** How long a pick waits for its face before it is applied anyway. Past this

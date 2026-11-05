@@ -79,7 +79,12 @@ export const Route = createFileRoute("/api/github/setup")({
 								{ installationId: Number(installationIdRaw) },
 							);
 						} catch (error) {
-							console.error("[github] setup connect failed", error);
+							const { loggableError } =
+								await import("@farmer/core/lib/loggable-error");
+							console.error(
+								"[github] setup connect failed",
+								loggableError(error),
+							);
 						}
 					}
 				}

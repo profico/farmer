@@ -148,7 +148,11 @@ export const Route = createFileRoute("/api/assistant/stream")({
 							// here and the person gets a generic line.
 							const message =
 								error instanceof Error ? userFacingAssistantError(error) : null;
-							if (!message) console.error("[assistant] turn failed", error);
+							if (!message) {
+								const { loggableError } =
+									await import("@farmer/core/lib/loggable-error");
+								console.error("[assistant] turn failed", loggableError(error));
+							}
 							send({
 								type: "error",
 								message:

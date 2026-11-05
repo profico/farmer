@@ -233,7 +233,12 @@ const handle = async (request: Request, orgSlug: string) => {
 			// `agentErrorMessage` adds how to recover from a refused task or project id.
 			const message = error instanceof Error ? agentErrorMessage(error) : null;
 			if (message === null) {
-				console.error(`[mcp] tool "${call.params.name}" failed`, error);
+				const { loggableError } =
+					await import("@farmer/core/lib/loggable-error");
+				console.error(
+					`[mcp] tool "${call.params.name}" failed`,
+					loggableError(error),
+				);
 			}
 			return text(
 				`Error: ${message ?? "the tool failed on the server."}`,

@@ -13,6 +13,7 @@ import {
 	isImportableEvent,
 	listCalendarEvents,
 } from "../lib/google-calendar-client";
+import { loggableError } from "../lib/loggable-error";
 import { dayBoundsInTz } from "../lib/time";
 import type { ListCalendarEventsInput } from "../schema/google-calendar";
 import { ctxTimezone } from "./context";
@@ -42,7 +43,7 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 	} catch (error) {
 		console.error("[google-calendar] getAccessToken failed", {
 			userId: ctx.userId,
-			error,
+			error: loggableError(error),
 		});
 		return null;
 	}

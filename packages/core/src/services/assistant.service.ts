@@ -11,6 +11,7 @@ import {
 } from "../db/schema/assistant";
 import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
+import { loggableError } from "../lib/loggable-error";
 import {
 	type ChatMessage,
 	type ChatTool,
@@ -845,7 +846,10 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 		// recover from it.
 		const message = error instanceof Error ? agentErrorMessage(error) : null;
 		if (message === null) {
-			console.error(`[assistant] tool "${call.name}" failed`, error);
+			console.error(
+				`[assistant] tool "${call.name}" failed`,
+				loggableError(error),
+			);
 		}
 		return {
 			ok: false,
@@ -1015,6 +1019,41 @@ type TurnTrace = {
 const fallbackModel = (primary: string): string =>
 	process.env.ASSISTANT_FALLBACK_MODEL?.trim() || primary;
 
+/** Why the failed call may be tried once more, or null. A person who pressed
+ *  Stop is never retried. */
+const retryReasonAfter = (
+	error: Error | null,
+	attempt: number,
+	opts: { retry?: boolean; signal?: AbortSignal },
+): string | null =>
+	attempt === 1 &&
+	opts.retry !== false &&
+	opts.signal?.aborted !== true &&
+	error !== null
+		? retryableBeforeOutput(error)
+		: null;
+
+/** The person gets a fixed line, so this is the only place that records
+ *  why the call failed. The message holds the provider's own text. */
+const logFailedCall = (
+	error: OpenRouterError,
+	partial: ChatTurn | null,
+	common: {
+		traceId: string;
+		conversationId: string;
+		model: string;
+		step: number | null;
+		attempt: number;
+	},
+	nextRetryReason: string | null,
+) => {
+	console.error(
+		`[assistant] ${error instanceof OpenRouterStreamCutError ? "stream cut" : "model call failed"} (trace ${common.traceId}, conversation ${common.conversationId}, model ${common.model}, served ${partial?.servedModel ?? "none"}, provider ${partial?.provider ?? "none"}, first progress ${String(partial?.firstProgressMs ?? "none")} ms, step ${common.step ?? "none"}, attempt ${String(common.attempt)}, ${nextRetryReason ? `retry (${nextRetryReason})` : "no retry"})`,
+		error.message,
+		error.cause ?? "",
+	);
+};
+
 /**
  * One billed model call, timed and reported.
  *
@@ -1090,22 +1129,14 @@ const generate = async (
 			// text are reported with the error. Any other failure sent nothing.
 			const partial =
 				error instanceof OpenRouterStreamCutError ? error.partial : null;
-			// A person who pressed Stop is never retried.
-			const nextRetryReason =
-				attempt === 1 &&
-				opts.retry !== false &&
-				opts.signal?.aborted !== true &&
-				error instanceof Error
-					? retryableBeforeOutput(error)
-					: null;
-			// The person gets a fixed line, so this is the only place that records
-			// why the call failed. The message holds the provider's own text.
-			if (error instanceof OpenRouterError)
-				console.error(
-					`[assistant] ${error instanceof OpenRouterStreamCutError ? "stream cut" : "model call failed"} (trace ${common.traceId}, conversation ${common.conversationId}, model ${model}, served ${partial?.servedModel ?? "none"}, provider ${partial?.provider ?? "none"}, first progress ${String(partial?.firstProgressMs ?? "none")} ms, step ${common.step ?? "none"}, attempt ${String(attempt)}, ${nextRetryReason ? `retry (${nextRetryReason})` : "no retry"})`,
-					error.message,
-					error.cause ?? "",
-				);
+			const nextRetryReason = retryReasonAfter(
+				error instanceof Error ? error : null,
+				attempt,
+				opts,
+			);
+			if (error instanceof OpenRouterError) {
+				logFailedCall(error, partial, { ...common, attempt }, nextRetryReason);
+			}
 			reportGeneration({
 				...common,
 				latencySeconds: (Date.now() - startedAt) / 1000,
@@ -1558,16 +1589,360 @@ const keepPartial = async (
 		completionTokens: turn.completionTokens,
 		pendingApproval: false,
 	});
+	await touchConversation(conversation.id);
+};
+
+/** Bump the thread so the rail orders by real activity, not by creation. */
+const touchConversation = async (conversationId: string): Promise<void> => {
 	await db
 		.update(assistantConversation)
 		.set({ updatedAt: new Date() })
-		.where(eq(assistantConversation.id, conversation.id));
+		.where(eq(assistantConversation.id, conversationId));
+};
+
+type Conversation = Awaited<ReturnType<typeof requireConversation>>;
+type StoredHistory = Awaited<ReturnType<typeof loadHistory>>;
+type EmitEvent = (event: AssistantEvent) => void;
+
+/** What every step of one turn shares. */
+type TurnRun = {
+	config: { apiKey: string };
+	conversation: Conversation;
+	trace: TurnTrace;
+	system: string;
+	tools: ChatTool[];
+	signal: AbortSignal | undefined;
+	onEvent: EmitEvent;
+};
+
+const recordUserMessage = async (
+	ctx: Ctx,
+	conversation: Conversation,
+	message: string,
+	onEvent: EmitEvent,
+): Promise<void> => {
+	// Before the message, never after: see `abandonPendingCalls`.
+	await abandonPendingCalls(ctx, conversation.id);
+	const row = await insertMessage(ctx, conversation.id, {
+		role: "user",
+		content: message,
+	});
+	onEvent({ type: "message", messageId: row.id, role: "user" });
+
+	// A placeholder, so the rail is never blank while the real title is being
+	// written. `run` replaces it with a summary once the answer is done.
+	// Only ever done while the title is still "New chat", so a rename sticks.
+	if (conversation.title === "New chat") {
+		const title = truncatedTitle(message);
+		await db
+			.update(assistantConversation)
+			.set({ title, updatedAt: new Date() })
+			.where(eq(assistantConversation.id, conversation.id));
+		onEvent({ type: "title", title });
+	}
+};
+
+/**
+ * Answer an approval card, then run the rest of the turn it was waiting on.
+ * Returns true when the turn is over: a refused or duplicate answer, or a
+ * later call that stopped it on a card of its own.
+ */
+const resumeApproval = async (
+	ctx: Ctx,
+	trace: TurnTrace,
+	conversation: Conversation,
+	resolve: NonNullable<RunAssistantInput["resolve"]>,
+	onEvent: EmitEvent,
+): Promise<boolean> => {
+	const history = await loadHistory(conversation.id);
+	const pending = history.find(
+		(row) =>
+			row.pendingApproval &&
+			(row.toolCalls ?? []).some((call) => call.id === resolve.toolCallId),
+	);
+	const call = pending?.toolCalls?.find(
+		(candidate) => candidate.id === resolve.toolCallId,
+	);
+	// Already resolved, never pending, or not the call the turn is waiting
+	// on. Not an error worth a red toast: the usual cause is the same card
+	// being approved twice (two tabs, or a double click), and the second one
+	// has nothing left to do. A cheap early exit only — the claim below is
+	// what actually makes the second one a no-op when both get this far.
+	if (
+		!pending ||
+		!call ||
+		firstUnresolvedCall(pending, history)?.id !== call.id
+	) {
+		onEvent({ type: "done" });
+		return true;
+	}
+
+	// A batch approved with some rows unticked runs as the narrowed call; one
+	// with none ticked is a refusal, whatever the button said.
+	const { decision, selectedRowIds } = resolve;
+	const narrowed =
+		decision === "approved"
+			? applySelection(call, selectedRowIds, pending.approvalPreview)
+			: null;
+
+	const answered = narrowed
+		? await runClaimed(
+				ctx,
+				trace,
+				conversation.id,
+				pending.id,
+				call,
+				narrowed,
+				onEvent,
+			)
+		: (await claimCalls(
+				ctx,
+				conversation.id,
+				pending.id,
+				[call],
+				decision === "approved" ? NONE_SELECTED : DECLINED,
+			)) !== null;
+	if (!answered) {
+		onEvent({ type: "done" });
+		return true;
+	}
+	if (!narrowed) {
+		onEvent({
+			type: "tool_result",
+			toolCallId: call.id,
+			name: call.name,
+			ok: false,
+		});
+	}
+
+	await db
+		.update(assistantMessage)
+		.set({ approvalDecision: decision })
+		.where(eq(assistantMessage.id, pending.id));
+
+	// The rest of the turn: reads and writes run now, and a second
+	// destructive call stops it again with a card of its own.
+	return runPendingCalls(ctx, trace, conversation.id, pending, onEvent);
+};
+
+/**
+ * Re-ask a card that is still up. Returns true when it did, which ends the
+ * turn.
+ *
+ * Re-ask rather than re-enter the model: a turn suspended on a write is
+ * resumed by the client's next call, not by this loop. Neither a new
+ * message nor a resolve reaches here with a card still up, so this is the
+ * net under everything else — a row left pending by a process that died.
+ */
+const resurfaceSuspended = async (
+	ctx: Ctx,
+	history: StoredHistory,
+	onEvent: EmitEvent,
+): Promise<boolean> => {
+	const suspended = history.find((row) => row.pendingApproval);
+	if (!suspended) return false;
+	const call = firstUnresolvedCall(suspended, history);
+	if (call) {
+		onEvent({
+			type: "approval_required",
+			messageId: suspended.id,
+			toolCallId: call.id,
+			name: call.name,
+			// The stored wording, because it is what was shown — and since
+			// `suspendOn` rewrites it for every call that suspends, it is this
+			// call's. Rebuilt only for a row that never stored any.
+			summary: suspended.approvalSummary ?? (await describeCall(ctx, call)),
+			arguments: call.arguments,
+			preview: suspended.approvalPreview ?? (await previewCall(ctx, call)),
+			selectable: Boolean(findTool(call.name)?.withSelection),
+		});
+		onEvent({ type: "done" });
+		return true;
+	}
+	await db
+		.update(assistantMessage)
+		.set({ pendingApproval: false })
+		.where(eq(assistantMessage.id, suspended.id));
+	return false;
+};
+
+/**
+ * What a cut stream leaves behind: what arrived is kept under the same rule
+ * as a stop, and a person who stopped the turn is told nothing.
+ */
+const reportCut = async (
+	ctx: Ctx,
+	conversation: Conversation,
+	error: OpenRouterStreamCutError,
+	signal: AbortSignal | undefined,
+	onEvent: EmitEvent,
+): Promise<void> => {
+	await keepPartial(ctx, conversation, error.partial);
+	if (!signal?.aborted)
+		onEvent({
+			type: "error",
+			message: error.timedOut ? TIMED_OUT : STREAM_CUT,
+		});
+};
+
+/**
+ * One model call and, when it asks for tools, the calls it asked for.
+ * "ended" stops the turn; "continue" asks the model again.
+ */
+const runStep = async (
+	ctx: Ctx,
+	run: TurnRun,
+	step: number,
+): Promise<"continue" | "ended"> => {
+	const { conversation, signal, onEvent } = run;
+	const history = await loadHistory(conversation.id);
+	if (await resurfaceSuspended(ctx, history, onEvent)) return "ended";
+
+	let turn: ChatTurn;
+	try {
+		turn = await generate(ctx, run.trace, step + 1, {
+			apiKey: run.config.apiKey,
+			messages: [
+				{ role: "system", content: run.system },
+				...toWireMessages(history),
+			],
+			tools: run.tools,
+			signal,
+			onDelta: (text) => onEvent({ type: "delta", text }),
+		});
+	} catch (error) {
+		if (error instanceof OpenRouterStreamCutError) {
+			await reportCut(ctx, conversation, error, signal, onEvent);
+			return "ended";
+		}
+		if (error instanceof OpenRouterError) {
+			onEvent({ type: "error", message: error.message });
+			return "ended";
+		}
+		throw error;
+	}
+
+	// Stopped part-way — the person pressed Stop, or closed the tab.
+	//
+	// What arrived is kept, because it was paid for and because a half
+	// answer beats the question sitting there alone; but the HALF-ARRIVED
+	// TOOL CALLS ARE DROPPED. A stored `tool_calls` row with no `tool` result
+	// under it 400s the next request for the rest of the thread's life, and
+	// the calls were never run, so there is nothing to answer them with.
+	// An empty partial stores nothing and reports nothing: stopping a turn
+	// before it said anything is not a failure to explain.
+	if (signal?.aborted) {
+		await keepPartial(ctx, conversation, turn);
+		return "ended";
+	}
+
+	// A turn with neither text nor a tool call is nothing at all, and it used
+	// to end the loop as a success. The blank row it stored is one the
+	// transcript skips (an assistant row with no text is a pure tool turn,
+	// rendered as its trace), so the person was left looking at their own
+	// question with no answer under it and no error to explain the gap —
+	// which is how a short, vague follow-up ("let me see it") read when a
+	// model returned an empty completion. Said plainly instead, in the same
+	// words the out-of-steps path uses, because from the outside the two
+	// failures are the same failure.
+	if (turn.toolCalls.length === 0 && !turn.content.trim()) {
+		onEvent({ type: "error", message: NO_ANSWER });
+		return "ended";
+	}
+
+	const assistantRow = await insertMessage(ctx, conversation.id, {
+		role: "assistant",
+		content: turn.content,
+		toolCalls: turn.toolCalls.length ? turn.toolCalls : null,
+		model: conversation.model,
+		promptTokens: turn.promptTokens,
+		completionTokens: turn.completionTokens,
+		// Decided below, once we know whether any call needs consent.
+		pendingApproval: false,
+	});
+	await touchConversation(conversation.id);
+
+	if (turn.toolCalls.length === 0) {
+		onEvent({ type: "done" });
+		return "ended";
+	}
+
+	// In order, so a read the model wanted done first still happens first.
+	const stopped = await runPendingCalls(
+		ctx,
+		run.trace,
+		conversation.id,
+		assistantRow,
+		onEvent,
+	);
+	return stopped ? "ended" : "continue";
+};
+
+/**
+ * The turn fell out of the loop still calling tools.
+ *
+ * The turn used to end here on a red line, which threw away everything the
+ * eight steps had read and told the person their question had failed — when
+ * what had really happened is that the answer was most of the way there. So
+ * one more call is spent, with the tools taken away: the model cannot ask for
+ * a ninth step, so this terminates, and it answers from the tool results
+ * already in the thread. Not billed on a turn nobody is waiting for.
+ */
+const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
+	const { conversation, signal, onEvent } = run;
+	if (signal?.aborted) return;
+
+	let closing: ChatTurn | null = null;
+	try {
+		closing = await generate(ctx, run.trace, null, {
+			apiKey: run.config.apiKey,
+			messages: [
+				{ role: "system", content: run.system },
+				...toWireMessages(await loadHistory(conversation.id)),
+				{ role: "user", content: OUT_OF_STEPS },
+			],
+			signal,
+			onDelta: (text) => onEvent({ type: "delta", text }),
+		});
+	} catch (error) {
+		// Anything but OpenRouter's own answer is a bug, and belongs in the log
+		// the stream route keeps rather than swallowed here. `NO_ANSWER` covers
+		// the rest below.
+		if (!(error instanceof OpenRouterError)) throw error;
+		if (error instanceof OpenRouterStreamCutError) {
+			// A cut closing answer is a failure of its own: the person is told
+			// the connection closed, not that the model kept working.
+			await reportCut(ctx, conversation, error, signal, onEvent);
+			return;
+		}
+	}
+
+	// The nudge itself is deliberately NOT stored: it is this loop talking to the
+	// model about its own ceiling, and a later turn re-reading it as something
+	// the person said would be a lie about the conversation.
+	if (closing?.content.trim()) {
+		await insertMessage(ctx, conversation.id, {
+			role: "assistant",
+			content: closing.content,
+			model: conversation.model,
+			promptTokens: closing.promptTokens,
+			completionTokens: closing.completionTokens,
+			pendingApproval: false,
+		});
+		await touchConversation(conversation.id);
+		onEvent({ type: "done" });
+		return;
+	}
+
+	// No closing answer either. Said plainly rather than silently ending, because
+	// from the outside the two are indistinguishable.
+	onEvent({ type: "error", message: NO_ANSWER });
 };
 
 const runTurn = async (
 	ctx: Ctx,
 	input: RunAssistantInput,
-	onEvent: (event: AssistantEvent) => void,
+	onEvent: EmitEvent,
 	signal?: AbortSignal,
 ): Promise<void> => {
 	const config = await requireKey(ctx);
@@ -1586,294 +1961,33 @@ const runTurn = async (
 		generationId: null,
 	};
 
-	if (input.message) {
-		// Before the message, never after: see `abandonPendingCalls`.
-		await abandonPendingCalls(ctx, conversation.id);
-		const row = await insertMessage(ctx, conversation.id, {
-			role: "user",
-			content: input.message,
-		});
-		onEvent({ type: "message", messageId: row.id, role: "user" });
-
-		// A placeholder, so the rail is never blank while the real title is being
-		// written. `run` replaces it with a summary once the answer is done.
-		// Only ever done while the title is still "New chat", so a rename sticks.
-		if (conversation.title === "New chat") {
-			const title = truncatedTitle(input.message);
-			await db
-				.update(assistantConversation)
-				.set({ title, updatedAt: new Date() })
-				.where(eq(assistantConversation.id, conversation.id));
-			onEvent({ type: "title", title });
-		}
-	}
-
-	if (input.resolve) {
-		const history = await loadHistory(conversation.id);
-		const pending = history.find(
-			(row) =>
-				row.pendingApproval &&
-				(row.toolCalls ?? []).some(
-					(call) => call.id === input.resolve?.toolCallId,
-				),
-		);
-		const call = pending?.toolCalls?.find(
-			(candidate) => candidate.id === input.resolve?.toolCallId,
-		);
-		// Already resolved, never pending, or not the call the turn is waiting
-		// on. Not an error worth a red toast: the usual cause is the same card
-		// being approved twice (two tabs, or a double click), and the second one
-		// has nothing left to do. A cheap early exit only — the claim below is
-		// what actually makes the second one a no-op when both get this far.
-		if (
-			!pending ||
-			!call ||
-			firstUnresolvedCall(pending, history)?.id !== call.id
-		) {
-			onEvent({ type: "done" });
-			return;
-		}
-
-		// A batch approved with some rows unticked runs as the narrowed call; one
-		// with none ticked is a refusal, whatever the button said.
-		const { decision, selectedRowIds } = input.resolve;
-		const narrowed =
-			decision === "approved"
-				? applySelection(call, selectedRowIds, pending.approvalPreview)
-				: null;
-
-		const answered = narrowed
-			? await runClaimed(
-					ctx,
-					trace,
-					conversation.id,
-					pending.id,
-					call,
-					narrowed,
-					onEvent,
-				)
-			: (await claimCalls(
-					ctx,
-					conversation.id,
-					pending.id,
-					[call],
-					decision === "approved" ? NONE_SELECTED : DECLINED,
-				)) !== null;
-		if (!answered) {
-			onEvent({ type: "done" });
-			return;
-		}
-		if (!narrowed) {
-			onEvent({
-				type: "tool_result",
-				toolCallId: call.id,
-				name: call.name,
-				ok: false,
-			});
-		}
-
-		await db
-			.update(assistantMessage)
-			.set({ approvalDecision: decision })
-			.where(eq(assistantMessage.id, pending.id));
-
-		// The rest of the turn: reads and writes run now, and a second
-		// destructive call stops it again with a card of its own.
-		if (await runPendingCalls(ctx, trace, conversation.id, pending, onEvent))
-			return;
-	}
+	if (input.message)
+		await recordUserMessage(ctx, conversation, input.message, onEvent);
+	if (
+		input.resolve &&
+		(await resumeApproval(ctx, trace, conversation, input.resolve, onEvent))
+	)
+		return;
 
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 	const system = await systemPrompt(ctx, today, config.systemPrompt, MAX_STEPS);
 	// Scoped to the caller: a Member is never shown the admin reports, which are both a per-step token cost and a tool call that could
 	// only come back refused. Resolved once here, off the Ctx memo.
 	const tools = toolDefinitions(await ctxAccess(ctx));
+	const run: TurnRun = {
+		config,
+		conversation,
+		trace,
+		system,
+		tools,
+		signal,
+		onEvent,
+	};
 
 	for (let step = 0; step < MAX_STEPS; step += 1) {
-		const history = await loadHistory(conversation.id);
-
-		// Re-ask rather than re-enter the model: a turn suspended on a write is
-		// resumed by the client's next call, not by this loop. Neither a new
-		// message nor a resolve reaches here with a card still up, so this is the
-		// net under everything else — a row left pending by a process that died.
-		const suspended = history.find((row) => row.pendingApproval);
-		if (suspended) {
-			const call = firstUnresolvedCall(suspended, history);
-			if (call) {
-				onEvent({
-					type: "approval_required",
-					messageId: suspended.id,
-					toolCallId: call.id,
-					name: call.name,
-					// The stored wording, because it is what was shown — and since
-					// `suspendOn` rewrites it for every call that suspends, it is this
-					// call's. Rebuilt only for a row that never stored any.
-					summary: suspended.approvalSummary ?? (await describeCall(ctx, call)),
-					arguments: call.arguments,
-					preview: suspended.approvalPreview ?? (await previewCall(ctx, call)),
-					selectable: Boolean(findTool(call.name)?.withSelection),
-				});
-				onEvent({ type: "done" });
-				return;
-			}
-			await db
-				.update(assistantMessage)
-				.set({ pendingApproval: false })
-				.where(eq(assistantMessage.id, suspended.id));
-		}
-
-		let turn: ChatTurn;
-		try {
-			turn = await generate(ctx, trace, step + 1, {
-				apiKey: config.apiKey,
-				messages: [
-					{ role: "system", content: system },
-					...toWireMessages(history),
-				],
-				tools,
-				signal,
-				onDelta: (text) => onEvent({ type: "delta", text }),
-			});
-		} catch (error) {
-			if (error instanceof OpenRouterStreamCutError) {
-				// Cut by the provider. What arrived is kept under the same rule as
-				// a stop. A person who stopped the turn is told nothing.
-				await keepPartial(ctx, conversation, error.partial);
-				if (!signal?.aborted)
-					onEvent({
-						type: "error",
-						message: error.timedOut ? TIMED_OUT : STREAM_CUT,
-					});
-				return;
-			}
-			if (error instanceof OpenRouterError) {
-				onEvent({ type: "error", message: error.message });
-				return;
-			}
-			throw error;
-		}
-
-		// Stopped part-way — the person pressed Stop, or closed the tab.
-		//
-		// What arrived is kept, because it was paid for and because a half
-		// answer beats the question sitting there alone; but the HALF-ARRIVED
-		// TOOL CALLS ARE DROPPED. A stored `tool_calls` row with no `tool` result
-		// under it 400s the next request for the rest of the thread's life, and
-		// the calls were never run, so there is nothing to answer them with.
-		// An empty partial stores nothing and reports nothing: stopping a turn
-		// before it said anything is not a failure to explain.
-		if (signal?.aborted) {
-			await keepPartial(ctx, conversation, turn);
-			return;
-		}
-
-		// A turn with neither text nor a tool call is nothing at all, and it used
-		// to end the loop as a success. The blank row it stored is one the
-		// transcript skips (an assistant row with no text is a pure tool turn,
-		// rendered as its trace), so the person was left looking at their own
-		// question with no answer under it and no error to explain the gap —
-		// which is how a short, vague follow-up ("let me see it") read when a
-		// model returned an empty completion. Said plainly instead, in the same
-		// words the out-of-steps path uses, because from the outside the two
-		// failures are the same failure.
-		if (turn.toolCalls.length === 0 && !turn.content.trim()) {
-			onEvent({ type: "error", message: NO_ANSWER });
-			return;
-		}
-
-		const assistantRow = await insertMessage(ctx, conversation.id, {
-			role: "assistant",
-			content: turn.content,
-			toolCalls: turn.toolCalls.length ? turn.toolCalls : null,
-			model: conversation.model,
-			promptTokens: turn.promptTokens,
-			completionTokens: turn.completionTokens,
-			// Decided below, once we know whether any call needs consent.
-			pendingApproval: false,
-		});
-
-		// Bump the thread so the rail orders by real activity, not by creation.
-		await db
-			.update(assistantConversation)
-			.set({ updatedAt: new Date() })
-			.where(eq(assistantConversation.id, conversation.id));
-
-		if (turn.toolCalls.length === 0) {
-			onEvent({ type: "done" });
-			return;
-		}
-
-		// In order, so a read the model wanted done first still happens first.
-		if (
-			await runPendingCalls(ctx, trace, conversation.id, assistantRow, onEvent)
-		) {
-			return;
-		}
+		if ((await runStep(ctx, run, step)) === "ended") return;
 	}
-
-	// Fell out of the loop still calling tools.
-	//
-	// The turn used to end here on a red line, which threw away everything the
-	// eight steps had read and told the person their question had failed — when
-	// what had really happened is that the answer was most of the way there. So
-	// one more call is spent, with the tools taken away: the model cannot ask for
-	// a ninth step, so this terminates, and it answers from the tool results
-	// already in the thread. Not billed on a turn nobody is waiting for.
-	if (signal?.aborted) return;
-
-	let closing: ChatTurn | null = null;
-	try {
-		closing = await generate(ctx, trace, null, {
-			apiKey: config.apiKey,
-			messages: [
-				{ role: "system", content: system },
-				...toWireMessages(await loadHistory(conversation.id)),
-				{ role: "user", content: OUT_OF_STEPS },
-			],
-			signal,
-			onDelta: (text) => onEvent({ type: "delta", text }),
-		});
-	} catch (error) {
-		// Anything but OpenRouter's own answer is a bug, and belongs in the log
-		// the stream route keeps rather than swallowed here. `NO_ANSWER` covers
-		// the rest below.
-		if (!(error instanceof OpenRouterError)) throw error;
-		if (error instanceof OpenRouterStreamCutError) {
-			// A cut closing answer is a failure of its own: the person is told
-			// the connection closed, not that the model kept working.
-			await keepPartial(ctx, conversation, error.partial);
-			if (!signal?.aborted)
-				onEvent({
-					type: "error",
-					message: error.timedOut ? TIMED_OUT : STREAM_CUT,
-				});
-			return;
-		}
-	}
-
-	// The nudge itself is deliberately NOT stored: it is this loop talking to the
-	// model about its own ceiling, and a later turn re-reading it as something
-	// the person said would be a lie about the conversation.
-	if (closing?.content.trim()) {
-		await insertMessage(ctx, conversation.id, {
-			role: "assistant",
-			content: closing.content,
-			model: conversation.model,
-			promptTokens: closing.promptTokens,
-			completionTokens: closing.completionTokens,
-			pendingApproval: false,
-		});
-		await db
-			.update(assistantConversation)
-			.set({ updatedAt: new Date() })
-			.where(eq(assistantConversation.id, conversation.id));
-		onEvent({ type: "done" });
-		return;
-	}
-
-	// No closing answer either. Said plainly rather than silently ending, because
-	// from the outside the two are indistinguishable.
-	onEvent({ type: "error", message: NO_ANSWER });
+	await closeOutOfSteps(ctx, run);
 };
 
 export const assistantService = { settings, conversations, run };
