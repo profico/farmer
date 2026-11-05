@@ -33,7 +33,7 @@ function MySchedulePage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="My schedule"
-				lede={`Your working hours. These drive the "fill rest of day" block, a booked span of time off, and when a reminder reaches you. Your targets come from the month's hour fund, not from here.`}
+				lede="Sets the fill-rest-of-day block, time off and when reminders reach you. Targets come from the hour fund."
 			/>
 
 			{/* A standard band, with one deviation the vocabulary supports: the

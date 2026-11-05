@@ -188,7 +188,7 @@ export function BookTimeOffDialog({
 					<p className="text-sm text-muted-foreground">
 						{result
 							? "Here's what went on your timesheet."
-							: "Pick the first and last day. Each working day in between is booked at your own hours — public holidays, days you don't work, and days you've already booked are left alone."}
+							: "Books each working day at your own hours. Holidays and days already booked are skipped."}
 					</p>
 				</DialogHeader>
 
@@ -305,8 +305,7 @@ export function BookTimeOffDialog({
 						)}
 
 						<p className="text-sm text-muted-foreground">
-							Taking half a day? Log it as a block on the timesheet instead —
-							this books whole working days.
+							Books whole days only. Log half a day as a block.
 						</p>
 					</form>
 				)}

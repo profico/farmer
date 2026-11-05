@@ -58,7 +58,7 @@ export function TimerSettings() {
 				<SettingRow
 					icon={<TimerIcon className="size-5 text-muted-foreground" />}
 					title="Drop a timer after"
-					description="A timer that runs longer than this is dropped, and logs nothing. You are told where you work, so you can put the time in by hand."
+					description="A longer timer is dropped and logs nothing. You get a notice, so you can log the time by hand."
 					action={
 						<Select
 							value={String(settings?.maxSeconds ?? "")}

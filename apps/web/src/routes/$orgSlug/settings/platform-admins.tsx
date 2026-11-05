@@ -134,7 +134,7 @@ function PlatformAdminsPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Platform admins"
-				lede="These people operate this deployment of Farmer. They have full access to the platform and can manage everyone and everything."
+				lede="Full access to this deployment and every workspace on it."
 			/>
 
 			<PageSection title="Current">
@@ -169,10 +169,7 @@ function PlatformAdminsPage() {
 				</ul>
 			</PageSection>
 
-			<PageSection
-				title="Add somebody"
-				description="Search by name or email address. Nobody is listed until you search."
-			>
+			<PageSection title="Add somebody">
 				<SearchInput
 					value={term}
 					onValueChange={setTerm}
