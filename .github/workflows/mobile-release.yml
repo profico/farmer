@@ -325,10 +325,12 @@ jobs:
       # Server field starts empty. `createExpoConfig` runs on every Gradle
       # build, so the AAB step does not keep the value of the APK step.
       #
-      # R8 and the resource shrink take about 5 minutes. The APK of a push
-      # to main or to a branch is for testing, so it is built without them.
-      # A tag and a store upload (PUBLISH_TO_STORES) keep both, so the release
-      # APK has the same code as the store build. `-P` has a higher priority
+      # R8 and the resource shrink take about 5 minutes, and without them
+      # the APK is about 93 MB. People install the APK of main
+      # (`mobile-latest`) and of a tag by hand, so both keep them. So does a
+      # store upload (PUBLISH_TO_STORES). A push to another branch, or a manual
+      # run on one, only makes workflow artifacts, so it is built without
+      # them. `-P` has a higher priority
       # than `android.enable*` of `android/gradle.properties`, which
       # `expo-build-properties` writes. The resource shrink fails without R8,
       # so the two switch together. The ProGuard rules of `app.config.ts`
@@ -347,7 +349,7 @@ jobs:
         # emulator cannot install this APK; build it locally for an emulator.
         run: |
           minify=false
-          if [ "$PUBLISH_TO_STORES" = true ]; then
+          if [ "$PUBLISH_TO_STORES" = true ] || [ "$GITHUB_REF" = refs/heads/main ]; then
             minify=true
           fi
           ./gradlew assembleRelease --no-daemon \
