@@ -530,6 +530,17 @@ describe("hidden tasks", () => {
 		await tasksService.showAll(ctx(MEM));
 	});
 
+	test("hide all switches off the whole list for one person only", async () => {
+		await tasksService.setHidden(ctx(MEM), { taskId: devA, hidden: true });
+		await tasksService.hideAll(ctx(MEM));
+		const list = await tasksService.listSelectable(ctx(MEM));
+		expect(new Set(await tasksService.hiddenIds(ctx(MEM)))).toEqual(
+			new Set(list.map((t) => t.id)),
+		);
+		expect(await tasksService.hiddenIds(ctx(PM))).toEqual([]);
+		await tasksService.showAll(ctx(MEM));
+	});
+
 	test("a site built-in such as Meeting can be switched off", async () => {
 		await tasksService.setHidden(ctx(MEM), { taskId: meetingId, hidden: true });
 		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([meetingId]);
