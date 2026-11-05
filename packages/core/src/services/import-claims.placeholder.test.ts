@@ -558,6 +558,67 @@ describe("a claim", () => {
 		expect(await importClaimsService.pendingFor(caller.userId)).toEqual([]);
 	});
 
+	test("accept shrinks the caller's fill block and does not count it", async () => {
+		const email = "fill@example.com";
+		const { placeholder } = await importPerson(email);
+		const caller = await signUp(email, true);
+		await db.insert(member).values({
+			id: "m-ip-fill",
+			organizationId: ORG,
+			userId: caller.userId,
+			role: "member",
+			createdAt: new Date(),
+		});
+		// 2025-03-10 is a Monday: 8h of working hours.
+		await db.insert(memberWorkingHoursDay).values({
+			organizationId: ORG,
+			userId: caller.userId,
+			dayOfWeek: 1,
+			enabled: true,
+			startTime: "09:00",
+			endTime: "17:00",
+		});
+		await entry(caller.userId, "2025-03-10", 2 * 3600);
+		await db.insert(timeEntry).values({
+			organizationId: ORG,
+			userId: caller.userId,
+			date: "2025-03-10",
+			taskId,
+			projectId,
+			description: "rest of day",
+			durationSeconds: 6 * 3600,
+			fillsDay: true,
+		});
+		await entry(placeholder, "2025-03-10", 3 * 3600);
+
+		await importClaimsService.accept(caller);
+
+		const fill = present(
+			await db.query.timeEntry.findFirst({
+				where: and(
+					eq(timeEntry.userId, caller.userId),
+					eq(timeEntry.date, "2025-03-10"),
+					eq(timeEntry.fillsDay, true),
+				),
+			}),
+			"fill block",
+		);
+		expect(fill.durationSeconds).toBe(3 * 3600);
+		const [merged] = await db
+			.select()
+			.from(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.kind, "member.claim_merged"),
+					eq(auditEvent.subjectUserId, caller.userId),
+				),
+			);
+		expect(present(merged, "merge row").details).toEqual({
+			role: "member",
+			daysOverCap: 0,
+		});
+	});
+
 	test("accept drops a lead link between the caller and the placeholder", async () => {
 		for (const [email, callerLeads] of [
 			["lead.of@example.com", true],

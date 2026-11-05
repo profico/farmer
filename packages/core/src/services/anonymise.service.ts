@@ -16,6 +16,7 @@ import {
 	user,
 	verification,
 } from "../db/schema/auth";
+import { importPendingPerson } from "../db/schema/import";
 import { mobileDevice } from "../db/schema/mobile";
 import {
 	notificationSettings,
@@ -200,6 +201,10 @@ const scrubAccess = async (userId: string, oldEmail: string) => {
 			.update(memberProfile)
 			.set({ claimName: null, claimPendingSince: null })
 			.where(eq(memberProfile.userId, userId));
+		// The real address of a placeholder person from a Harvest import.
+		await tx
+			.delete(importPendingPerson)
+			.where(eq(importPendingPerson.userId, userId));
 		// A second run finds the placeholder address, and nothing is keyed by it.
 		if (oldEmail === deletedEmailFor(userId)) return;
 		await tx.delete(verification).where(verificationIdentifierOf(oldEmail));

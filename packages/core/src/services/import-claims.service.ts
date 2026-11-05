@@ -50,6 +50,9 @@ import { memberWorkingHoursDay } from "../db/schema/schedule";
 import { UserFacingError } from "../lib/user-facing-error";
 import { MAX_DAY_SECONDS } from "../lib/working-day";
 import { recordAudit } from "./audit";
+import { ctxTimezone, withCtxTx } from "./context";
+import { recomputeDayFill } from "./day-fill";
+import { ctxDb } from "./db-ctx";
 import { memberJoined } from "./member-joined";
 import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
@@ -292,9 +295,39 @@ const daysOverCap = async (
 		)
 		.groupBy(timeEntry.date)
 		.having(
-			sql`sum(${timeEntry.durationSeconds}) > ${MAX_DAY_SECONDS} and bool_or(${timeEntry.userId} = ${from})`,
+			// The same predicate as `spokenForSeconds`: a fill block is what is
+			// left of the day, so it never counts towards the cap.
+			sql`sum(${timeEntry.durationSeconds}) filter (where not ${timeEntry.fillsDay}) > ${MAX_DAY_SECONDS} and bool_or(${timeEntry.userId} = ${from})`,
 		);
 	return rows.length;
+};
+
+/** The dates where the caller has a fill block and the placeholder has
+ *  entries. The merge adds time to those days, so the fill block shrinks. */
+const mergedFillDates = async (
+	tx: DbClient,
+	org: string,
+	from: string,
+	to: string,
+): Promise<string[]> => {
+	const rows = await tx
+		.selectDistinct({ date: timeEntry.date })
+		.from(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, org),
+				eq(timeEntry.userId, to),
+				eq(timeEntry.fillsDay, true),
+				inArray(
+					timeEntry.date,
+					tx
+						.select({ date: sql<string>`te2.date` })
+						.from(sql`time_entry te2`)
+						.where(sql`te2.organization_id = ${org} and te2.user_id = ${from}`),
+				),
+			),
+		);
+	return rows.map((r) => r.date);
 };
 
 type PlaceholderClaim = { userId: string; email: string };
@@ -360,6 +393,12 @@ const adoptPlaceholder = async (
 		.from(member)
 		.where(and(eq(member.organizationId, org), eq(member.userId, ctx.userId)));
 	const overCap = await daysOverCap(tx, org, placeholder.userId, ctx.userId);
+	const fillDates = await mergedFillDates(
+		tx,
+		org,
+		placeholder.userId,
+		ctx.userId,
+	);
 	// A lead link between the caller and the placeholder would become a
 	// caller-to-caller row, which the self-lead check refuses.
 	await tx
@@ -383,6 +422,12 @@ const adoptPlaceholder = async (
 		await moveRows(tx, m, org, placeholder.userId, ctx.userId);
 	}
 	await moveTypeHistory(tx, org, placeholder.userId, ctx.userId);
+	// `ctx` carries `tx` here (`withCtxTx` in `accept`), so the recompute
+	// runs inside this transaction.
+	if (fillDates.length > 0) {
+		const tz = await ctxTimezone(ctx);
+		for (const date of fillDates) await recomputeDayFill(ctx, date, tz);
+	}
 	// A profile the caller holds already (a member, or a leftover of a
 	// decline) stays. It takes the earlier start date and, for undo, the
 	// claim name: undo reads `claimName` to tell an accepted import from an
@@ -564,8 +609,8 @@ export const importClaimsService = {
 	 *  has committed. Returns the slug to enter. A caller who was a member
 	 *  already joins nothing, so nothing is announced. */
 	accept: async (ctx: Ctx): Promise<{ slug: string }> => {
-		const { role, name, joined, daysOverCap } = await db.transaction((tx) =>
-			acceptClaim(tx, ctx),
+		const { role, name, joined, daysOverCap } = await withCtxTx(ctx, (txCtx) =>
+			acceptClaim(ctxDb(txCtx), txCtx),
 		);
 		if (joined) {
 			await memberJoined(
@@ -606,8 +651,8 @@ export const importClaimsService = {
 		// second connection held inside it is the deadlock `ctxDb` warns about.
 		await recordAudit(ctx, {
 			kind: "member.claim_declined",
-			subjectUserId: ctx.userId,
-			target: { type: "member", id: ctx.userId, label: name },
+			subjectUserId: personId,
+			target: { type: "member", id: personId, label: name },
 			details: { role },
 		});
 		await teamLeadsService.removeFromAllLists(ctx, personId);
