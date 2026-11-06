@@ -55,7 +55,7 @@ import { user } from "../db/schema/auth";
 import { client, project, timeEntry } from "../db/schema/domain";
 import { webhookEndpoint, webhookEvent } from "../db/schema/webhooks";
 import { loggableError } from "../lib/loggable-error";
-import { shownName } from "./claim-name";
+import { shownEmail, shownName } from "./claim-name";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -239,7 +239,7 @@ export const timeEntryWebhookPayloads = async (
 		.select({
 			id: user.id,
 			name: shownName(ctx.organizationId),
-			email: user.email,
+			email: shownEmail(),
 		})
 		.from(user)
 		.where(inArray(user.id, [...new Set(rows.map((row) => row.userId))]));
@@ -345,7 +345,7 @@ export const memberWebhookPayload = async (
 		.select({
 			id: user.id,
 			name: shownName(ctx.organizationId),
-			email: user.email,
+			email: shownEmail(),
 		})
 		.from(user)
 		.where(eq(user.id, userId))

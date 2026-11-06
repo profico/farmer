@@ -37,6 +37,7 @@ import {
 	type ReminderKind,
 	type ReminderSettings,
 } from "../schema/reminder-settings";
+import { shownEmail } from "./claim-name";
 import {
 	complianceService,
 	type TrackingReport,
@@ -270,7 +271,7 @@ const logReminders = async (
 	if (holidays.has(dayKey)) return [];
 
 	const people = await db
-		.select({ userId: member.userId, name: user.name, email: user.email })
+		.select({ userId: member.userId, name: user.name, email: shownEmail() })
 		.from(member)
 		.innerJoin(user, eq(user.id, member.userId))
 		.where(
@@ -542,7 +543,7 @@ const digest = async (
 				userId: member.userId,
 				role: member.role,
 				name: user.name,
-				email: user.email,
+				email: shownEmail(),
 			})
 			.from(member)
 			.innerJoin(user, eq(user.id, member.userId))

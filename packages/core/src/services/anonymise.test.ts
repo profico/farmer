@@ -23,6 +23,7 @@ import {
 	verification,
 } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
+import { importPendingPerson } from "../db/schema/import";
 import { mobileDevice } from "../db/schema/mobile";
 import { pushSubscription } from "../db/schema/notifications";
 import { memberProfile } from "../db/schema/people";
@@ -470,6 +471,37 @@ describe("anonymise", () => {
 		expect(
 			await db.query.apiToken.findMany({
 				where: eq(apiToken.userId, leaverId),
+			}),
+		).toEqual([]);
+	});
+
+	test("a placeholder person loses the real address of the import", async () => {
+		const id = "u-an-placeholder";
+		await db.insert(user).values({
+			id,
+			name: "Imported",
+			email: `import-${id}@import.invalid`,
+			emailVerified: false,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: "m-an-placeholder",
+			organizationId: ORG,
+			userId: id,
+			role: "member",
+			createdAt: new Date(),
+		});
+		await db.insert(importPendingPerson).values({
+			userId: id,
+			organizationId: ORG,
+			email: "erase.me@example.com",
+			confirmed: true,
+		});
+		await anonymiseService.anonymise(admin, id);
+		expect(
+			await db.query.importPendingPerson.findMany({
+				where: eq(importPendingPerson.userId, id),
 			}),
 		).toEqual([]);
 	});

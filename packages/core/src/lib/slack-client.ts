@@ -2,6 +2,7 @@
 // a thin fetch wrapper rather than a dependency on @slack/web-api.
 
 import { externalFetch } from "./http";
+import { isPlaceholderEmail } from "./import-placeholder";
 import { setting } from "./instance-settings";
 import type { JsonValue } from "./json";
 
@@ -216,6 +217,8 @@ export const slackClient = {
 		botToken: string,
 		email: string,
 	): Promise<string | null> => {
+		// An imported person's placeholder address matches nobody.
+		if (isPlaceholderEmail(email)) return null;
 		const result = await call<{ user: { id: string } }>(
 			botToken,
 			"users.lookupByEmail",

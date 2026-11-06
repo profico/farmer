@@ -100,6 +100,10 @@ export const AUDIT_KINDS = {
 		category: "change",
 		sentence: "declined to join from a Harvest import",
 	},
+	"member.claim_merged": {
+		category: "change",
+		sentence: "took over imported history from a Harvest import",
+	},
 	"member.role_changed": {
 		category: "change",
 		sentence: "changed the role of {target}",

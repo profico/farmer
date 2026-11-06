@@ -29,6 +29,7 @@ const KIND_LABELS = {
 	"member.joined": "Person joined",
 	"member.removed": "Person removed",
 	"member.claim_declined": "Harvest import claim declined",
+	"member.claim_merged": "Harvest import history taken over",
 	"member.role_changed": "Role changed",
 	"member.archived": "Person archived",
 	"member.restored": "Person restored",

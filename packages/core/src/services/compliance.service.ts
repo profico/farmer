@@ -13,7 +13,7 @@ import {
 import { isHourlyMemberType } from "../schema/members";
 import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
-import { shownName } from "./claim-name";
+import { shownEmail, shownName } from "./claim-name";
 import { ctxAccess, ctxTimezone, ctxWeekStartsOn } from "./context";
 import { holidaysService } from "./holidays.service";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
@@ -174,7 +174,7 @@ const complianceCohort = async (
 			.select({
 				userId: member.userId,
 				name: shownName(ctx.organizationId),
-				email: user.email,
+				email: shownEmail(),
 			})
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
