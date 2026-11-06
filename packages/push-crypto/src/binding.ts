@@ -24,7 +24,6 @@ import { bytesToBase64Url, utf8Encode } from "./device";
 /** The first line of the message. A change of the contract changes it. */
 export const BINDING_CONTEXT = "farmer-device-binding v1";
 
-/** The proof for one relay id and one public key, as the app makes it. */
 export const bindingProof = (
 	deviceSecret: string,
 	relayId: string,
