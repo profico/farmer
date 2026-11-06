@@ -104,6 +104,7 @@ describe("the OpenAPI document", () => {
 		expect(Object.keys(Meta?.properties ?? {})).toEqual(
 			expect.arrayContaining([
 				"apiVersion",
+				"serverVersion",
 				"minMobileVersion",
 				"signInMethods",
 				"passwordSignIn",

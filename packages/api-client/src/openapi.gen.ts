@@ -2874,6 +2874,8 @@ export interface components {
             minCliVersion: string;
             /** @description The version of this contract. The mobile app reads it to find out whether the routes that it needs exist. */
             apiVersion: number;
+            /** @description The release this server was built from, or null for a nightly or a local build. */
+            serverVersion: string | null;
             /** @description The oldest mobile app this server can serve. */
             minMobileVersion: string;
             /** @description The provider buttons, in the order of the login page. */

@@ -45,6 +45,9 @@ export type ApiMeta = {
 	cliEnabled: boolean;
 	minCliVersion: string;
 	apiVersion: number;
+	/** The release this server was built from (`1.2.3`), or null for a
+	 *  nightly or a local build. */
+	serverVersion: string | null;
 	minMobileVersion: string;
 	/** The provider buttons, in the order the login page draws them. */
 	signInMethods: ApiSignInMethod[];

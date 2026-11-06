@@ -102,6 +102,7 @@ const META = {
 	cliEnabled: true,
 	minCliVersion: "0.1.0",
 	apiVersion: 1,
+	serverVersion: null,
 	minMobileVersion: "0.1.0",
 	signInMethods: [],
 	passwordSignIn: false,

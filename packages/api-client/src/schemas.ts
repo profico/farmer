@@ -29,6 +29,7 @@ export const metaSchema = z.object({
 	cliEnabled: z.boolean(),
 	minCliVersion: z.string(),
 	apiVersion: z.number().int().nonnegative().default(0),
+	serverVersion: z.string().nullable().default(null),
 	minMobileVersion: z.string().default(""),
 	/** The provider buttons, in the order of the login page. `kind` is an
 	 *  open set: a client draws a kind it does not know as an OpenID Connect

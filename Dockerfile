@@ -115,6 +115,10 @@ ENV PORT=3000
 # the server reads as "unknown" and draws no line.
 ARG GIT_SHA=""
 ENV GIT_SHA=${GIT_SHA}
+# The release, for example 1.2.3. CI sets it for a `v*` tag only. Empty for a
+# nightly image, which the server reads as "no release" and draws no line.
+ARG SERVER_VERSION=""
+ENV SERVER_VERSION=${SERVER_VERSION}
 WORKDIR /app
 
 # Pull the build artifacts first. These COPY --from=build lines also serialize

@@ -58,6 +58,8 @@ const snapshotSchema = z.object({
 		commit: z
 			.object({ sha: z.string(), shortSha: z.string(), url: z.string() })
 			.nullable(),
+		// A snapshot from before this field has none. Read it as unset.
+		version: z.string().nullable().default(null),
 	}),
 });
 
