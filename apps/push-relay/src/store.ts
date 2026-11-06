@@ -499,6 +499,17 @@ export class DeviceStore {
 		})();
 	}
 
+	/** Give back one slot that `consumeQuota` took at `countedAt`, in the month
+	 *  of that time, not the month of now. The count never goes below 0. */
+	releaseQuota(keyId: string, countedAt: number): void {
+		this.#db
+			.query(
+				`UPDATE server_key_usage SET pushes = MAX(pushes - 1, 0)
+				 WHERE key_id = $keyId AND month = $month`,
+			)
+			.run({ keyId, month: monthOf(countedAt) });
+	}
+
 	/** The pushes that a key sent in the month of `now`. */
 	usage(keyId: string, now: number): number {
 		return (

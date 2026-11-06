@@ -27,7 +27,8 @@ export const checkServerKey = (
 	presented: string,
 	find: (id: string) => ServerKey | null,
 ): KeyCheck => {
-	const [id = "", secret = ""] = presented.split(".", 2);
+	const parts = presented.split(".");
+	const [id = "", secret = ""] = parts.length === 2 ? parts : [];
 	const key = find(id);
 	const matches = secretMatches(secret, key?.secretHash ?? NO_KEY_HASH);
 	if (!key || !matches) return { ok: false, reason: "invalid" };

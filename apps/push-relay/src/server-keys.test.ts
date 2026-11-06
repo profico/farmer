@@ -5,6 +5,7 @@ import { z } from "zod";
 import { runAdmin } from "./admin-cli";
 import { createRelay } from "./app";
 import { dryRunSender } from "./delivery/dry-run";
+import type { DeliveryResult, Sender } from "./delivery/types";
 import { createLimiters, DEFAULT_LIMITS } from "./rate-limit";
 import { DeviceStore, monthOf } from "./store";
 
@@ -13,13 +14,16 @@ type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 const NOV_1 = Date.UTC(2026, 10, 1, 0, 0, 0);
 const IOS_TOKEN = "a".repeat(64);
 
-const setup = (requireServerKey: boolean) => {
+const setup = (
+	requireServerKey: boolean,
+	ios: Sender = dryRunSender(() => {}),
+) => {
 	const store = DeviceStore.open(":memory:");
 	let clock = NOV_1 + 3_600_000;
 	const logs: string[] = [];
 	const relay = createRelay({
 		store,
-		senders: { ios: dryRunSender(() => {}), android: dryRunSender(() => {}) },
+		senders: { ios, android: dryRunSender(() => {}) },
 		limiters: createLimiters(DEFAULT_LIMITS),
 		trustedIpHeader: null,
 		maxDevices: 100,
@@ -105,7 +109,13 @@ describe("server key on POST /v1/push", () => {
 			const { post, registered, mint } = setup(required);
 			const { id, key } = mint(10);
 			const relayId = await registered();
-			for (const bad of [`${id}.wrong`, "unknown.secret", "nodot", `${key}x`]) {
+			for (const bad of [
+				`${id}.wrong`,
+				"unknown.secret",
+				"nodot",
+				`${key}x`,
+				`${key}.junk`,
+			]) {
 				const response = await post("/v1/push", push(relayId), bad);
 				expect(response.status).toBe(401);
 				expect(await codeOf(response)).toBe("invalid_server_key");
@@ -179,6 +189,29 @@ describe("monthly quota", () => {
 
 		runAdmin(["keys", "set-limit", id, "5"], store, NOV_1);
 		expect((await post("/v1/push", push(relayId), key)).status).toBe(202);
+	});
+
+	test("a push that is not delivered gives its slot back", async () => {
+		let next: () => DeliveryResult = () => ({
+			outcome: "failed",
+			status: 500,
+			reason: "boom",
+		});
+		const { post, registered, mint, store } = setup(true, async () => next());
+		const { id, key } = mint(1);
+		const relayId = await registered();
+
+		expect((await post("/v1/push", push(relayId), key)).status).toBe(502);
+		expect(store.usage(id, NOV_1)).toBe(0);
+		next = () => {
+			throw new Error("network down");
+		};
+		expect((await post("/v1/push", push(relayId), key)).status).toBe(502);
+		expect(store.usage(id, NOV_1)).toBe(0);
+		next = () => ({ outcome: "delivered" });
+		expect((await post("/v1/push", push(relayId), key)).status).toBe(200);
+		expect(store.usage(id, NOV_1)).toBe(1);
+		expect((await post("/v1/push", push(relayId), key)).status).toBe(429);
 	});
 
 	test("a refused push (unknown relay id) does not use the quota", async () => {

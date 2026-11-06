@@ -398,7 +398,7 @@ export const INSTANCE_SETTINGS = [
 		label: "Relay server key",
 		kind: "secret",
 		lockGroup: "relay",
-		hint: "Profico's relay needs a key for each server. Ask farmer@profi.co for one. A relay that you run yourself may not need one.",
+		hint: "Profico's relay needs a key for each server. Ask farmer@profi.co for one. A relay that you run yourself may not need one. A key pinned in the environment also locks the relay URL on this page.",
 	},
 	{
 		name: "POSTHOG_PROJECT_TOKEN",

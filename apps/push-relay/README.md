@@ -236,8 +236,9 @@ Rules:
 
 - A push counts when it passes every check that can refuse it (the key, the
   body, the relay id, the rate limits) and before the relay sends it to APNs
-  or FCM. A refused push does not use the quota. A push that APNs or FCM
-  refuses does.
+  or FCM. A refused push does not use the quota. The relay gives the slot
+  back when the push is not delivered (an APNs or FCM refusal, or a send
+  that throws). A dry run counts.
 - The count is a row for each key and calendar month (UTC) in the SQLite
   file, so a restart keeps it. A new month starts at 0. A limit of 0 refuses
   every push.

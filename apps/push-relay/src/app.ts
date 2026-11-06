@@ -422,8 +422,10 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		const admission = admitPush(device, message.kind);
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
 		// Count after every check that can refuse the push for another reason,
-		// and before the send, so a refused push does not use the quota.
-		if (!store.consumeQuota(caller.keyId, caller.limit, now())) {
+		// and before the send, so two pushes cannot pass the last slot. The
+		// relay gives the slot back below when the push is not delivered.
+		const countedAt = now();
+		if (!store.consumeQuota(caller.keyId, caller.limit, countedAt)) {
 			log(`[push-relay] quota used up key=${caller.keyId}`);
 			return quotaExceeded(caller.limit ?? 0);
 		}
@@ -433,10 +435,14 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		try {
 			result = await sender(device, message);
 		} catch (cause) {
+			store.releaseQuota(caller.keyId, countedAt);
 			log(
 				`[push-relay] send failed platform=${device.platform} relay=${relayIdHint(device.relayId)} error=${cause instanceof Error ? cause.message : "unknown"}`,
 			);
 			return error(502, "upstream_unreachable");
+		}
+		if (result.outcome !== "delivered" && result.outcome !== "dry_run") {
+			store.releaseQuota(caller.keyId, countedAt);
 		}
 		settle(device, message, result);
 		return pushResponse(result);

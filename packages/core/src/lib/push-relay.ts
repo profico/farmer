@@ -119,7 +119,7 @@ const warnIfNoKey = (baseUrl: string): void => {
 	if (warnedNoKey || pushRelayKey() || baseUrl !== profico) return;
 	warnedNoKey = true;
 	console.warn(
-		`[push-relay] PUSH_RELAY_KEY is not set. Profico's relay will soon need a server key. Ask ${KEY_CONTACT} for one.`,
+		`[push-relay] PUSH_RELAY_KEY is not set. Profico's relay accepts a server key. Ask ${KEY_CONTACT} for one.`,
 	);
 };
 
