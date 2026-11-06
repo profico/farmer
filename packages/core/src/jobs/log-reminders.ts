@@ -168,7 +168,6 @@ export const runLogRemindersOnce = async (
 				continue;
 			}
 
-			// Already reminded for this day?
 			const reminded = await db
 				.select({ userId: notificationSettings.userId })
 				.from(notificationSettings)

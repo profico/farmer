@@ -217,7 +217,6 @@ export const setWebhookSenderForTests = (override?: WebhookSender): void => {
 
 type Logger = { warn: (message: string) => void };
 
-/** Fan every unsent event out into the delivery rows it deserves. */
 const fanOut = async (now: Date): Promise<number> => {
 	const events = await db
 		.select({

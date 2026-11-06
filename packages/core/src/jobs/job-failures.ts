@@ -38,7 +38,6 @@ export const setJobFailureSink = (next: JobFailureSink | null): void => {
 
 const budgets = new AsyncLocalStorage<{ left: number }>();
 
-/** Run one tick of a job with a fresh budget of reports. */
 export const withJobFailureBudget = <T>(run: () => Promise<T>): Promise<T> =>
 	budgets.run({ left: JOB_FAILURE_BUDGET }, run);
 

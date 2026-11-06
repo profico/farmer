@@ -63,7 +63,6 @@ import { runWebhookDeliveryOnce } from "./webhook-delivery";
 export interface SchedulerHandle {
 	/** Clear the startup timeout and the recurring interval; no new ticks fire after this. */
 	stopTimers: () => void;
-	/** True while a tick is actively running. */
 	isRunning: () => boolean;
 	/** Resolves once the in-flight tick (if any) completes; resolves immediately otherwise. */
 	waitUntilIdle: () => Promise<void>;

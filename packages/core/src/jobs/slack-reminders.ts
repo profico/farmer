@@ -336,7 +336,6 @@ const runKindPass = async (
 	return { retryLater, slackLost: false };
 };
 
-/** One org's tick. Does nothing when no kind is due. */
 const runOrgPass = async (
 	org: OrgRow,
 	now: Date,
