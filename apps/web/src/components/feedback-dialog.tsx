@@ -29,8 +29,8 @@ import { Textarea } from "#/components/ui/textarea.tsx";
 /**
  * The launched PostHog survey of type `api`, or null. `getSurveys` is used and
  * not `getActiveMatchingSurveys`: the targeting of the second one hides a
- * survey from a person who already answered. An unstarted client never calls
- * back, so the entry points stay hidden.
+ * survey from a person who already answered. An unstarted client calls back
+ * with an empty list, so the entry points stay hidden.
  */
 export function useFeedbackSurvey(): Survey | null {
 	const posthog = usePostHog();
@@ -41,13 +41,39 @@ export function useFeedbackSurvey(): Survey | null {
 			setSurvey(
 				surveys.find(
 					(item) =>
-						item.type === SurveyType.API && item.start_date && !item.end_date,
+						item.type === SurveyType.API &&
+						item.start_date &&
+						!item.end_date &&
+						item.questions.length > 0 &&
+						// The dialog cannot ask a question type that it does not render.
+						item.questions.every(isSupported),
 				) ?? null,
 			);
 		});
 	}, [posthog]);
 
 	return survey;
+}
+
+function isSupported(question: Survey["questions"][number]) {
+	return (
+		Boolean(question.id) &&
+		(question.type === SurveyQuestionType.SingleChoice ||
+			question.type === SurveyQuestionType.Open)
+	);
+}
+
+/** The person property that marks a response, as the SDK writes it. */
+function respondedKey(survey: Survey) {
+	const iteration = survey.current_iteration;
+	return iteration && iteration > 0
+		? `$survey_responded/${survey.id}/${iteration}`
+		: `$survey_responded/${survey.id}`;
+}
+
+/** The SDK keys the first answer `$survey_response` and the next by index. */
+function indexKey(index: number) {
+	return index === 0 ? "$survey_response" : `$survey_response_${index}`;
 }
 
 export function FeedbackDialog({
@@ -77,10 +103,11 @@ export function FeedbackDialog({
 	const submit = (event: React.SyntheticEvent) => {
 		event.preventDefault();
 		if (!complete) return;
+		// An empty optional answer is left out, as the SDK leaves it out.
 		const responses = questions.map((question) => ({
 			id: question.id,
 			question: question.question,
-			response: answers[question.id]?.trim() ?? "",
+			response: answers[question.id]?.trim() || undefined,
 		}));
 		posthog.capture(SurveyEventName.SENT, {
 			[SurveyEventProperties.SURVEY_ID]: survey.id,
@@ -88,9 +115,20 @@ export function FeedbackDialog({
 			[SurveyEventProperties.SURVEY_QUESTIONS]: responses,
 			[SurveyEventProperties.SURVEY_COMPLETED]: true,
 			[SurveyEventProperties.SURVEY_SUBMISSION_ID]: crypto.randomUUID(),
+			[SurveyEventProperties.SURVEY_ITERATION]: survey.current_iteration,
+			[SurveyEventProperties.SURVEY_ITERATION_START_DATE]:
+				survey.current_iteration_start_date,
 			...Object.fromEntries(
-				responses.map((item) => [`$survey_response_${item.id}`, item.response]),
+				responses.flatMap((item, index) =>
+					item.response
+						? [
+								[`$survey_response_${item.id}`, item.response],
+								[indexKey(index), item.response],
+							]
+						: [],
+				),
 			),
+			$set: { [respondedKey(survey)]: true },
 			page: window.location.pathname,
 		});
 		setAnswers({});
