@@ -3,11 +3,11 @@ import { randomBytes } from "node:crypto";
 import { hashSecret, secretMatches } from "./ids";
 import type { ServerKey } from "./store";
 
+export type MintedKey = { id: string; key: string; hash: string };
+
 /** A server key is `<id>.<secret>`. The id is public, and the relay finds
  *  the row by it. The secret is 256 random bits, and the relay keeps only its
  *  SHA-256 hash. */
-export type MintedKey = { id: string; key: string; hash: string };
-
 export const newServerKey = (): MintedKey => {
 	const id = randomBytes(6).toString("hex");
 	const secret = randomBytes(32).toString("base64url");

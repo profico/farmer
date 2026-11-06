@@ -91,6 +91,9 @@ const KEY_CODES = new Set([
 	"monthly_quota_exceeded",
 ]);
 
+/** Where an operator asks Profico for a key. */
+const KEY_CONTACT = "farmer@profi.co";
+
 const KEY_LOG_INTERVAL_MS = 60 * 60 * 1000;
 const keyLoggedAt = new Map<string, number>();
 let warnedNoKey = false;
@@ -109,9 +112,6 @@ export const logKeyRefusal = (code: string | null): boolean => {
 	}
 	return true;
 };
-
-/** Where an operator asks Profico for a key. */
-export const KEY_CONTACT = "farmer@profi.co";
 
 /** Warn once if the relay is on, points at Profico's relay, and has no key. */
 const warnIfNoKey = (baseUrl: string): void => {
