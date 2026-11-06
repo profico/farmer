@@ -161,8 +161,9 @@ function Page() {
 					One image, one database, <em className="fm-em">three variables.</em>
 				</h1>
 				<p className="fm-lede" style={{ maxWidth: 620 }}>
-					This page gets Farmer running. The full documentation, with every
-					option and upgrade note, lives in the repository.
+					This page gets Farmer running. The{" "}
+					<a href={links.selfHosting}>self-hosting guide</a> in the repository
+					has the Compose file, the upgrade steps and the backup steps.
 				</p>
 				<div className="fm-hosting-badges">
 					<span className="fm-pill">
@@ -290,6 +291,10 @@ function Page() {
 			<section className="fm-container fm-hosting-docs">
 				<div className="fm-docs-card">
 					<div className="fm-docs-title">Full documentation</div>
+					<a className="fm-docs-link" href={links.selfHosting}>
+						Upgrade and backup guide
+						<ArrowUpRightIcon weight="regular" size={15} />
+					</a>
 					<a className="fm-docs-link" href={links.docs}>
 						Installation guide
 						<ArrowUpRightIcon weight="regular" size={15} />

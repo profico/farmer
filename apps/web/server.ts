@@ -77,6 +77,7 @@ import type { SchedulerHandle } from "@farmer/core/jobs";
 import { SOCKET_ADDRESS_HEADER } from "@farmer/core/lib/client-address";
 import { durationFromEnv } from "@farmer/core/lib/http";
 import { loggableErrorLine } from "@farmer/core/lib/loggable-error";
+import { requireProductionEnv } from "@farmer/core/lib/required-env";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
 import { applySecurityHeaders } from "./src/lib/security-headers.ts";
@@ -647,6 +648,7 @@ async function initializeStaticRoutes(
  */
 async function initializeServer() {
 	log.header("Starting Production Server");
+	requireProductionEnv({ error: log.error, warn: log.warning });
 
 	// Load TanStack Start server handler
 	let handler: { fetch: (request: Request) => Response | Promise<Response> };
