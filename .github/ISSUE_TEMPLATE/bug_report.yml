@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a problem in Farmer.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security problem here. Read SECURITY.md.
+        Do not write a real client, person, email or production id.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web app
+        - CLI
+        - Mobile app
+        - Push relay
+        - Self-hosting
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Say what you did, what you expected, and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to repeat
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The server version (Settings, at the bottom) or the CLI version.
+    validations:
+      required: false
