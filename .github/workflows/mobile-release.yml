@@ -47,13 +47,23 @@ name: Mobile release
 #   Secrets for the store upload:
 #
 #   PLAY_SERVICE_ACCOUNT_JSON  the JSON key of a Google Play service account.
-#   ASC_KEY_P8                 the App Store Connect API key (`.p8` text).
-#   ASC_KEY_ID                 the ID of that key.
-#   ASC_ISSUER_ID              the issuer ID of the App Store Connect team.
+#   IOS_DIST_P12_BASE64        the Apple Distribution certificate and its
+#                              private key, as a `.p12` file in base64. Make
+#                              the file with `openssl pkcs12 -export -legacy`.
+#   IOS_DIST_P12_PASSWORD      the password of the `.p12` file.
+#   IOS_PROFILE_APP_BASE64     the App Store profile `Farmer App Store`
+#                              (`.mobileprovision`, base64).
+#   IOS_PROFILE_NOTIFICATION_SERVICE_BASE64
+#                              the App Store profile
+#                              `Farmer Notifications App Store`.
+#   IOS_PROFILE_TIMER_WIDGET_BASE64
+#                              the App Store profile `Farmer Widget App Store`.
+#   APPLE_APP_PASSWORD         an app-specific password of the Apple ID.
 #
 #   Repository variables (Settings -> Secrets and variables -> Actions):
 #
 #   APPLE_TEAM_ID              the ID of the Apple Developer team.
+#   APPLE_ID                   the email of the Apple ID that uploads the build.
 #   PLAY_TRACK                 the Play track. The default is `internal`.
 #   PLAY_RELEASE_STATUS        the Play release status. The default is `draft`.
 #   XCODE_VERSION              optional: the Xcode version (see "Select Xcode").
@@ -644,8 +654,8 @@ jobs:
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
           releaseName: ${{ needs.version.outputs.version }} (${{ github.run_number }})
 
-  # Test mode: the job signs the app with an App Store Connect API key and
-  # sends it to TestFlight. It does not change the job `ios`. The job
+  # Test mode: the job signs the app with a stored certificate and stored
+  # profiles, and sends it to TestFlight with an Apple ID. It does not change the job `ios`. The job
   # `release` does not need it.
   testflight:
     name: Upload to TestFlight
@@ -655,8 +665,10 @@ jobs:
     timeout-minutes: 90
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_ID: ${{ vars.APPLE_ID }}
+      APP_PROFILE: Farmer App Store
+      NOTIFICATION_PROFILE: Farmer Notifications App Store
+      WIDGET_PROFILE: Farmer Widget App Store
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -688,19 +700,25 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # A secret is not readable in an `if`, so this step reads the three
-      # secrets and the variable into an output. When one is missing, every
-      # later step is skipped and the job still passes.
-      - name: Check the App Store Connect secrets
+      # A secret is not readable in an `if`, so this step reads the secrets
+      # and the variables into an output. When one is missing, every later
+      # step is skipped and the job still passes.
+      - name: Check the signing secrets
         id: check
         env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          IOS_PROFILE_APP_BASE64: ${{ secrets.IOS_PROFILE_APP_BASE64 }}
+          IOS_PROFILE_NOTIFICATION_SERVICE_BASE64: ${{ secrets.IOS_PROFILE_NOTIFICATION_SERVICE_BASE64 }}
+          IOS_PROFILE_TIMER_WIDGET_BASE64: ${{ secrets.IOS_PROFILE_TIMER_WIDGET_BASE64 }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           missing=""
-          [ -n "$ASC_KEY_P8" ] || missing="$missing ASC_KEY_P8"
-          [ -n "$ASC_KEY_ID" ] || missing="$missing ASC_KEY_ID"
-          [ -n "$ASC_ISSUER_ID" ] || missing="$missing ASC_ISSUER_ID"
+          for name in IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD IOS_PROFILE_APP_BASE64 IOS_PROFILE_NOTIFICATION_SERVICE_BASE64 IOS_PROFILE_TIMER_WIDGET_BASE64 APPLE_APP_PASSWORD; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
           [ -n "$APPLE_TEAM_ID" ] || missing="$missing APPLE_TEAM_ID(variable)"
+          [ -n "$APPLE_ID" ] || missing="$missing APPLE_ID(variable)"
           if [ -n "$missing" ]; then
             echo "::warning title=TestFlight::These items are missing, so the upload is skipped:$missing"
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -708,13 +726,40 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Write the API key
+      # The certificate goes into a temporary keychain. Xcode 16 and later
+      # reads the profiles from the second folder. Older versions read the
+      # first folder, so the step writes both.
+      - name: Install the certificate and the profiles
         if: steps.check.outputs.ready == 'true'
         env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_DIST_P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          IOS_PROFILE_APP_BASE64: ${{ secrets.IOS_PROFILE_APP_BASE64 }}
+          IOS_PROFILE_NOTIFICATION_SERVICE_BASE64: ${{ secrets.IOS_PROFILE_NOTIFICATION_SERVICE_BASE64 }}
+          IOS_PROFILE_TIMER_WIDGET_BASE64: ${{ secrets.IOS_PROFILE_TIMER_WIDGET_BASE64 }}
         run: |
-          umask 077
-          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/farmer-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$IOS_DIST_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -k "$keychain" -P "$IOS_DIST_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/dist.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          for secret in "$IOS_PROFILE_APP_BASE64" "$IOS_PROFILE_NOTIFICATION_SERVICE_BASE64" "$IOS_PROFILE_TIMER_WIDGET_BASE64"; do
+            printf '%s' "$secret" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+            uuid="$(security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" | plutil -extract UUID raw -)"
+            cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+            cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.mobileprovision"
+            echo "Installed the profile $uuid"
+          done
+          rm -f "$RUNNER_TEMP/profile.mobileprovision"
 
       # `plugins/with-ios-push.js` reads APPLE_TEAM_ID at prebuild, so the
       # variable must be in the env of this step.
@@ -731,12 +776,48 @@ jobs:
             cat "$file"
           done
 
-      # Automatic signing with an App Store Connect API key. The key needs
-      # the Admin role, so that Xcode can use cloud signing. Before the first
-      # run, these must exist: the App IDs, the app group
-      # `group.com.profico.farmer`, and the app record in App Store Connect.
-      # When automatic signing fails, the fallback is manual signing with a
-      # certificate and a profile in the secrets.
+      # Manual signing is set on the three app targets only. A global
+      # `PROVISIONING_PROFILE_SPECIFIER` on the command line would also reach
+      # the Pods targets, and they have no profile. The script finds each
+      # target by its bundle ID, not by its name. It fails when one is missing.
+      - name: Set manual signing on the targets
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile/ios
+        run: |
+          ruby <<'RUBY'
+          require "xcodeproj"
+
+          profiles = {
+            "com.profico.farmer" => ENV.fetch("APP_PROFILE"),
+            "com.profico.farmer.notification-service" => ENV.fetch("NOTIFICATION_PROFILE"),
+            "com.profico.farmer.timer-widget" => ENV.fetch("WIDGET_PROFILE"),
+          }
+          team = ENV.fetch("APPLE_TEAM_ID")
+          project = Xcodeproj::Project.open("Farmer.xcodeproj")
+          found = []
+          project.native_targets.each do |target|
+            target.build_configurations.each do |config|
+              profile = profiles[target.resolve_build_setting("PRODUCT_BUNDLE_IDENTIFIER", config.name)]
+              next unless profile
+              settings = config.build_settings
+              settings["CODE_SIGN_STYLE"] = "Manual"
+              settings["DEVELOPMENT_TEAM"] = team
+              settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+              settings["CODE_SIGN_IDENTITY[sdk=iphoneos*]"] = "Apple Distribution"
+              settings["PROVISIONING_PROFILE_SPECIFIER"] = profile
+              found << [target.name, config.name, profile]
+            end
+          end
+          missing = profiles.reject { |_, name| found.any? { |entry| entry[2] == name } }
+          abort "No target found for: #{missing.keys.join(", ")}" unless missing.empty?
+          project.save
+          found.each { |entry| puts entry.join(" / ") }
+          RUBY
+
+      # Before the first run, these must exist: the App IDs, the app group
+      # `group.com.profico.farmer`, the three App Store profiles, and the app
+      # record in App Store Connect. The profiles must hold the certificate
+      # in the secret `IOS_DIST_P12_BASE64`.
       - name: Archive for the store
         if: steps.check.outputs.ready == 'true'
         working-directory: apps/mobile/ios
@@ -748,11 +829,6 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/Farmer.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             | tee build-store-archive.log | tail -n 25
 
       # The job `ios` makes the same check on the unsigned archive, but this
@@ -782,7 +858,18 @@ jobs:
             <key>teamID</key>
             <string>$APPLE_TEAM_ID</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.profico.farmer</key>
+              <string>$APP_PROFILE</string>
+              <key>com.profico.farmer.notification-service</key>
+              <string>$NOTIFICATION_PROFILE</string>
+              <key>com.profico.farmer.timer-widget</key>
+              <string>$WIDGET_PROFILE</string>
+            </dict>
             <key>destination</key>
             <string>export</string>
             <key>uploadSymbols</key>
@@ -802,10 +889,6 @@ jobs:
             -archivePath build/Farmer.xcarchive \
             -exportPath build/export \
             -exportOptionsPlist ExportOptions.plist \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             | tee build-store-export.log | tail -n 25
           ls -la build/export
 
@@ -835,16 +918,17 @@ jobs:
       # it, App Store Connect holds the build at "Missing Compliance".
       - name: Upload to TestFlight
         if: steps.check.outputs.ready == 'true'
-        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5
-        with:
-          app-path: ${{ steps.ipa.outputs.path }}
-          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
-          api-key-id: ${{ secrets.ASC_KEY_ID }}
-          api-private-key: ${{ secrets.ASC_KEY_P8 }}
+        env:
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          IPA_PATH: ${{ steps.ipa.outputs.path }}
+        run: |
+          xcrun altool --upload-app -t ios -f "$IPA_PATH" -u "$APPLE_ID" -p @env:APPLE_APP_PASSWORD
 
-      - name: Delete the API key
+      - name: Delete the temporary keychain
         if: always()
-        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+        run: |
+          security delete-keychain "$RUNNER_TEMP/farmer-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/dist.p12" "$RUNNER_TEMP/profile.mobileprovision"
 
   release:
     name: Publish the release
