@@ -60,7 +60,7 @@ jobs:
       # The action ref is a commit sha, not a tag. A tag can move, and this
       # third-party action runs with the job token.
       - name: Install cccc
-        uses: moznion/cccc-action@f766d74cf323cd9085c2c9263cebdf1ec1ebfb19 # v1.1.1
+        uses: moznion/cccc-action@1d5313811f8451953e46a268c61791a01e40b7df # v1.1.2
         with:
           version: v1.7.0
 
@@ -100,7 +100,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog
-        uses: trufflesecurity/trufflehog@64d939a56362f519781c53ea09b27f8d1dc0140a # v3.97.6
+        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
         with:
           version: 3.97.6
           extra_args: --only-verified
