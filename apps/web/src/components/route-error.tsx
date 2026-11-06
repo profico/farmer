@@ -98,7 +98,11 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 						)}
 						<FeedbackButton
 							label="Report this problem"
-							context={{ error_ref: errorRef, error_message: message }}
+							// The message can be long, so the report keeps only its start.
+							context={{
+								error_ref: errorRef,
+								error_message: message.slice(0, 500),
+							}}
 						/>
 					</>
 				}

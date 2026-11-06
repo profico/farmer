@@ -144,6 +144,8 @@ export function FeedbackDialog({
 			response: answers[question.id]?.trim() || undefined,
 		}));
 		posthog.capture(SurveyEventName.SENT, {
+			// First, so a context key cannot replace a survey property.
+			...context,
 			[SurveyEventProperties.SURVEY_ID]: survey.id,
 			[SurveyEventProperties.SURVEY_NAME]: survey.name,
 			[SurveyEventProperties.SURVEY_QUESTIONS]: responses,
@@ -164,7 +166,6 @@ export function FeedbackDialog({
 			),
 			$set: { [respondedKey(survey)]: true },
 			page: window.location.pathname,
-			...context,
 		});
 		setAnswers({});
 		onOpenChange(false);
