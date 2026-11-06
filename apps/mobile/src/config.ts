@@ -17,7 +17,7 @@ export const USER_AGENT = `farmer-mobile/${APP_VERSION} (${Platform.OS} ${String
 export const STORE_URL =
 	Platform.OS === "ios"
 		? "itms-beta://"
-		: `https://play.google.com/store/apps/details?id=${Constants.expoConfig?.android?.package ?? "com.profico.farmer"}`;
+		: "https://play.google.com/store/apps/details?id=com.profico.farmer";
 
 /** The server that an internal build starts with, or null. The Server screen
  *  fills its field with it when the app has no saved server. */
