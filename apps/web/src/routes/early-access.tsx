@@ -6,13 +6,13 @@ import {
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { loadSiteVisitor, SitePage } from "#/components/site/site-chrome.tsx";
+import { loadProficoPage, SitePage } from "#/components/site/site-chrome.tsx";
 
 import "#/components/site/early-access.css";
 import { CONTACT_EMAIL, EARLY_ACCESS_FORM_URL } from "#/lib/links.ts";
 
 export const Route = createFileRoute("/early-access")({
-	loader: loadSiteVisitor,
+	loader: loadProficoPage,
 	head: () => ({ meta: [{ title: "Early access · Farmer" }] }),
 	component: Page,
 });

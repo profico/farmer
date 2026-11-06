@@ -309,7 +309,7 @@ export const INSTANCE_SETTINGS = [
 		label: "Public homepage",
 		...BOOL,
 		defaultValue: "false",
-		hint: "On: / shows the Farmer product page. Off: / opens the workspace, or sign-in first.",
+		hint: "On: / shows the Farmer product page, and the privacy, terms, delete account and early access pages are served. Off: / opens the workspace, or sign-in first, and those pages answer 404.",
 	},
 	{
 		name: "ASSISTANT_ENABLED",
