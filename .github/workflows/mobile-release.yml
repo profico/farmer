@@ -507,7 +507,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Prebuild also runs `pod install`. It warns that there is no Apple team:
-      # the two builds below do not sign, so no team is needed.
+      # the simulator build signs ad hoc and the archive does not sign, so no
+      # team is needed.
       - name: Prebuild the iOS project
         working-directory: apps/mobile
         run: bunx expo prebuild -p ios

@@ -484,9 +484,11 @@ keystore for every build. Android refuses an update that another key signed.
 
 ### iOS
 
-The runner builds two things with no signing: a Release build for the
-simulator, and an archive for a device (`CODE_SIGNING_ALLOWED=NO`). The
-unsigned archive has no entitlements, so the app group and push of the app
+The runner builds two things with no Apple account: a Release build for the
+simulator, and an archive for a device. The simulator build signs ad hoc
+(`CODE_SIGN_IDENTITY=-`), so Xcode embeds its entitlements and the keychain
+accepts the app group. The archive does not sign (`CODE_SIGNING_ALLOWED=NO`).
+The unsigned archive has no entitlements, so the app group and push of the app
 and the extensions are not in the IPA. The signing step of AltStore or
 SideStore applies the entitlements that the account allows. A free account
 allows no app group, so the widget and the extension cannot share the
