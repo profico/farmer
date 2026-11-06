@@ -41,7 +41,7 @@ export function RouteNotFound() {
 								variant="outline"
 								nativeButton={false}
 								render={
-									<Link to="/">
+									<Link to="/$orgSlug" params={{ orgSlug: "_" }}>
 										<HouseIcon aria-hidden />
 										Home
 									</Link>

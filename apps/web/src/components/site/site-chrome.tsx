@@ -1,20 +1,19 @@
 import { ArrowRightIcon, GithubLogoIcon } from "@phosphor-icons/react";
-import { Link, notFound } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
 import { FarmerMark } from "#/components/farmer-mark.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { githubLinks, LICENSE_NAME } from "#/lib/links.ts";
 import { getSession } from "#/server/auth.ts";
-import { getSiteConfig } from "#/server/config.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 // Every rule the public site uses, scoped under `.fm-site`.
 import "./site.css";
-import { WheatField } from "./wheat-field.tsx";
 
 /**
- * Who is looking at a public page, so the CTAs can say it: their workspace
+ * Who is looking at the API page, so the CTAs can say it: their workspace
  * when they have one, `/no-access` when they are signed in without a
  * membership (invitation revoked, or an account predating single-org mode),
  * and `/login` when they are not signed in. The public pages never redirect.
@@ -25,38 +24,21 @@ export type SiteVisitor = {
 	user: { email: string; name: string } | null;
 	/** `owner/name`, for the GitHub links. A fork links to itself. */
 	repository: string;
-	/**
-	 * Whether `/` is the product page (`HOMEPAGE_ENABLED`). Off, `/` redirects
-	 * into the workspace, so the header and footer drop the Features link and
-	 * the brand goes where the CTA goes.
-	 */
-	homepageEnabled: boolean;
 };
 
 export async function loadSiteVisitor(): Promise<SiteVisitor> {
-	const [session, { repository, homepageEnabled }] = await Promise.all([
+	const [session, { repository }] = await Promise.all([
 		getSession(),
-		getSiteConfig(),
+		getPublicAppConfig(),
 	]);
 	if (!session) {
-		return { orgSlug: null, user: null, repository, homepageEnabled };
+		return { orgSlug: null, user: null, repository };
 	}
 	// Server fn resolves userId/activeOrganizationId from the session itself —
 	// it no longer accepts a client-supplied identity.
 	const orgSlug = await getDefaultOrgSlugForSession();
 	const { email, name } = session.user;
-	return { orgSlug, user: { email, name }, repository, homepageEnabled };
-}
-
-/**
- * The loader of a page that is about the Profico instance (privacy, terms,
- * delete account, early access). It answers 404 when `HOMEPAGE_ENABLED` is
- * off, because a self-hosted instance has no Profico to describe.
- */
-export async function loadProficoPage(): Promise<SiteVisitor> {
-	const visitor = await loadSiteVisitor();
-	if (!visitor.homepageEnabled) throw notFound();
-	return visitor;
+	return { orgSlug, user: { email, name }, repository };
 }
 
 /**
@@ -119,53 +101,23 @@ function VisitorLink({
 	);
 }
 
-/**
- * Farmer's mark and name, linked to the front page. Given a visitor whose
- * deployment has no product page (`homepageEnabled` off), it links where the
- * CTA goes instead: `/` would only redirect there, through sign-in. The error
- * pages pass no visitor, because they call no loader; there `/` is right in
- * either mode.
- */
-export function SiteBrand({
+/** Farmer's mark and name, linked to where the viewer goes next. */
+function SiteBrand({
 	size = 26,
 	visitor,
 }: {
 	size?: number;
-	visitor?: SiteVisitor;
+	visitor: SiteVisitor;
 }) {
-	const content = (
-		<>
+	return (
+		<VisitorLink visitor={visitor} className="fm-brand" aria-label="Farmer">
 			<FarmerMark size={size} />
 			<span className="fm-brand-name" style={{ fontSize: size + 3 }}>
 				Farmer
 			</span>
-		</>
-	);
-	if (visitor && !visitor.homepageEnabled) {
-		return (
-			<VisitorLink visitor={visitor} className="fm-brand" aria-label="Farmer">
-				{content}
-			</VisitorLink>
-		);
-	}
-	return (
-		<Link to="/" className="fm-brand" aria-label="Farmer, front page">
-			{content}
-		</Link>
+		</VisitorLink>
 	);
 }
-
-const NAV = [
-	{ label: "Features", to: "/", hash: "features" },
-	{ label: "Self-hosting", to: "/self-hosting" },
-	{ label: "Changelog", to: "/changelog" },
-	{ label: "About", to: "/about" },
-] as const;
-
-/** The header's links. Features is an anchor on `/`, so it goes when `/` is
- *  not the product page. */
-const navFor = (visitor: SiteVisitor) =>
-	visitor.homepageEnabled ? NAV : NAV.filter((item) => !("hash" in item));
 
 /** How far past the top the page scrolls before the header's hairline is fully
  *  drawn. */
@@ -383,28 +335,6 @@ export function SiteHeader({ visitor }: { visitor: SiteVisitor }) {
 		<header ref={headerRef} className="fm-header">
 			<div className="fm-container fm-header-inner">
 				<SiteBrand visitor={visitor} />
-				<nav className="fm-nav fm-sm-hide" aria-label="Site">
-					{navFor(visitor).map((item) => (
-						<Link
-							key={item.label}
-							to={item.to}
-							hash={"hash" in item ? item.hash : undefined}
-							// The Features anchor lives on `/`, so it is never "the
-							// current page" — only the real pages mark themselves. The
-							// search is ignored, so a Changelog filter keeps its tab lit.
-							activeOptions={{
-								exact: true,
-								includeHash: true,
-								includeSearch: false,
-							}}
-							activeProps={
-								"hash" in item ? undefined : { "aria-current": "page" }
-							}
-						>
-							{item.label}
-						</Link>
-					))}
-				</nav>
 				<div className="fm-header-actions">
 					<ThemeToggle
 						className="fm-btn fm-btn-outline fm-btn-sm fm-btn-icon"
@@ -443,30 +373,12 @@ export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
 					</p>
 				</div>
 				<div className="fm-footer-col">
-					{visitor.homepageEnabled ? (
-						<Link to="/" hash="features">
-							Features
-						</Link>
-					) : null}
-					<Link to="/changelog">Changelog</Link>
-					{visitor.homepageEnabled ? (
-						<Link to="/early-access">Hosted early access</Link>
-					) : null}
-				</div>
-				<div className="fm-footer-col">
-					<Link to="/self-hosting">Self-hosting</Link>
+					<a href={links.selfHosting}>Self-hosting</a>
 					<a href={links.home}>Source on GitHub</a>
 					<a href={links.docs}>Documentation</a>
 				</div>
 				<div className="fm-footer-col">
-					<Link to="/about">About</Link>
-					{visitor.homepageEnabled ? (
-						<>
-							<Link to="/privacy">Privacy</Link>
-							<Link to="/terms">Terms</Link>
-							<Link to="/delete-account">Delete your account</Link>
-						</>
-					) : null}
+					<a href="https://farmer.profi.co">farmer.profi.co</a>
 				</div>
 			</div>
 			<div className="fm-container fm-footer-base">
@@ -482,7 +394,6 @@ export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
 					.
 				</span>
 			</div>
-			<WheatField />
 		</footer>
 	);
 }

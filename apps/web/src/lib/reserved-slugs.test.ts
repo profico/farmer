@@ -38,11 +38,14 @@ describe("RESERVED_SLUGS", () => {
 	});
 
 	test("holds every top-level directory the host serves files from", () => {
-		const publicDirs = readdirSync(join(import.meta.dir, "../../public"), {
-			withFileTypes: true,
-		})
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name);
+		const dirsOf = (dir: string) =>
+			readdirSync(join(import.meta.dir, dir), { withFileTypes: true })
+				.filter((entry) => entry.isDirectory() && isWellFormedSlug(entry.name))
+				.map((entry) => entry.name);
+		const publicDirs = [
+			...dirsOf("../../public"),
+			...dirsOf("../../../site/public"),
+		];
 		for (const segment of [...publicDirs, "assets"]) {
 			expect({ segment, reserved: RESERVED_SLUGS.has(segment) }).toEqual({
 				segment,

@@ -146,7 +146,8 @@ function AcceptInvitePage() {
 					</button>
 				) : null}
 				<Link
-					to="/"
+					to="/$orgSlug"
+					params={{ orgSlug: "_" }}
 					className={
 						session && emailMismatch
 							? "fm-btn fm-btn-outline fm-auth-grow"
