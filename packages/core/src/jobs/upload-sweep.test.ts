@@ -10,6 +10,7 @@ import { client, project } from "../db/schema/domain";
 import { type ObjectStore, setObjectStoreForTests } from "../lib/storage";
 import { uploadKey, uploadPath } from "../lib/uploads";
 import { createTestDb, present, type TestDb } from "../test/harness";
+import { type JobFailure, setJobFailureSink } from "./job-failures";
 import { runUploadSweepOnce, UPLOAD_SWEEP_GRACE_MS } from "./upload-sweep";
 
 const ORG = "org-sweep";
@@ -105,6 +106,29 @@ describe("runUploadSweepOnce", () => {
 		// writes, belong to somebody else.
 		expect(objects.has(ELSEWHERE)).toBe(true);
 		expect(objects.has(FOREIGN)).toBe(true);
+	});
+
+	test("a failed delete is reported to the job-failure sink", async () => {
+		const reports: JobFailure[] = [];
+		const refusal = new Error("store is down");
+		objects.set(UNUSED, OLD);
+		setObjectStoreForTests({
+			...store,
+			delete: async () => {
+				throw refusal;
+			},
+		});
+		setJobFailureSink((failure) => reports.push(failure));
+		try {
+			const summary = await runUploadSweepOnce({ now: NOW });
+			expect(summary.failed).toBe(1);
+			expect(reports).toEqual([
+				{ job: "upload-sweep", error: refusal, organizationId: ORG },
+			]);
+		} finally {
+			setJobFailureSink(null);
+			setObjectStoreForTests(store);
+		}
 	});
 
 	test("a deployment with no store does nothing", async () => {
