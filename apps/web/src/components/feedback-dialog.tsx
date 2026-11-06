@@ -1,3 +1,4 @@
+import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import {
 	type Survey,
@@ -76,14 +77,47 @@ function indexKey(index: number) {
 	return index === 0 ? "$survey_response" : `$survey_response_${index}`;
 }
 
+/**
+ * A button that opens the feedback dialog, for a screen that has no account
+ * menu, such as an error screen. It renders nothing when there is no survey.
+ * `context` goes on the event, so a report keeps the error ref and message.
+ */
+export function FeedbackButton({
+	label,
+	context,
+}: {
+	label: string;
+	context?: Record<string, string>;
+}) {
+	const survey = useFeedbackSurvey();
+	const [open, setOpen] = useState(false);
+	if (!survey) return null;
+	return (
+		<>
+			<Button variant="outline" onClick={() => setOpen(true)}>
+				<ChatCircleDotsIcon aria-hidden />
+				{label}
+			</Button>
+			<FeedbackDialog
+				survey={survey}
+				open={open}
+				onOpenChange={setOpen}
+				context={context}
+			/>
+		</>
+	);
+}
+
 export function FeedbackDialog({
 	survey,
 	open,
 	onOpenChange,
+	context,
 }: {
 	survey: Survey;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	context?: Record<string, string>;
 }) {
 	const posthog = usePostHog();
 	const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -130,6 +164,7 @@ export function FeedbackDialog({
 			),
 			$set: { [respondedKey(survey)]: true },
 			page: window.location.pathname,
+			...context,
 		});
 		setAnswers({});
 		onOpenChange(false);

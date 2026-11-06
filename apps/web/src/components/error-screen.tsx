@@ -65,7 +65,11 @@ export function ErrorCard({
 				<h1 className="text-lg leading-snug font-semibold">{title}</h1>
 				{children}
 				{actions && (
-					<div className="mt-3.5 flex flex-wrap gap-2">{actions}</div>
+					// `empty:hidden`: an action can render nothing, such as the
+					// feedback button with no survey.
+					<div className="mt-3.5 flex flex-wrap gap-2 empty:hidden">
+						{actions}
+					</div>
 				)}
 			</div>
 			{after}
