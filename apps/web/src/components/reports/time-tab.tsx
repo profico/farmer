@@ -40,6 +40,7 @@ import {
 } from "#/queries/reports.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 
+import { DetailedExportItems } from "./detailed-export-items.tsx";
 import {
 	ENTRY_GROUPS,
 	EntriesDrilldown,
@@ -358,7 +359,15 @@ function SummaryExport({
 					],
 				};
 			}}
-		/>
+		>
+			{/* The summary has no filters but the period and Active only. */}
+			<DetailedExportItems
+				input={{ from, to, activeOnly: input.activeOnly }}
+				filename={`time-report_${from}_${to}`}
+				title="Detailed time report"
+				facts={input.activeOnly ? [["Projects", "Active only"]] : []}
+			/>
+		</ExportMenu>
 	);
 }
 

@@ -16,6 +16,7 @@ import {
 } from "../services/reminder-recipients";
 import { reminderSettingsService } from "../services/reminder-settings.service";
 import type { Ctx } from "../services/types";
+import { reportJobFailure } from "./job-failures";
 
 export type LogReminderSummary = {
 	eligible: number;
@@ -142,6 +143,12 @@ export const runLogRemindersOnce = async (
 				userId: recipient.userId,
 				error: loggableError(error),
 			});
+			reportJobFailure({
+				job: "log-reminders",
+				error,
+				organizationId: run.organizationId,
+				userId: recipient.userId,
+			});
 		}
 	};
 
@@ -210,6 +217,11 @@ export const runLogRemindersOnce = async (
 				organizationId: run.organizationId,
 				error: loggableError(error),
 			});
+			reportJobFailure({
+				job: "log-reminders",
+				error,
+				organizationId: run.organizationId,
+			});
 			continue;
 		}
 
@@ -249,6 +261,12 @@ export const runLogRemindersOnce = async (
 							organizationId: run.organizationId,
 							userId: recipient.userId,
 							error,
+						});
+						reportJobFailure({
+							job: "log-reminders",
+							error,
+							organizationId: run.organizationId,
+							userId: recipient.userId,
 						});
 					}
 				}

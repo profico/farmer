@@ -51,6 +51,7 @@ import { loggableErrorLine } from "../lib/loggable-error";
 import { refreshInstanceSettings } from "../services/instance-settings.service";
 import { runAuditSweepOnce } from "./audit-sweep";
 import { runAutomationSyncOnce } from "./automation-sync";
+import { reportJobFailure, withJobFailureBudget } from "./job-failures";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
 import { runTimerSweepOnce } from "./timer-sweep";
@@ -259,13 +260,14 @@ const startIntervalScheduler = (
 			// store, the mail transport, the Slack credentials), so the snapshot
 			// is brought up to date first. See `lib/instance-settings.ts`.
 			await refreshInstanceSettings();
-			const summary = await config.run(logger);
+			const summary = await withJobFailureBudget(() => config.run(logger));
 			logger.info(`${config.name}: ${summary}`);
 		} catch (error) {
 			// A Drizzle query error has the SQL and its parameters in its
 			// message, and the parameters can hold a token or an email address.
 			// `loggableErrorLine` names the class, the code and the constraint.
 			logger.error(`${config.name} run failed: ${loggableErrorLine(error)}`);
+			reportJobFailure({ job: config.name, error });
 		} finally {
 			running = false;
 			const waiters = idleWaiters;

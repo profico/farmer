@@ -31,8 +31,19 @@ export const setAssistantSettings = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(setAssistantSettingsInput)
 	.handler(async ({ data, context }) => {
-		const { assistantService } = await import("@farmer/core/services");
-		return assistantService.settings.set(context.ctx, data);
+		const { assistantService, UserFacingError, userFacingAssistantError } =
+			await import("@farmer/core/services");
+		try {
+			return await assistantService.settings.set(context.ctx, data);
+		} catch (error) {
+			// A refused key is an `OpenRouterError`: its message is safe for the
+			// admin, and a refusal is not a fault to report. The REST route does
+			// the same.
+			const message =
+				error instanceof Error ? userFacingAssistantError(error) : null;
+			if (message !== null) throw new UserFacingError(message);
+			throw error;
+		}
 	});
 
 export const updateAssistantSettings = createServerFn({ method: "POST" })

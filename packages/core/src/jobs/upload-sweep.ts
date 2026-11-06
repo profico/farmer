@@ -44,6 +44,7 @@ import {
 	uploadKeyOf,
 	uploadOrganizationOf,
 } from "../lib/uploads";
+import { reportJobFailure } from "./job-failures";
 
 export const UPLOAD_SWEEP_GRACE_MS = 24 * 60 * 60 * 1000;
 
@@ -121,6 +122,7 @@ export const runUploadSweepOnce = async (
 		} catch (error) {
 			failed += 1;
 			options.logger?.warn(`Upload sweep: ${String(error)}`);
+			reportJobFailure({ job: "upload-sweep", error, organizationId });
 		}
 	}
 	return { enabled: true, listed, deleted, failed };

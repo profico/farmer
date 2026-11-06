@@ -429,6 +429,33 @@ export const projectsService = {
 		};
 	},
 
+	/** The active assignments of one person, for the Members page. Only the
+	 *  projects whose roster the caller may manage are returned, which is the
+	 *  gate `assignMember` and `removeMember` apply: an Admin sees all of them. */
+	listForUser: async (ctx: Ctx, userId: string) => {
+		const access = await ctxAccess(ctx);
+		const rows = await db
+			.select({
+				projectId: project.id,
+				projectName: project.name,
+				clientName: client.name,
+				status: project.status,
+				role: projectMember.role,
+			})
+			.from(projectMember)
+			.innerJoin(project, eq(projectMember.projectId, project.id))
+			.innerJoin(client, eq(project.clientId, client.id))
+			.where(
+				and(
+					eq(projectMember.organizationId, ctx.organizationId),
+					eq(projectMember.userId, userId),
+					eq(projectMember.active, true),
+				),
+			)
+			.orderBy(asc(client.name), asc(project.name));
+		return rows.filter((r) => access.canManageProjectMembers(r.projectId));
+	},
+
 	assignMember: async (ctx: Ctx, input: AssignProjectMemberInput) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(input.projectId);

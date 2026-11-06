@@ -12,6 +12,7 @@ import {
 	DEFAULT_TIMER_MAX_SECONDS,
 	taskIdOf,
 } from "../services/timers.service";
+import { reportJobFailure } from "./job-failures";
 
 export type TimerSweepSummary = {
 	running: number;
@@ -133,6 +134,12 @@ export const runTimerSweepOnce = async (
 				"[timer-sweep] failed to drop a timer",
 				loggableError(error),
 			);
+			reportJobFailure({
+				job: "timer-sweep",
+				error,
+				organizationId: row.organizationId,
+				userId: row.userId,
+			});
 		}
 	}
 

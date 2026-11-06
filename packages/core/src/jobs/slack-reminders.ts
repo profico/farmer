@@ -24,6 +24,7 @@ import {
 import { reminderSettingsService } from "../services/reminder-settings.service";
 import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
+import { reportJobFailure } from "./job-failures";
 
 export type SlackReminderSummary = {
 	organizations: number;
@@ -236,6 +237,12 @@ const sendReminder = async (
 			kind,
 			error: loggableError(error),
 		});
+		reportJobFailure({
+			job: "slack-reminders",
+			error,
+			organizationId: orgId,
+			userId: recipient.userId,
+		});
 		return "failed";
 	}
 };
@@ -263,6 +270,12 @@ const handleFailedSend = async (
 				userId: key.recipientUserId,
 				kind,
 				error: loggableError(error),
+			});
+			reportJobFailure({
+				job: "slack-reminders",
+				error,
+				organizationId: orgId,
+				userId: key.recipientUserId,
 			});
 		}
 	}
@@ -373,6 +386,11 @@ const runOrgPass = async (
 		console.error("[slack-reminders] org run failed", {
 			organizationId: org.id,
 			error: loggableError(error),
+		});
+		reportJobFailure({
+			job: "slack-reminders",
+			error,
+			organizationId: org.id,
 		});
 	}
 };

@@ -10,6 +10,7 @@ import { loggableErrorLine } from "../lib/loggable-error";
 import { safeTimezone } from "../lib/time";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
+import { reportJobFailure } from "./job-failures";
 import type { SchedulerLogger } from "./scheduler";
 
 // The automation sweep: every engine that writes time entries nobody typed —
@@ -276,6 +277,12 @@ export const runAutomationSyncOnce = async (
 			logger.error(
 				`[automation-sync] pass failed for ${target.organizationId}/${target.userId}: ${loggableErrorLine(error)}`,
 			);
+			reportJobFailure({
+				job: "automation-sync",
+				error,
+				organizationId: target.organizationId,
+				userId: target.userId,
+			});
 		}
 	};
 
