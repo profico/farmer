@@ -655,8 +655,8 @@ jobs:
           releaseName: ${{ needs.version.outputs.version }} (${{ github.run_number }})
 
   # Test mode: the job signs the app with a stored certificate and stored
-  # profiles, and sends it to TestFlight with an Apple ID. It does not change the job `ios`. The job
-  # `release` does not need it.
+  # profiles, and sends it to TestFlight with an Apple ID. It does not
+  # change the job `ios`. The job `release` does not need it.
   testflight:
     name: Upload to TestFlight
     needs: version
@@ -750,6 +750,7 @@ jobs:
           rm -f "$RUNNER_TEMP/dist.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
           security find-identity -v -p codesigning "$keychain"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           for secret in "$IOS_PROFILE_APP_BASE64" "$IOS_PROFILE_NOTIFICATION_SERVICE_BASE64" "$IOS_PROFILE_TIMER_WIDGET_BASE64"; do
@@ -783,7 +784,10 @@ jobs:
       - name: Set manual signing on the targets
         if: steps.check.outputs.ready == 'true'
         working-directory: apps/mobile/ios
+        # The `ruby` on the PATH can be a different Ruby than the one of
+        # CocoaPods, so the step installs the gem when it is not there.
         run: |
+          ruby -e 'require "xcodeproj"' 2>/dev/null || gem install --user-install --no-document xcodeproj
           ruby <<'RUBY'
           require "xcodeproj"
 
