@@ -7,6 +7,7 @@ import {
 	listMyProjects,
 	listProjectMembers,
 	listProjects,
+	listUserProjects,
 	listProjectTasks,
 } from "#/server/projects.ts";
 
@@ -48,6 +49,14 @@ export const projectMembersQuery = (org: string, projectId: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).timeEntries, "project-members", projectId],
 		queryFn: () => listProjectMembers({ data: projectId }),
+	});
+
+export const userProjectsQuery = (org: string, userId: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).projects, "by-user", userId],
+		queryFn: () => listUserProjects({ data: userId }),
+		// The Add button trusts this list, so never serve it from the cache.
+		staleTime: 0,
 	});
 
 export const assignableMembersQuery = (org: string, projectId: string) =>
