@@ -164,11 +164,10 @@ const newestCliReleaseWithToken = async (
 const newestCliRelease = async (
 	repo: string,
 ): Promise<ReleaseRead | null | typeof NO_REPOSITORY> => {
-	// The list is newest-first, and 30 releases is far more history than a
-	// single cli-v line needs to find its latest in, even with app releases
-	// interleaved.
+	// The list is newest-first. `mobile-v*` releases pile up in the same list,
+	// so ask for the largest page (100) to keep a cli-v release in it.
 	const response = await githubPublicGet(
-		`/repos/${repo}/releases?per_page=30`,
+		`/repos/${repo}/releases?per_page=100`,
 		"farmer-cli-installer",
 	);
 	if (response.status === 404) {
