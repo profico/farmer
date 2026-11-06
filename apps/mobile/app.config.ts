@@ -206,7 +206,7 @@ const defaultServer = process.env.FARMER_DEFAULT_SERVER?.trim() || undefined;
 const config: ExpoConfig = {
 	name: "Farmer",
 	slug: "farmer",
-	version: "0.1.3",
+	version: "1.0.0",
 	scheme: "farmer",
 	orientation: "portrait",
 	userInterfaceStyle: "automatic",
@@ -218,7 +218,9 @@ const config: ExpoConfig = {
 		bundleIdentifier: "com.profico.farmer",
 		// ADR 0005: iOS 18 or later.
 		deploymentTarget: "18.0",
-		supportsTablet: true,
+		// iPhone only: the app has no iPad layout, and an iPad build needs
+		// iPad screenshots in the App Store.
+		supportsTablet: false,
 		buildNumber: versionCode === undefined ? undefined : String(versionCode),
 		// Export compliance: the app uses HTTPS and standard HPKE for the push
 		// payload, in a mass-market app. That is exempt (EAR Category 5 Part
