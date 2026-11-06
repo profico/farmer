@@ -364,7 +364,7 @@ function Developers() {
 							<span className="fp-ink-acc">WDJB-MJHT</span>
 							{"\n"}
 							<span className="fp-ink-ok">
-								{"  "}✓ Signed in as ozunic@profi.co · Profico
+								{"  "}✓ Signed in as person@example.com · Profico
 							</span>
 							{"\n"}
 							<span className="fp-ink-mut">$</span> farmer start "Code review"
