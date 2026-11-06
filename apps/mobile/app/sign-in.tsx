@@ -21,6 +21,7 @@ import {
 	TokenCard,
 	WaitingCard,
 } from "../src/session/sign-in-parts";
+import { needsAppUpdate, UpdateAppButton } from "../src/session/update-app";
 import { FarmerMark } from "../src/ui/brand";
 import {
 	ActionButton,
@@ -72,11 +73,12 @@ export default function SignInScreen() {
 	return <SignInForm server={server} meta={meta} />;
 }
 
-function MetaFailure({ message, server }: { message: string; server: string }) {
+function MetaFailure({ error, server }: { error: Error; server: string }) {
 	const router = useRouter();
 	return (
 		<>
-			<ErrorBanner message={message} />
+			<ErrorBanner message={error.message} />
+			{needsAppUpdate(error) ? <UpdateAppButton /> : null}
 			<ActionButton
 				label="Change the server"
 				onPress={() =>
@@ -181,7 +183,7 @@ function Body({
 }) {
 	if (meta.isPending) return <Pending />;
 	if (meta.isError) {
-		return <MetaFailure message={meta.error.message} server={server} />;
+		return <MetaFailure error={meta.error} server={server} />;
 	}
 	if (flow.code) return <WaitingCard code={flow.code} onCancel={flow.cancel} />;
 	const hasMethods =

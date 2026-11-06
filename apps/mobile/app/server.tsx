@@ -8,6 +8,7 @@ import { APP_VERSION, DEFAULT_SERVER } from "../src/config";
 import { QrScanner } from "../src/session/qr-scanner";
 import { confirmServer } from "../src/session/server-confirmation";
 import { useSession } from "../src/session/session";
+import { needsAppUpdate, UpdateAppButton } from "../src/session/update-app";
 import { FarmerLogo } from "../src/ui/brand";
 import { ActionButton, ErrorBanner, Field, Text } from "../src/ui/components";
 import { LoadingIndicator } from "../src/ui/loading";
@@ -35,9 +36,11 @@ export default function ServerScreen() {
 	const [checking, setChecking] = useState(false);
 	const [scanning, setScanning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [updateApp, setUpdateApp] = useState(false);
 
 	const connect = async (input: string) => {
 		setError(null);
+		setUpdateApp(false);
 		setChecking(true);
 		try {
 			const origin = normalizeOrigin(input);
@@ -46,6 +49,7 @@ export default function ServerScreen() {
 			confirmServer(origin);
 			router.push({ pathname: "/sign-in", params: { server: origin } });
 		} catch (failure) {
+			setUpdateApp(failure instanceof Error && needsAppUpdate(failure));
 			setError(
 				failure instanceof Error ? failure.message : "Something went wrong.",
 			);
@@ -82,6 +86,11 @@ export default function ServerScreen() {
 					textContentType="URL"
 				/>
 				{error && !IOS ? <ErrorBanner message={error} /> : null}
+				{updateApp ? (
+					<View style={{ flexDirection: "row" }}>
+						<UpdateAppButton />
+					</View>
+				) : null}
 				<View
 					style={{ flexDirection: "row", alignItems: "center", gap: SPACE.m }}
 				>

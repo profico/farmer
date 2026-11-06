@@ -41,7 +41,7 @@ export const assertUsable = (
 ) => {
 	if (meta.apiVersion < REQUIRED_API_VERSION) {
 		throw new ApiClientError(
-			"update_required",
+			"server_outdated",
 			`${origin} runs an older version of Farmer that this app cannot use. Ask the administrator to update the server.`,
 		);
 	}
