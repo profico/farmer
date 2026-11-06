@@ -66,7 +66,6 @@ const bodyError = (code: "too_large" | "invalid_json" | "invalid_body") =>
  *  proxy logs a URL path, so the id does not go there. */
 export const RELAY_ID_HEADER = "x-relay-id";
 
-/** The secret from `Authorization: Bearer <secret>`, or null. */
 const bearer = (request: Request): string | null => {
 	const match = /^Bearer\s+(\S+)$/i.exec(
 		request.headers.get("authorization") ?? "",

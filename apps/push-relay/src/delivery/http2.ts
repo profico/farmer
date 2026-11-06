@@ -57,7 +57,6 @@ export const createHttp2Transport = (
 	const sessions = new Map<string, http2.ClientHttp2Session>();
 	const lastUsed = new WeakMap<http2.ClientHttp2Session, number>();
 
-	/** Destroy a session, and drop it from the map. */
 	const destroy = (origin: string, session: http2.ClientHttp2Session) => {
 		if (sessions.get(origin) === session) sessions.delete(origin);
 		if (!session.destroyed) session.destroy();

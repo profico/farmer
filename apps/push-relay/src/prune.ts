@@ -7,7 +7,6 @@ export const STALE_DEVICE_MS = 180 * 24 * 60 * 60_000;
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/** Delete the devices unseen for `STALE_DEVICE_MS`, and log the count. */
 export const pruneStaleDevices = (
 	store: DeviceStore,
 	now: number,

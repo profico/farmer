@@ -128,7 +128,6 @@ export class FcmTokenCache {
 export type FcmData = {
 	/** The ciphertext, base64url. */
 	e: string;
-	/** The kind: alert, data or liveactivity. */
 	k: PushBody["kind"];
 	la_event?: "start" | "update" | "end";
 	/** The content state as one JSON string. */

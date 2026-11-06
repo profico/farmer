@@ -22,7 +22,6 @@ export type KeyCheck =
 	| { ok: true; key: ServerKey }
 	| { ok: false; reason: "invalid" | "revoked" };
 
-/** Check a presented key against the store. */
 export const checkServerKey = (
 	presented: string,
 	find: (id: string) => ServerKey | null,

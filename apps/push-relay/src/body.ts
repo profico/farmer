@@ -35,7 +35,6 @@ const readCapped = async (
 	return Buffer.concat(chunks).toString("utf8");
 };
 
-/** Read, decode and validate a JSON body against `schema`. */
 export const readJsonBody = async <T>(
 	request: Request,
 	schema: z.ZodType<T>,

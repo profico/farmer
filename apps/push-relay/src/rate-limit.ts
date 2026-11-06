@@ -65,7 +65,6 @@ export class FixedWindowLimiter {
 		};
 	}
 
-	/** Count one request. */
 	record(key: string, now: number): void {
 		this.#sweep(now);
 		const existing = this.#buckets.get(key);
