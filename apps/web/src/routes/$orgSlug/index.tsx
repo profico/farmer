@@ -166,7 +166,9 @@ function OrgHome() {
 						/>
 						<AddBlockDialog
 							timezone={organization.timezone}
-							defaultDate={today}
+							// The day picked in the chart, which the list below shows: a
+							// person who picks Thursday and presses this means Thursday.
+							defaultDate={selectedDay}
 							trigger={
 								<Button size="sm">
 									<PlusIcon weight="regular" className="size-4" />
