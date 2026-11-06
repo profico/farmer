@@ -126,11 +126,11 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # Build the production image here instead of on the Coolify host — that host
-  # builds --no-cache on a shared arm64 box, which has corrupted tarballs and
-  # hung installs (see the retry loops in the Dockerfile). Coolify's app is a
-  # "Docker Image" resource pointing at ghcr.io/<owner>/<repository>:nightly;
-  # the last step just tells it to pull and restart.
+  # Build the production image for amd64 and arm64, one native runner each, so
+  # no QEMU. `image` pushes each platform by digest only; `deploy` joins the two
+  # digests into one multi-platform manifest under the tags below. A Coolify
+  # "Docker Image" resource can then pull ghcr.io/<owner>/<repository>:nightly,
+  # and the last step tells it to pull and restart.
   #
   # Tags by trigger:
   #   * a push to main: `nightly` and `sha-<long sha>`. Not `latest`.
@@ -141,22 +141,81 @@ jobs:
   # Only on a push to main or a `v*` tag, and only where `deploy-gate` allowed
   # it (a tag always, main only with the Coolify secret). A pull request never
   # deploys, from a fork or not.
-  #
-  # ubuntu-24.04-arm is a native arm64 runner, matching the Coolify host's arch
-  # with no QEMU. If your plan doesn't provide arm runners, switch runs-on to
-  # ubuntu-latest and add docker/setup-qemu-action@v3 before buildx — same
-  # result, much slower build.
-  deploy:
-    name: Build image, deploy to Coolify
+  image:
+    name: Build image (${{ matrix.arch }})
     needs: [ci, deploy-gate]
     if: github.event_name == 'push' && needs.deploy-gate.outputs.enabled == 'true'
-    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          # What the running deployment reports at the foot of Settings. The
+          # image is built from this commit, so this is the only place that
+          # knows it; see GIT_SHA in the Dockerfile. SERVER_VERSION is the
+          # release for a `v*` tag, and empty for a nightly build.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            SERVER_VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      - name: Save the digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Tag image, deploy to Coolify
+    needs: [image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -182,23 +241,14 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          # What the running deployment reports at the foot of Settings. The
-          # image is built from this commit, so this is the only place that
-          # knows it — see GIT_SHA in the Dockerfile. SERVER_VERSION is the
-          # release for a `v*` tag, and empty for a nightly build.
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-            SERVER_VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create the multi-platform manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
 
       # Only main: our instance runs `nightly`. A release tag deploys nothing.
       - name: Trigger Coolify deploy
@@ -209,26 +259,29 @@ jobs:
         run: |
           curl --fail-with-body -sS -H "Authorization: Bearer $API_TOKEN" "$WEBHOOK_URL"
 
-  # The push relay's image (apps/push-relay, ADR 0006). It has the same
-  # conditions as `deploy`: only a push to main, and only where `deploy-gate`
-  # found the Coolify secret. It does not call the web app's Coolify webhook.
+  # The push relay's image (apps/push-relay, ADR 0006). It builds only on a push
+  # to main, and only where `deploy-gate` found the Coolify secret. It does not call the web app's Coolify webhook.
   # The relay is a separate Coolify resource that pulls
   # ghcr.io/<owner>/farmer-push-relay:latest.
   #
   # The build context is the repo root, because the frozen install needs the
   # root lockfile. The cache has its own scope, so the two images do not push
-  # each other out of the GitHub Actions cache.
+  # each other out of the GitHub Actions cache. The relay is small, so QEMU
+  # builds the second platform here.
   push-relay-image:
     name: Build and push the push relay image
     needs: [ci, deploy-gate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-gate.outputs.enabled == 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -254,7 +307,7 @@ jobs:
         with:
           context: .
           file: apps/push-relay/Dockerfile
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
