@@ -20,6 +20,7 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
+import type { Survey } from "posthog-js";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -160,6 +161,7 @@ export function AppSidebar({
 		from: "/$orgSlug",
 		select: (context) => githubLinks(context.repository).newIssue,
 	});
+	const survey = useFeedbackSurvey();
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const searchStr = useLocation({ select: (location) => location.searchStr });
 	const navigate = useNavigate();
@@ -518,39 +520,11 @@ export function AppSidebar({
 								collapsed={navCollapsed}
 								hidden={panel !== null || navForced}
 							/>
-							<Tooltip>
-								<TooltipTrigger
-									render={
-										<a
-											href={newIssueUrl}
-											target="_blank"
-											rel="noreferrer"
-											aria-label="Report a problem"
-											className={cn(navRowClass, "mb-2.5")}
-										>
-											<GithubLogoIcon className="relative size-4.5 shrink-0" />
-											<span className="nav-label">
-												<span className="min-w-0 flex-1 truncate text-base">
-													Report a problem
-												</span>
-												<ArrowUpRightIcon
-													weight="regular"
-													className="size-3.5 shrink-0 text-muted-foreground"
-												/>
-											</span>
-										</a>
-									}
-								/>
-								<TooltipContent
-									side="right"
-									sideOffset={8}
-									hidden={!collapsed}
-									className="gap-1"
-								>
-									Report a problem
-									<ArrowUpRightIcon weight="regular" className="size-3" />
-								</TooltipContent>
-							</Tooltip>
+							<FeedbackRow
+								survey={survey}
+								newIssueUrl={newIssueUrl}
+								collapsed={collapsed}
+							/>
 						</div>
 					</div>
 					{/* Fixed height, not padding, and the one hairline inside the
@@ -568,6 +542,7 @@ export function AppSidebar({
 							userImage={userImage}
 							isAdmin={isAdmin}
 							collapsed={collapsed}
+							githubIssueUrl={survey ? newIssueUrl : null}
 						/>
 					</div>
 				</nav>
@@ -895,6 +870,86 @@ function CollapseToggle({
 }
 
 /**
+ * The row under the nav. With a feedback survey it opens the dialog, because
+ * not every person can open a GitHub issue, and the account menu then holds
+ * the GitHub link. Without a survey it is the GitHub link.
+ */
+function FeedbackRow({
+	survey,
+	newIssueUrl,
+	collapsed,
+}: {
+	survey: Survey | null;
+	newIssueUrl: string;
+	collapsed: boolean;
+}) {
+	const [open, setOpen] = useState(false);
+	const label = survey ? "Send feedback" : "Report a problem";
+	const content = (
+		<>
+			{survey ? (
+				<ChatCircleDotsIcon className="relative size-4.5 shrink-0" />
+			) : (
+				<GithubLogoIcon className="relative size-4.5 shrink-0" />
+			)}
+			<span className="nav-label">
+				<span className="min-w-0 flex-1 truncate text-base">{label}</span>
+				{!survey && (
+					<ArrowUpRightIcon
+						weight="regular"
+						className="size-3.5 shrink-0 text-muted-foreground"
+					/>
+				)}
+			</span>
+		</>
+	);
+	const className = cn(navRowClass, "mb-2.5");
+
+	return (
+		<>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						survey ? (
+							<button
+								type="button"
+								onClick={() => setOpen(true)}
+								aria-label={label}
+								className={className}
+							>
+								{content}
+							</button>
+						) : (
+							<a
+								href={newIssueUrl}
+								target="_blank"
+								rel="noreferrer"
+								aria-label={label}
+								className={className}
+							>
+								{content}
+							</a>
+						)
+					}
+				/>
+				<TooltipContent
+					side="right"
+					sideOffset={8}
+					hidden={!collapsed}
+					className="gap-1"
+				>
+					{label}
+					{!survey && <ArrowUpRightIcon weight="regular" className="size-3" />}
+				</TooltipContent>
+			</Tooltip>
+			{survey && (
+				<FeedbackDialog survey={survey} open={open} onOpenChange={setOpen} />
+			)}
+		</>
+	);
+}
+
+/**
  * The signed-in person, at the foot of the column.
  *
  * A menu rather than the row of controls the old sidebar had: on the rail there
@@ -909,18 +964,18 @@ function UserMenu({
 	userImage,
 	isAdmin,
 	collapsed,
+	githubIssueUrl,
 }: {
 	userName: string;
 	userEmail: string;
 	userImage: string | null;
 	isAdmin: boolean;
 	collapsed: boolean;
+	/** The new issue link, or null when the sidebar row already is that link. */
+	githubIssueUrl: string | null;
 }) {
 	const router = useRouter();
 	const posthog = usePostHog();
-	const survey = useFeedbackSurvey();
-	// The dialog is a sibling of the menu, so closing the menu keeps it mounted.
-	const [feedbackOpen, setFeedbackOpen] = useState(false);
 	const { theme, toggle } = useTheme();
 	// Shows the theme you'd get by choosing it, not the one you're in: the item
 	// is a destination, and "Light mode" on a light page is a statement of the
@@ -935,88 +990,94 @@ function UserMenu({
 	};
 
 	return (
-		<>
-			<DropdownMenu>
-				<DropdownMenuTrigger
-					render={
-						<button
-							type="button"
-							aria-label={`Account: ${userName}`}
-							className={cn(
-								"relative flex items-center rounded-xl ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
-								// `p-1.5` and the same corner at both widths, so the avatar
-								// keeps its position on the left instead of centring itself in a
-								// column that is about to close.
-								"gap-2.5 p-1.5 text-left hover:bg-muted",
-								!collapsed && "w-full",
-							)}
-						>
-							<PersonAvatar
-								name={userName}
-								image={userImage}
-								size="sm"
-								className="size-7"
-							/>
-							{/* The same out-of-flow band the nav rows use, at this row's own
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={
+					<button
+						type="button"
+						aria-label={`Account: ${userName}`}
+						className={cn(
+							"relative flex items-center rounded-xl ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+							// `p-1.5` and the same corner at both widths, so the avatar
+							// keeps its position on the left instead of centring itself in a
+							// column that is about to close.
+							"gap-2.5 p-1.5 text-left hover:bg-muted",
+							!collapsed && "w-full",
+						)}
+					>
+						<PersonAvatar
+							name={userName}
+							image={userImage}
+							size="sm"
+							className="size-7"
+						/>
+						{/* The same out-of-flow band the nav rows use, at this row's own
 						    geometry — a bigger mark and less padding, so it takes the
 						    modifier. See `.nav-label` in styles.css. */}
-							<span className="nav-label nav-label-user">
-								<span className="min-w-0 flex-1">
-									<span className="block truncate text-sm font-medium">
-										{userName}
-									</span>
-									{!isAdmin && (
-										<span className="block truncate text-2xs text-muted-foreground">
-											Member
-										</span>
-									)}
+						<span className="nav-label nav-label-user">
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-sm font-medium">
+									{userName}
 								</span>
-								<CaretUpDownIcon
-									weight="regular"
-									className="size-3.5 shrink-0 text-muted-foreground"
-								/>
+								{!isAdmin && (
+									<span className="block truncate text-2xs text-muted-foreground">
+										Member
+									</span>
+								)}
 							</span>
-						</button>
-					}
-				/>
-				<DropdownMenuContent side="right" align="end" className="w-56">
-					{/* Base UI's GroupLabel reads a group context, so it needs the Group
+							<CaretUpDownIcon
+								weight="regular"
+								className="size-3.5 shrink-0 text-muted-foreground"
+							/>
+						</span>
+					</button>
+				}
+			/>
+			<DropdownMenuContent side="right" align="end" className="w-56">
+				{/* Base UI's GroupLabel reads a group context, so it needs the Group
 				    around it — outside one it throws rather than rendering plain. */}
-					<DropdownMenuGroup>
-						<DropdownMenuLabel className="flex flex-col gap-0.5">
-							<span className="truncate font-medium text-foreground">
-								{userName}
-							</span>
-							<span className="truncate text-2xs font-normal text-muted-foreground">
-								{userEmail}
-							</span>
-						</DropdownMenuLabel>
-					</DropdownMenuGroup>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={toggle}>
-						<ThemeIcon weight="fill" className="size-4" />
-						Switch to {nextTheme} mode
+				<DropdownMenuGroup>
+					<DropdownMenuLabel className="flex flex-col gap-0.5">
+						<span className="truncate font-medium text-foreground">
+							{userName}
+						</span>
+						<span className="truncate text-2xs font-normal text-muted-foreground">
+							{userEmail}
+						</span>
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={toggle}>
+					<ThemeIcon weight="fill" className="size-4" />
+					Switch to {nextTheme} mode
+				</DropdownMenuItem>
+				{githubIssueUrl && (
+					<DropdownMenuItem
+						render={
+							// Base UI puts the item's children in the link, which the lint
+							// rule cannot see, so the label names the link.
+							<a
+								href={githubIssueUrl}
+								target="_blank"
+								rel="noreferrer"
+								aria-label="Open in GitHub"
+							/>
+						}
+					>
+						<GithubLogoIcon weight="fill" className="size-4" />
+						Open in GitHub
+						<ArrowUpRightIcon
+							weight="regular"
+							className="ml-auto size-3.5 text-muted-foreground"
+						/>
 					</DropdownMenuItem>
-					{survey && (
-						<DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
-							<ChatCircleDotsIcon weight="fill" className="size-4" />
-							Send feedback
-						</DropdownMenuItem>
-					)}
-					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={handleLogout}>
-						<SignOutIcon weight="fill" className="size-4" />
-						Log out
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
-			{survey && (
-				<FeedbackDialog
-					survey={survey}
-					open={feedbackOpen}
-					onOpenChange={setFeedbackOpen}
-				/>
-			)}
-		</>
+				)}
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={handleLogout}>
+					<SignOutIcon weight="fill" className="size-4" />
+					Log out
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
