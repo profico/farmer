@@ -1,0 +1,102 @@
+/* The Changelog (`routes/changelog.tsx`): CLI releases from GitHub releases,
+ * web app changes from the default branch's commit log, grouped by day.
+ * Scoped under `.fm-site` like the rest of the public site. */
+
+.fm-site .fm-changelog-head {
+	padding-top: 88px;
+	padding-bottom: 40px;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 24px;
+}
+.fm-site .fm-changelog-heading {
+	gap: 14px;
+}
+
+.fm-site .fm-changelog-list {
+	padding-bottom: 120px;
+}
+
+.fm-site .fm-changelog-empty {
+	padding: 40px 0;
+}
+
+.fm-site .fm-changelog-item {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+	gap: 12px 40px;
+	padding: 36px 0;
+	border-top: 1px solid var(--line);
+}
+.fm-site .fm-changelog-item:first-child {
+	border-top: 0;
+}
+
+.fm-site .fm-changelog-meta {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+}
+.fm-site .fm-changelog-tag {
+	font-size: 12px;
+	padding: 2px 9px;
+}
+.fm-site .fm-changelog-tag-cli {
+	background: var(--ground);
+	color: var(--fg);
+	border-color: transparent;
+}
+.fm-site .fm-changelog-tag-web {
+	background: var(--acc-soft);
+	color: var(--acc);
+	border-color: transparent;
+}
+.fm-site .fm-changelog-version {
+	font-size: 20px;
+}
+.fm-site .fm-changelog-date {
+	font-size: 13.5px;
+}
+
+.fm-site .fm-changelog-body {
+	grid-column: span 3;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+.fm-site .fm-changelog-title {
+	margin: 0;
+	font-weight: 400;
+	font-size: 30px;
+	line-height: 1.1;
+}
+.fm-site .fm-changelog-notes {
+	margin: 0;
+	padding-left: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.fm-site .fm-changelog-commits li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.fm-site .fm-changelog-more {
+	border-top: 1px solid var(--line);
+	padding-top: 28px;
+	font-size: 14.5px;
+}
+
+@media (max-width: 760px) {
+	.fm-site .fm-changelog-head {
+		padding-top: 56px;
+	}
+}

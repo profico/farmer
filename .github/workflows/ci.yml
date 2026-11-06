@@ -324,3 +324,71 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=push-relay
           cache-to: type=gha,mode=max,scope=push-relay
+
+  # The public site's image (apps/site, issue 234). Same triggers and the same
+  # gate as the push relay. The site is built for farmer.profi.co only, and the
+  # product image does not contain it. The build reads the releases and the
+  # recent commits from GitHub, so the workflow token goes in as a build secret
+  # (the build uses it for the API rate limit and does not keep it), and
+  # SITE_STRICT_RELEASES makes a failed read fail the build.
+  # The deploy step runs only where COOLIFY_SITE_WEBHOOK is set.
+  site-image:
+    name: Build and push the site image
+    needs: [ci, deploy-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-gate.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/farmer-site
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: apps/site/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=site
+          cache-to: type=gha,mode=max,scope=site
+
+      - name: Trigger Coolify deploy
+        env:
+          WEBHOOK_URL: ${{ secrets.COOLIFY_SITE_WEBHOOK }}
+          API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::notice::COOLIFY_SITE_WEBHOOK is not set, so the site is not deployed."
+            exit 0
+          fi
+          curl --fail-with-body -sS -H "Authorization: Bearer $API_TOKEN" "$WEBHOOK_URL"
