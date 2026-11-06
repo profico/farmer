@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a change or a new feature.
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not write a real client, person, email or production id.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Say what you cannot do now, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: Describe the change that you want.
+    validations:
+      required: false

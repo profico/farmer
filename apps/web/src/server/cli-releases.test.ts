@@ -85,7 +85,7 @@ describe("resolveCliDownload", () => {
 				"https://github.com/a-fork/farmer/releases/download/cli-v0.2.0/farmer-linux-x64",
 		});
 		expect(requested).toEqual([
-			"https://api.github.com/repos/a-fork/farmer/releases?per_page=30",
+			"https://api.github.com/repos/a-fork/farmer/releases?per_page=100",
 		]);
 		expect(sentAuthorization).toEqual([null]);
 	});

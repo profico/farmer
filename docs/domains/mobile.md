@@ -342,7 +342,6 @@ Play account. Only the store upload (see "Store upload") needs them.
 |---|---|
 | Push to `main` that changes `apps/mobile`, `packages/api-client`, `packages/push-crypto`, `bun.lock` or the workflow | Builds both platforms. Replaces the prerelease `mobile-latest` (the old release and its tag are deleted, and made again on the new commit). |
 | Tag `mobile-v<version>` | Builds both platforms. Publishes a normal release. The job fails when the tag is not the `version` of `app.config.ts`. Also uploads to the stores (see "Store upload"). |
-| Push to `feat/mobile` | Builds both platforms. Keeps the files as workflow artifacts. No release. Remove this trigger after the mobile pull request merges. |
 | `workflow_dispatch` | Builds. Releases only on `main`. Uploads to the stores only when the input `publish_to_stores` is on. |
 
 The files of a release:
@@ -361,7 +360,7 @@ The files of a release:
 ### Store upload
 
 The upload runs on a tag `mobile-v*`, and on a manual run with the input
-`publish_to_stores` on. A push to `main` or to `feat/mobile` never uploads.
+`publish_to_stores` on. A push to `main` never uploads.
 The jobs `play-upload` and `testflight` run beside the job `release`. The job
 `release` does not wait for them, so a failed upload cannot block the GitHub
 release. The
@@ -471,3 +470,26 @@ The workflow selects Xcode with `maxim-lobanov/setup-xcode`: the newest
 stable one, or the repository variable `XCODE_VERSION`. The iOS 27 SDK needs
 the UIScene life cycle, and `plugins/with-ios-scene.js` adds it. The plugin
 does not depend on the Xcode version.
+
+### Build your own app
+
+A fork that builds its own app must not reuse the identifiers of the
+upstream app. Apple and Google tie these identifiers to one developer
+account. Change each item in this list to your own value:
+
+- The bundle id and the Android package `com.profico.farmer`, in
+  `apps/mobile/app.config.ts`.
+- The app group `group.com.profico.farmer`, in
+  `apps/mobile/plugins/with-ios-push.js`, in `apps/mobile/src/push/storage.ts`,
+  and in the Swift files and `expo-target.config.js` files under
+  `apps/mobile/plugins/ios-targets/`.
+- The Kotlin package `com.profico.farmer`, in the local modules under
+  `apps/mobile/modules/` (the `build.gradle` files, the
+  `expo-module.config.json` files and the folders of the `.kt` files).
+- The relay credentials. Run your own push relay (`apps/push-relay`) with your
+  own APNs key and FCM service account. Set `APNS_TOPIC` in
+  `apps/push-relay/src/config.ts` or in the environment to your bundle id.
+  Set the relay URL of the server to your relay.
+
+Run `rg -n 'com\.profico\.farmer'` to find every place. The store secrets
+for the workflow `mobile-release.yml` are your own too.

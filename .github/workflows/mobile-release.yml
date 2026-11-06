@@ -19,9 +19,7 @@ name: Mobile release
 #
 #                      git tag mobile-v0.1.0 && git push origin mobile-v0.1.0
 #
-#   push to feat/mobile  builds both platforms and keeps the files as workflow
-#                    artifacts. It publishes nothing.
-#   workflow_dispatch    the same as a push to the branch that you pick: a
+#   workflow_dispatch  builds both platforms on the branch that you pick. A
 #                    release, and a store upload, only on main.
 #
 # A fork runs this as is. Without the Android secrets the APK is signed with
@@ -31,7 +29,7 @@ name: Mobile release
 # Store upload (test mode):
 #
 #   A tag `mobile-v*`, or a manual run with `publish_to_stores` on, also
-#   uploads the app to the stores. A push to main or to feat/mobile never
+#   uploads the app to the stores. A push to main never
 #   does. The upload is in test mode:
 #
 #   Android  the job `play-upload` sends an AAB to the Google Play track
@@ -87,8 +85,6 @@ on:
   push:
     branches:
       - main
-      # Remove this branch after the mobile pull request (#146) merges.
-      - feat/mobile
     tags: ["mobile-v*"]
     paths:
       - "apps/mobile/**"
@@ -133,7 +129,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The whole history, so the next step can find the tag's commit on main.
           fetch-depth: 0
@@ -200,7 +196,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -210,7 +206,7 @@ jobs:
       # JDK 17: the version that the Android build of React Native is tested
       # with. The runner's default JDK is newer.
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: "17"
@@ -224,7 +220,7 @@ jobs:
           packages: platform-tools
 
       - name: Cache the Bun packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -246,7 +242,7 @@ jobs:
       # the repository is limited. A branch reads the caches of main and of
       # its own ref. Main never reads the caches of a branch.
       - name: Restore the Gradle cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -402,7 +398,7 @@ jobs:
           (cd out && sha256sum "$(basename "$apk")" | tee "$(basename "$apk").sha256")
 
       - name: Upload the APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mobile-android
           path: out/*
@@ -433,7 +429,7 @@ jobs:
       # the pattern `mobile-*`, and the AAB must not be a release asset.
       - name: Upload the AAB
         if: env.PUBLISH_TO_STORES == 'true' && steps.signing.outputs.release == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: store-android-aab
           path: out-aab/*
@@ -443,7 +439,7 @@ jobs:
       # Only main saves the Gradle cache. The step runs after a good build.
       - name: Save the Gradle cache
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -470,7 +466,7 @@ jobs:
       FARMER_DEFAULT_SERVER: https://farmer.profi.co
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Xcode is chosen here, not left to the image. The newest stable Xcode
       # builds this app: `plugins/with-ios-scene.js` adds the UIScene life
@@ -491,7 +487,7 @@ jobs:
           bun-version: "1.4.2"
 
       - name: Cache the Bun packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -501,7 +497,7 @@ jobs:
       # `ios/` folder, and a `Pods/` folder restored before it would sit in a
       # folder that prebuild does not expect.
       - name: Cache CocoaPods
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/Library/Caches/CocoaPods
           key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
@@ -593,7 +589,7 @@ jobs:
           (cd out && shasum -a 256 -- * | tee SHA256SUMS-ios)
 
       - name: Upload the iOS builds
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mobile-ios
           path: out/*
@@ -614,7 +610,7 @@ jobs:
       - name: Download the AAB
         id: download
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: store-android-aab
           path: aab
@@ -671,7 +667,7 @@ jobs:
       WIDGET_PROFILE: Farmer Widget App Store
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -684,14 +680,14 @@ jobs:
           bun-version: "1.4.2"
 
       - name: Cache the Bun packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Cache CocoaPods
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/Library/Caches/CocoaPods
           key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
@@ -937,8 +933,7 @@ jobs:
   release:
     name: Publish the release
     needs: [version, android, ios]
-    # A push to the branch feat/mobile, or a manual run on another branch,
-    # keeps the artifacts and stops here.
+    # A manual run on another branch keeps the artifacts and stops here.
     if: github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'mobile-v'))
     runs-on: ubuntu-latest
     permissions:
@@ -951,12 +946,12 @@ jobs:
       # First, because `actions/checkout` cleans the workspace and would take
       # the downloaded files with it. The history is here for the notes.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Download the builds
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: mobile-*
           path: release

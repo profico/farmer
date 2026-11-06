@@ -1,0 +1,11 @@
+// Example of the repository defaults file for the farmer CLI.
+// Copy it to `.farmer.jsonc` and replace each value. `farmer init` writes
+// the real file for you. This repository does not track its own copy.
+{
+	// The slug of your organization.
+	"org": "your-org-slug",
+	// The id of the project. Run `farmer init` to find it.
+	"project": "00000000-0000-4000-8000-000000000001",
+	// Optional: the id of the task.
+	"task": "00000000-0000-4000-8000-000000000002",
+}
