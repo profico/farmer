@@ -11,8 +11,8 @@ export class CliError extends Error {
 	 *
 	 * A status alone cannot be branched on. Every organization route answers a
 	 * JSON 404 when the server has `CLI_ENABLED=false`, and a route this
-	 * server does not have at all answers a 404 with no body — so only a 404
-	 * WITHOUT a code means "this Farmer is older than the command you ran".
+	 * server does not have at all answers a 404 with no body. `failureMessage`
+	 * in `http.ts` turns the second into "update Farmer".
 	 */
 	readonly code?: string;
 

@@ -144,8 +144,7 @@ describe("ApiClient", () => {
 
 	// A command for a route the server does not have has to tell that apart
 	// from a route the server refuses. Both answer 404; only the refusal
-	// carries a `code`, so the code is what the command branches on — see
-	// `commands/timer.ts`.
+	// carries a `code`.
 	test("carries the status and the code of a failure", async () => {
 		const { api } = await clientWith([
 			jsonReply(404, { error: "Not found", code: "not_found" }),
@@ -170,6 +169,7 @@ describe("ApiClient", () => {
 		if (!(missing instanceof CliError)) throw new Error("Expected a CliError");
 		expect(missing.status).toBe(404);
 		expect(missing.code).toBeUndefined();
+		expect(missing.message).toContain("Ask the administrator to update Farmer");
 	});
 });
 

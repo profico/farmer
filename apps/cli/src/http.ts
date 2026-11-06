@@ -169,6 +169,14 @@ const failureMessage = async (response: Response, origin: string) => {
 		parsed = null;
 	}
 	if (!parsed?.success) {
+		// Every route this server has answers a 404 with an `ApiError` body, so a
+		// bare 404 is a route that came after this server's version.
+		if (response.status === 404) {
+			return {
+				message: `${origin} does not support this command yet. Ask the administrator to update Farmer.`,
+				code: undefined,
+			};
+		}
 		return {
 			message:
 				`${origin} answered ${response.status} ${response.statusText}`.trim(),

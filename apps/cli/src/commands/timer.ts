@@ -50,33 +50,12 @@ const stopwatch = (totalSeconds: number): string => {
 	return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-/**
- * A 404 with no `code` is a route this server does not have.
- *
- * Every organization route answers a JSON 404 WITH a code when the CLI is
- * switched off, so the code is what tells "your Farmer is older than your
- * farmer" from "the administrator turned this off".
- */
-const timerUnsupported = (error: CliError, origin: string): CliError =>
-	error.status === 404 && !error.code
-		? new CliError(
-				`${origin} does not have timers yet. Ask the administrator to update it.`,
-			)
-		: error;
-
 const readTimer = async (
 	session: Session,
 	scope: OrgScope,
 ): Promise<ApiTimer | null> => {
-	try {
-		const state = await session.api.get<ApiTimerState>(scope.path("/timer"));
-		return state.timer;
-	} catch (error) {
-		if (error instanceof CliError) {
-			throw timerUnsupported(error, session.server.origin);
-		}
-		throw error;
-	}
+	const state = await session.api.get<ApiTimerState>(scope.path("/timer"));
+	return state.timer;
 };
 
 const whatItMeasures = (timer: ApiTimer): string => {
@@ -196,18 +175,10 @@ const postStart = async (
 	out: Output,
 	body: StartTimerInput,
 ) => {
-	let state: ApiTimerState;
-	try {
-		state = await session.api.post<ApiTimerState, StartTimerInput>(
-			scope.path("/timer"),
-			body,
-		);
-	} catch (error) {
-		if (error instanceof CliError) {
-			throw timerUnsupported(error, session.server.origin);
-		}
-		throw error;
-	}
+	const state = await session.api.post<ApiTimerState, StartTimerInput>(
+		scope.path("/timer"),
+		body,
+	);
 	const timer = state.timer;
 	if (!timer) throw new CliError("The server started no timer.");
 
