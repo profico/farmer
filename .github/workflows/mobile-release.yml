@@ -129,7 +129,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The whole history, so the next step can find the tag's commit on main.
           fetch-depth: 0
@@ -196,7 +196,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -215,7 +215,7 @@ jobs:
       # longer has, and sdkmanager fails on it. Gradle installs the platform,
       # the build tools and the NDK that the project asks for.
       - name: Setup the Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: platform-tools
 
@@ -242,7 +242,7 @@ jobs:
       # the repository is limited. A branch reads the caches of main and of
       # its own ref. Main never reads the caches of a branch.
       - name: Restore the Gradle cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -439,7 +439,7 @@ jobs:
       # Only main saves the Gradle cache. The step runs after a good build.
       - name: Save the Gradle cache
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -466,7 +466,7 @@ jobs:
       FARMER_DEFAULT_SERVER: https://farmer.profi.co
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Xcode is chosen here, not left to the image. The newest stable Xcode
       # builds this app: `plugins/with-ios-scene.js` adds the UIScene life
@@ -667,7 +667,7 @@ jobs:
       WIDGET_PROFILE: Farmer Widget App Store
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -946,7 +946,7 @@ jobs:
       # First, because `actions/checkout` cleans the workspace and would take
       # the downloaded files with it. The history is here for the notes.
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
