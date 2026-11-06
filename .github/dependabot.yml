@@ -3,29 +3,45 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 3
     groups:
       actions:
-        update-types: [minor, patch]
+        patterns: ["*"]
 
   - package-ecosystem: bun
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 3
+    # The Expo SDK pins these. Take them in an SDK upgrade
+    # (`expo install --fix`), not one by one.
+    ignore:
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "@types/react"
+      - dependency-name: "@types/react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native/*"
     groups:
+      # An auth upgrade gets its own PR and its own review.
+      better-auth:
+        patterns: ["better-auth", "@better-auth/*"]
       npm:
         update-types: [minor, patch]
 
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 2
 
   - package-ecosystem: docker
     directory: /apps/push-relay
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 2
