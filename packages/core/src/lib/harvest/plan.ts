@@ -50,10 +50,6 @@ import { hoursToSeconds, roundToQuarterHour } from "./number";
 
 // --- Constants -------------------------------------------------------------
 
-/** The first day people log in this app: September 2026. Work rows on or
- *  after it are skipped; everything before comes from Harvest. */
-export const HARVEST_DEFAULT_CUTOFF = "2026-09-01";
-export const HARVEST_GUESS_DOMAIN = "profico.hr";
 /** A project-person pair with a row this many days before the cutoff (or
  *  later) is an active assignment. */
 export const HARVEST_ACTIVE_WINDOW_DAYS = 90;
@@ -68,7 +64,7 @@ const MAX_DESCRIPTION = 10_000;
 const MAX_CODE = 16;
 
 /** Client names that map to the org's internal client by default. */
-const INTERNAL_CLIENT_NAMES = new Set(["profico", "internal"]);
+const INTERNAL_CLIENT_NAMES = new Set(["internal"]);
 
 export type HarvestAbsenceKind = "vacation" | "sick" | "paid_leave";
 
@@ -136,12 +132,57 @@ function asciiFold(s: string): string {
 		.replace(/[^a-z0-9]/g, "");
 }
 
+/** Mail domains of public providers. A guess there would name a stranger. */
+const PUBLIC_MAIL_DOMAINS = new Set([
+	"gmail.com",
+	"googlemail.com",
+	"outlook.com",
+	"hotmail.com",
+	"live.com",
+	"yahoo.com",
+	"icloud.com",
+	"proton.me",
+	"protonmail.com",
+	"aol.com",
+]);
+
+const DOMAIN_PATTERN =
+	/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+
+/** The guess domain as a lower case host name, or null for an empty input.
+ *  Throws for a value that is not a domain or is a public mail domain. */
+export function parseGuessDomain(input: string): string | null {
+	const domain = input.trim().replace(/^@/, "").toLowerCase();
+	if (domain === "") return null;
+	if (!DOMAIN_PATTERN.test(domain)) {
+		throw new Error(`"${input.trim()}" is not a domain`);
+	}
+	if (PUBLIC_MAIL_DOMAINS.has(domain)) {
+		throw new Error(`${domain} is a public mail domain`);
+	}
+	return domain;
+}
+
 /** The address a former employee most likely had: the first letter of the
- *  first name and the whole last name, folded to ASCII, at `profico.hr`.
- *  "Ivan Horvat" gives "ihorvat@profico.hr". */
-export function guessEmail(first: string, last: string): string {
+ *  first name and the whole last name, folded to ASCII, at `domain`.
+ *  "Ivan Horvat" at "example.org" gives "ihorvat@example.org". */
+export function guessEmail(
+	first: string,
+	last: string,
+	domain: string,
+): string {
 	const initial = asciiFold(first).slice(0, 1);
-	return `${initial}${asciiFold(last)}@${HARVEST_GUESS_DOMAIN}`;
+	return `${initial}${asciiFold(last)}@${domain}`;
+}
+
+/** The guess domain of the choices, or null when it is empty or invalid (the
+ *  plan is blocked for an invalid one). */
+function guessDomainOf(choices: HarvestChoices): string | null {
+	try {
+		return parseGuessDomain(choices.guessDomain);
+	} catch {
+		return null;
+	}
 }
 
 /** Deliberately loose: the server's Zod `z.email()` is the real check. This
@@ -986,13 +1027,13 @@ function buildTasks(
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
 }
 
-/** The listed address of each person, or the guess when none is listed. */
+/** The listed address of each person. A guess depends on the guess domain,
+ *  which the admin sets later: the plan names it in `emailsToCheck`. */
 function candidateEmailsOf(persons: readonly ParsedPerson[]): string[] {
 	const candidateEmails = new Set<string>();
 	for (const person of persons) {
 		const listed = person.listed?.email.trim().toLowerCase() ?? "";
 		if (listed !== "") candidateEmails.add(listed);
-		else candidateEmails.add(guessEmail(person.firstName, person.lastName));
 	}
 	return [...candidateEmails].sort(compareStrings);
 }
@@ -1039,6 +1080,10 @@ export type HarvestDuplicateDecision = string;
  *  except `overlap.days`, which is keyed by `ParsedTimeRow.dayKey`. */
 export interface HarvestChoices {
 	cutoffDate: string;
+	/** The domain for a person with no email in Harvest, for example
+	 *  "example.org". Empty means no guess: such a person blocks the plan until
+	 *  the admin types an address. */
+	guessDomain: string;
 	clients: Record<string, HarvestClientChoice>;
 	projectTypes: Record<string, ProjectTypeValue>;
 	people: Record<string, HarvestPersonChoice>;
@@ -1057,14 +1102,17 @@ export interface HarvestChoices {
 	negativeRows: HarvestNegativeDecision | null;
 }
 
-/** The defaults: cutoff 1 September 2026, no overrides, keep this app's entries on an
- *  overlap day, and no deletions. The two questions (duplicate names and
- *  negative rows) have no default: the admin answers them. The parsed files
- *  do not change a default today; the parameter keeps the call site stable
- *  if one ever does. */
-export function defaultHarvestChoices(_parsed: ParsedHarvest): HarvestChoices {
+/** The defaults: the cutoff is the day after the last day of the export (today
+ *  when the export has no work row), no guess domain, no overrides, keep this
+ *  app's entries on an overlap day, and no deletions. The two questions
+ *  (duplicate names and negative rows) have no default: the admin answers
+ *  them. */
+export function defaultHarvestChoices(parsed: ParsedHarvest): HarvestChoices {
 	return {
-		cutoffDate: HARVEST_DEFAULT_CUTOFF,
+		cutoffDate: parsed.range
+			? addDays(parsed.range.to, 1)
+			: new Date().toISOString().slice(0, 10),
+		guessDomain: "",
 		clients: {},
 		projectTypes: {},
 		people: {},
@@ -1303,6 +1351,15 @@ function checkChoices(
 			kind: "choices",
 			sourceKey: "cutoffDate",
 			message: `The cutoff "${cutoff}" is not a yyyy-MM-dd date`,
+		});
+	}
+	try {
+		parseGuessDomain(choices.guessDomain);
+	} catch (err) {
+		blocked.push({
+			kind: "choices",
+			sourceKey: "guessDomain",
+			message: err instanceof Error ? err.message : "Not a valid domain",
 		});
 	}
 	const negativeCount = parsed.rows.reduce(
@@ -2058,7 +2115,13 @@ function draftCreated(
 	const cutoff = choices.cutoffDate;
 	const choice = choices.people[p.sourceKey];
 	const override = choice?.email?.trim().toLowerCase() || null;
-	const email = override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
+	const domain = guessDomainOf(choices);
+	// No domain, no guess: an empty address blocks the plan (`checkEmails`)
+	// until the admin sets a domain or types an address.
+	const email =
+		override ??
+		listedEmail ??
+		(domain === null ? "" : guessEmail(p.firstName, p.lastName, domain));
 	const emailListed = listedEmail !== null && email === listedEmail;
 	// An address the admin typed is not a guess: they vouch for it, as the
 	// people list does. Only a GUESS stays unverified.
@@ -2087,7 +2150,7 @@ function draftCreated(
 		archivedOn,
 	};
 	review.email = email;
-	review.emailGuessed = !emailConfirmed;
+	review.emailGuessed = !emailConfirmed && email !== "";
 	review.role = role;
 	review.type = type;
 	review.archived = archivedOn !== null;
@@ -2195,7 +2258,7 @@ function checkEmails(
 	for (const d of drafts) {
 		if (d.plan.action !== "create") continue;
 		const { email, emailListed } = d.plan;
-		if (!candidateEmails.has(email)) emailsToCheck.push(email);
+		if (email !== "" && !candidateEmails.has(email)) emailsToCheck.push(email);
 		const reason = emailCollisionReason(email, emailListed, index);
 		if (reason !== null) {
 			d.review.blocked = reason;
@@ -2216,6 +2279,9 @@ function emailCollisionReason(
 	index: EmailIndex,
 ): string | null {
 	const duplicate = `${email} is also the address of another imported person`;
+	if (email === "") {
+		return "has no email in Harvest. Type an address, or set a guess domain";
+	}
 	if (!looksLikeEmail(email)) return `"${email}" is not an email address`;
 	if (emailListed) {
 		return (index.listedUse.get(email) ?? 0) > 1 ? duplicate : null;

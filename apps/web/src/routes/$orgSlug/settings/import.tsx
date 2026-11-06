@@ -66,6 +66,7 @@ function ImportPage() {
 	const [planned, setPlanned] = useState<Planned | null>(null);
 	const [importing, setImporting] = useState(false);
 	const planSeq = useRef(0);
+	const defaultCutoff = useRef<string | null>(null);
 
 	const onFinished = useCallback(() => {
 		void invalidateOrg(queryClient, orgSlug);
@@ -116,7 +117,17 @@ function ImportPage() {
 			setSnapshot(snap);
 			// A file added later keeps what the admin already chose: every
 			// choice is keyed by Harvest name, and the names do not change.
-			setChoices((current) => current ?? parsed.choices);
+			// The default cutoff follows the files, so it moves with a later file
+			// until the admin sets it.
+			const fallbackCutoff = defaultCutoff.current;
+			defaultCutoff.current = parsed.choices.cutoffDate;
+			setChoices((current) =>
+				current === null
+					? parsed.choices
+					: current.cutoffDate === fallbackCutoff
+						? { ...current, cutoffDate: parsed.choices.cutoffDate }
+						: current,
+			);
 		} catch (err) {
 			toast.error(
 				err instanceof Error ? err.message : "Could not read the files",
@@ -168,7 +179,7 @@ function ImportPage() {
 			}
 			if (!current.plan.ready) {
 				toast.error(
-					"An address you typed belongs to a user outside this workspace. Change it.",
+					"An address belongs to a user outside this workspace. Change it.",
 				);
 				return;
 			}
