@@ -6,7 +6,7 @@ You need a Linux server with `podman compose` or `docker compose`, and a reverse
 
 ## Quick start
 
-1. Copy the files from the `deploy/` folder to the server.
+1. Copy the `deploy/` folder to the server.
 2. Copy `.env.example` to `.env` in the same folder.
 3. Set `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` in `.env`. Make the secret with `openssl rand -hex 32`.
 4. Start the services: `podman compose -f compose.yml up -d`.
@@ -16,6 +16,8 @@ You need a Linux server with `podman compose` or `docker compose`, and a reverse
 The `farmer` service applies the database migrations and seeds the built-in tasks each time it starts. Then it starts the server. Compose waits for the database to be healthy before it starts `farmer`.
 
 To build the image from a checkout of the repository, use the `build` block in `compose.yml` in place of `image`.
+
+Note: until the GHCR package is public, you cannot pull the image. Build it yourself with `podman build -t farmer .` in the repository root. Then set `FARMER_IMAGE=localhost/farmer` and `FARMER_VERSION=latest` in `.env`.
 
 Keep `BETTER_AUTH_SECRET`. The server uses it to seal each stored secret. A new value makes these secrets unreadable. To rotate it, read "Rotate the secret" in `docs/domains/deployment.md`.
 

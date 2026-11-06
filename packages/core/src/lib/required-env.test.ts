@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import { checkRequiredEnv } from "./required-env";
+import { checkRequiredEnv, requireProductionEnv } from "./required-env";
 
 const good = {
 	DATABASE_URL: "postgres://farmer:pw@db:5432/farmer",
@@ -30,5 +30,42 @@ describe("checkRequiredEnv", () => {
 		});
 		expect(result.missing).toEqual([]);
 		expect(result.warnings).toHaveLength(2);
+	});
+});
+
+describe("requireProductionEnv", () => {
+	const exit = spyOn(process, "exit").mockImplementation(() => {
+		throw new Error("exit");
+	});
+	afterEach(() => exit.mockClear());
+
+	const run = (env: Record<string, string>) => {
+		const lines: string[] = [];
+		const sink = { error: (l: string) => lines.push(l), warn: () => {} };
+		try {
+			requireProductionEnv(sink, env);
+		} catch {
+			// The stubbed process.exit throws, so the call does not go on.
+		}
+		return lines;
+	};
+
+	test("does nothing outside production", () => {
+		expect(run({ NODE_ENV: "development" })).toEqual([]);
+		expect(exit).not.toHaveBeenCalled();
+	});
+
+	test("prints one message and exits 1 in production", () => {
+		const lines = run({ NODE_ENV: "production" });
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toContain(
+			"DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL",
+		);
+		expect(exit).toHaveBeenCalledWith(1);
+	});
+
+	test("does not exit when the environment is complete", () => {
+		expect(run({ ...good, NODE_ENV: "production" })).toEqual([]);
+		expect(exit).not.toHaveBeenCalled();
 	});
 });
