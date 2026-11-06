@@ -220,7 +220,7 @@ jobs:
           packages: platform-tools
 
       - name: Cache the Bun packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -487,7 +487,7 @@ jobs:
           bun-version: "1.4.2"
 
       - name: Cache the Bun packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -497,7 +497,7 @@ jobs:
       # `ios/` folder, and a `Pods/` folder restored before it would sit in a
       # folder that prebuild does not expect.
       - name: Cache CocoaPods
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/Library/Caches/CocoaPods
           key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
@@ -680,14 +680,14 @@ jobs:
           bun-version: "1.4.2"
 
       - name: Cache the Bun packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Cache CocoaPods
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/Library/Caches/CocoaPods
           key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
