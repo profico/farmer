@@ -84,6 +84,7 @@ const SERVICES = {
 				"overview",
 				"listTasks",
 				"listAssignable",
+				"listForUser",
 			],
 		},
 	},
@@ -261,7 +262,7 @@ const SERVICES = {
 	slackService: {
 		service: slackService,
 		coverage: {
-			recorded: { completeInstall: true, disconnect: true },
+			recorded: { completeInstall: true, disconnect: true, pingBehind: true },
 			exempt: {
 				linkMember: "matches a person to their Slack account, no decision",
 				syncIdentities: "matches people to Slack accounts, no decision",
@@ -276,6 +277,7 @@ const SERVICES = {
 				"installationFor",
 				"slackIdFor",
 				"slackIdsFor",
+				"pingStates",
 			],
 		},
 	},

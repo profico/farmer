@@ -260,14 +260,20 @@ jobs:
       # The user file `~/.gradle/gradle.properties` has a higher priority than
       # `android/gradle.properties`, which prebuild writes with a heap of 2 GB.
       # The setting reaches the Gradle process, which starts after the wrapper
-      # reads this file. The Kotlin daemon takes its heap from
-      # `org.gradle.jvmargs` when `kotlin.daemon.jvmargs` is not set. The file
-      # does not change the project, so the AAB step uses it too.
+      # reads this file. The file does not change the project, so the AAB step
+      # uses it too.
+      #
+      # A private repository's `ubuntu-latest` runner has 7 GB of RAM. A
+      # separate Kotlin daemon stays alive with its own heap while R8 runs, and
+      # with a 6 GB heap the two JVMs used more than 7 GB and the runner
+      # stopped. Kotlin compiles in the Gradle process, so one JVM uses at
+      # most about 5.5 GB (heap, metaspace and native memory).
       - name: Configure Gradle
         run: |
           mkdir -p ~/.gradle
           {
-            echo "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g"
+            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g"
+            echo "kotlin.compiler.execution.strategy=in-process"
             echo "org.gradle.caching=true"
           } >> ~/.gradle/gradle.properties
 

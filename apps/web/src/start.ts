@@ -67,6 +67,28 @@ const csrfMiddleware = createCsrfMiddleware({
 	},
 });
 
+// Same signature as `captureFailure`, so both branches infer one result type.
+const passThrough = <T>({ next }: { next: () => Promise<T> }) => next();
+
+// Both server-only imports stay inside this callback: TanStack strips it from
+// the client bundle, and a top-level import is not stripped.
+const captureFailureMiddleware = createMiddleware({ type: "function" }).server(
+	async (args) => {
+		// A failed import must not fail the call: the call then runs uncaptured.
+		const modules = await Promise.all([
+			import("@tanstack/react-start/server"),
+			import("./lib/capture-failure"),
+		]).catch((error: unknown) => {
+			console.error("Failure capture is off for this call", error);
+			return null;
+		});
+		if (!modules) return passThrough(args);
+		const [{ getRequestHeaders }, { captureFailure }] = modules;
+		return captureFailure(args, getRequestHeaders);
+	},
+);
+
 export const startInstance = createStart(() => ({
 	requestMiddleware: [csrfMiddleware, instanceSettingsMiddleware],
+	functionMiddleware: [captureFailureMiddleware],
 }));

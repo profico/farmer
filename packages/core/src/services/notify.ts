@@ -28,7 +28,7 @@ import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
 import { loggableError } from "../lib/loggable-error";
 import { pushRelayUrl } from "../lib/push-relay";
-import { slackEscape, slackLink } from "../lib/slack-client";
+import { slackBlocks, slackEscape } from "../lib/slack-client";
 import {
 	type NotifiableDevice,
 	notifiableDevices,
@@ -97,6 +97,7 @@ export type NotifyKind =
 	| "admin-digest"
 	| "webhook-disabled"
 	| "timer-dropped"
+	| "ping"
 	| "test";
 
 // The whole policy, in one table. `preference` names the column in
@@ -162,6 +163,15 @@ const KINDS = {
 		appInsteadOfSlack: false,
 	},
 	test: {
+		channels: ["slack"],
+		preference: null,
+		reminder: false,
+		appInsteadOfSlack: false,
+	},
+	// A person asked a colleague to track their time (`slackService.pingBehind`).
+	// Not a reminder: a person chose to send it, so the reminder opt-out and the
+	// other reminder gates do not apply.
+	ping: {
 		channels: ["slack"],
 		preference: null,
 		reminder: false,
@@ -321,23 +331,33 @@ const pushAdapter: NotifyAdapter = async (to, event) => {
 };
 
 /** The Slack text of an event: the title in bold on its own line, the body
- *  under it, and the deep link last. The link is the point — the push channel
- *  always had it, and a DM that says "a few minutes now" with no way to get
- *  there asked the reader to go and find the page. */
-export const slackText = (event: NotifyEvent): string => {
-	const text =
-		event.slack ??
-		(event.title
-			? `*${slackEscape(event.title)}*\n${slackEscape(event.body)}`
-			: slackEscape(event.body));
-	const link = event.url
-		? slackLink(event.url, event.linkLabel ?? "Open Farmer")
-		: null;
-	return link ? `${text}\n${link}` : text;
-};
+ *  under it. It is the section of the blocks and the plain fallback for
+ *  notifications and screen readers. The link is not in it: the button
+ *  carries the link, and a second copy in the text would show twice. */
+export const slackText = (event: NotifyEvent): string =>
+	event.slack ??
+	(event.title
+		? `*${slackEscape(event.title)}*\n${slackEscape(event.body)}`
+		: slackEscape(event.body));
+
+/** The deep link is the point — the push channel always had it, and a DM that
+ *  says "a few minutes now" with no way to get there asked the reader to go
+ *  and find the page. */
+export const slackEventBlocks = (event: NotifyEvent) =>
+	slackBlocks(
+		slackText(event),
+		event.url
+			? { path: event.url, label: event.linkLabel ?? "Open Farmer" }
+			: undefined,
+	);
 
 const slackAdapter: NotifyAdapter = (to, event) =>
-	slackService.sendDm(to.organizationId, to.userId, slackText(event));
+	slackService.sendDm(
+		to.organizationId,
+		to.userId,
+		slackText(event),
+		slackEventBlocks(event),
+	);
 
 // The transport reads no database while `PUSH_RELAY_ENABLED` is off, and
 // answers false for a person with no phone that allows notifications.
