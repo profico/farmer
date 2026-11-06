@@ -47,12 +47,19 @@ log(
 		: "[push-relay] client address from the socket (TRUSTED_IP_HEADER is none or empty)",
 );
 
+log(
+	config.requireServerKey
+		? "[push-relay] a push needs a server key"
+		: "[push-relay] REQUIRE_SERVER_KEY is off: a push with no server key still works",
+);
+
 const relay = createRelay({
 	store,
 	senders: { ios, android },
 	limiters: createLimiters(DEFAULT_LIMITS),
 	trustedIpHeader: clientHeader,
 	maxDevices: config.maxDevices,
+	requireServerKey: config.requireServerKey,
 	log,
 	now,
 });

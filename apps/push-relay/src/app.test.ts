@@ -40,6 +40,7 @@ const setup = (
 		limits?: Partial<RelayLimits>;
 		trustedIpHeader?: string | null;
 		maxDevices?: number;
+		requireServerKey?: boolean;
 	} = {},
 ) => {
 	const store = DeviceStore.open(":memory:");
@@ -58,6 +59,7 @@ const setup = (
 				? "cf-connecting-ip"
 				: options.trustedIpHeader,
 		maxDevices: options.maxDevices ?? 1_000,
+		requireServerKey: options.requireServerKey ?? false,
 		log: (line) => logs.push(line),
 		now: () => clock,
 	});
@@ -903,6 +905,7 @@ describe("size limits", () => {
 			limiters: createLimiters(DEFAULT_LIMITS),
 			trustedIpHeader: null,
 			maxDevices: 1_000,
+			requireServerKey: false,
 			log: () => {},
 			now: () => 0,
 		});

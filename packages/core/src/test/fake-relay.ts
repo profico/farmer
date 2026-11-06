@@ -28,6 +28,8 @@ type Answer = { status: number; error?: string };
 export type FakeRelay = {
 	url: string;
 	requests: RelayRequest[];
+	/** The `Authorization` header of each push, in order. Null: none. */
+	authorizations: (string | null)[];
 	/** The answer for one relay id, until `reset`. Else 200. */
 	answer: (relayId: string, answer: Answer) => void;
 	/** Make the relay hold a registration, as `POST /v1/devices` does. A
@@ -44,7 +46,11 @@ export type FakeRelay = {
 	stop: () => Promise<void>;
 };
 
-const NAMES = ["PUSH_RELAY_ENABLED", "PUSH_RELAY_URL"] as const;
+const NAMES = [
+	"PUSH_RELAY_ENABLED",
+	"PUSH_RELAY_URL",
+	"PUSH_RELAY_KEY",
+] as const;
 
 /** The real relay refuses a ciphertext over 3,072 base64url characters, and
  *  a Live Activity push with no token that is not a start with attributes. */
@@ -67,6 +73,7 @@ const invalid = (body: RelayRequest): boolean => {
  *  of it until `stop`. */
 export const startFakeRelay = (): FakeRelay => {
 	const requests: RelayRequest[] = [];
+	const authorizations: (string | null)[] = [];
 	const answers = new Map<string, Answer>();
 	const secrets = new Map<string, string>();
 	const verifications: { relayId: string; publicKey: string }[] = [];
@@ -97,6 +104,7 @@ export const startFakeRelay = (): FakeRelay => {
 			const body = (await request.json()) as RelayRequest;
 			// The two limits of the real relay's `pushBody` that a server can
 			// break by itself. A push over them is a 400 there, so it is here.
+			authorizations.push(request.headers.get("authorization"));
 			if (!invalid(body)) requests.push(body);
 			else return Response.json({ error: "invalid_body" }, { status: 400 });
 			const answer = answers.get(body.relayId) ?? { status: 200 };
@@ -121,6 +129,7 @@ export const startFakeRelay = (): FakeRelay => {
 	return {
 		url,
 		requests,
+		authorizations,
 		answer: (relayId, answer) => {
 			answers.set(relayId, answer);
 		},
@@ -133,6 +142,7 @@ export const startFakeRelay = (): FakeRelay => {
 		},
 		reset: () => {
 			requests.length = 0;
+			authorizations.length = 0;
 			answers.clear();
 			secrets.clear();
 			verifications.length = 0;

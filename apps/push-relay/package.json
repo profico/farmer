@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "bun --watch src/main.ts",
 		"start": "bun run src/main.ts",
+		"admin": "bun run src/admin.ts",
 		"build": "bun build src/main.ts --target=bun --outfile dist/relay.js",
 		"test": "bun test",
 		"lint": "oxlint --config ../../oxlint.config.ts .",

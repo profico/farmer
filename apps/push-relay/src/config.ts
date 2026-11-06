@@ -9,6 +9,8 @@ export type RelayConfig = {
 	trustedIpHeader: string | undefined;
 	/** The most devices that the relay holds. */
 	maxDevices: number;
+	/** True: `POST /v1/push` needs a server key. */
+	requireServerKey: boolean;
 	/** Null: no APNs credentials, so iOS pushes are a dry run. */
 	apns: ApnsConfig | null;
 	/** Null: no FCM credentials, so Android pushes are a dry run. */
@@ -29,6 +31,10 @@ const environment = z.object({
 	RELAY_MAX_DEVICES: z.preprocess(
 		(value) => (value === "" ? undefined : value),
 		z.coerce.number().int().min(1).optional(),
+	),
+	REQUIRE_SERVER_KEY: z.preprocess(
+		(value) => (value === "" ? undefined : value),
+		z.enum(["true", "false"]).default("false"),
 	),
 	APNS_KEY_P8: optionalText,
 	APNS_KEY_ID: optionalText,
@@ -116,6 +122,7 @@ export const readConfig = (
 		dbPath: parsed.RELAY_DB_PATH ?? DEFAULT_DB_PATH,
 		trustedIpHeader: parsed.TRUSTED_IP_HEADER,
 		maxDevices: parsed.RELAY_MAX_DEVICES ?? DEFAULT_MAX_DEVICES,
+		requireServerKey: parsed.REQUIRE_SERVER_KEY === "true",
 		apns,
 		fcm,
 	};

@@ -23,7 +23,8 @@ import {
 	updateDeviceBody,
 	verifyDeviceBody,
 } from "./schemas";
-import type { Device, DeviceStore } from "./store";
+import { checkServerKey } from "./server-keys";
+import { ANONYMOUS_KEY_ID, type Device, type DeviceStore } from "./store";
 
 export type RelayDependencies = {
 	store: DeviceStore;
@@ -34,6 +35,8 @@ export type RelayDependencies = {
 	/** The most devices that the relay holds. A registration past it gets
 	 *  `503 relay_full`. */
 	maxDevices: number;
+	/** True: a push with no server key gets `401 server_key_required`. */
+	requireServerKey: boolean;
 	log: Log;
 	now: () => number;
 };
@@ -367,7 +370,48 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		}
 	};
 
+	/**
+	 * Who sends this push. A bad or revoked key is always refused. A request
+	 * with no key is refused only when `requireServerKey` is on. Else it counts
+	 * in the anonymous bucket, with no limit, so the rollout can start before
+	 * the servers send keys.
+	 */
+	const authorizeServer = (
+		request: Request,
+	): { keyId: string; limit: number | null } | Response => {
+		const presented = bearer(request);
+		if (presented === null) {
+			if (deps.requireServerKey) return error(401, "server_key_required");
+			return { keyId: ANONYMOUS_KEY_ID, limit: null };
+		}
+		const check = checkServerKey(presented, (id) => store.findServerKey(id));
+		if (check.ok) {
+			return { keyId: check.key.id, limit: check.key.monthlyLimit };
+		}
+		return check.reason === "revoked"
+			? error(403, "server_key_revoked")
+			: error(401, "invalid_server_key");
+	};
+
+	/** The 429 for a key that used its monthly quota. The month ends at the
+	 *  first instant of the next UTC month. */
+	const quotaExceeded = (limit: number): Response => {
+		const at = new Date(now());
+		const resetsAt = Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1);
+		return json(
+			429,
+			{
+				error: "monthly_quota_exceeded",
+				limit,
+				resetsAt: new Date(resetsAt).toISOString(),
+			},
+			{ "retry-after": String(Math.ceil((resetsAt - now()) / 1000)) },
+		);
+	};
+
 	const push = async (request: Request): Promise<Response> => {
+		const caller = authorizeServer(request);
+		if (caller instanceof Response) return caller;
 		const body = await readJsonBody(request, pushBody);
 		if (!body.ok) return bodyError(body.error);
 		const message = body.value;
@@ -377,16 +421,28 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		if (fault) return fault;
 		const admission = admitPush(device, message.kind);
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
+		// Count after every check that can refuse the push for another reason,
+		// and before the send, so two pushes cannot pass the last slot. The
+		// relay gives the slot back below when the push is not delivered.
+		const countedAt = now();
+		if (!store.consumeQuota(caller.keyId, caller.limit, countedAt)) {
+			log(`[push-relay] quota used up key=${caller.keyId}`);
+			return quotaExceeded(caller.limit ?? 0);
+		}
 
 		const sender = device.platform === "ios" ? senders.ios : senders.android;
 		let result: DeliveryResult;
 		try {
 			result = await sender(device, message);
 		} catch (cause) {
+			store.releaseQuota(caller.keyId, countedAt);
 			log(
 				`[push-relay] send failed platform=${device.platform} relay=${relayIdHint(device.relayId)} error=${cause instanceof Error ? cause.message : "unknown"}`,
 			);
 			return error(502, "upstream_unreachable");
+		}
+		if (result.outcome !== "delivered" && result.outcome !== "dry_run") {
+			store.releaseQuota(caller.keyId, countedAt);
 		}
 		settle(device, message, result);
 		return pushResponse(result);

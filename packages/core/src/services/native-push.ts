@@ -34,6 +34,7 @@ import { mobileDevice } from "../db/schema/mobile";
 import { loggableError } from "../lib/loggable-error";
 import {
 	type LiveActivityEvent,
+	logKeyRefusal,
 	pushRelayUrl,
 	type RelayLiveActivity,
 	type RelayOutcome,
@@ -176,7 +177,7 @@ const send = async (
 						: undefined,
 			});
 		});
-	} else if (outcome.kind === "failed") {
+	} else if (outcome.kind === "failed" && !logKeyRefusal(outcome.code)) {
 		console.error("[native-push] the relay refused a push", {
 			kind: push.kind,
 			status: outcome.status,
