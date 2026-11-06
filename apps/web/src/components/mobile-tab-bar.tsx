@@ -1,10 +1,18 @@
-import { DotsThreeIcon, SignOutIcon } from "@phosphor-icons/react";
+import {
+	ChatCircleDotsIcon,
+	DotsThreeIcon,
+	SignOutIcon,
+} from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useState } from "react";
 
+import {
+	FeedbackDialog,
+	useFeedbackSurvey,
+} from "#/components/feedback-dialog.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { settingsNavGroups } from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
@@ -60,6 +68,8 @@ export function MobileTabBar({
 	const router = useRouter();
 	const posthog = usePostHog();
 	const [moreOpen, setMoreOpen] = useState(false);
+	const survey = useFeedbackSurvey();
+	const [feedbackOpen, setFeedbackOpen] = useState(false);
 
 	// Narrow phones (iPhone SE/mini-class) only comfortably fit 3 tabs + More;
 	// give regular-and-up phones a 4th before anything overflows into More.
@@ -257,6 +267,20 @@ export function MobileTabBar({
 							<div className="truncate text-xs text-faint">{userEmail}</div>
 						</div>
 						<ThemeToggle className="p-1" iconClassName="size-4" />
+						{survey && (
+							<button
+								type="button"
+								onClick={() => {
+									setMoreOpen(false);
+									setFeedbackOpen(true);
+								}}
+								title="Send feedback"
+								aria-label="Send feedback"
+								className="quiet shrink-0 p-1"
+							>
+								<ChatCircleDotsIcon className="size-4" />
+							</button>
+						)}
 						<button
 							type="button"
 							onClick={handleLogout}
@@ -268,6 +292,13 @@ export function MobileTabBar({
 					</div>
 				</DrawerContent>
 			</Drawer>
+			{survey && (
+				<FeedbackDialog
+					survey={survey}
+					open={feedbackOpen}
+					onOpenChange={setFeedbackOpen}
+				/>
+			)}
 		</>
 	);
 }
