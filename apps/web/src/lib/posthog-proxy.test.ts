@@ -60,6 +60,10 @@ describe("upstreamUrl", () => {
 			"e/x?y",
 			"e/x#y",
 			"e\\..\\admin",
+			// The router decodes `%252e` to `%2e`, and `new URL` resolves that.
+			"e/%2e%2e/admin",
+			"e/.%2e/admin",
+			"static/%2E%2e/admin",
 		])
 			expect(upstreamUrl(EU, splat, "")).toBeNull();
 	});

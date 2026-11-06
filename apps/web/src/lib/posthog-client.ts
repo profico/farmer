@@ -9,9 +9,11 @@ export type PostHogCredentials = { token: string; host: string };
 
 /** The PostHog app host that the toolbar links to. Without it, posthog-js
  *  takes `api_host`, which is now the app's own proxy path. */
-const uiHost = (host: string): string => {
+const uiHost = (host: string): string | undefined => {
 	const region = posthogCloudRegion(host);
-	return region ? `https://${region}.posthog.com` : new URL(host).origin;
+	if (region) return `https://${region}.posthog.com`;
+	// A host typed without a scheme must not stop the app in the browser.
+	return URL.parse(host)?.origin;
 };
 
 /**

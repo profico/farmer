@@ -57,7 +57,12 @@ export const upstreamUrl = (
 			: host,
 	).origin;
 	const url = new URL(`${origin}/${splat}${search}`);
-	return url.origin === origin ? url : null;
+	// The allowlist is checked again on the parsed path, because `new URL`
+	// resolves an encoded dot segment such as `%2e%2e` that the splat check
+	// cannot see.
+	return url.origin === origin && BROWSER_PATH.test(url.pathname.slice(1))
+		? url
+		: null;
 };
 
 /** The client address goes upstream, because PostHog takes the GeoIP address
@@ -86,6 +91,9 @@ export const proxyPostHog = async (
 	const url = new URL(request.url);
 	const target = config ? safeUpstream(config.host, splat, url.search) : null;
 	if (!target) return new Response("Not found", { status: 404 });
+	// Checked before the body is read, so a large body is not held in memory.
+	if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES)
+		return new Response("Payload too large", { status: 413 });
 	const body =
 		request.method === "GET" || request.method === "HEAD"
 			? undefined
