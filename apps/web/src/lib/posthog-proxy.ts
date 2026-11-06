@@ -3,16 +3,30 @@ import {
 	trustedIpHeader,
 } from "@farmer/core/lib/client-address";
 
+import { posthogCloudRegion } from "./posthog-proxy-path";
 import { posthogServerConfig } from "./posthog-server";
 
-const CLOUD_HOST = /^https:\/\/(us|eu)\.i\.posthog\.com\/?$/;
 const ASSET_PATH = /^(static|array)\//;
+
+/** The paths posthog-js 1.433 requests. Nothing else is forwarded, so a
+ *  self-hosted PostHog on a private network shows only these to the internet. */
+const BROWSER_PATH =
+	/^(e|i|s|flags|decide|static|array|api\/(surveys|web_experiments|product_tours|early_access_features|conversations))(\/|$)/;
+
+/** TanStack decodes the splat, so a `..` segment, a `?`, a `#` or a backslash
+ *  in it could move the path or drop the query. */
+const UNSAFE_SPLAT = /(^|\/)\.\.?(\/|$)|[?#\\]/;
+
+/** posthog-js sends small batches. A larger body is not from the SDK. */
+const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
 const REQUEST_HEADERS = [
 	"content-type",
 	"content-encoding",
 	"accept",
 	"user-agent",
+	"x-conversations-token",
 ];
 const DROPPED_RESPONSE_HEADERS = [
 	"content-encoding",
@@ -28,15 +42,15 @@ const DROPPED_RESPONSE_HEADERS = [
  *
  * PostHog Cloud serves scripts from a separate assets host. A self-hosted
  * instance serves both from one host. The origin check is the SSRF guard: a
- * splat such as `/evil.example/x` or `@evil.example/x` must not change the host.
+ * splat must not change the host.
  */
 export const upstreamUrl = (
 	host: string,
 	splat: string,
 	search: string,
 ): URL | null => {
-	if (splat === "") return null;
-	const region = CLOUD_HOST.exec(host)?.[1];
+	if (!BROWSER_PATH.test(splat) || UNSAFE_SPLAT.test(splat)) return null;
+	const region = posthogCloudRegion(host);
 	const origin = new URL(
 		region && ASSET_PATH.test(splat)
 			? `https://${region}-assets.i.posthog.com`
@@ -46,6 +60,8 @@ export const upstreamUrl = (
 	return url.origin === origin ? url : null;
 };
 
+/** The client address goes upstream, because PostHog takes the GeoIP address
+ *  from the request. It is right only when `TRUSTED_IP_HEADER` is set. */
 const upstreamRequestHeaders = (request: Request): Headers => {
 	const headers = new Headers();
 	for (const name of REQUEST_HEADERS) {
@@ -70,13 +86,19 @@ export const proxyPostHog = async (
 	const url = new URL(request.url);
 	const target = config ? safeUpstream(config.host, splat, url.search) : null;
 	if (!target) return new Response("Not found", { status: 404 });
-	const hasBody = request.method !== "GET" && request.method !== "HEAD";
+	const body =
+		request.method === "GET" || request.method === "HEAD"
+			? undefined
+			: await request.arrayBuffer();
+	if (body && body.byteLength > MAX_BODY_BYTES)
+		return new Response("Payload too large", { status: 413 });
 	try {
 		const upstream = await fetch(target, {
 			method: request.method,
 			headers: upstreamRequestHeaders(request),
-			body: hasBody ? await request.arrayBuffer() : undefined,
+			body,
 			redirect: "manual",
+			signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
 		});
 		const headers = new Headers(upstream.headers);
 		for (const name of DROPPED_RESPONSE_HEADERS) headers.delete(name);

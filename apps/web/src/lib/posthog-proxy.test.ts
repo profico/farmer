@@ -28,9 +28,39 @@ describe("upstreamUrl", () => {
 		expect(upstreamUrl(host, "e/", "")?.href).toBe("https://ph.example.org/e/");
 	});
 
-	test("never changes the host, and refuses an empty splat", () => {
-		expect(upstreamUrl(EU, "//evil.example/x", "")?.origin).toBe(EU);
-		expect(upstreamUrl(EU, "@evil.example/x", "")?.origin).toBe(EU);
-		expect(upstreamUrl(EU, "", "")).toBeNull();
+	test("forwards each path posthog-js requests", () => {
+		for (const splat of [
+			"e/",
+			"i/v0/e/",
+			"s/",
+			"flags/",
+			"decide/",
+			"api/surveys/",
+			"api/conversations/v1/widget",
+		])
+			expect(upstreamUrl(EU, splat, "")?.pathname).toBe(`/${splat}`);
+	});
+
+	test("refuses any other path, an empty splat and a host change", () => {
+		for (const splat of [
+			"",
+			"admin/",
+			"api/projects/1",
+			"//evil.example/x",
+			"@evil.example/x",
+		])
+			expect(upstreamUrl(EU, splat, "")).toBeNull();
+	});
+
+	test("refuses a decoded splat that could move the path", () => {
+		for (const splat of [
+			"static/../api/projects/",
+			"e/../admin",
+			"e/..",
+			"e/x?y",
+			"e/x#y",
+			"e\\..\\admin",
+		])
+			expect(upstreamUrl(EU, splat, "")).toBeNull();
 	});
 });
