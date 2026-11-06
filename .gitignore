@@ -30,3 +30,10 @@ apps/mobile/GoogleService-Info.plist
 *.keystore
 *.p12
 *.mobileprovision
+
+# Repository defaults of the farmer CLI, one copy for each developer.
+# See .farmer.example.jsonc.
+/.farmer.jsonc
+
+# Report folders of Claude Security scans.
+CLAUDE-SECURITY-*/
