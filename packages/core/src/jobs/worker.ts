@@ -10,8 +10,8 @@
  *   - **Splitting the worker out.** Run this container instead of letting the
  *     web host schedule, and set AUTOMATION_SYNC_ENABLED=false (and friends) on
  *     the web host, and the two halves are separate processes with no code
- *     change. Run exactly one — the jobs are idempotent, but a second replica
- *     is just wasted API quota.
+ *     change. A second instance is safe, because each tick takes a lock
+ *     per job (job-lock.ts). One worker is still the cheapest layout.
  *
  * Unlike the in-process case, the timers here are the only reason to stay
  * alive, and they're unref'd — so hold the process open explicitly and release

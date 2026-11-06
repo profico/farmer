@@ -1,7 +1,7 @@
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 
 import * as apiTokensSchema from "./schema/api-tokens";
 import * as assistantSchema from "./schema/assistant";
@@ -83,10 +83,10 @@ const poolOptions = () => ({
 });
 
 /** Open a handle against a specific database. */
-export const createDb = (connectionString: string): Db =>
+export const createDb = (connectionString: string): Db & { $client: Sql } =>
 	drizzle(postgres(connectionString, poolOptions()), { schema });
 
-let ambient: Db | null = null;
+let ambient: (Db & { $client: Sql }) | null = null;
 let override: Db | null = null;
 
 /** Point every `db` consumer at another handle — a PGLite instance in tests.
@@ -96,6 +96,15 @@ export const setDbForTests = (handle: AnyDb | null): void => {
 	// this path reads — every consumer goes through the query builders, which are
 	// identical across both drivers and typed off the shared schema.
 	override = (handle as Db | null) ?? null;
+};
+
+/** The postgres.js client behind the ambient pool, for a caller that needs one
+ *  reserved connection (the job lock). Null under a test handle, which has no
+ *  such client. */
+export const ambientSqlClient = (): Sql | null => {
+	if (override) return null;
+	resolve();
+	return ambient?.$client ?? null;
 };
 
 const resolve = (): Db => {

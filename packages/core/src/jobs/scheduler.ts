@@ -42,9 +42,10 @@
  *   WEBHOOK_DELIVERY_INTERVAL_MINUTES - minutes between delivery ticks (default: 1)
  *   SCHEDULER_STARTUP_DELAY_MS        - delay before the first tick (default: 15000)
  *
- * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
- * runs its own loop — harmless (idempotent) but redundant; move to a leader
- * lock or run exactly one worker container at that point.
+ * Replicas: every instance runs the timers, but a tick takes a Postgres
+ * advisory lock for its job first (`job-lock.ts`) and the instance without the
+ * lock skips that tick. Webhook delivery and Slack reminders take no lock,
+ * because they claim each row before they send it.
  */
 
 import { loggableErrorLine } from "../lib/loggable-error";
@@ -52,6 +53,7 @@ import { refreshInstanceSettings } from "../services/instance-settings.service";
 import { runAuditSweepOnce } from "./audit-sweep";
 import { runAutomationSyncOnce } from "./automation-sync";
 import { reportJobFailure, withJobFailureBudget } from "./job-failures";
+import { withJobLock } from "./job-lock";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
 import { runTimerSweepOnce } from "./timer-sweep";
@@ -117,6 +119,9 @@ interface SchedulerConfig {
 	intervalEnv: string;
 	/** Interval used when intervalEnv is unset. */
 	defaultIntervalMinutes: number;
+	/** True when the job claims each row before it acts, so two instances
+	 *  cannot do the same work and a tick lock would add nothing. */
+	claimsRows?: true;
 	/** One tick of work; the returned string is logged as the run summary. The
 	 *  logger is handed down so a job's own per-item failures land in the same
 	 *  stream as the tick summary, rather than in a bare console.error the host's
@@ -158,6 +163,7 @@ function schedulerJobs(): SchedulerConfig[] {
 			// may send on, and a tick with nothing due ends before the compliance
 			// queries, so the finer interval costs one settings read per org.
 			defaultIntervalMinutes: 15,
+			claimsRows: true,
 			run: async () => {
 				const s = await runSlackRemindersOnce();
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
@@ -209,6 +215,7 @@ function schedulerJobs(): SchedulerConfig[] {
 			// outside this app notices — a receiver is waiting for it — and a tick
 			// with an empty outbox costs two indexed queries that return nothing.
 			defaultIntervalMinutes: 1,
+			claimsRows: true,
 			run: async (logger) => {
 				const s = await runWebhookDeliveryOnce({ logger });
 				if (!s.enabled) return "disabled";
@@ -259,9 +266,18 @@ const startIntervalScheduler = (
 			// A job reads the instance's settings synchronously (the object
 			// store, the mail transport, the Slack credentials), so the snapshot
 			// is brought up to date first. See `lib/instance-settings.ts`.
-			await refreshInstanceSettings();
-			const summary = await withJobFailureBudget(() => config.run(logger));
-			logger.info(`${config.name}: ${summary}`);
+			const runTick = async () => {
+				await refreshInstanceSettings();
+				return withJobFailureBudget(() => config.run(logger));
+			};
+			if (config.claimsRows) {
+				logger.info(`${config.name}: ${await runTick()}`);
+			} else {
+				const result = await withJobLock(config.name, runTick);
+				logger.info(
+					`${config.name}: ${result.ran ? result.value : "another instance holds the lock, tick skipped"}`,
+				);
+			}
 		} catch (error) {
 			// A Drizzle query error has the SQL and its parameters in its
 			// message, and the parameters can hold a token or an email address.
