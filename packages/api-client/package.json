@@ -21,6 +21,6 @@
 	"devDependencies": {
 		"bun-types": "1.4.2",
 		"openapi-typescript": "7.13.0",
-		"typescript": "^6.0.2"
+		"typescript": "^7.0.2"
 	}
 }
