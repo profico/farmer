@@ -11,7 +11,8 @@ import {
 /**
  * Reads the releases and the recent commits of the repository from GitHub and
  * writes `src/generated/releases.json`, which the Changelog and the front page
- * import. It runs at the start of `bun run build`.
+ * import. It runs at the start of `bun run build`, but only when
+ * `SITE_FETCH_RELEASES=1`. Without it the committed stub stays as it is.
  *
  * `GITHUB_TOKEN` is used when set, to avoid the anonymous rate limit. On a
  * network error or a rate limit the script prints a warning and writes empty
@@ -57,6 +58,12 @@ const readData = async (): Promise<ReleaseData> => {
 };
 
 const main = async () => {
+	if (process.env.SITE_FETCH_RELEASES !== "1") {
+		console.log(
+			"[releases] SITE_FETCH_RELEASES is not 1, so the committed stub stays",
+		);
+		return;
+	}
 	let data = EMPTY_RELEASE_DATA;
 	try {
 		data = await readData();

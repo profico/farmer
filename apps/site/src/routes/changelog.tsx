@@ -1,6 +1,6 @@
 import { BrowserIcon, GitCommitIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
 
 import { SitePage } from "#/components/site/site-chrome.tsx";
@@ -64,8 +64,19 @@ const groupCommitsByDay = (commits: WebCommit[]): DayGroup[] => {
 
 type Entry = { date: string; node: ReactNode };
 
+const subscribeNever = () => () => {};
+
 function Page() {
-	const kind = Route.useSearch().kind ?? "all";
+	// The page is prerendered for "all" and the static host ignores the query.
+	// The first client render must match that HTML, so the filter applies only
+	// after hydration.
+	const hydrated = useSyncExternalStore(
+		subscribeNever,
+		() => true,
+		() => false,
+	);
+	const urlKind = Route.useSearch().kind ?? "all";
+	const kind = hydrated ? urlKind : "all";
 	const { releases: releasesUrl, home } = githubLinks(REPOSITORY);
 
 	const cliReleases = releases.filter((release) => release.kind === "cli");

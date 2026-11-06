@@ -97,12 +97,18 @@ const kindOf = (tag: string): ReleaseKind =>
 
 const versionOf = (tag: string): string => tag.replace(/^(cli-)?v/, "");
 
-/** Published releases, newest first. */
+/** Published releases, newest first. A `mobile-` tag is the store app. It has
+ *  no place in the changelog, so it is left out. */
 export const releaseNotesFromList = (
 	list: z.infer<typeof githubReleaseList>,
 ): ReleaseNote[] =>
 	list
-		.filter((release) => !release.draft && release.published_at)
+		.filter(
+			(release) =>
+				!release.draft &&
+				release.published_at &&
+				!release.tag_name.startsWith("mobile-"),
+		)
 		.map((release) => ({
 			tag: release.tag_name,
 			kind: kindOf(release.tag_name),

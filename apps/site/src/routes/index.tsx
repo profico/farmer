@@ -11,5 +11,9 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-	return <FrontPage release={releases[0] ?? null} />;
+	return (
+		<FrontPage
+			release={releases.find((release) => release.kind === "web") ?? null}
+		/>
+	);
 }

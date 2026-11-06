@@ -57,6 +57,8 @@ export const createHandler = (root: string) => {
 		} catch {
 			return notFound();
 		}
+		// A NUL byte makes Bun.file throw.
+		if (pathname.includes("\0")) return notFound();
 
 		if (pathname === "/_site/health") {
 			return reply("ok", {
@@ -99,4 +101,10 @@ if (import.meta.main) {
 		fetch: createHandler(root),
 	});
 	console.log(`[site] serving ${root} on ${server.url}`);
+	// PID 1 in a container gets no default signal action, so stop on purpose.
+	for (const signal of ["SIGTERM", "SIGINT"] as const) {
+		process.on(signal, () => {
+			void server.stop().finally(() => process.exit(0));
+		});
+	}
 }

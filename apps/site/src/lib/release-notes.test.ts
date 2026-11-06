@@ -52,6 +52,8 @@ describe("releaseNotesFromList", () => {
 			release("v2.0.0", "2026-03-01T00:00:00Z"),
 			release("cli-v0.2.0", "2026-02-01T00:00:00Z", true),
 			release("v1.0.0", null),
+			release("mobile-latest", "2026-04-01T00:00:00Z"),
+			release("mobile-v1.0.0", "2026-04-02T00:00:00Z"),
 		]);
 		const notes = releaseNotesFromList(list);
 		expect(notes.map((n) => [n.version, n.kind])).toEqual([

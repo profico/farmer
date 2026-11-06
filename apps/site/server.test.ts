@@ -1,6 +1,13 @@
 /// <reference types="bun-types" />
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +30,33 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const get = (path: string) => handle(new Request(`http://site.test${path}`));
+
+describe("traefik.example.yml", () => {
+	const yml = readFileSync(
+		join(import.meta.dir, "traefik.example.yml"),
+		"utf8",
+	);
+	const pattern = new RegExp(
+		/PathRegexp\(`([^`]+)`\)/.exec(yml)?.[1] ?? "(?!)",
+	);
+	const routes = readdirSync(join(import.meta.dir, "src/routes"))
+		.filter((name) => name.endsWith(".tsx") && !name.startsWith("__"))
+		.map((name) => name.replace(/\.tsx$/, ""))
+		.filter((name) => name !== "index");
+
+	test("the regular expression matches exactly the site pages", () => {
+		expect(routes.length).toBe(7);
+		for (const route of routes) {
+			expect(pattern.test(`/${route}`)).toBe(true);
+			expect(pattern.test(`/${route}/`)).toBe(true);
+		}
+		for (const path of ["/about-1", "/privacyx", "/_", "/_/settings", "/"]) {
+			expect(pattern.test(path)).toBe(false);
+		}
+		expect(yml).toContain("Path(`/`)");
+		expect(yml).toContain("PathPrefix(`/_site/`)");
+	});
+});
 
 describe("static host", () => {
 	test("serves a page for its path, with or without a slash", async () => {
@@ -60,6 +94,8 @@ describe("static host", () => {
 			"/_site/missing.js",
 			"/_site/../server.ts",
 			"/%2e%2e/server.ts",
+			"/_site/%00",
+			"/about%00",
 		]) {
 			expect({ path, status: (await get(path)).status }).toEqual({
 				path,

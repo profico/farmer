@@ -29,9 +29,10 @@ bun run test       # bun test
 ## Release data
 
 - The changelog and the front page show releases and commits of `profico/farmer`. The site does not call GitHub at run time.
-- `scripts/fetch-releases.ts` reads the GitHub API and writes `src/generated/releases.json`. `bun run build` runs it first. The script uses `GITHUB_TOKEN` when it is set.
-- On a network error or a rate limit, the script prints a warning and writes empty data. With `SITE_STRICT_RELEASES=1` it exits with an error. The image build sets this variable.
-- The repository holds an empty stub of `releases.json`, so typecheck and tests pass without a network. Do not commit real data. Run `git checkout` on the file after a local build.
+- `scripts/fetch-releases.ts` reads the GitHub API and writes `src/generated/releases.json`. `bun run build` runs it first, but the script does nothing unless `SITE_FETCH_RELEASES=1`. The script uses `GITHUB_TOKEN` when it is set.
+- On a network error or a rate limit, the script prints a warning and writes empty data. With `SITE_STRICT_RELEASES=1` it exits with an error. The image build sets both variables.
+- The repository holds an empty stub of `releases.json`, so typecheck, tests and the CI build pass without a network. A plain local build keeps the stub. Do not commit real data. If you set `SITE_FETCH_RELEASES=1` locally, run `git checkout` on the file after the build.
+- The parse step leaves out the `mobile-*` tags (the store app). The front page pill shows the newest web release.
 - `src/lib/release-notes.ts` has the shapes and the parsing. `src/lib/releases.ts` reads the JSON file.
 - The site shows the commits on `main`. It does not show which build runs.
 
@@ -41,9 +42,16 @@ bun run test       # bun test
 
 ## Deploy
 
-- `apps/site/Dockerfile` builds the image. The final stage has only `dist/client` and the files that `server.ts` needs. The product `Dockerfile` does not build or copy this workspace. It copies only `apps/site/package.json`, for the frozen install.
+- `apps/site/Dockerfile` builds the image. The final stage has only `dist/client` and the files that `server.ts` needs. The product `Dockerfile` does not build this workspace, and its runtime stage does not hold it. Its build stage copies the whole tree with `COPY . .`, and it copies `apps/site/package.json` early, for the frozen install.
 - The CI job `site-image` in `.github/workflows/ci.yml` builds and pushes `ghcr.io/<owner>/farmer-site`. It calls the Coolify webhook `COOLIFY_SITE_WEBHOOK` when the secret exists.
-- Both deployments use the domain `farmer.profi.co`. A path rule in the proxy (Coolify) sends the site paths to this image and all other paths to the web image. The site paths are `/`, the eight pages and `/_site/*`. These URLs must not change: `/delete-account` (the Play listing) and `/privacy` (the mobile app).
+- Both deployments use the domain `farmer.profi.co`. The web app owns the domain in Coolify. A Coolify domain path is a string prefix: `/about` would also catch `/about-1/...`, and the reserved-slug fallback can create the slug `about-1`. So the site does not use a domain path. It gets one Traefik router from a Coolify dynamic configuration, with this rule:
+
+  ```
+  Host(`farmer.profi.co`) && (Path(`/`) || PathRegexp(`^/(about|changelog|self-hosting|early-access|privacy|terms|delete-account)/?$`) || PathPrefix(`/_site/`))
+  ```
+
+  The site has 8 routes: `/` and the 7 pages in the expression. `apps/site/traefik.example.yml` holds a complete example (router, service, priority, TLS). `server.test.ts` checks that the expression matches the route files. Everything else goes to the web app, for example `/_`, `/Icon.svg`, `/manifest.json` and `/robots.txt`.
+- These URLs must not change: `/delete-account` (the Play listing) and `/privacy` (the mobile app).
 - `/_site/health` answers 200 for the health check.
 - `server.ts` sends the baseline security headers (`src/lib/security-headers.ts`, a copy of the web file).
 

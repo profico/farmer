@@ -11,7 +11,7 @@
 # no node_modules. The release data comes from the GitHub API during the build.
 # Pass a token as the build secret `github_token` to avoid the anonymous rate
 # limit (`--secret id=github_token,env=GITHUB_TOKEN`). The product image does
-# not build or copy this workspace.
+# not build this workspace, and its runtime stage does not hold it.
 
 # Pin Bun to the same version as `packageManager` in package.json.
 ARG BUN_VERSION=1.4.2
@@ -42,6 +42,7 @@ RUN attempts=0; until bun install --frozen-lockfile --network-concurrency 6; do 
 COPY apps/site apps/site
 # A failed read of the releases fails the build here, so a site never ships an
 # empty Changelog by accident.
+ENV SITE_FETCH_RELEASES=1
 ENV SITE_STRICT_RELEASES=1
 RUN --mount=type=secret,id=github_token \
     cd apps/site \
