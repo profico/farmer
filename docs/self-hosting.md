@@ -17,8 +17,6 @@ The `farmer` service applies the database migrations and seeds the built-in task
 
 To build the image from a checkout of the repository, use the `build` block in `compose.yml` in place of `image`.
 
-Note: until the GHCR package is public, you cannot pull the image. Build it yourself with `podman build -t farmer .` in the repository root. Then set `FARMER_IMAGE=localhost/farmer` and `FARMER_VERSION=latest` in `.env`.
-
 Keep `BETTER_AUTH_SECRET`. The server uses it to seal each stored secret. A new value makes these secrets unreadable. To rotate it, read "Rotate the secret" in `docs/domains/deployment.md`.
 
 ### Required variables

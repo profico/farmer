@@ -1,13 +1,8 @@
 import {
-	getRepoContentsReadToken,
-	isGithubAppConfigured,
-} from "@farmer/core/lib/github-client";
-import {
 	cachedRead,
 	GithubPublicRateLimitError,
 	githubPublicGet,
 } from "@farmer/core/lib/github-public";
-import { externalFetch } from "@farmer/core/lib/http";
 import {
 	configuredSourceRepository,
 	sourceRepository,
@@ -41,20 +36,12 @@ import type { CliReleaseAsset } from "./cli-install";
  * good answer keeps being served; with none, the cache stops asking until the
  * limit resets (`cachedRead`).
  *
- * FALLBACK, until the repository is public: an anonymous 404 means "missing
- * or private", and this cannot tell the two apart with no token. So when the
- * GitHub App is configured, a 404 is retried with the App's installation
- * token (`getRepoContentsReadToken`), narrowed to this one repository. A
- * private repo answers a private asset with its API `url`, not the public
- * `browser_download_url`, so that request also carries the token and follows
- * GitHub's redirect to a short-lived signed URL rather than reading the body.
- * Remove this whole fallback (and `getRepoContentsReadToken`) once the
- * repository is public for good.
+ * A 404 on the release list means the repository is missing, for example a
+ * fork whose `CLI_RELEASES_REPO` names a repository that does not exist.
  */
 
 const RELEASE_TAG_PREFIX = "cli-v";
 const RELEASE_CACHE_MS = 5 * 60 * 1000;
-const GITHUB_API = "https://api.github.com";
 
 const releaseList = z.array(
 	z.object({
@@ -66,24 +53,12 @@ const releaseList = z.array(
 			z.object({
 				name: z.string(),
 				browser_download_url: z.string(),
-				// Only read on the token fallback path (`signedAssetUrl`), where a
-				// private asset needs the API url rather than the public one. GitHub
-				// always sends it; optional so a test fixture built for the public
-				// path (which never reads it) does not have to carry a field it
-				// never uses.
-				url: z.string().optional(),
 			}),
 		),
 	}),
 );
 
 type Release = z.infer<typeof releaseList>[number];
-
-/** A release read with the App's fallback token also carries the token, so
- *  the asset lookup can ask GitHub's authenticated download endpoint instead
- *  of the public `browser_download_url` a private repository will not serve
- *  anonymously. */
-type ReleaseRead = { release: Release; token: string | null };
 
 export type CliDownload =
 	| { kind: "redirect"; location: string }
@@ -99,11 +74,11 @@ export type CliDownload =
 	/** GitHub refused or failed. The detail is for the log, not the client. */
 	| { kind: "upstream-error"; detail: string };
 
-/** A 404 on the release list: the repository is missing or private. Cached
- *  like an answer, not an error, so a typo does not spend the budget. */
+/** A 404 on the release list: the repository is missing. Cached like an
+ *  answer, not an error, so a typo does not spend the budget. */
 const NO_REPOSITORY = "no-repository";
 
-const releases = cachedRead<ReleaseRead | null | typeof NO_REPOSITORY>(
+const releases = cachedRead<Release | null | typeof NO_REPOSITORY>(
 	RELEASE_CACHE_MS,
 );
 
@@ -128,42 +103,9 @@ const parseReleaseList = async (response: Response): Promise<Release | null> =>
 			(b.published_at ?? "").localeCompare(a.published_at ?? ""),
 		)[0] ?? null;
 
-/** The FALLBACK read: the App's installation token, narrowed to this one
- *  repository, in place of the anonymous request. Only tried when the
- *  anonymous read answered 404 and the App is configured — see the module
- *  comment. `null` means the App is not installed on this repository either,
- *  which reads the same as "no repository" from here. */
-const newestCliReleaseWithToken = async (
-	repo: string,
-): Promise<ReleaseRead | null | typeof NO_REPOSITORY> => {
-	const [owner, name] = repo.split("/");
-	if (!owner || !name) return NO_REPOSITORY;
-	const token = await getRepoContentsReadToken(owner, name);
-	if (!token) return NO_REPOSITORY;
-	const response = await externalFetch(
-		`${GITHUB_API}/repos/${repo}/releases?per_page=30`,
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/vnd.github+json",
-				"X-GitHub-Api-Version": "2022-11-28",
-				"User-Agent": "farmer-cli-installer",
-			},
-		},
-	);
-	if (!response.ok) {
-		await response.body?.cancel();
-		throw new Error(
-			`GitHub answered ${response.status} for the release list (fallback token)`,
-		);
-	}
-	const release = await parseReleaseList(response);
-	return release ? { release, token } : null;
-};
-
 const newestCliRelease = async (
 	repo: string,
-): Promise<ReleaseRead | null | typeof NO_REPOSITORY> => {
+): Promise<Release | null | typeof NO_REPOSITORY> => {
 	// The list is newest-first. `mobile-v*` releases pile up in the same list,
 	// so ask for the largest page (100) to keep a cli-v release in it.
 	const response = await githubPublicGet(
@@ -172,16 +114,13 @@ const newestCliRelease = async (
 	);
 	if (response.status === 404) {
 		await response.body?.cancel();
-		return isGithubAppConfigured()
-			? newestCliReleaseWithToken(repo)
-			: NO_REPOSITORY;
+		return NO_REPOSITORY;
 	}
 	if (!response.ok) {
 		await response.body?.cancel();
 		throw new Error(`GitHub answered ${response.status} for the release list`);
 	}
-	const release = await parseReleaseList(response);
-	return release ? { release, token: null } : null;
+	return parseReleaseList(response);
 };
 
 /** Whether a download URL is a GitHub release download. The route redirects
@@ -197,41 +136,6 @@ const isReleaseDownload = (url: string): boolean => {
 	);
 };
 
-/** The signed, short-lived download URL for a private asset: GitHub's
- *  authenticated asset endpoint answers a 302 to it, which this follows once
- *  (`redirect: "manual"`) without ever reading the body. Only used on the
- *  fallback path — see the module comment. */
-const signedAssetUrl = async (
-	assetUrl: string,
-	token: string,
-	asset: CliReleaseAsset,
-	tag: string,
-): Promise<CliDownload> => {
-	const response = await externalFetch(assetUrl, {
-		headers: {
-			Authorization: `Bearer ${token}`,
-			Accept: "application/octet-stream",
-			"X-GitHub-Api-Version": "2022-11-28",
-			"User-Agent": "farmer-cli-installer",
-		},
-		redirect: "manual",
-	});
-	const location = response.headers.get("location");
-	if (
-		response.status >= 300 &&
-		response.status < 400 &&
-		location?.startsWith("https://")
-	) {
-		await response.body?.cancel();
-		return { kind: "redirect", location };
-	}
-	await response.body?.cancel();
-	return {
-		kind: "upstream-error",
-		detail: `GitHub answered ${response.status} for asset ${asset} of ${tag}`,
-	};
-};
-
 export const resolveCliDownload = async (
 	asset: CliReleaseAsset,
 ): Promise<CliDownload> => {
@@ -244,24 +148,13 @@ export const resolveCliDownload = async (
 		const result = await releases.read(repo, () => newestCliRelease(repo));
 		if (result === NO_REPOSITORY) return { kind: "no-repository", repo };
 		if (!result) return { kind: "no-release" };
-		const { release, token } = result;
-		const file = release.assets.find((candidate) => candidate.name === asset);
-		if (!file) return { kind: "missing-asset", tag: release.tag_name };
+		const file = result.assets.find((candidate) => candidate.name === asset);
+		if (!file) return { kind: "missing-asset", tag: result.tag_name };
 
-		if (token) {
-			// The token goes only to GitHub's own API, whatever the list said.
-			if (!file.url?.startsWith(`${GITHUB_API}/`)) {
-				return {
-					kind: "upstream-error",
-					detail: `GitHub gave no API url for ${asset} of ${release.tag_name}`,
-				};
-			}
-			return signedAssetUrl(file.url, token, asset, release.tag_name);
-		}
 		if (!isReleaseDownload(file.browser_download_url)) {
 			return {
 				kind: "upstream-error",
-				detail: `GitHub gave ${file.browser_download_url} for ${asset} of ${release.tag_name}`,
+				detail: `GitHub gave ${file.browser_download_url} for ${asset} of ${result.tag_name}`,
 			};
 		}
 		return { kind: "redirect", location: file.browser_download_url };
