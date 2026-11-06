@@ -903,7 +903,9 @@ function FeedbackRow({
 			</span>
 		</>
 	);
-	const className = cn(navRowClass, "mb-2.5");
+	// `text-left` because the row can be a <button>, and a button centres its
+	// text.
+	const className = cn(navRowClass, "mb-2.5 text-left");
 
 	return (
 		<>
@@ -1060,12 +1062,12 @@ function UserMenu({
 								href={githubIssueUrl}
 								target="_blank"
 								rel="noreferrer"
-								aria-label="Open in GitHub"
+								aria-label="Open an issue"
 							/>
 						}
 					>
 						<GithubLogoIcon weight="fill" className="size-4" />
-						Open in GitHub
+						Open an issue
 						<ArrowUpRightIcon
 							weight="regular"
 							className="ml-auto size-3.5 text-muted-foreground"
