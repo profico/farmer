@@ -37,7 +37,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 				// admin started this round trip.
 				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
 				const orgId = state ? verifyOrgState(state, session.user.id) : null;
-				if (!orgId) return redirectTo("/");
+				if (!orgId) return redirectTo("/_");
 
 				const { db } = await import("@farmer/core/db");
 				const membership = await db.query.member.findFirst({
@@ -48,13 +48,15 @@ export const Route = createFileRoute("/api/slack/callback")({
 					!membership ||
 					(membership.role !== "owner" && membership.role !== "admin")
 				) {
-					return redirectTo("/");
+					return redirectTo("/_");
 				}
 
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
-				const back = org ? `/${org.slug}/settings/workspace-integrations` : "/";
+				const back = org
+					? `/${org.slug}/settings/workspace-integrations`
+					: "/_";
 
 				// Cancelled at Slack's consent screen, or no code came back. Nothing to
 				// undo — the install simply didn't happen.

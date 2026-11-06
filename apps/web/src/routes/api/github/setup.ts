@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/github/setup")({
 				const orgId = state
 					? verifyOrgState(state, session.user.id)
 					: session.session.activeOrganizationId;
-				if (!orgId) return redirectTo("/");
+				if (!orgId) return redirectTo("/_");
 
 				const { db } = await import("@farmer/core/db");
 				const membership = await db.query.member.findFirst({
@@ -59,7 +59,7 @@ export const Route = createFileRoute("/api/github/setup")({
 					!membership ||
 					(membership.role !== "owner" && membership.role !== "admin")
 				) {
-					return redirectTo("/");
+					return redirectTo("/_");
 				}
 
 				// Set only for a stateless callback: the id Integrations asks about.
@@ -92,7 +92,7 @@ export const Route = createFileRoute("/api/github/setup")({
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
-				if (!org) return redirectTo("/");
+				if (!org) return redirectTo("/_");
 				const back = `/${org.slug}/settings/workspace-integrations`;
 				return redirectTo(
 					pendingInstallationId === null

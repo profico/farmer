@@ -44,7 +44,13 @@ Without `BETTER_AUTH_SECRETS`, nothing changes: `secret-box.ts` seals `enc:v1:â€
 
 **A production process checks its required environment when it starts.** `requireProductionEnv` (`packages/core/src/lib/required-env.ts`) runs first in `apps/web/server.ts` and in `jobs/worker.ts`, under `NODE_ENV=production` only. It exits with code 1 and one message that names every unset or empty variable of `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. A weak value (a secret under 32 characters, a `BETTER_AUTH_URL` that is not a URL) is a warning only. Never call it at import time: `vite build` has no environment. The operator guide, with the production Compose file in `deploy/`, is `docs/self-hosting.md`.
 
-**The public site is its own image.** `apps/site` is a prerendered static site with its own Dockerfile. The hosted deployment serves it on the same domain as the web app, and a proxy splits the paths. The site owns `/` (exact), `/about`, `/changelog`, `/self-hosting`, `/early-access`, `/privacy`, `/terms`, `/delete-account` and `/_site/*`. The proxy sends every other path to the web app. A self-hosted instance runs the web app only, and `/` opens the workspace. Read `apps/site/CLAUDE.md` before you change the site.
+**The public site is its own image.** `apps/site` is a prerendered static site with its own Dockerfile. The hosted deployment serves it on the same domain as the web app, and Traefik splits the paths. The web app owns the domain in Coolify. A Coolify domain path is a string prefix (`/about` would also catch `/about-1/...`), so the site gets one Traefik router from a Coolify dynamic configuration, with this rule:
+
+```
+Host(`farmer.profi.co`) && (Path(`/`) || PathRegexp(`^/(about|changelog|self-hosting|early-access|privacy|terms|delete-account)/?$`) || PathPrefix(`/_site/`))
+```
+
+`apps/site/traefik.example.yml` holds the complete example (router, service, priority, TLS). Every other path goes to the web app, for example `/_`, `/Icon.svg`, `/manifest.json` and `/robots.txt`. So web code never targets `/`; it uses `/_`. A self-hosted instance runs the web app only, and `/` opens the workspace. Read `apps/site/CLAUDE.md` before you change the site.
 
 ---
 

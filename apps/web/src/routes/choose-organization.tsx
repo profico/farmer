@@ -41,7 +41,7 @@ export const Route = createFileRoute("/choose-organization")({
 		if (!mine) {
 			throw redirect({ to: "/login", search: { redirect: location.href } });
 		}
-		const target = safeRedirectPath(search.redirect) ?? "/";
+		const target = safeRedirectPath(search.redirect) ?? "/_";
 		const asked = orgSlugOf(target);
 		const [only, ...others] = mine.organizations;
 		if (!only)

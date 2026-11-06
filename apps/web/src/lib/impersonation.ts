@@ -31,12 +31,10 @@ import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
  * new session: its active organization while the membership behind it still
  * holds, else the oldest one that does.
  *
- * `/` is the fallback and not the destination. It is the landing PAGE, which
- * renders for signed-out visitors and only offers a link onward — so arriving
- * there after pressing Impersonate reads as having been logged out. It is
- * still the right answer when the resolve fails or the person is in no
- * workspace at all, because `/`'s own CTA then routes them to `/no-access`,
- * which explains it.
+ * `/_` is the fallback and not the destination. On farmer.profi.co, `/` is
+ * the public site, so web code never targets it. `/_` is right when the
+ * resolve fails or the person is in no workspace at all, because the
+ * `/$orgSlug` guard then routes them to `/no-access`, which explains it.
  *
  * The slug goes through `withOrgSlug`, which percent-encodes it into one path
  * segment. The slug comes from the database, and an org owner can set it to
@@ -45,7 +43,7 @@ import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
  */
 const leaveFor = async () => {
 	const slug = await getDefaultOrgSlugForSession().catch(() => null);
-	window.location.assign(slug ? withOrgSlug("/", slug) : "/");
+	window.location.assign(slug ? withOrgSlug("/", slug) : "/_");
 };
 
 export const startImpersonating = async (userId: string) => {

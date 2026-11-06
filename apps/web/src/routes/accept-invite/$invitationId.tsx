@@ -61,7 +61,7 @@ function AcceptInvitePage() {
 			await navigate({ to: "/$orgSlug", params: { orgSlug } });
 			return;
 		}
-		await navigate({ to: "/" });
+		await navigate({ to: "/$orgSlug", params: { orgSlug: "_" } });
 	};
 
 	const handleSignOutAndSwitch = async () => {
