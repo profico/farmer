@@ -42,6 +42,8 @@ Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full 
 
 Without `BETTER_AUTH_SECRETS`, nothing changes: `secret-box.ts` seals `enc:v1:…` from `BETTER_AUTH_SECRET` and `oauth-state.ts` signs with it, as they always did.
 
+**A production process checks its required environment when it starts.** `requireProductionEnv` (`packages/core/src/lib/required-env.ts`) runs first in `apps/web/server.ts` and in `jobs/worker.ts`, under `NODE_ENV=production` only. It exits with code 1 and one message that names every unset or empty variable of `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`. A weak value (a secret under 32 characters, a `BETTER_AUTH_URL` that is not a URL) is a warning only. Never call it at import time: `vite build` has no environment. The operator guide, with the production Compose file in `deploy/`, is `docs/self-hosting.md`.
+
 ---
 
-See also: `apps/web/CLAUDE.md` (`server.ts` and the build), `packages/core/CLAUDE.md` (`jobs/scheduler.ts`).
+See also: `docs/self-hosting.md`, `apps/web/CLAUDE.md` (`server.ts` and the build), `packages/core/CLAUDE.md` (`jobs/scheduler.ts`).

@@ -17,7 +17,11 @@ export const githubLinks = (repository: string) => {
 		/** The self-hosting docs: the README's install section and `docs/`. */
 		docs: `${home}#readme`,
 		deployment: `${home}/blob/main/docs/domains/deployment.md`,
-		compose: `${home}/blob/main/docker-compose.yml`,
+		/** The production Compose file. The development file is
+		 *  `docker-compose.yml` in the root. */
+		compose: `${home}/blob/main/deploy/compose.yml`,
+		/** Install, upgrade and backup. */
+		selfHosting: `${home}/blob/main/docs/self-hosting.md`,
 	};
 };
 

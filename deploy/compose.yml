@@ -1,0 +1,56 @@
+# Production Compose file for a self-hosted Farmer. See docs/self-hosting.md.
+#
+#   cp .env.example .env     # then edit .env
+#   podman compose up -d     # or: docker compose up -d
+#
+# This file is not the development file. The development file is
+# docker-compose.yml in the repository root.
+
+name: farmer
+
+services:
+  farmer:
+    image: ${FARMER_IMAGE:-ghcr.io/profico/farmer}:${FARMER_VERSION:-latest}
+    # To build the image from a checkout of the repository, remove "image"
+    # above and use this:
+    # build:
+    #   context: ..
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # The port listens on the loopback address only. Put a reverse proxy that
+    # ends TLS in front of it, and set BETTER_AUTH_URL to the public address.
+    # Change the left side only if the proxy runs on a different host.
+    ports:
+      - "127.0.0.1:${FARMER_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://farmer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/farmer
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL}
+      # The one header that carries the client address from the proxy. See
+      # docs/self-hosting.md. "none" reads the socket address only.
+      TRUSTED_IP_HEADER: ${TRUSTED_IP_HEADER:-none}
+      # Add more settings here. Most settings (email, uploads, sign-in) are set
+      # on the Infrastructure pages in the app, not in this file.
+    # Uploaded project icons and logos need an S3-compatible store. Set it on
+    # the Infrastructure pages. See docs/domains/uploads.md.
+
+  postgres:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: farmer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: farmer
+    # No "ports": only the farmer service reaches the database.
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farmer -d farmer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

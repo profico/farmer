@@ -19,6 +19,7 @@
  */
 
 import { durationFromEnv } from "../lib/http";
+import { requireProductionEnv } from "../lib/required-env";
 import { startSchedulers, stopSchedulers } from "./scheduler";
 
 const SHUTDOWN_GRACE_MS = durationFromEnv(
@@ -27,6 +28,7 @@ const SHUTDOWN_GRACE_MS = durationFromEnv(
 	"off",
 );
 
+requireProductionEnv();
 console.log("[INFO] Starting task worker");
 const handles = startSchedulers();
 
