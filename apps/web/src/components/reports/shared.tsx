@@ -627,11 +627,14 @@ export function ExportMenu({
 	filename,
 	csv,
 	pdf,
+	children,
 }: {
 	disabled?: boolean;
 	filename: string;
 	csv: () => { headers: string[]; rows: string[][] };
 	pdf: () => Omit<PdfReport, "org">;
+	/** More menu items, after the two plain exports. */
+	children?: React.ReactNode;
 }) {
 	const org = useRouteContext({
 		from: "/$orgSlug",
@@ -664,6 +667,7 @@ export function ExportMenu({
 				>
 					Export PDF
 				</DropdownMenuItem>
+				{children}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
