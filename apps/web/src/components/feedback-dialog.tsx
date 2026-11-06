@@ -103,7 +103,7 @@ export function FeedbackDialog({
 	const submit = (event: React.SyntheticEvent) => {
 		event.preventDefault();
 		if (!complete) return;
-		// An empty optional answer is left out, as the SDK leaves it out.
+		// An empty optional answer is left out, so the results show no blank answer.
 		const responses = questions.map((question) => ({
 			id: question.id,
 			question: question.question,
