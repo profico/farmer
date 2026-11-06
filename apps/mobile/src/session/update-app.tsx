@@ -3,6 +3,7 @@ import { Linking } from "react-native";
 
 import { STORE_URL } from "../config";
 import { ActionButton } from "../ui/components";
+import { showDialog } from "../ui/dialog";
 
 /** True when the server refused this app for its version (`minMobileVersion`). */
 export const needsAppUpdate = (error: Error) =>
@@ -12,7 +13,15 @@ export function UpdateAppButton() {
 	return (
 		<ActionButton
 			label="Update the app"
-			onPress={() => void Linking.openURL(STORE_URL)}
+			onPress={() =>
+				// A build from outside a store has no handler for the store link.
+				Linking.openURL(STORE_URL).catch(() =>
+					showDialog(
+						"Update Farmer",
+						"Install the new version from the store.",
+					),
+				)
+			}
 		/>
 	);
 }
