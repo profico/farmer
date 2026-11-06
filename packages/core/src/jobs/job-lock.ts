@@ -18,6 +18,7 @@
  */
 
 import { ambientSqlClient } from "../db";
+import { loggableErrorLine } from "../lib/loggable-error";
 
 /** Returns a release function, or null when another session holds the lock. */
 export type TryJobLock = (
@@ -47,6 +48,12 @@ export const tryPostgresJobLock: TryJobLock = async (jobName) => {
 	return async () => {
 		try {
 			await connection`select pg_advisory_unlock(hashtextextended(${lockName(jobName)}, 0))`;
+		} catch (error) {
+			// The tick already did its work: a failed unlock must not turn it into a
+			// failure. The lock frees when the pool closes this idle connection.
+			console.error(
+				`[job-lock] unlock failed for ${jobName}: ${loggableErrorLine(error)}`,
+			);
 		} finally {
 			connection.release();
 		}
