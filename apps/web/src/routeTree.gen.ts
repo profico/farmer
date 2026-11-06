@@ -50,6 +50,7 @@ import { Route as ApiV1MetaRouteImport } from './routes/api/v1/meta'
 import { Route as ApiV1MeRouteImport } from './routes/api/v1/me'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
 import { Route as ApiMcpOrgSlugRouteImport } from './routes/api/mcp/$orgSlug'
+import { Route as ApiK7v2q9SplatRouteImport } from './routes/api/k7v2q9/$'
 import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiFilesSplatRouteImport } from './routes/api/files/$'
@@ -414,6 +415,11 @@ const ApiSlackCallbackRoute = ApiSlackCallbackRouteImport.update({
 const ApiMcpOrgSlugRoute = ApiMcpOrgSlugRouteImport.update({
   id: '/api/mcp/$orgSlug',
   path: '/api/mcp/$orgSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiK7v2q9SplatRoute = ApiK7v2q9SplatRouteImport.update({
+  id: '/api/k7v2q9/$',
+  path: '/api/k7v2q9/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
@@ -1390,6 +1396,7 @@ export interface FileRoutesByFullPath {
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/k7v2q9/$': typeof ApiK7v2q9SplatRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRouteWithChildren
@@ -1588,6 +1595,7 @@ export interface FileRoutesByTo {
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/k7v2q9/$': typeof ApiK7v2q9SplatRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRouteWithChildren
@@ -1789,6 +1797,7 @@ export interface FileRoutesById {
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/k7v2q9/$': typeof ApiK7v2q9SplatRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRouteWithChildren
@@ -1991,6 +2000,7 @@ export interface FileRouteTypes {
     | '/api/files/$'
     | '/api/github/setup'
     | '/api/github/webhook'
+    | '/api/k7v2q9/$'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -2189,6 +2199,7 @@ export interface FileRouteTypes {
     | '/api/files/$'
     | '/api/github/setup'
     | '/api/github/webhook'
+    | '/api/k7v2q9/$'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -2389,6 +2400,7 @@ export interface FileRouteTypes {
     | '/api/files/$'
     | '/api/github/setup'
     | '/api/github/webhook'
+    | '/api/k7v2q9/$'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -2568,6 +2580,7 @@ export interface RootRouteChildren {
   ApiFilesSplatRoute: typeof ApiFilesSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
+  ApiK7v2q9SplatRoute: typeof ApiK7v2q9SplatRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1MeRoute: typeof ApiV1MeRouteWithChildren
@@ -2974,6 +2987,13 @@ declare module '@tanstack/react-router' {
       path: '/api/mcp/$orgSlug'
       fullPath: '/api/mcp/$orgSlug'
       preLoaderRoute: typeof ApiMcpOrgSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/k7v2q9/$': {
+      id: '/api/k7v2q9/$'
+      path: '/api/k7v2q9/$'
+      fullPath: '/api/k7v2q9/$'
+      preLoaderRoute: typeof ApiK7v2q9SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/github/webhook': {
@@ -4279,6 +4299,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFilesSplatRoute: ApiFilesSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiGithubWebhookRoute: ApiGithubWebhookRoute,
+  ApiK7v2q9SplatRoute: ApiK7v2q9SplatRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1MeRoute: ApiV1MeRouteWithChildren,
@@ -4450,13 +4471,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

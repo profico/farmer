@@ -1,10 +1,20 @@
 import posthog from "posthog-js";
 
 import { isResizeObserverLoop } from "./posthog-noise";
+import { POSTHOG_PROXY_PATH, posthogCloudRegion } from "./posthog-proxy-path";
 import { browserEnv, sendStaleChunkReports } from "./stale-chunk";
 
 /** The credentials that the server planted for the browser. */
 export type PostHogCredentials = { token: string; host: string };
+
+/** The PostHog app host that the toolbar links to. Without it, posthog-js
+ *  takes `api_host`, which is now the app's own proxy path. */
+const uiHost = (host: string): string | undefined => {
+	const region = posthogCloudRegion(host);
+	if (region) return `https://${region}.posthog.com`;
+	// A host typed without a scheme must not stop the app in the browser.
+	return URL.parse(host)?.origin;
+};
 
 /**
  * The browser's PostHog client, started before it is returned.
@@ -26,7 +36,8 @@ export function startPostHog({
 	if (import.meta.env.SSR) return posthog;
 	if (!posthog.__loaded) {
 		posthog.init(token, {
-			api_host: host,
+			api_host: `${window.location.origin}${POSTHOG_PROXY_PATH}`,
+			ui_host: uiHost(host),
 			defaults: "2026-05-30",
 			capture_exceptions: {
 				capture_unhandled_errors: true,
