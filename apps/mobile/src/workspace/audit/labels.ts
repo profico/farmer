@@ -70,6 +70,7 @@ const KIND_LABELS = {
 	"github.repo_unlinked": "Repository unlinked",
 	"slack.connected": "Slack connected",
 	"slack.disconnected": "Slack disconnected",
+	"slack.pinged": "Person pinged on Slack",
 	"import.finished": "Harvest import finished",
 	"import.undone": "Harvest import undone",
 	"auth.signed_in": "Signed in",

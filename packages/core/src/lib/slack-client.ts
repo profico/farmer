@@ -36,14 +36,31 @@ export const slackRedirectUri = (): string => {
 export const slackEscape = (text: string): string =>
 	text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-/** A mrkdwn link to an app-relative path, or null when the app's own origin
- *  is not configured. `BETTER_AUTH_URL` is that origin: it is what
- *  `slackRedirectUri` builds on too. A missing link costs the reader a click;
- *  it is not worth failing a send over. */
-export const slackLink = (path: string, label: string): string | null => {
+/** Block Kit blocks for a message: the mrkdwn text in a section, then a URL
+ *  button to an app-relative path. Empty when the app's own origin
+ *  (`BETTER_AUTH_URL`, what `slackRedirectUri` builds on too) is not
+ *  configured or there is no link: `postMessage` then sends the text alone.
+ *  A missing button costs the reader a click; it is not worth failing a send
+ *  over. */
+export const slackBlocks = (
+	text: string,
+	link: { path: string; label: string } | undefined,
+): JsonValue[] => {
 	const base = process.env.BETTER_AUTH_URL;
-	if (!base) return null;
-	return `<${new URL(path, base).toString()}|${slackEscape(label)}>`;
+	if (!link || !base) return [];
+	return [
+		{ type: "section", text: { type: "mrkdwn", text } },
+		{
+			type: "actions",
+			elements: [
+				{
+					type: "button",
+					text: { type: "plain_text", text: link.label },
+					url: new URL(link.path, base).toString(),
+				},
+			],
+		},
+	];
 };
 
 type SlackResponse<T> = { ok: true } & T;

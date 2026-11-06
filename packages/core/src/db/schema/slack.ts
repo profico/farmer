@@ -107,3 +107,23 @@ export const slackReminderLog = pgTable(
 		index("srl_org_day_idx").on(t.organizationId, t.dayKey),
 	],
 );
+
+// When somebody last pinged a person on Slack to track their time. One row for
+// each (org, person): a ping replaces the time, and the service refuses a new
+// ping while the stored one is under 24 hours old. In the database, not in
+// memory, so two app instances and a restart share the same answer.
+export const slackPing = pgTable(
+	"slack_ping",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		pingedByUserId: text("pinged_by_user_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		pingedAt: ts("pinged_at").notNull().defaultNow(),
+	},
+	(t) => [unique("slack_ping_org_user_unq").on(t.organizationId, t.userId)],
+);

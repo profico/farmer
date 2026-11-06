@@ -221,6 +221,10 @@ export const AUDIT_KINDS = {
 		category: "change",
 		sentence: "disconnected Slack",
 	},
+	"slack.pinged": {
+		category: "change",
+		sentence: "pinged {target} on Slack to track their time",
+	},
 	"import.finished": {
 		category: "change",
 		sentence: "imported from Harvest",

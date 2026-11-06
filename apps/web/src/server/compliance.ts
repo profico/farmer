@@ -1,4 +1,4 @@
-import { monthReportInput } from "@farmer/core/schema";
+import { monthReportInput, pingPersonInput } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
 import { orgMiddleware } from "./auth";
@@ -24,4 +24,23 @@ export const getMyTargets = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const { complianceService } = await import("@farmer/core/services");
 		return complianceService.myTargets(context.ctx);
+	});
+
+// Who the caller may ping on Slack from the Tracking report, and when each was
+// last pinged. Scoped by the service to the people the caller sees there.
+export const getPingStates = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { slackService } = await import("@farmer/core/services");
+		return slackService.pingStates(context.ctx);
+	});
+
+// The service checks the caller's scope, that the person is behind, and the
+// 24-hour limit; this only carries the call.
+export const pingPerson = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(pingPersonInput)
+	.handler(async ({ data, context }) => {
+		const { slackService } = await import("@farmer/core/services");
+		return slackService.pingBehind(context.ctx, data.userId);
 	});
