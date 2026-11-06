@@ -390,12 +390,8 @@ function AbsenceRows({
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
-				Time-off entries only, in the selected period, of the kind the tab
-				names; "Non-vacation leave" is everything that is not vacation. Days =
-				hours ÷ {workingDaySeconds / 3600}, shown for reading only — hours are
-				the unit. Counted from logged entries: if this disagrees with the
-				accounting book, someone forgot to log their time off, and that gap is
-				the point. Open a name for the entries.
+				Time-off entries only. Days = hours ÷ {workingDaySeconds / 3600}. If
+				this disagrees with the books, someone did not log their time off.
 			</p>
 		</>
 	);
