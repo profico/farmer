@@ -9,6 +9,7 @@ import {
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 
 import { ErrorCard, ErrorScreen } from "#/components/error-screen.tsx";
+import { FeedbackButton } from "#/components/feedback-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { useInsideSidebar } from "#/components/ui/sidebar.tsx";
 
@@ -34,18 +35,21 @@ export function RouteNotFound() {
 			<ErrorCard
 				title="Nothing at this address"
 				actions={
-					workspace ? undefined : (
-						<Button
-							variant="outline"
-							nativeButton={false}
-							render={
-								<Link to="/">
-									<HouseIcon aria-hidden />
-									Home
-								</Link>
-							}
-						/>
-					)
+					<>
+						{!workspace && (
+							<Button
+								variant="outline"
+								nativeButton={false}
+								render={
+									<Link to="/">
+										<HouseIcon aria-hidden />
+										Home
+									</Link>
+								}
+							/>
+						)}
+						<FeedbackButton label="Report a broken link" />
+					</>
 				}
 				after={
 					workspace && (

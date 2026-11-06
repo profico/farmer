@@ -3,6 +3,7 @@ import {
 	CaretDoubleLeftIcon,
 	CaretDoubleRightIcon,
 	CaretUpDownIcon,
+	ChatCircleDotsIcon,
 	GithubLogoIcon,
 	MoonIcon,
 	SignOutIcon,
@@ -24,6 +25,10 @@ import { toast } from "sonner";
 
 import { ConversationList } from "#/components/assistant/chat-rail.tsx";
 import { ContributorsCard } from "#/components/contributors-card.tsx";
+import {
+	FeedbackDialog,
+	useFeedbackSurvey,
+} from "#/components/feedback-dialog.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import {
@@ -913,6 +918,9 @@ function UserMenu({
 }) {
 	const router = useRouter();
 	const posthog = usePostHog();
+	const survey = useFeedbackSurvey();
+	// The dialog is a sibling of the menu, so closing the menu keeps it mounted.
+	const [feedbackOpen, setFeedbackOpen] = useState(false);
 	const { theme, toggle } = useTheme();
 	// Shows the theme you'd get by choosing it, not the one you're in: the item
 	// is a destination, and "Light mode" on a light page is a statement of the
@@ -927,73 +935,88 @@ function UserMenu({
 	};
 
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
-				render={
-					<button
-						type="button"
-						aria-label={`Account: ${userName}`}
-						className={cn(
-							"relative flex items-center rounded-xl ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
-							// `p-1.5` and the same corner at both widths, so the avatar
-							// keeps its position on the left instead of centring itself in a
-							// column that is about to close.
-							"gap-2.5 p-1.5 text-left hover:bg-muted",
-							!collapsed && "w-full",
-						)}
-					>
-						<PersonAvatar
-							name={userName}
-							image={userImage}
-							size="sm"
-							className="size-7"
-						/>
-						{/* The same out-of-flow band the nav rows use, at this row's own
+		<>
+			<DropdownMenu>
+				<DropdownMenuTrigger
+					render={
+						<button
+							type="button"
+							aria-label={`Account: ${userName}`}
+							className={cn(
+								"relative flex items-center rounded-xl ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+								// `p-1.5` and the same corner at both widths, so the avatar
+								// keeps its position on the left instead of centring itself in a
+								// column that is about to close.
+								"gap-2.5 p-1.5 text-left hover:bg-muted",
+								!collapsed && "w-full",
+							)}
+						>
+							<PersonAvatar
+								name={userName}
+								image={userImage}
+								size="sm"
+								className="size-7"
+							/>
+							{/* The same out-of-flow band the nav rows use, at this row's own
 						    geometry — a bigger mark and less padding, so it takes the
 						    modifier. See `.nav-label` in styles.css. */}
-						<span className="nav-label nav-label-user">
-							<span className="min-w-0 flex-1">
-								<span className="block truncate text-sm font-medium">
-									{userName}
-								</span>
-								{!isAdmin && (
-									<span className="block truncate text-2xs text-muted-foreground">
-										Member
+							<span className="nav-label nav-label-user">
+								<span className="min-w-0 flex-1">
+									<span className="block truncate text-sm font-medium">
+										{userName}
 									</span>
-								)}
+									{!isAdmin && (
+										<span className="block truncate text-2xs text-muted-foreground">
+											Member
+										</span>
+									)}
+								</span>
+								<CaretUpDownIcon
+									weight="regular"
+									className="size-3.5 shrink-0 text-muted-foreground"
+								/>
 							</span>
-							<CaretUpDownIcon
-								weight="regular"
-								className="size-3.5 shrink-0 text-muted-foreground"
-							/>
-						</span>
-					</button>
-				}
-			/>
-			<DropdownMenuContent side="right" align="end" className="w-56">
-				{/* Base UI's GroupLabel reads a group context, so it needs the Group
+						</button>
+					}
+				/>
+				<DropdownMenuContent side="right" align="end" className="w-56">
+					{/* Base UI's GroupLabel reads a group context, so it needs the Group
 				    around it — outside one it throws rather than rendering plain. */}
-				<DropdownMenuGroup>
-					<DropdownMenuLabel className="flex flex-col gap-0.5">
-						<span className="truncate font-medium text-foreground">
-							{userName}
-						</span>
-						<span className="truncate text-2xs font-normal text-muted-foreground">
-							{userEmail}
-						</span>
-					</DropdownMenuLabel>
-				</DropdownMenuGroup>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={toggle}>
-					<ThemeIcon weight="fill" className="size-4" />
-					Switch to {nextTheme} mode
-				</DropdownMenuItem>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={handleLogout}>
-					<SignOutIcon weight="fill" className="size-4" />
-					Log out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+					<DropdownMenuGroup>
+						<DropdownMenuLabel className="flex flex-col gap-0.5">
+							<span className="truncate font-medium text-foreground">
+								{userName}
+							</span>
+							<span className="truncate text-2xs font-normal text-muted-foreground">
+								{userEmail}
+							</span>
+						</DropdownMenuLabel>
+					</DropdownMenuGroup>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={toggle}>
+						<ThemeIcon weight="fill" className="size-4" />
+						Switch to {nextTheme} mode
+					</DropdownMenuItem>
+					{survey && (
+						<DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
+							<ChatCircleDotsIcon weight="fill" className="size-4" />
+							Send feedback
+						</DropdownMenuItem>
+					)}
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={handleLogout}>
+						<SignOutIcon weight="fill" className="size-4" />
+						Log out
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+			{survey && (
+				<FeedbackDialog
+					survey={survey}
+					open={feedbackOpen}
+					onOpenChange={setFeedbackOpen}
+				/>
+			)}
+		</>
 	);
 }

@@ -13,6 +13,7 @@ import {
 	ErrorRef,
 	ErrorScreen,
 } from "#/components/error-screen.tsx";
+import { FeedbackButton } from "#/components/feedback-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { useInsideSidebar } from "#/components/ui/sidebar.tsx";
 import {
@@ -95,6 +96,14 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 								}
 							/>
 						)}
+						<FeedbackButton
+							label="Report this problem"
+							// The message can be long, so the report keeps only its start.
+							context={{
+								error_ref: errorRef,
+								error_message: message.slice(0, 500),
+							}}
+						/>
 					</>
 				}
 				after={<ErrorRef value={errorRef} />}
