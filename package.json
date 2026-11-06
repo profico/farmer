@@ -28,15 +28,15 @@
 		"complexity": "cccc --top-cognitive 10 . && cccc --top-cyclomatic 10 ."
 	},
 	"dependencies": {
-		"@posthog/react": "1.11.0",
-		"posthog-js": "1.433.5",
-		"posthog-node": "5.52.4"
+		"@posthog/react": "1.11.3",
+		"posthog-js": "1.445.1",
+		"posthog-node": "5.61.2"
 	},
 	"devDependencies": {
-		"@oxlint/plugins": "1.80.0",
-		"oxfmt": "0.65.0",
-		"oxlint": "1.80.0",
-		"turbo": "2.10.4"
+		"@oxlint/plugins": "1.91.0",
+		"oxfmt": "0.76.0",
+		"oxlint": "1.91.0",
+		"turbo": "2.11.10"
 	},
 	"packageManager": "bun@1.4.2"
 }
