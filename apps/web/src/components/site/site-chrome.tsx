@@ -1,5 +1,5 @@
 import { ArrowRightIcon, GithubLogoIcon } from "@phosphor-icons/react";
-import { Link } from "@tanstack/react-router";
+import { Link, notFound } from "@tanstack/react-router";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
 import { FarmerMark } from "#/components/farmer-mark.tsx";
@@ -46,6 +46,17 @@ export async function loadSiteVisitor(): Promise<SiteVisitor> {
 	const orgSlug = await getDefaultOrgSlugForSession();
 	const { email, name } = session.user;
 	return { orgSlug, user: { email, name }, repository, homepageEnabled };
+}
+
+/**
+ * The loader of a page that is about the Profico instance (privacy, terms,
+ * delete account, early access). It answers 404 when `HOMEPAGE_ENABLED` is
+ * off, because a self-hosted instance has no Profico to describe.
+ */
+export async function loadProficoPage(): Promise<SiteVisitor> {
+	const visitor = await loadSiteVisitor();
+	if (!visitor.homepageEnabled) throw notFound();
+	return visitor;
 }
 
 /**
@@ -438,7 +449,9 @@ export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
 						</Link>
 					) : null}
 					<Link to="/changelog">Changelog</Link>
-					<Link to="/early-access">Hosted early access</Link>
+					{visitor.homepageEnabled ? (
+						<Link to="/early-access">Hosted early access</Link>
+					) : null}
 				</div>
 				<div className="fm-footer-col">
 					<Link to="/self-hosting">Self-hosting</Link>
@@ -447,9 +460,13 @@ export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
 				</div>
 				<div className="fm-footer-col">
 					<Link to="/about">About</Link>
-					<Link to="/privacy">Privacy</Link>
-					<Link to="/terms">Terms</Link>
-					<Link to="/delete-account">Delete your account</Link>
+					{visitor.homepageEnabled ? (
+						<>
+							<Link to="/privacy">Privacy</Link>
+							<Link to="/terms">Terms</Link>
+							<Link to="/delete-account">Delete your account</Link>
+						</>
+					) : null}
 				</div>
 			</div>
 			<div className="fm-container fm-footer-base">

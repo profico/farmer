@@ -307,10 +307,12 @@ function Page() {
 						<ArrowUpRightIcon weight="regular" size={15} />
 					</a>
 				</div>
-				<p className="fm-muted" style={{ margin: "24px 0 0", fontSize: 15 }}>
-					Rather not run it yourself?{" "}
-					<Link to="/early-access">Get early access to hosted Farmer</Link>.
-				</p>
+				{visitor.homepageEnabled ? (
+					<p className="fm-muted" style={{ margin: "24px 0 0", fontSize: 15 }}>
+						Rather not run it yourself?{" "}
+						<Link to="/early-access">Get early access to hosted Farmer</Link>.
+					</p>
+				) : null}
 			</section>
 		</SitePage>
 	);
