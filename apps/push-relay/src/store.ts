@@ -42,6 +42,44 @@ export type DeviceUpdate = {
 	liveActivityStartToken?: string | null;
 };
 
+/** One server key. The relay keeps the hash of the secret part only. */
+export type ServerKey = {
+	id: string;
+	secretHash: string;
+	label: string;
+	contact: string;
+	monthlyLimit: number;
+	createdAt: number;
+	revokedAt: number | null;
+};
+
+type ServerKeyRow = {
+	id: string;
+	secret_hash: string;
+	label: string;
+	contact: string;
+	monthly_limit: number;
+	created_at: number;
+	revoked_at: number | null;
+};
+
+const toServerKey = (row: ServerKeyRow): ServerKey => ({
+	id: row.id,
+	secretHash: row.secret_hash,
+	label: row.label,
+	contact: row.contact,
+	monthlyLimit: row.monthly_limit,
+	createdAt: row.created_at,
+	revokedAt: row.revoked_at,
+});
+
+/** The usage bucket of a push that comes without a key. */
+export const ANONYMOUS_KEY_ID = "anonymous";
+
+/** The calendar month of a time, in UTC: `2026-11`. */
+export const monthOf = (at: number): string =>
+	new Date(at).toISOString().slice(0, 7);
+
 const toDevice = (row: DeviceRow): Device => ({
 	relayId: row.relay_id,
 	platform: row.platform,
@@ -100,6 +138,21 @@ CREATE TABLE IF NOT EXISTS live_activity_token (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS live_activity_token_relay_id
 	ON live_activity_token (relay_id, created_at);
+CREATE TABLE IF NOT EXISTS server_key (
+	id TEXT PRIMARY KEY,
+	secret_hash TEXT NOT NULL,
+	label TEXT NOT NULL,
+	contact TEXT NOT NULL,
+	monthly_limit INTEGER NOT NULL CHECK (monthly_limit >= 0),
+	created_at INTEGER NOT NULL,
+	revoked_at INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS server_key_usage (
+	key_id TEXT NOT NULL,
+	month TEXT NOT NULL,
+	pushes INTEGER NOT NULL,
+	PRIMARY KEY (key_id, month)
+) STRICT;
 `;
 
 export class DeviceStore {
@@ -372,6 +425,89 @@ export class DeviceStore {
 		this.#db
 			.query("DELETE FROM live_activity_token WHERE relay_id = $relayId")
 			.run({ relayId });
+	}
+
+	insertServerKey(key: ServerKey): void {
+		this.#db
+			.query(
+				`INSERT INTO server_key (id, secret_hash, label, contact, monthly_limit,
+					created_at, revoked_at)
+				 VALUES ($id, $secretHash, $label, $contact, $monthlyLimit,
+					$createdAt, $revokedAt)`,
+			)
+			.run({ ...key });
+	}
+
+	findServerKey(id: string): ServerKey | null {
+		const row = this.#db
+			.query<ServerKeyRow, { id: string }>(
+				"SELECT * FROM server_key WHERE id = $id",
+			)
+			.get({ id });
+		return row ? toServerKey(row) : null;
+	}
+
+	listServerKeys(): ServerKey[] {
+		return this.#db
+			.query<ServerKeyRow, []>(
+				"SELECT * FROM server_key ORDER BY created_at, rowid",
+			)
+			.all()
+			.map(toServerKey);
+	}
+
+	/** Revoke a key. Returns false when the id is unknown. A second revoke
+	 *  keeps the first time. */
+	revokeServerKey(id: string, now: number): boolean {
+		return (
+			this.#db
+				.query(
+					"UPDATE server_key SET revoked_at = COALESCE(revoked_at, $now) WHERE id = $id",
+				)
+				.run({ id, now }).changes > 0
+		);
+	}
+
+	setServerKeyLimit(id: string, monthlyLimit: number): boolean {
+		return (
+			this.#db
+				.query(
+					"UPDATE server_key SET monthly_limit = $monthlyLimit WHERE id = $id",
+				)
+				.run({ id, monthlyLimit }).changes > 0
+		);
+	}
+
+	/**
+	 * Count one push for a key in the month of `now`, unless the key is at its
+	 * limit. A null `limit` counts with no cap (the anonymous bucket). The read
+	 * and the write are one transaction, so two pushes cannot pass the same
+	 * last slot.
+	 */
+	consumeQuota(keyId: string, limit: number | null, now: number): boolean {
+		const month = monthOf(now);
+		return this.#db.transaction((): boolean => {
+			if (limit !== null && this.usage(keyId, now) >= limit) return false;
+			this.#db
+				.query(
+					`INSERT INTO server_key_usage (key_id, month, pushes)
+					 VALUES ($keyId, $month, 1)
+					 ON CONFLICT (key_id, month) DO UPDATE SET pushes = pushes + 1`,
+				)
+				.run({ keyId, month });
+			return true;
+		})();
+	}
+
+	/** The pushes that a key sent in the month of `now`. */
+	usage(keyId: string, now: number): number {
+		return (
+			this.#db
+				.query<{ pushes: number }, { keyId: string; month: string }>(
+					"SELECT pushes FROM server_key_usage WHERE key_id = $keyId AND month = $month",
+				)
+				.get({ keyId, month: monthOf(now) })?.pushes ?? 0
+		);
 	}
 
 	/** Answer one trivial query, for the health check. */

@@ -100,3 +100,45 @@ server never holds the device secret. A design that keeps the secret off
 the Farmer server needs this shared key. A read of the relay's database
 is already a more serious loss, because the same read exposes every push
 token.
+
+## Amendment: a server key for each sending server
+
+**Date:** 2026-11-06. This section changes the line "There is no account for
+each server" in the Decision. The rest of the decision stands.
+
+**Problem.** The relay holds Profico's APNs and FCM credentials and pays for
+the traffic. Any server on the internet that knows a relay id can send a
+push. A self-hosted server that turns push on adds load with no limit and no
+contact for Profico.
+
+**Decision.** Each server that sends push through the relay needs a server
+key (the model of Rocket.Chat and Bitwarden). The operator of the relay
+mints the key with a command in `apps/push-relay`, and sets a monthly limit
+for it.
+
+- `POST /v1/push` needs `Authorization: Bearer <server key>`. A bad key gets
+  `401`, a revoked key gets `403`, and a key over its limit gets `429`.
+- The relay keeps the SHA-256 hash of the key secret, a label, a contact, the
+  limit and the dates. The count for each key and UTC month is in the same
+  SQLite file, so a restart keeps it.
+- The farmer server reads the key from the instance setting `PUSH_RELAY_KEY`.
+  A refusal about the key is logged once an hour and is never retried.
+  With the default relay URL and no key, the server logs one warning that
+  names `farmer@profi.co`.
+- `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` lock together (ADR 0004), as the SMTP
+  settings do: the key goes to the URL, so a browser must not change the URL
+  while the environment pins the key.
+- `REQUIRE_SERVER_KEY` on the relay (default `false`) lets a push with no key
+  pass, in an `anonymous` bucket, so the relay deploys before the servers
+  send keys. A bad key is refused in both modes.
+
+**Not decided here.** A device registration is not bound to a server key.
+The app registers before it knows a server, and the app on the closed test
+track must keep working. The server key limits the senders. The relay id
+and the per-device rate limits still protect each phone. A later change can
+bind a device to the first key that sends to it.
+
+**Self-hosters.** An operator who wants a different relay runs `apps/push-relay`
+with their own build of the app and their own APNs and FCM credentials. The
+official app is signed for Profico's topic and sender, so a different relay
+cannot deliver to it.

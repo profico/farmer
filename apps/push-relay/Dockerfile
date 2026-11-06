@@ -38,7 +38,8 @@ RUN attempts=0; until bun install --frozen-lockfile --network-concurrency 6; do 
     done
 
 COPY apps/push-relay apps/push-relay
-RUN cd apps/push-relay && bun build src/main.ts --target=bun --outfile /out/relay.js
+RUN cd apps/push-relay && bun build src/main.ts --target=bun --outfile /out/relay.js \
+ && bun build src/admin.ts --target=bun --outfile /out/admin.js
 
 # ---- runtime: one bundle, nothing else ----
 FROM oven/bun:${BUN_VERSION}-slim AS runtime
@@ -47,7 +48,7 @@ ENV PORT=3000
 ENV RELAY_DB_PATH=/data/relay.sqlite
 WORKDIR /app
 
-COPY --from=build /out/relay.js ./relay.js
+COPY --from=build /out/relay.js /out/admin.js ./
 
 # The SQLite file lives on a volume, so a new image keeps the devices. The
 # directory must belong to the non-root user before VOLUME declares it.

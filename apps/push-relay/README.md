@@ -29,6 +29,7 @@ accounts exist.
 | `RELAY_DB_PATH` | `./data/relay.sqlite` | The SQLite file. The relay makes the directory on start. The image sets `/data/relay.sqlite` on the `/data` volume. |
 | `TRUSTED_IP_HEADER` | (required in production) | The one header that the proxy in front of the relay sets with the client address. When `NODE_ENV=production` (the Docker image sets it), the relay refuses to start if this is unset or empty. Set `none` for a relay with no proxy in front: the relay then uses the socket address only and trusts no header. Behind Cloudflare, set `cf-connecting-ip`. With a proxy and `none`, every caller shares the proxy's bucket. For `x-forwarded-for` the relay reads the last entry. An IPv6 address counts as its /64 prefix for the rate limits. The origin must accept traffic only through the proxy that sets this header: else a caller sets the header and picks its own rate-limit bucket. The proxy must set this header on every request and must remove any value from the caller. The relay refuses to start if the value is not a header name. The relay logs the choice at start, and logs one warning when a request has no such header. |
 | `RELAY_MAX_DEVICES` | `100000` | The most devices that the relay holds. A registration past it gets `503 relay_full`. |
+| `REQUIRE_SERVER_KEY` | `false` | `true`: a push with no server key gets `401 server_key_required`. `false`: a push with no key still works and counts in the `anonymous` bucket, with no limit. A push with a bad key is refused in both cases. See "Server keys". |
 | `APNS_KEY_P8` | (none) | The `.p8` key from Apple, as PEM. Literal `\n` sequences count as line breaks. |
 | `APNS_KEY_ID` | (none) | The key id of the `.p8` key. |
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
@@ -135,8 +136,9 @@ limits (see "Rate limits").
 
 ### `POST /v1/push`
 
-A farmer server sends a push. The relay id is the credential for this route,
-and the route has no other authentication (ADR 0006).
+A farmer server sends a push, with `Authorization: Bearer <server key>`. The
+key says which server sends (see "Server keys"). The relay id says which
+phone gets the push. The relay id is the credential for the phone (ADR 0006).
 
 The relay makes the relay id from 128 random bits (`src/ids.ts`). Only three
 parties hold it: the phone, the farmer server of the phone, and the relay. A
@@ -192,6 +194,9 @@ holds the relay id would hold that secret too.
 | `200` | `{ "status": "delivered" }` | APNs or FCM took the push. | Nothing. |
 | `202` | `{ "status": "dry_run" }` | No credentials for the platform. | Nothing. |
 | `400` | `invalid_body`, `invalid_json` | The body is wrong. | Fix the request. |
+| `401` | `server_key_required`, `invalid_server_key` | No key (with `REQUIRE_SERVER_KEY` on), or a key that the relay does not know. | Do not retry. Log it once. Set `PUSH_RELAY_KEY`. |
+| `403` | `server_key_revoked` | The operator revoked the key. | Do not retry. Log it once. |
+| `429` | `monthly_quota_exceeded` with `limit` and `resetsAt` | The key sent its monthly limit. `Retry-After` gives the seconds to the next UTC month. | Do not retry. Log it once. Drop the push. |
 | `404` | `unknown_relay_id` | The relay does not know the id. | Delete the `mobile_device` row. |
 | `409` | `activity_gone` | The per-activity token is dead: the Live Activity ended. | Forget the activity token. Keep the row. |
 | `403` | `activity_token_mismatch`, `activity_token_unbound` | The per-activity token belongs to another device, or no device holds it. | Do not retry. Keep the row. |
@@ -202,6 +207,55 @@ holds the relay id would hold that secret too.
 | `429` | `rate_limited` | A rate limit. `Retry-After` gives the seconds. | Try again later, or drop the push. |
 | `502` | `upstream_failed` with `upstreamStatus` and `reason` | Any other APNs or FCM refusal. | Log it. Keep the row. |
 | `502` | `upstream_unreachable` | The relay could not reach APNs or FCM. | Try again later. |
+
+### Server keys
+
+Each farmer server that sends push through Profico's relay needs a server key.
+The operator of the relay mints it. The model is the same as for Rocket.Chat
+and Bitwarden: a self-hosted server is registered with the publisher.
+
+A key is `<id>.<secret>`. The secret is 256 random bits. The relay keeps only
+the id, the SHA-256 hash of the secret, a label, a contact, the monthly limit,
+the time of creation and the time of revocation. It compares the hash in
+constant time. The key is shown once, when it is made.
+
+The commands open the same SQLite file as the relay (`RELAY_DB_PATH`). The
+image holds the bundle `/app/admin.js`:
+
+```sh
+bun run admin keys create --label "Example Org" --contact person@example.com --monthly-limit 50000
+bun run admin keys list                 # id, state, pushes this month, limit, label
+bun run admin keys revoke <id>
+bun run admin keys set-limit <id> <number>
+
+# On the host of the image:
+docker exec <container> bun /app/admin.js keys list
+```
+
+Rules:
+
+- A push counts when it passes every check that can refuse it (the key, the
+  body, the relay id, the rate limits) and before the relay sends it to APNs
+  or FCM. A refused push does not use the quota. A push that APNs or FCM
+  refuses does.
+- The count is a row for each key and calendar month (UTC) in the SQLite
+  file, so a restart keeps it. A new month starts at 0. A limit of 0 refuses
+  every push.
+- Over the limit, the relay answers `429 monthly_quota_exceeded`. The per-IP
+  and per-device rate limits stay as they are.
+- `POST /v1/devices` and `POST /v1/devices/verify` need no key. The app
+  registers a device before it knows any server, and a device is not bound to
+  a server key.
+- With `REQUIRE_SERVER_KEY` off, a push without a key counts in the
+  `anonymous` bucket. `keys list` does not show this bucket.
+
+Rollout, in this order:
+
+1. Deploy the relay with `REQUIRE_SERVER_KEY` unset (off).
+2. Mint the key for Profico's own server.
+3. Set it as `PUSH_RELAY_KEY` on the Profico production server.
+4. Deploy the server that sends the key.
+5. Set `REQUIRE_SERVER_KEY=true` on the relay.
 
 ### The re-registration contract
 
@@ -387,4 +441,6 @@ The image holds one bundled file and no `node_modules`. It runs as the `bun`
 user, keeps the database on the `/data` volume, and checks `/healthz`. CI
 pushes `ghcr.io/<owner>/farmer-push-relay:latest` on a push to `main`
 (`.github/workflows/ci.yml`, job `push-relay-image`). On Coolify, the relay is
-a "Docker Image" resource with a persistent volume on `/data`.
+a "Docker Image" resource with a persistent volume on `/data`. The device
+table, the server keys and the monthly counts all live in that one file. Lose
+the volume and you lose the keys: keep a backup of `/data/relay.sqlite`.

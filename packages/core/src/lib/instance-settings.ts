@@ -69,9 +69,11 @@ export type SettingDefinition = {
 	 * in the environment and `SMTP_HOST` open on the page, a platform admin
 	 * could point the host at their own server and receive the password in the
 	 * next AUTH command. The S3 group gets the same rule: SigV4 never sends the
-	 * secret, but a half-pinned store is one nobody can reason about.
+	 * secret, but a half-pinned store is one nobody can reason about. The relay
+	 * pair (`PUSH_RELAY_URL`, `PUSH_RELAY_KEY`) follows the SMTP rule: the key
+	 * goes to the URL.
 	 */
-	lockGroup?: "smtp" | "s3";
+	lockGroup?: "smtp" | "s3" | "relay";
 };
 
 const BOOL = { kind: "boolean" } as const;
@@ -387,6 +389,16 @@ export const INSTANCE_SETTINGS = [
 		kind: "text",
 		defaultValue: "https://push.farmer.profi.co",
 		hint: "Change it only for a relay that you run yourself.",
+		lockGroup: "relay",
+	},
+	{
+		name: "PUSH_RELAY_KEY",
+		section: "features",
+		group: "Mobile push",
+		label: "Relay server key",
+		kind: "secret",
+		lockGroup: "relay",
+		hint: "Profico's relay needs a key for each server. Ask farmer@profi.co for one. A relay that you run yourself may not need one.",
 	},
 	{
 		name: "POSTHOG_PROJECT_TOKEN",

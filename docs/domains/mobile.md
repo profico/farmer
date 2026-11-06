@@ -28,6 +28,32 @@ answers `pushRelay: { enabled, url }`, and the app registers with the relay
 only when `enabled` is true. A server from before this feature sends no
 `pushRelay`, and the app reads that as off.
 
+## The server key
+
+Profico's relay needs a key for each sending server (ADR 0006, amendment).
+`PUSH_RELAY_KEY` is a secret instance setting: it is sealed at rest, and the
+Infrastructure page never shows it back. `sendToRelay` sends it as
+`Authorization: Bearer <key>` on `POST /v1/push`. `POST /v1/devices/verify`
+sends no key.
+
+- The relay answers `401 invalid_server_key` or `server_key_required`,
+  `403 server_key_revoked`, or `429 monthly_quota_exceeded`. Each is a
+  `failed` outcome. The server does not retry, and `logKeyRefusal` logs the
+  code once an hour with the address `farmer@profi.co`.
+- With the relay on, the default URL and no key, `sendToRelay` logs one
+  warning for each process start.
+- `PUSH_RELAY_URL` and `PUSH_RELAY_KEY` lock together when the environment
+  sets either, because the key goes to the URL.
+
+**Note for a self-hoster.** With push on, the relay receives for each push: the
+relay id of the phone, the kind of the push, and an encrypted payload that
+it cannot read. A Live Activity push also carries its content state, which is
+not encrypted and holds no person's data. The official relay needs a key from
+Profico: write to `farmer@profi.co` with the name of your organization and a
+contact. You can run your own relay (`apps/push-relay`) only with your own
+build of the app and your own APNs and FCM credentials. The official app
+cannot receive from another relay.
+
 ## The API switch
 
 The mobile app uses `api/v1` for everything, sign-in included. `serve()` in

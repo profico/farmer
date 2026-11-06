@@ -12,7 +12,11 @@
 import { z } from "zod";
 
 import { externalFetch } from "./http";
-import { setting, settingEnabled } from "./instance-settings";
+import {
+	setting,
+	settingDefinition,
+	settingEnabled,
+} from "./instance-settings";
 
 /** A push takes at most this long. The relay itself gives APNs 10 seconds. */
 const PUSH_RELAY_TIMEOUT_MS = 12_000;
@@ -58,7 +62,9 @@ export type RelayOutcome =
 	 *  push-to-start now. Keep the row. */
 	| { kind: "no_start_token" }
 	/** 429, a 5xx, a 4xx this server did not expect, a timeout or a network
-	 *  error. Logged and counted as failed. */
+	 *  error. Logged and counted as failed. A refusal about the server key (401,
+	 *  403, or 429 `monthly_quota_exceeded`) is also `failed`: the caller
+	 *  does not retry, and `logKeyRefusal` logs it once an hour. */
 	| { kind: "failed"; status: number | null; code: string | null };
 
 const errorBody = z.object({ error: z.string() });
@@ -69,6 +75,58 @@ export const pushRelayUrl = (): string | null => {
 	if (!settingEnabled("PUSH_RELAY_ENABLED")) return null;
 	const url = setting("PUSH_RELAY_URL")?.trim();
 	return url ? url.replace(/\/+$/, "") : null;
+};
+
+/** The server key for the relay, or null when none is set. */
+const pushRelayKey = (): string | null =>
+	setting("PUSH_RELAY_KEY")?.trim() || null;
+
+/** The relay codes that say the server key is the problem: no key, a bad key,
+ *  a revoked key, or a used-up monthly quota. A retry changes nothing, so the
+ *  server logs these once an hour and never retries. */
+const KEY_CODES = new Set([
+	"server_key_required",
+	"invalid_server_key",
+	"server_key_revoked",
+	"monthly_quota_exceeded",
+]);
+
+const KEY_LOG_INTERVAL_MS = 60 * 60 * 1000;
+const keyLoggedAt = new Map<string, number>();
+let warnedNoKey = false;
+
+/** Log a refusal about the server key, at most once an hour for each code.
+ *  Returns true when the code is such a refusal. */
+export const logKeyRefusal = (code: string | null): boolean => {
+	if (code === null || !KEY_CODES.has(code)) return false;
+	const now = Date.now();
+	const last = keyLoggedAt.get(code);
+	if (last === undefined || now - last >= KEY_LOG_INTERVAL_MS) {
+		keyLoggedAt.set(code, now);
+		console.error(
+			`[push-relay] the relay refused the server key (${code}). Check PUSH_RELAY_KEY, or ask ${KEY_CONTACT} for a key.`,
+		);
+	}
+	return true;
+};
+
+/** Where an operator asks Profico for a key. */
+export const KEY_CONTACT = "farmer@profi.co";
+
+/** Warn once if the relay is on, points at Profico's relay, and has no key. */
+const warnIfNoKey = (baseUrl: string): void => {
+	const profico = settingDefinition("PUSH_RELAY_URL")?.defaultValue;
+	if (warnedNoKey || pushRelayKey() || baseUrl !== profico) return;
+	warnedNoKey = true;
+	console.warn(
+		`[push-relay] PUSH_RELAY_KEY is not set. Profico's relay will soon need a server key. Ask ${KEY_CONTACT} for one.`,
+	);
+};
+
+/** Forget what the log throttle knows. For tests. */
+export const resetKeyLogsForTests = (): void => {
+	keyLoggedAt.clear();
+	warnedNoKey = false;
 };
 
 const errorCode = async (response: Response): Promise<string | null> => {
@@ -120,11 +178,15 @@ export const sendToRelay = async (
 	push: RelayPush,
 ): Promise<RelayOutcome> => {
 	try {
+		warnIfNoKey(baseUrl);
+		const key = pushRelayKey();
+		const headers = new Headers({ "content-type": "application/json" });
+		if (key) headers.set("authorization", `Bearer ${key}`);
 		const response = await externalFetch(
 			`${baseUrl}/v1/push`,
 			{
 				method: "POST",
-				headers: { "content-type": "application/json" },
+				headers,
 				body: JSON.stringify(push),
 			},
 			PUSH_RELAY_TIMEOUT_MS,

@@ -20,6 +20,17 @@ describe("readConfig", () => {
 		);
 	});
 
+	test("REQUIRE_SERVER_KEY is off by default and takes true or false", () => {
+		expect(readConfig({}).requireServerKey).toBe(false);
+		expect(readConfig({ REQUIRE_SERVER_KEY: "" }).requireServerKey).toBe(false);
+		expect(readConfig({ REQUIRE_SERVER_KEY: "true" }).requireServerKey).toBe(
+			true,
+		);
+		expect(() => readConfig({ REQUIRE_SERVER_KEY: "yes" })).toThrow(
+			"REQUIRE_SERVER_KEY",
+		);
+	});
+
 	test("TRUSTED_IP_HEADER must be a header name or none", () => {
 		expect(() => readConfig({ TRUSTED_IP_HEADER: "bad header" })).toThrow(
 			"TRUSTED_IP_HEADER",
