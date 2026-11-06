@@ -801,7 +801,7 @@ jobs:
           found = []
           project.native_targets.each do |target|
             target.build_configurations.each do |config|
-              profile = profiles[target.resolve_build_setting("PRODUCT_BUNDLE_IDENTIFIER", config.name)]
+              profile = profiles[config.build_settings["PRODUCT_BUNDLE_IDENTIFIER"]]
               next unless profile
               settings = config.build_settings
               settings["CODE_SIGN_STYLE"] = "Manual"
