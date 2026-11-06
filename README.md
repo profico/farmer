@@ -5,90 +5,125 @@
   </picture>
 </p>
 
-Self-hosted time tracking for teams, built and used at [Profico](https://profi.co).
+Farmer is self-hosted time tracking for teams. We built it at
+[Profico](https://profi.co), and we use it every day.
 
-This will eventually have a cooler description, I promise.
+It fills in most of the timesheet for you. Meetings come from your calendar,
+work blocks come from your GitHub commits, and recurring blocks fill
+themselves. You check the day, file what is left, and go home.
 
-## What's inside
+## Features
 
-- **Timesheet** — day, week and month views, tied to client → project → task, at 15-minute granularity. A home page shows this week and this month against the hour fund.
-- **Automation** — background jobs fill in what nobody typed: recurring blocks, Google Calendar meetings, and work-time blocks built from GitHub commits. "Assemble my day" proposes a day's entries and writes nothing until you accept. Filing rules send a recurring meeting to the same project every time.
-- **Absence** — Vacation, Sick Leave and Paid Leave are ordinary entries against built-in tasks, so absence reporting comes from the same table as work.
-- **Reports** — Time (by client, project or teammate), Overtime, Tracking (logged time against the month's target) and Absence, for a week, month, quarter, year or custom range. The Time report exports to CSV.
-- **Hours** — a monthly hour fund, public holidays for the organization's country, per-person working hours and person types (employee, student, contractor; billable, overhead, hourly).
-- **People** — organizations with an Admin role, per-project roles (Member / Team Lead / PM), Team Lead people lists, and email invitations (Resend or SMTP) that can also go out as a Slack DM.
-- **Projects** — a page per project with its hours, team and settings; emoji or uploaded icons.
-- **Integrations** — a GitHub App per organization for commits, Google Calendar per person, and Slack per organization for reminder DMs, a month-end reminder and an admin digest. Reminders also go out as web push.
-- **Assistant** — a chat page backed by OpenRouter (the organization's own key) that answers questions about tracked time and logs more of it. It can do only what the person asking can do.
-- **MCP server** — the same tools over Streamable HTTP at `/api/mcp/<org-slug>`, for Claude Code or any other MCP client.
-- **CLI** — `farmer`, a command-line tool to log and read your own time. Install it with `curl -fsSL <app-url>/cli | sh` and sign in from the browser. See [apps/cli/README.md](apps/cli/README.md).
-- **Harvest import** — drop the Harvest CSV exports on Settings → Import. Importing the same files again changes nothing, and the latest run can be undone.
-- **REST** — read-only `/api/v1/projects` and `/api/v1/time-entries`, using the same session as the app.
-- **Single-organization mode** — set `SINGLE_ORG_SLUG` for a one-workspace, invite-only instance.
+- **Timesheet:** day, week and month views. Each entry has a client, a
+  project and a task, in 15 minute steps.
+- **Timer:** a stopwatch on the web, in the CLI and in the mobile app.
+- **Automation:** recurring blocks, Google Calendar meetings and work blocks
+  from GitHub commits and pull requests. "Assemble my day" suggests a day and
+  writes nothing until you accept it.
+- **Filing rules:** send a recurring meeting to the same project each time.
+- **Absence:** vacation, sick leave and paid leave are normal entries, so the
+  absence reports come from the same data as the work.
+- **Targets:** a monthly hour fund, public holidays for your country, and
+  working hours per person. The home page shows the week and the month against
+  the target.
+- **Reports:** time, overtime, tracking and absence, for any period. Export to
+  CSV.
+- **People and roles:** an Admin role, per project roles (Member, Team Lead,
+  PM) and Team Lead people lists. Invitations go out by email or as a Slack DM.
+- **Reminders:** web push, Slack and the mobile app, configured per
+  organization.
+- **Assistant:** a chat that answers questions about your time and logs more
+  of it. It can do only what you can do. Bring your own OpenRouter key.
+- **MCP server:** the same tools for Claude Code or any MCP client, at
+  `/api/mcp/<org-slug>`.
+- **CLI:** `farmer`, to log and read your time from the terminal. See
+  [apps/cli/README.md](apps/cli/README.md).
+- **Mobile app:** Android and iOS, with push notifications and a timer on the
+  lock screen. It is in closed testing.
+- **REST API:** `/api/v1`, with an OpenAPI document at
+  `/api/v1/openapi.json`. Use a session or a personal API token.
+- **Webhooks:** signed events for time entries and the rest of the
+  organization.
+- **Audit log:** a record of each change in an organization.
+- **Harvest import:** drop the Harvest CSV exports on the import page. A second
+  import of the same files changes nothing, and you can undo the last run.
+- **Single organization mode:** one invite-only workspace for the whole
+  instance.
+- **Instance settings in the UI:** email, uploads and integrations live in the
+  database. An environment variable still wins, and the page says so.
 - Light and dark themes.
 
-## Stack
+## Run it locally
 
-Bun + Turborepo, three workspaces. `apps/web` is a [TanStack Start](https://tanstack.com/start) app — React 19, TanStack Router/Query, shadcn components on Base UI. `apps/cli` is the `farmer` command-line tool, compiled with Bun. `packages/core` owns everything else: Drizzle + Postgres, [better-auth](https://better-auth.com) with the organization and MCP plugins, and all business logic as plain functions that take `{ organizationId, userId }` explicitly. The web app is a thin layer over core; the MCP server and the REST endpoints call the same services.
+You need [Bun](https://bun.sh) and Docker or Podman.
 
-## Running it locally
-
-You need [Bun](https://bun.sh) and Docker (or a Postgres 15 or later that you already have).
-
-```bash
+```sh
 bun install
-docker compose up -d    # Postgres on localhost:5433, Garage (S3 for uploads) on localhost:3900
-cp .env.example .env    # then set BETTER_AUTH_SECRET (openssl rand -hex 32)
-
-# Bun doesn't read the root .env from inside workspaces, so link it once:
-ln -s ../../.env apps/web/.env
-ln -s ../../.env packages/core/.env
-
-bun run db:migrate
+docker compose up -d    # Postgres on 5433, Garage (S3 for uploads) on 3900
+bun run setup
 bun run dev
 ```
 
-Open the URL that `vite dev` prints (http://localhost:3000, or the next free port). In development (`NODE_ENV=development`, which `vite dev` sets), `/login` has an email and password form, so you can sign up without a Google Cloud project. The first account you create makes your organization. `bun run dev` also seeds the built-in tasks and starts a worker that runs the automation sync.
+`bun run setup` makes a `.env` with a new secret, runs the migrations and seeds
+the built-in tasks. You can run it again after each pull.
 
-Only `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are required. Everything else in `.env.example` is optional and documented there: email, uploads, GitHub, Google, Slack and push.
+Open the URL that the dev server prints. In development, `/login` has an email
+and password form. The first account makes the organization and configures the
+instance. Run `bun run setup` one more time after that to add demo data.
 
-For demo data (one client, project and task — not safe to run twice):
+## Configuration
 
-```bash
-cd packages/core && bun run db:seed
-```
+Only three values are required: `DATABASE_URL`, `BETTER_AUTH_SECRET` and
+`BETTER_AUTH_URL`. A platform owner sets the rest on the Infrastructure page.
+`.env.example` lists every variable.
 
-### Integration credentials
+- **Google:** sign-in, and a separate calendar grant per person. Enable the
+  Calendar API on the OAuth client.
+- **GitHub:** an OAuth app for identity, and a GitHub App for repositories.
+  Give the App read access to Contents, Pull requests and Members.
+- **Slack:** an app with the `chat:write`, `im:write`, `users:read` and
+  `users:read.email` bot scopes. An admin installs it per organization.
+- **OpenRouter:** an admin pastes the key per organization. It is not an
+  environment variable.
 
-- **Google** signs people in (the only sign-in method in production) and, as a separate grant requested from Settings → Integrations, reads their calendar (`calendar.events.readonly`). Enable the Calendar API on the OAuth client. Farmer requests offline access, so sync keeps working after the first access token expires.
-- **GitHub** needs two things, and they aren't interchangeable: an OAuth app (identity — matching activity to people, `GITHUB_CLIENT_ID`/`SECRET`) and a GitHub App (reads repos, commits and pull requests, installed once per organization, `GITHUB_APP_*`). Give the App read access to **Contents** and **Pull requests**, and the organization permission **Members** (read); without Pull requests, PR and review activity is silently empty, and without Members nobody can connect an organization's installation. Only an owner of the GitHub account or organization can connect it. The same App serves the CLI's binary downloads, so its installation must include the releases repository.
-- **Slack** needs an app with the `chat:write`, `im:write`, `users:read` and `users:read.email` bot scopes and `{BETTER_AUTH_URL}/api/slack/callback` as a redirect URL. An admin installs it per organization from Settings → Integrations; no token is ever pasted into the app.
-- **OpenRouter** is not an environment variable. An admin pastes the organization's key in Settings → Integrations.
+## Deploy
 
-## Deploying
-
-`vite build` emits a fetch handler with nothing to serve it, so production runs on `apps/web/server.ts` — a Bun server that serves the build, preloads static assets and runs the background jobs in-process. The `Dockerfile` at the repo root builds it:
-
-```bash
+```sh
 docker build -t farmer .
 docker run -p 3000:3000 --env-file .env farmer
 ```
 
-Farmer rate-limits the MCP server and the CLI API per client address. By default it uses the socket address, so a caller cannot choose it. Behind a reverse proxy, every caller then shares the proxy's address. Set `TRUSTED_IP_HEADER` to the header that your proxy writes, for example `x-forwarded-for` (Farmer reads the last entry) or `x-real-ip`. Do this only when the origin is reachable through the proxy alone. See `.env.example`.
+The image runs the migrations and seeds the built-in tasks on each start. It
+also runs the background jobs. To run the jobs in a separate process, see
+[docs/domains/deployment.md](docs/domains/deployment.md).
 
-On every start the image applies pending migrations and seeds the built-in tasks (`RUN_MIGRATIONS` / `RUN_SEED` turn these off).
+Behind a reverse proxy, set `TRUSTED_IP_HEADER` so that the rate limits see the
+real client address.
 
-The jobs — automation sync, log reminders, Slack reminders, the upload sweep and the audit sweep — assume a single instance. To run them apart from the web host, set `AUTOMATION_SYNC_ENABLED`, `LOG_REMINDERS_ENABLED`, `SLACK_REMINDERS_ENABLED`, `UPLOAD_SWEEP_ENABLED` and `AUDIT_SWEEP_ENABLED` to `false` there and run exactly one `bun run worker` (from `packages/core`). `ASSISTANT_ENABLED=false`, `MCP_ENABLED=false` and `CLI_ENABLED=false` remove those features from a deployment.
+## Layout
+
+| Path | Contents |
+|---|---|
+| `apps/web` | The web app (TanStack Start, React) and its Bun server |
+| `apps/cli` | The `farmer` CLI |
+| `apps/mobile` | The Android and iOS app (Expo) |
+| `apps/push-relay` | The relay for mobile push notifications |
+| `packages/core` | The services, the database schema and the jobs |
+| `packages/api-client` | The typed client for `/api/v1` |
+| `packages/push-crypto` | The encryption for push payloads |
 
 ## Development
 
-Commands, architecture notes and the sharp edges we've already hit are in [CLAUDE.md](CLAUDE.md), which doubles as the contributor guide. It carries the commands, the lint rules and the few rules that hold everywhere; each workspace has its own ([packages/core](packages/core/CLAUDE.md), [apps/web](apps/web/CLAUDE.md), [apps/cli](apps/cli/CLAUDE.md)), and one subsystem per file lives under [docs/domains/](docs/domains/). The short version:
+```sh
+bun run test         # all test suites, on an in-process Postgres
+bun run check        # format and lint
+bun run typecheck
+```
 
-- `bun run db:generate` / `bun run db:migrate` after schema changes (Drizzle)
-- `packages/core/src/db/schema/auth.ts` is generated by better-auth's CLI — regenerate it with `bun run auth:generate` from `packages/core`, never edit it by hand
-- `bun run test` runs the `packages/core` suite against an in-process PGLite — real Postgres, real migrations, no container and no `DATABASE_URL` — and the `apps/cli` suite
-- `bun run check` (oxfmt + oxlint) and `bun run typecheck` at the repo root are what CI runs
+[CLAUDE.md](CLAUDE.md) is the contributor guide. It has the commands, the
+architecture and the rules. Each subsystem has a page in
+[docs/domains](docs/domains).
 
 ## License
 
-[AGPLv3](LICENSE)
+AGPLv3. See [LICENSE](LICENSE).
