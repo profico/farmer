@@ -379,6 +379,24 @@ export function HarvestReview({
 						}
 					/>
 					<SettingRow
+						title="Email domain"
+						description="Domain for people without an email in Harvest, for example example.org. Leave empty to skip the guess: you then type an address for each of them."
+						action={
+							<Input
+								aria-label="Email domain"
+								className="w-48"
+								placeholder="example.org"
+								defaultValue={choices.guessDomain}
+								onBlur={(event) => {
+									const next = event.target.value.trim();
+									if (next !== choices.guessDomain) {
+										onChoices({ ...choices, guessDomain: next });
+									}
+								}}
+							/>
+						}
+					/>
+					<SettingRow
 						title="Days with work in both"
 						description="A day where Harvest has work for a person, and this app has work for the same person too. You can change each day on the Time tab."
 						action={

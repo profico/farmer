@@ -12,22 +12,27 @@ import {
 	type HarvestChoices,
 	type HarvestPlan,
 	type ParsedHarvest,
-	HARVEST_GUESS_DOMAIN,
 	chunkDays,
 	dayDigestSync,
 	defaultHarvestChoices,
 	guessEmail,
 	normName,
+	parseGuessDomain,
 	parseHarvestFiles,
 	planHarvestImport,
 } from "./plan";
 
 // --- Fixtures ---------------------------------------------------------------
 
+/** The guess domain that the fixtures' choices set. */
+const GUESS_DOMAIN = "guess.example.org";
+/** The cutoff that the fixtures' choices set. */
+const CUTOFF = "2026-09-01";
+
 /** A guessed address. The domain is the import's own, not the fixture's, so a
  *  test that needs a real address to collide with a guess writes it this way.
  *  Every other address in this file is at `example.com`. */
-const guessed = (local: string) => `${local}@${HARVEST_GUESS_DOMAIN}`;
+const guessed = (local: string) => `${local}@${GUESS_DOMAIN}`;
 
 // The real header lines, from `~/Downloads/harvest/*.csv` (2026-09-11).
 const TIME_HEADER =
@@ -314,7 +319,12 @@ function choices(
 	parsed: ParsedHarvest,
 	overrides: Partial<HarvestChoices> = {},
 ): HarvestChoices {
-	return { ...defaultHarvestChoices(parsed), ...overrides };
+	return {
+		...defaultHarvestChoices(parsed),
+		cutoffDate: CUTOFF,
+		guessDomain: GUESS_DOMAIN,
+		...overrides,
+	};
 }
 
 async function planFor(
@@ -360,10 +370,21 @@ describe("normName and guessEmail", () => {
 	});
 
 	test("guessEmail folds diacritics and drops non-alphanumerics", () => {
-		expect(guessEmail("Ivan", "Horvat")).toBe(guessed("ihorvat"));
-		expect(guessEmail("Đuro", "Šimić-Čorić")).toBe(guessed("dsimiccoric"));
-		expect(guessEmail("Žana", "Van Dijk")).toBe(guessed("zvandijk"));
-		expect(guessEmail("José", "Müller")).toBe(guessed("jmuller"));
+		const at = (first: string, last: string) =>
+			guessEmail(first, last, GUESS_DOMAIN);
+		expect(at("Ivan", "Horvat")).toBe(guessed("ihorvat"));
+		expect(at("Đuro", "Šimić-Čorić")).toBe(guessed("dsimiccoric"));
+		expect(at("Žana", "Van Dijk")).toBe(guessed("zvandijk"));
+		expect(at("José", "Müller")).toBe(guessed("jmuller"));
+	});
+
+	test("parseGuessDomain accepts a host name and rejects the rest", () => {
+		expect(parseGuessDomain("")).toBeNull();
+		expect(parseGuessDomain("  @Example.ORG ")).toBe("example.org");
+		expect(() => parseGuessDomain("example")).toThrow("not a domain");
+		expect(() => parseGuessDomain("a b.org")).toThrow("not a domain");
+		expect(() => parseGuessDomain("x@example.org")).toThrow("not a domain");
+		expect(() => parseGuessDomain("Gmail.com")).toThrow("public mail domain");
 	});
 
 	test("dayDigestSync equals the async dayDigest", async () => {
@@ -397,15 +418,19 @@ describe("parseHarvestFiles", () => {
 		expect(parsed.range).toEqual({ from: "2026-08-03", to: "2026-08-04" });
 	});
 
-	test("candidate emails are the listed addresses and the guesses", async () => {
+	test("candidate emails are the listed addresses only", async () => {
 		const parsed = await parseHarvestFiles([
 			timeReport([{}, { first: "Marko", last: "Kovač" }]),
 			peopleList([{ first: "Ana", last: "Horvat", email: "Ana@Example.com" }]),
 		]);
-		expect(parsed.candidateEmails).toEqual([
-			"ana@example.com",
-			guessed("mkovac"),
-		]);
+		expect(parsed.candidateEmails).toEqual(["ana@example.com"]);
+	});
+
+	test("the default choices guess nothing and cut off after the export", async () => {
+		const parsed = await parseHarvestFiles([timeReport([{}])]);
+		const defaults = defaultHarvestChoices(parsed);
+		expect(defaults.guessDomain).toBe("");
+		expect(defaults.cutoffDate).toBe("2026-08-04");
 	});
 
 	test("identical rows of a person-day get distinct keys", async () => {
@@ -641,7 +666,7 @@ describe("projects", () => {
 				{ client: "Acme", project: "Website", code: "ACW" },
 				{ client: "Acme", project: "Pitch", code: "", billable: false },
 				{ client: "Acme", project: "Shop", code: "SHOP-2024-EXTENDED-CODE" },
-				{ client: "Profico", project: "Internal", code: "PRINT" },
+				{ client: "Internal", project: "Internal", code: "PRINT" },
 			]),
 			projectList([
 				{
@@ -758,10 +783,10 @@ describe("projects", () => {
 });
 
 describe("clients", () => {
-	test("Profico and Internal map to the internal client; others are created", async () => {
+	test("Internal maps to the internal client; others are created", async () => {
 		const { plan } = await planFor([
 			timeReport([
-				{ client: "Profico", project: "Internal", code: "PRINT" },
+				{ client: "Client One", project: "Internal", code: "PRINT" },
 				{ client: "internal", project: "Web 2.0", code: "W2" },
 				{ client: "Acme" },
 			]),
@@ -770,6 +795,12 @@ describe("clients", () => {
 		]);
 		expect(plan.start.clients).toEqual([
 			{ action: "create", sourceKey: "acme", name: "Acme", archived: false },
+			{
+				action: "create",
+				sourceKey: "client one",
+				name: "Client One",
+				archived: false,
+			},
 			{ action: "internal", sourceKey: "internal" },
 			{
 				action: "create",
@@ -777,27 +808,40 @@ describe("clients", () => {
 				name: "Old Client",
 				archived: true,
 			},
-			{ action: "internal", sourceKey: "profico" },
+		]);
+	});
+
+	test("the review screen can map a client to the internal client", async () => {
+		const parsed = await parseHarvestFiles([
+			timeReport([{ client: "Client One", project: "Work", code: "W1" }]),
+		]);
+		const plan = planHarvestImport(
+			parsed,
+			snapshot(),
+			choices(parsed, { clients: { "client one": { action: "internal" } } }),
+		);
+		expect(plan.start.clients).toEqual([
+			{ action: "internal", sourceKey: "client one" },
 		]);
 	});
 
 	test("the review screen can override the internal default", async () => {
 		const files = [
-			timeReport([{ client: "Profico", project: "Internal", code: "PRINT" }]),
+			timeReport([{ client: "Internal", project: "Internal", code: "PRINT" }]),
 		];
 		const parsed = await parseHarvestFiles(files);
 		const plan = planHarvestImport(
 			parsed,
 			snapshot(),
-			choices(parsed, { clients: { profico: { action: "create" } } }),
+			choices(parsed, { clients: { internal: { action: "create" } } }),
 		);
 		// Created rather than mapped to the internal client — and active, since
 		// its one project was worked on in the month before the cutoff.
 		expect(plan.start.clients).toEqual([
 			{
 				action: "create",
-				sourceKey: "profico",
-				name: "Profico",
+				sourceKey: "internal",
+				name: "Internal",
 				archived: false,
 			},
 		]);
@@ -1011,6 +1055,84 @@ describe("people", () => {
 		expect(plan.review.people[0]?.emailGuessed).toBe(true);
 		expect(plan.ready).toBe(true);
 		expectServerAccepts(plan);
+	});
+
+	const noEmailFiles = () => [
+		timeReport([
+			{ first: "Pero", last: "Novak", date: "2018-01-02", employee: false },
+		]),
+	];
+
+	test("with no guess domain a person without an email blocks the plan", async () => {
+		const { plan } = await planFor(noEmailFiles(), snapshot(), {
+			guessDomain: "",
+		});
+		expect(plan.ready).toBe(false);
+		expect(plan.review.people[0]).toMatchObject({
+			email: "",
+			emailGuessed: false,
+		});
+		expect(plan.blocked.map((b) => b.message)).toEqual([
+			"Pero Novak: has no email in Harvest. Type an address, or set a guess domain",
+		]);
+		expect(plan.emailsToCheck).toEqual([]);
+	});
+
+	test("an address typed for that person unblocks the plan", async () => {
+		const { plan } = await planFor(noEmailFiles(), snapshot(), {
+			guessDomain: "",
+			people: { "pero novak": { email: "Pero@Example.com" } },
+		});
+		expect(plan.ready).toBe(true);
+		expect(plan.start.people[0]).toMatchObject({
+			email: "pero@example.com",
+			emailConfirmed: true,
+		});
+	});
+
+	test("an invalid or public guess domain blocks the plan", async () => {
+		for (const [guessDomain, message] of [
+			["not a domain", '"not a domain" is not a domain'],
+			["gmail.com", "gmail.com is a public mail domain"],
+		] as const) {
+			const { plan } = await planFor(noEmailFiles(), snapshot(), {
+				guessDomain,
+			});
+			expect(plan.ready).toBe(false);
+			expect(plan.blocked.map((b) => b.message)).toContain(message);
+			expect(plan.review.people[0]?.email).toBe("");
+		}
+	});
+
+	test("the same domain gives the same addresses, and a mapped person ignores it", async () => {
+		const typed = " @Guess.Example.org ";
+		const a = await planFor(noEmailFiles(), snapshot(), {
+			guessDomain: typed,
+		});
+		const b = await planFor(noEmailFiles(), snapshot(), {
+			guessDomain: GUESS_DOMAIN,
+		});
+		expect(a.plan.start.people).toEqual(b.plan.start.people);
+		expect(a.plan.start.people[0]).toMatchObject({ email: guessed("pnovak") });
+		// The guess checks against the server: it is not a listed address.
+		expect(a.plan.emailsToCheck).toEqual([guessed("pnovak")]);
+		// A person an earlier run mapped is matched by the Harvest name, with no
+		// domain and no email: a re-import makes no second user.
+		const again = await planFor(
+			noEmailFiles(),
+			snapshot({
+				members: [member("u-pero", "Pero Novak", guessed("pnovak"))],
+				mappings: [
+					{ kind: "person", sourceKey: "pero novak", localId: "u-pero" },
+				],
+			}),
+			{ guessDomain: "" },
+		);
+		expect(again.plan.ready).toBe(true);
+		expect(again.plan.start.people[0]).toMatchObject({
+			action: "match",
+			localId: "u-pero",
+		});
 	});
 
 	test("each of the four guess collisions blocks the plan", async () => {
