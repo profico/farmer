@@ -220,6 +220,10 @@ const config: ExpoConfig = {
 		deploymentTarget: "18.0",
 		supportsTablet: true,
 		buildNumber: versionCode === undefined ? undefined : String(versionCode),
+		// Export compliance: the app uses HTTPS and standard HPKE for the push
+		// payload, in a mass-market app. That is exempt (EAR Category 5 Part
+		// 2, Note 3), so TestFlight does not hold each build for the question.
+		config: { usesNonExemptEncryption: false },
 	},
 	android: {
 		package: "com.profico.farmer",
