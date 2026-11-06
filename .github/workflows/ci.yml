@@ -45,6 +45,13 @@ jobs:
       - name: Lint, format and import order
         run: bun run check
 
+      # The CLI and the apps read `/api/v1` through these files. A change to a
+      # route that does not regenerate them fails here, not in a client.
+      - name: OpenAPI is up to date
+        run: |
+          bun run --cwd packages/api-client generate
+          git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/openapi.gen.ts
+
       # Through turbo, like every other step, rather than two hand-written
       # `bunx tsc` invocations with a `working-directory`. Those were the only
       # check in this file that a developer could not run locally — there was no
