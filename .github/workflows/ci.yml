@@ -3,6 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # A release: `v1.2.3`. `cli-v*` and `mobile-v*` do not match, because a glob
+    # must match the whole tag name from its first character.
+    tags: ["v*"]
   pull_request:
 
 concurrency:
@@ -100,11 +103,13 @@ jobs:
 
   # Whether this repository deploys at all. A job's `if` cannot read a secret,
   # so this job reads it into an output. A fork has no COOLIFY_WEBHOOK_URL, and
-  # then the image is not built or pushed either: nothing would pull it.
+  # then the nightly image is not built or pushed either: nothing would pull it.
   # Upstream, the secret is set and the deploy runs as before.
+  # A release tag needs no secret: it only pushes an image, so a fork can
+  # publish its own release.
   deploy-gate:
     name: Check the deploy target
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
@@ -114,7 +119,7 @@ jobs:
         env:
           WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
         run: |
-          if [ -n "$WEBHOOK_URL" ]; then
+          if [ -n "$WEBHOOK_URL" ] || [ "$GITHUB_REF_TYPE" = tag ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::COOLIFY_WEBHOOK_URL is not set, so this repository does not deploy."
@@ -124,11 +129,18 @@ jobs:
   # Build the production image here instead of on the Coolify host — that host
   # builds --no-cache on a shared arm64 box, which has corrupted tarballs and
   # hung installs (see the retry loops in the Dockerfile). Coolify's app is a
-  # "Docker Image" resource pointing at ghcr.io/<owner>/<repository>:latest;
+  # "Docker Image" resource pointing at ghcr.io/<owner>/<repository>:nightly;
   # the last step just tells it to pull and restart.
   #
-  # Only on a push to main, and only where `deploy-gate` found the Coolify
-  # secret. A pull request never deploys, from a fork or not.
+  # Tags by trigger:
+  #   * a push to main: `nightly` and `sha-<long sha>`. Not `latest`.
+  #   * a `v*` tag: `<version>`, `<major>.<minor>`, `<major>` and `latest`.
+  #     A pre-release tag (`v1.2.3-rc.1`) gets only `<version>`.
+  # A tag does not call the Coolify webhook.
+  #
+  # Only on a push to main or a `v*` tag, and only where `deploy-gate` allowed
+  # it (a tag always, main only with the Coolify secret). A pull request never
+  # deploys, from a fork or not.
   #
   # ubuntu-24.04-arm is a native arm64 runner, matching the Coolify host's arch
   # with no QEMU. If your plan doesn't provide arm runners, switch runs-on to
@@ -137,7 +149,7 @@ jobs:
   deploy:
     name: Build image, deploy to Coolify
     needs: [ci, deploy-gate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-gate.outputs.enabled == 'true'
+    if: github.event_name == 'push' && needs.deploy-gate.outputs.enabled == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -161,9 +173,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # `latest=auto` adds `latest` for a stable semver tag only.
+          flavor: latest=auto
           tags: |
-            type=raw,value=latest
-            type=sha,format=long
+            type=raw,value=nightly,enable={{is_default_branch}}
+            type=sha,format=long,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -173,15 +190,19 @@ jobs:
           push: true
           # What the running deployment reports at the foot of Settings. The
           # image is built from this commit, so this is the only place that
-          # knows it — see GIT_SHA in the Dockerfile.
+          # knows it — see GIT_SHA in the Dockerfile. SERVER_VERSION is the
+          # release for a `v*` tag, and empty for a nightly build.
           build-args: |
             GIT_SHA=${{ github.sha }}
+            SERVER_VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Only main: our instance runs `nightly`. A release tag deploys nothing.
       - name: Trigger Coolify deploy
+        if: github.ref == 'refs/heads/main'
         env:
           WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
           API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}

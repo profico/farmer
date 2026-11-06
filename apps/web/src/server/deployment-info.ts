@@ -65,6 +65,8 @@ export type DeploymentInfo = {
 	contributors: Contributor[];
 	/** The commit this process is running, or null off a real build. */
 	commit: { sha: string; shortSha: string; url: string } | null;
+	/** The release this image was built from, or null for a nightly build. */
+	version: string | null;
 };
 
 const contributorList = z.array(
@@ -328,10 +330,23 @@ export const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
 	};
 };
 
+/**
+ * The release this image was built from, or null. `SERVER_VERSION` is a Docker
+ * build argument that CI sets only for a `v*` tag, so a nightly image and a
+ * local build have none. A value that is not `major.minor.patch` (with an
+ * optional pre-release suffix) is dropped, like `GIT_SHA` above.
+ */
+const SERVER_VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
+export const readServerVersion = (): string | null => {
+	const value = process.env.SERVER_VERSION?.trim().replace(/^v/, "");
+	return value && SERVER_VERSION.test(value) ? value : null;
+};
+
 export const readDeploymentInfo = async (): Promise<DeploymentInfo> => {
 	const [contributors, commit] = await Promise.all([
 		readContributors().catch(() => []),
 		readCommit(),
 	]);
-	return { contributors, commit };
+	return { contributors, commit, version: readServerVersion() };
 };

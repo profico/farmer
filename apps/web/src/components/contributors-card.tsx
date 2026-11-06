@@ -214,6 +214,11 @@ export function ContributorsCard({ className }: { className?: string }) {
 									className="size-3 shrink-0"
 								/>
 							</a>
+							{data?.version && (
+								<p className="text-2xs text-muted-foreground">
+									Version {data.version}
+								</p>
+							)}
 						</PopoverContent>
 					</Popover>
 				</motion.div>

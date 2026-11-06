@@ -55,12 +55,14 @@ export const Route = createFileRoute("/api/v1/meta")({
 					{ pushRelayUrl },
 					{ isStorageEnabled },
 					{ isSingleOrgMode },
+					{ readServerVersion },
 				] = await Promise.all([
 					import("@farmer/core/lib/cli-flag"),
 					import("@farmer/core/auth"),
 					import("@farmer/core/lib/push-relay"),
 					import("@farmer/core/lib/storage"),
 					import("@farmer/core/lib/single-org"),
+					import("#/server/deployment-info"),
 				]);
 				const relayUrl = pushRelayUrl();
 				const meta: ApiMeta = {
@@ -68,6 +70,7 @@ export const Route = createFileRoute("/api/v1/meta")({
 					cliEnabled: isCliEnabled(),
 					minCliVersion: MIN_CLI_VERSION,
 					apiVersion: API_VERSION,
+					serverVersion: readServerVersion(),
 					minMobileVersion: MIN_MOBILE_VERSION,
 					signInMethods: signInProviders(),
 					passwordSignIn: await cachedPasswordOffered(passwordOffered),

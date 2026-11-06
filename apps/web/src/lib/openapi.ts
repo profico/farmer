@@ -281,6 +281,12 @@ const apiMeta = named(
 				.describe(
 					"The version of this contract. The mobile app reads it to find out whether the routes that it needs exist.",
 				),
+			serverVersion: z
+				.string()
+				.nullable()
+				.describe(
+					"The release this server was built from, or null for a nightly or a local build.",
+				),
 			minMobileVersion: z
 				.string()
 				.describe("The oldest mobile app this server can serve."),
