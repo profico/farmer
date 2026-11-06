@@ -17,13 +17,13 @@
 		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"dependencies": {
-		"@hpke/core": "1.9.0",
+		"@hpke/core": "1.10.0",
 		"@noble/ciphers": "2.4.0",
 		"@noble/curves": "2.4.0",
 		"@noble/hashes": "2.4.0"
 	},
 	"devDependencies": {
-		"bun-types": "1.4.2",
+		"bun-types": "1.4.4",
 		"typescript": "^6.0.2"
 	}
 }
