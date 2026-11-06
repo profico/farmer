@@ -169,7 +169,7 @@ describe("ApiClient", () => {
 		if (!(missing instanceof CliError)) throw new Error("Expected a CliError");
 		expect(missing.status).toBe(404);
 		expect(missing.code).toBeUndefined();
-		expect(missing.message).toContain("Ask the administrator to update Farmer");
+		expect(missing.message).toContain("ask the administrator to update Farmer");
 	});
 });
 
