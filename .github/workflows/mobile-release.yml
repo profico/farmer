@@ -507,12 +507,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Prebuild also runs `pod install`. It warns that there is no Apple team:
-      # the two builds below do not sign, so no team is needed.
+      # the simulator build signs ad hoc and the archive does not sign, so no
+      # team is needed.
       - name: Prebuild the iOS project
         working-directory: apps/mobile
         run: bunx expo prebuild -p ios
 
-      # The simulator build runs on any Mac and needs no signing.
+      # The simulator build runs on any Mac and needs no Apple account. It signs
+      # ad hoc ("-"): with no signing, Xcode leaves out the entitlements, and
+      # the keychain refuses the app group (`src/push/storage.ts`), so sign-in
+      # fails with "A required entitlement is not present".
       - name: Build for the iOS Simulator
         working-directory: apps/mobile/ios
         run: |
@@ -524,7 +528,9 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/simulator \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
             | tee build-simulator.log | tail -n 25
 
       # The device build is an archive with no signature. The app group and
