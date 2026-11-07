@@ -197,7 +197,6 @@ function useFlash<T>(ms: number) {
 	return [value, flash] as const;
 }
 
-/** Minutes as `h:mm`. */
 const clock = (minutes: number) =>
 	`${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 

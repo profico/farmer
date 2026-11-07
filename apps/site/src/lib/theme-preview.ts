@@ -28,7 +28,6 @@ function setOrigin(card: DOMRect) {
 	style.setProperty("--bleed-l", `${card.left}px`);
 }
 
-/** A dot of the hue, as a cursor. */
 const cursor = (hue: number) => {
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="8" fill="hsl(${hue} 65% 55%)" stroke="white" stroke-width="2.5"/><circle cx="12" cy="12" r="10" fill="none" stroke="rgb(0 0 0 / 0.25)"/></svg>`;
 	return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, crosshair`;

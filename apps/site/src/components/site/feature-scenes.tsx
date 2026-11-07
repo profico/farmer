@@ -50,7 +50,7 @@ function PeopleScene() {
 	);
 }
 
-/** Three project cards fan out. */
+/** Three project cards swing down out of the top edge. */
 function ProjectsScene() {
 	return (
 		<div className="fp-scene-projects">
