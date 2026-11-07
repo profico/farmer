@@ -502,16 +502,20 @@ function Stepper({
 	);
 }
 
-function DayAccepted({ hours }: { hours: string }) {
+function DayAccepted({ hours, shown }: { hours: string; shown: boolean }) {
 	return (
-		<div className="fp-accepted">
-			{CONFETTI.map(({ x, y }, i) => (
-				<span
-					key={`${x}-${y}`}
-					className="fp-confetti"
-					style={{ translate: `${x}px ${y}px`, animationDelay: `${i * 12}ms` }}
-				/>
-			))}
+		<div className="fp-accepted" data-shown={shown ? "" : undefined}>
+			{shown &&
+				CONFETTI.map(({ x, y }, i) => (
+					<span
+						key={`${x}-${y}`}
+						className="fp-confetti"
+						style={{
+							translate: `${x}px ${y}px`,
+							animationDelay: `${i * 12}ms`,
+						}}
+					/>
+				))}
 			<SmileyIcon weight="duotone" size={64} className="fp-accepted-face" />
 			<div className="fm-serif fp-accepted-title">Day accepted</div>
 			<div className="fp-small" style={{ fontSize: 13.5 }}>
@@ -573,7 +577,7 @@ export function AssembleMock() {
 							/>
 						))}
 					</div>
-					{mode === "accepted" ? <DayAccepted hours={hours} /> : null}
+					<DayAccepted hours={hours} shown={mode === "accepted"} />
 				</div>
 				<div className="fp-mock-foot">
 					<span className="fp-small" style={{ flex: 1, minWidth: 180 }}>
@@ -709,6 +713,16 @@ const dayMinutes = (hours: Hours, date: Date) =>
 
 export function TimesheetMock() {
 	const [view, setView] = useState<View>("Week");
+	// Which way the last change went, for the entrance of the new view.
+	const [dir, setDir] = useState<"in" | "out" | "next" | "prev">("out");
+	const show = (next: View) => {
+		setDir(VIEWS.indexOf(next) > VIEWS.indexOf(view) ? "out" : "in");
+		setView(next);
+	};
+	const move = (by: 1 | -1) => {
+		setDir(by > 0 ? "next" : "prev");
+		setCursor(step(view, cursor, by));
+	};
 	const [cursor, setCursor] = useState(TODAY);
 	// The week starts that "Copy from previous week" has filled.
 	const [copied, setCopied] = useState<string[]>([]);
@@ -734,7 +748,7 @@ export function TimesheetMock() {
 							<Play
 								key={name}
 								data-active={name === view ? "" : undefined}
-								onClick={() => setView(name)}
+								onClick={() => show(name)}
 							>
 								{name}
 							</Play>
@@ -763,14 +777,14 @@ export function TimesheetMock() {
 						<PlusIcon />
 					</span>
 					<span className="fp-ts-range">
-						<Play onClick={() => setCursor(step(view, cursor, -1))}>
+						<Play onClick={() => move(-1)}>
 							<ArrowLeftIcon />
 						</Play>
 						<span className="fp-ts-range-label">
 							<CalendarBlankIcon weight="duotone" color="var(--mut)" />
 							{rangeLabel(view, cursor)}
 						</span>
-						<Play onClick={() => setCursor(step(view, cursor, 1))}>
+						<Play onClick={() => move(1)}>
 							<ArrowRightIcon />
 						</Play>
 					</span>
@@ -779,7 +793,11 @@ export function TimesheetMock() {
 						Time off
 					</span>
 				</div>
-				<div key={view} className="fp-ts-view">
+				<div
+					key={`${view}-${view === "Month" ? cursor.getMonth() : start.toDateString()}`}
+					className="fp-ts-view"
+					data-dir={dir}
+				>
 					{view === "Day" ? (
 						<TsDay cursor={cursor} hours={hours} onPick={setCursor} />
 					) : null}
@@ -790,7 +808,7 @@ export function TimesheetMock() {
 							hours={hours}
 							onPick={(date) => {
 								setCursor(date);
-								setView("Day");
+								show("Day");
 							}}
 						/>
 					) : null}

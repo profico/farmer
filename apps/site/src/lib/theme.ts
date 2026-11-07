@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "farmer-theme";
+export const STORAGE_KEY = "farmer-theme";
 /** Fired on the window whenever *this* tab changes the theme — `storage` only
  *  reaches the OTHER tabs, so it can't keep two toggles on one page in sync. */
 const CHANGE_EVENT = "farmer:theme";

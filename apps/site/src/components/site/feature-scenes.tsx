@@ -14,7 +14,7 @@ import {
  */
 
 const delay = (i: number, step: number) => ({
-	animationDelay: `${i * step}ms`,
+	transitionDelay: `${i * step}ms`,
 });
 
 /** The month's working days fill in, one by one. */
@@ -25,7 +25,7 @@ function HoursScene() {
 				<span
 					key={i}
 					data-off={i % 7 > 4 ? "" : undefined}
-					style={delay(i, 35)}
+					style={delay(i, 16)}
 				/>
 			))}
 		</div>
@@ -39,11 +39,11 @@ function PeopleScene() {
 	return (
 		<div className="fp-scene-people">
 			{PEOPLE.map((initials, i) => (
-				<span key={initials} style={delay(i, 90)}>
+				<span key={initials} style={delay(i, 50)}>
 					{initials}
 				</span>
 			))}
-			<span className="fp-scene-more" style={delay(5, 90)}>
+			<span className="fp-scene-more" style={delay(5, 50)}>
 				+24
 			</span>
 		</div>
@@ -66,8 +66,8 @@ function RemindersScene() {
 	return (
 		<div className="fp-scene-reminders">
 			<span className="fp-scene-ripple" />
-			<span className="fp-scene-ripple" style={delay(1, 500)} />
-			<span className="fp-scene-ripple" style={delay(2, 500)} />
+			<span className="fp-scene-ripple" style={{ animationDelay: "500ms" }} />
+			<span className="fp-scene-ripple" style={{ animationDelay: "1000ms" }} />
 			<div className="fp-scene-toast">
 				<BellRingingIcon weight="duotone" size={16} />
 				<span>
@@ -91,13 +91,16 @@ function IntegrationsScene() {
 			<span style={{ top: 0 }}>
 				<GithubLogoIcon weight="fill" size={13} />
 			</span>
-			<span style={{ top: 24 }}>
+			<span style={{ top: 24, transitionDelay: "40ms" }}>
 				<CalendarBlankIcon weight="duotone" size={13} />
 			</span>
-			<span style={{ top: 48 }}>
+			<span style={{ top: 48, transitionDelay: "80ms" }}>
 				<SlackLogoIcon weight="duotone" size={13} />
 			</span>
-			<span className="fp-scene-hub" style={{ top: 15 }}>
+			<span
+				className="fp-scene-hub"
+				style={{ top: 15, transitionDelay: "140ms" }}
+			>
 				<WebhooksLogoIcon weight="duotone" size={20} />
 			</span>
 		</div>
@@ -160,12 +163,12 @@ function AuditScene() {
 	);
 }
 
-/** A color wheel turns, and the card flips between light and dark. */
+/** A swatch: `theme-preview.ts` moves the ring and writes the readout. */
 function ThemeScene() {
 	return (
 		<div className="fp-scene-theme">
-			<span className="fp-scene-wheel" />
-			<span className="fp-scene-dark" />
+			<span className="fp-scene-ring" />
+			<span className="fp-scene-readout" />
 		</div>
 	);
 }

@@ -43,6 +43,7 @@ import {
 	REPOSITORY,
 } from "#/lib/links.ts";
 import type { ReleaseNote } from "#/lib/releases.ts";
+import { useThemePreview } from "#/lib/theme-preview.ts";
 
 import { FeatureScene, type SceneName } from "./feature-scenes.tsx";
 import {
@@ -352,6 +353,7 @@ const features: {
 ];
 
 function EverythingElse() {
+	const preview = useThemePreview();
 	return (
 		<section className="fm-container fp-section">
 			<h2 className="fm-h2" style={{ maxWidth: 640 }}>
@@ -359,7 +361,11 @@ function EverythingElse() {
 			</h2>
 			<div className="fm-cells fp-features">
 				{features.map(({ icon: FeatureIcon, title, body, scene }) => (
-					<div key={title} className="fp-feature">
+					<div
+						key={title}
+						className="fp-feature"
+						{...(scene === "theme" ? preview : {})}
+					>
 						<FeatureScene scene={scene} />
 						<FeatureIcon
 							weight="duotone"
