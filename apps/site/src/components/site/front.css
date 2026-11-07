@@ -278,7 +278,7 @@
 	width: 56px;
 	padding: 12px 0;
 	border-radius: 12px;
-	background: color-mix(in oklab, var(--bg) 55%, var(--ground));
+	background: var(--bg);
 }
 .fm-site .fp-sidebar-org {
 	display: grid;
@@ -305,7 +305,7 @@
 	color: var(--fg);
 }
 .fm-site .fp-sidebar-rule {
-	width: 32px;
+	width: 100%;
 	height: 1px;
 	margin: 4px 0 6px;
 	background: var(--line);
@@ -315,7 +315,11 @@
 	width: 30px;
 	height: 30px;
 	border-radius: 50%;
-	background: radial-gradient(circle at 35% 35%, #8f887c, #3a352e);
+	background: radial-gradient(
+		circle at 35% 35%,
+		oklch(0.6293 0.0218 293),
+		oklch(0.32 0.015 293)
+	);
 }
 .fm-site .fp-page {
 	flex: 1;
@@ -828,7 +832,7 @@
 	max-width: 85%;
 	padding: 9px 13px;
 	border-radius: 12px 12px 4px 12px;
-	background: rgba(237, 232, 222, 0.08);
+	background: color-mix(in srgb, var(--ink-fg) 8%, transparent);
 	font-size: 14px;
 }
 .fm-site .fp-answer {

@@ -14,21 +14,24 @@
 :root {
 	color-scheme: light;
 
-	--bg: #faf9f6;
-	--ground: #efece5;
-	--bg2: #f4f2ed;
-	--fg: #1b1a17;
-	--mut: #79736a;
-	--faint: #a9a296;
-	--line: rgba(27, 26, 23, 0.11);
-	--line2: rgba(27, 26, 23, 0.055);
+	/* The neutrals are the app's Custom palette at the violet seed (hue 293,
+	   chroma 0.168; `--seed-*` in apps/web/src/styles.css): the greys the phone
+	   captures and the app show, not the warm Vanilla ones. */
+	--bg: oklch(0.982 0.004 293);
+	--ground: oklch(0.9435 0.0099 293);
+	--bg2: oklch(0.9613 0.0071 293);
+	--fg: oklch(0.2178 0.0059 293);
+	--mut: oklch(0.5582 0.0155 293);
+	--faint: oklch(0.7147 0.019 293);
+	--line: color-mix(in srgb, var(--fg) 11%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 5.5%, transparent);
 	--acc: #6f4ebe;
 	--warn: #8a6a1f;
 	--ok: #4a7050;
 	--bad: #b3423f;
-	--sel: rgba(27, 26, 23, 0.045);
+	--sel: color-mix(in srgb, var(--fg) 4.5%, transparent);
 	--text-sel: color-mix(in srgb, var(--acc) 22%, transparent);
-	--lift: 0 8px 22px rgba(27, 26, 23, 0.14);
+	--lift: 0 8px 22px color-mix(in srgb, var(--fg) 14%, transparent);
 	--shadow-pop:
 		0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
 
@@ -51,19 +54,19 @@
 :root[data-theme="dark"] {
 	color-scheme: dark;
 
-	--bg: #1a1914;
-	--ground: #0e0d0a;
-	--bg2: #232219;
-	--fg: #ede8de;
-	--mut: #8f887c;
-	--faint: #6b6459;
-	--line: rgba(237, 232, 222, 0.13);
-	--line2: rgba(237, 232, 222, 0.06);
+	--bg: oklch(0.2127 0.0108 293);
+	--ground: oklch(0.1591 0.0072 293);
+	--bg2: oklch(0.25 0.0183 293);
+	--fg: oklch(0.9322 0.0161 293);
+	--mut: oklch(0.6293 0.0218 293);
+	--faint: oklch(0.5064 0.0215 293);
+	--line: color-mix(in srgb, var(--fg) 13%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 6%, transparent);
 	--acc: #9178de;
 	--warn: #c0a15a;
 	--ok: #7fa887;
 	--bad: #d98782;
-	--sel: rgba(237, 232, 222, 0.05);
+	--sel: color-mix(in srgb, var(--fg) 5%, transparent);
 	--text-sel: color-mix(in srgb, var(--acc) 28%, transparent);
 	--lift: 0 8px 22px rgba(0, 0, 0, 0.5);
 	--shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
