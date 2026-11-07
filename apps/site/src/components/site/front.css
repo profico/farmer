@@ -1336,11 +1336,16 @@
 /* The label sits on the cargo box of the 52px icon. */
 .fm-site .fp-scene-crate {
 	position: absolute;
-	top: 14px;
-	left: 7px;
-	width: 29px;
-	line-height: 12px;
-	text-align: center;
+	/* The white of the cargo box: x 32-176, y 72-136 of 256. */
+	top: 14.6px;
+	left: 6.5px;
+	display: grid;
+	place-items: center;
+	width: 29.25px;
+	height: 13px;
+	line-height: 1;
+	/* Centre the capitals, not the line box above them. */
+	text-box: trim-both cap alphabetic;
 	font-family: var(--mono);
 	font-size: 8px;
 	font-weight: 600;
