@@ -1,4 +1,5 @@
 import {
+	AlarmIcon,
 	AppleLogoIcon,
 	ArrowRightIcon,
 	BellRingingIcon,
@@ -6,6 +7,7 @@ import {
 	CalendarCheckIcon,
 	CalendarDotsIcon,
 	ChatCircleDotsIcon,
+	ClipboardTextIcon,
 	ClockIcon,
 	FoldersIcon,
 	FunnelIcon,
@@ -15,7 +17,9 @@ import {
 	HardDrivesIcon,
 	IdentificationBadgeIcon,
 	IslandIcon,
+	KeyIcon,
 	PackageIcon,
+	PaletteIcon,
 	PlugsConnectedIcon,
 	PlugsIcon,
 	RepeatIcon,
@@ -26,6 +30,7 @@ import {
 	TrendUpIcon,
 	TruckIcon,
 	UmbrellaIcon,
+	WebhooksLogoIcon,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
@@ -314,6 +319,21 @@ const features: { icon: Icon; title: string; body: string }[] = [
 		title: "Moving from Harvest",
 		body: "Drop your Harvest CSV exports in Settings. Importing the same files twice changes nothing, and the last run can be undone.",
 	},
+	{
+		icon: AlarmIcon,
+		title: "Forgotten timers",
+		body: "A timer left running past your limit, 12 hours by default, stops on its own and logs nothing. A paused timer is left alone.",
+	},
+	{
+		icon: ClipboardTextIcon,
+		title: "Audit log",
+		body: "Who changed what, from the web, the CLI, the API or the assistant, and every sign-in. For admins, with export and a retention you choose.",
+	},
+	{
+		icon: PaletteIcon,
+		title: "Make it yours",
+		body: "Light or dark, a palette from one colour, high contrast, a plain font and less movement. Each person picks their own.",
+	},
 ];
 
 function EverythingElse() {
@@ -530,6 +550,38 @@ function Developers() {
 						<ArrowRightIcon size={14} aria-hidden />
 					</span>
 				</a>
+				<div className="fp-dev-extras">
+					<div className="fp-dev-extra">
+						<WebhooksLogoIcon
+							weight="duotone"
+							size={18}
+							className="fp-ink-acc"
+							aria-hidden
+						/>
+						<div>
+							<h3>Webhooks</h3>
+							<p>
+								A signed POST for each time entry, absence, project, client and
+								member change. Retries, a delivery log and Resend.
+							</p>
+						</div>
+					</div>
+					<div className="fp-dev-extra">
+						<KeyIcon
+							weight="duotone"
+							size={18}
+							className="fp-ink-acc"
+							aria-hidden
+						/>
+						<div>
+							<h3>API tokens</h3>
+							<p>
+								Read-only or read-write, with an expiry, for a cron job, a CI
+								step or a spreadsheet. Revoke one any time.
+							</p>
+						</div>
+					</div>
+				</div>
 			</div>
 		</section>
 	);
@@ -621,8 +673,7 @@ function SelfHosting({
 						style={{ margin: "4px 0 0", fontSize: 14, textWrap: "pretty" }}
 					>
 						Single-organization mode gives you one invite-only workspace with
-						your own logo on the sign-in page. Light and dark themes, a custom
-						accent and high contrast come built in.
+						your own logo on the sign-in page.
 					</p>
 				</div>
 			</div>

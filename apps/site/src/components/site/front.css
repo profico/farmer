@@ -880,6 +880,36 @@
 		color: var(--ink-fg);
 	}
 }
+.fm-site .fp-dev-extras {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	gap: 16px;
+	margin-top: 16px;
+}
+.fm-site .fp-dev-extra {
+	display: flex;
+	gap: 12px;
+	padding: 16px 20px;
+	border: 1px solid var(--ink-line);
+	border-radius: 12px;
+}
+.fm-site .fp-dev-extra > svg {
+	flex: none;
+	margin-top: 2px;
+}
+.fm-site .fp-dev-extra h3 {
+	margin: 0 0 4px;
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--ink-fg);
+}
+.fm-site .fp-dev-extra p {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--ink-mut);
+	text-wrap: pretty;
+}
 .fm-site .fp-rest code {
 	font-family: var(--mono);
 	letter-spacing: -0.03em;
