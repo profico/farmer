@@ -26,7 +26,7 @@
 	color: var(--mut);
 }
 @media (hover: hover) and (pointer: fine) {
-	.fm-site .fp-release:hover {
+	.fm-site a.fp-release:hover {
 		text-decoration: none;
 		border-color: color-mix(in srgb, var(--mut) 60%, transparent);
 	}
@@ -69,6 +69,11 @@
 }
 .fm-site .fp-store {
 	padding: 5px 12px;
+	user-select: none;
+}
+/* The App Store pill is not a link yet. */
+.fm-site span.fp-store {
+	cursor: default;
 }
 .fm-site .fp-store .fp-release-tag {
 	margin-inline-end: -6px;
