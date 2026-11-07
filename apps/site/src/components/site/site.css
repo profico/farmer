@@ -513,17 +513,48 @@ html:has(.fm-site) {
 		var(--bg) calc(70% + 25% * var(--s)),
 		transparent
 	);
+	/* Only the unprefixed property: the minifier adds the -webkit- copy, and
+	   with both written it keeps only the prefixed one, which Chrome ignores. */
 	backdrop-filter: blur(12px) saturate(140%);
-	-webkit-backdrop-filter: blur(12px) saturate(140%);
-	box-shadow: 0 12px 32px -18px
-		color-mix(in oklab, #000 calc(40% * var(--s)), transparent);
+}
+/* No shadow under the island. Behind it, the page melts away as it reaches
+   the top: two blur layers, the stronger one nearer the edge, under a wash of
+   paper that fades out downwards. All of it comes in with the scroll. */
+.fm-site .fm-header::before,
+.fm-site .fm-header::after {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: calc(100% + 96px);
+	pointer-events: none;
+	opacity: var(--s);
+}
+.fm-site .fm-header::before {
+	backdrop-filter: blur(10px);
+	mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+.fm-site .fm-header::after {
+	background: linear-gradient(
+		to bottom,
+		var(--bg) 30%,
+		color-mix(in oklab, var(--bg) 70%, transparent) 55%,
+		transparent
+	);
+	backdrop-filter: blur(28px);
+	mask-image: linear-gradient(to bottom, #000 50%, transparent 85%);
 }
 /* Glass is a nicety. Asked for less, the bar is solid paper. */
 @media (prefers-reduced-transparency: reduce) {
+	.fm-site .fm-header::before,
+	.fm-site .fm-header::after {
+		backdrop-filter: none;
+	}
 	.fm-site .fm-header-inner {
 		background: var(--bg);
 		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
 	}
 }
 .fm-site .fm-brand {
