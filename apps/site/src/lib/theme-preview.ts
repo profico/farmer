@@ -43,7 +43,7 @@ export function useThemePreview() {
 	const running = useRef<ViewTransition | null>(null);
 
 	const change = (kind: "out" | "in", apply: () => void) => {
-		// A new change starts from what is on screen now.
+		// Only one transition at a time: the old one jumps to its end state.
 		running.current?.skipTransition();
 		if (!document.startViewTransition || stillMotion()) {
 			apply();
@@ -93,12 +93,16 @@ export function useThemePreview() {
 	return {
 		onPointerEnter: (event: PointerEvent<HTMLElement>) => {
 			if (event.pointerType !== "mouse" || on.current) return;
+			// The preview palette would replace the "High contrast" one.
+			if (root().dataset.contrast === "high") return;
 			on.current = true;
-			const hue = hueAt(event);
+			// The hue has no effect before `data-preview`, so a move before the
+			// transition paints is not lost.
+			root().style.setProperty("--preview-hue", String(hueAt(event)));
 			setOrigin(event.currentTarget.getBoundingClientRect());
 			change("out", () => {
-				root().dataset.preview = "";
-				root().style.setProperty("--preview-hue", String(hue));
+				// The card can unmount before the transition calls this.
+				if (on.current) root().dataset.preview = "";
 			});
 		},
 		onPointerMove: (event: PointerEvent<HTMLElement>) => {
