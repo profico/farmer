@@ -517,9 +517,10 @@ html:has(.fm-site) {
 	   with both written it keeps only the prefixed one, which Chrome ignores. */
 	backdrop-filter: blur(12px) saturate(140%);
 }
-/* No shadow under the island. Behind it, the page melts away as it reaches
-   the top: two blur layers, the stronger one nearer the edge, under a wash of
-   paper that fades out downwards. All of it comes in with the scroll. */
+/* No shadow under the island. Behind it, the page blurs as it reaches the
+   top: two blur layers, the stronger one nearer the edge, each faded out
+   downwards. Only a thin tint, so the content is blurred, not covered. All
+   of it comes in with the scroll. */
 .fm-site .fm-header::before,
 .fm-site .fm-header::after {
 	content: "";
@@ -533,18 +534,13 @@ html:has(.fm-site) {
 	opacity: var(--s);
 }
 .fm-site .fm-header::before {
-	backdrop-filter: blur(6px);
-	mask-image: linear-gradient(to bottom, #000 60%, transparent);
+	backdrop-filter: blur(4px);
+	mask-image: linear-gradient(to bottom, #000 75%, transparent);
 }
 .fm-site .fm-header::after {
-	background: linear-gradient(
-		to bottom,
-		var(--bg) 30%,
-		color-mix(in oklab, var(--bg) 70%, transparent) 55%,
-		transparent
-	);
-	backdrop-filter: blur(16px);
-	mask-image: linear-gradient(to bottom, #000 50%, transparent 85%);
+	background: color-mix(in oklab, var(--bg) 35%, transparent);
+	backdrop-filter: blur(14px);
+	mask-image: linear-gradient(to bottom, #000 55%, transparent 90%);
 }
 /* Glass is a nicety. Asked for less, the bar is solid paper. */
 @media (prefers-reduced-transparency: reduce) {

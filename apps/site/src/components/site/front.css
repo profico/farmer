@@ -1297,7 +1297,8 @@
 	position: absolute;
 }
 .fm-site .fp-scene-road {
-	top: 74px;
+	/* Under the wheels: 22px + 52px x 216 / 256. */
+	top: 66px;
 	right: 0;
 	left: 40%;
 	height: 2px;
@@ -1316,7 +1317,7 @@
 	}
 }
 .fm-site .fp-scene-truck {
-	top: 30px;
+	top: 22px;
 	right: 28px;
 	display: flex;
 	align-items: flex-end;
@@ -1329,18 +1330,21 @@
 .fm-site .fp-feature:hover .fp-scene .fp-scene-truck {
 	transition-duration: 700ms;
 }
-.fm-site .fp-scene-truck > svg {
+.fm-site .fp-scene-truck > * {
 	animation: fp-scene-bump 300ms ease-in-out infinite;
 }
+/* The label sits on the cargo box of the 52px icon. */
 .fm-site .fp-scene-crate {
-	margin: 0 -2px 18px 0;
-	padding: 3px 6px;
-	border-radius: 4px;
-	background: var(--acc-mid);
-	color: var(--on-acc);
+	position: absolute;
+	top: 14px;
+	left: 7px;
+	width: 29px;
+	line-height: 12px;
+	text-align: center;
 	font-family: var(--mono);
-	font-size: 9px;
+	font-size: 8px;
 	font-weight: 600;
+	letter-spacing: 0.04em;
 }
 @keyframes fp-scene-bump {
 	50% {
@@ -1859,7 +1863,9 @@
 	from {
 		clip-path: inset(0);
 	}
+	/* It fades as it shrinks, so nothing is left in the card at the end. */
 	to {
+		opacity: 0;
 		clip-path: inset(
 			var(--bleed-t) var(--bleed-r) var(--bleed-b) var(--bleed-l)
 		);

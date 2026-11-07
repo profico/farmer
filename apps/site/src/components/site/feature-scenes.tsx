@@ -113,7 +113,7 @@ function HarvestScene() {
 		<div className="fp-scene-harvest">
 			<div className="fp-scene-truck">
 				<span className="fp-scene-crate">CSV</span>
-				<TruckIcon weight="duotone" size={44} />
+				<TruckIcon weight="duotone" size={52} />
 			</div>
 			<div className="fp-scene-road" />
 		</div>
