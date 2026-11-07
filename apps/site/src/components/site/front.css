@@ -112,6 +112,50 @@
 .fm-site .fp-mock {
 	font-size: 13.5px;
 }
+/* A control in a mock-up. `:where` keeps the reset weaker than the class
+   that draws it (`.fp-chip-btn`, `.fp-sidebar-icon`). */
+:where(.fm-site button.fp-play) {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.fm-site .fp-play {
+	transition:
+		background var(--dur-fast),
+		opacity var(--dur-fast),
+		scale var(--dur-fast);
+}
+.fm-site .fp-play:active:not(:disabled) {
+	scale: 0.96;
+}
+.fm-site .fp-play:disabled {
+	cursor: default;
+}
+.fm-site .fp-play:disabled:not(.fp-chip-btn-acc) {
+	opacity: 0.55;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-chip-btn.fp-play:not(.fp-chip-btn-acc, :disabled):hover,
+	.fm-site .fp-sidebar-icon.fp-play:hover {
+		background: var(--ground);
+	}
+	.fm-site .fp-chip-btn-acc.fp-play:not(:disabled):hover {
+		background: color-mix(in oklab, var(--acc) 88%, var(--fg));
+	}
+}
+/* "Assemble my day" and "Accept day" run the entries in again. */
+.fm-site .fp-replay > * {
+	animation: fp-arrive 420ms var(--ease-out, ease-out) both;
+}
+@keyframes fp-arrive {
+	from {
+		opacity: 0;
+		translate: 0 6px;
+	}
+}
 .fm-site .fp-chip-btn {
 	display: inline-flex;
 	align-items: center;
@@ -261,6 +305,39 @@
 	height: 10px;
 	border-radius: 50%;
 	background: var(--line);
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(1) {
+	background: #ff5f57;
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(2) {
+	background: #febc2e;
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(3) {
+	background: #28c840;
+}
+/* The three dots close, minimise and zoom the window for a moment. `scale`,
+   `translate` and `opacity` leave the `transform` of the stand-up alone. */
+.fm-site .fp-window {
+	transition:
+		scale 420ms cubic-bezier(0.34, 1.4, 0.64, 1),
+		translate 420ms cubic-bezier(0.34, 1.4, 0.64, 1),
+		opacity 300ms;
+}
+.fm-site .fp-window[data-shut] {
+	transition-duration: 240ms;
+	transition-timing-function: ease-in;
+}
+.fm-site .fp-window[data-shut="close"] {
+	scale: 0.9;
+	opacity: 0;
+}
+.fm-site .fp-window[data-shut="min"] {
+	scale: 0.3;
+	translate: 0 60%;
+	opacity: 0;
+}
+.fm-site .fp-window[data-shut="zoom"] {
+	scale: 1.03;
 }
 .fm-site .fp-window-url {
 	flex: 1;
@@ -498,7 +575,7 @@
 	border-radius: 9px;
 	font-size: 13px;
 }
-.fm-site .fp-ts-views > span {
+.fm-site .fp-ts-views > * {
 	padding: 4px 12px;
 	color: var(--mut);
 }
@@ -534,7 +611,7 @@
 	border: 1px solid var(--line);
 	border-radius: 8px;
 }
-.fm-site .fp-ts-range > span {
+.fm-site .fp-ts-range > * {
 	display: flex;
 	align-items: center;
 	height: 100%;
@@ -725,6 +802,137 @@
 	font-size: 15px;
 	color: var(--mut);
 	text-wrap: pretty;
+}
+/* On hover, each icon does what it shows. The motif is `data-motif`. */
+.fm-site .fp-feature > svg {
+	transform-origin: 50% 50%;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+	.fm-site .fp-feature:hover > svg {
+		animation: 700ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
+	}
+	.fm-site .fp-feature[data-motif="flip"]:hover > svg {
+		animation-name: fp-motif-flip;
+	}
+	.fm-site .fp-feature[data-motif="swing"] > svg,
+	.fm-site .fp-feature[data-motif="ring"] > svg {
+		transform-origin: 50% 0;
+	}
+	.fm-site .fp-feature[data-motif="swing"]:hover > svg {
+		animation-name: fp-motif-swing;
+		animation-duration: 900ms;
+	}
+	.fm-site .fp-feature[data-motif="lift"]:hover > svg {
+		animation-name: fp-motif-lift;
+	}
+	.fm-site .fp-feature[data-motif="ring"]:hover > svg {
+		animation-name: fp-motif-ring;
+		animation-duration: 800ms;
+	}
+	.fm-site .fp-feature[data-motif="plug"]:hover > svg {
+		animation-name: fp-motif-plug;
+	}
+	.fm-site .fp-feature[data-motif="drive"]:hover > svg {
+		animation-name: fp-motif-drive;
+		animation-duration: 1100ms;
+		animation-timing-function: ease-in-out;
+	}
+	.fm-site .fp-feature[data-motif="swap"]:hover > svg {
+		animation-name: fp-motif-swap;
+	}
+	.fm-site .fp-feature[data-motif="check"]:hover > svg {
+		animation-name: fp-motif-check;
+	}
+	.fm-site .fp-feature[data-motif="hue"]:hover > svg {
+		animation-name: fp-motif-hue;
+		animation-duration: 1400ms;
+		animation-timing-function: linear;
+	}
+}
+/* A page of the calendar turns. */
+@keyframes fp-motif-flip {
+	50% {
+		transform: perspective(80px) rotateX(-180deg);
+	}
+	to {
+		transform: perspective(80px) rotateX(-360deg);
+	}
+}
+/* A badge on a lanyard. */
+@keyframes fp-motif-swing {
+	20% {
+		rotate: 14deg;
+	}
+	45% {
+		rotate: -9deg;
+	}
+	70% {
+		rotate: 4deg;
+	}
+}
+/* The folder lifts off the stack. */
+@keyframes fp-motif-lift {
+	40% {
+		translate: 0 -5px;
+		rotate: -6deg;
+	}
+}
+@keyframes fp-motif-ring {
+	10%,
+	50% {
+		rotate: 16deg;
+	}
+	30%,
+	70% {
+		rotate: -16deg;
+	}
+	85% {
+		rotate: 6deg;
+	}
+}
+/* The two halves pull apart and click back in. */
+@keyframes fp-motif-plug {
+	35% {
+		scale: 1.18 0.92;
+	}
+	55% {
+		scale: 0.94 1.04;
+	}
+}
+/* The truck drives out on the right and back in on the left. */
+@keyframes fp-motif-drive {
+	45% {
+		translate: 40px 0;
+		opacity: 0;
+	}
+	46% {
+		translate: -40px 0;
+		opacity: 0;
+	}
+}
+@keyframes fp-motif-swap {
+	50% {
+		transform: rotateY(180deg);
+	}
+	to {
+		transform: rotateY(360deg);
+	}
+}
+/* A tick on the clipboard. */
+@keyframes fp-motif-check {
+	30% {
+		scale: 1.12;
+		rotate: -8deg;
+	}
+	60% {
+		scale: 0.96;
+		rotate: 3deg;
+	}
+}
+@keyframes fp-motif-hue {
+	to {
+		filter: hue-rotate(360deg);
+	}
 }
 
 /* ---- 05 Developers (the ink band) ------------------------------------- */
