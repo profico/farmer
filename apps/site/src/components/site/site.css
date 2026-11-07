@@ -528,7 +528,7 @@ html:has(.fm-site) {
 	top: 0;
 	left: 0;
 	right: 0;
-	height: calc(100% + 80px);
+	height: calc(100% + 32px);
 	pointer-events: none;
 	opacity: var(--s);
 }
@@ -543,7 +543,7 @@ html:has(.fm-site) {
 		color-mix(in oklab, var(--bg) 70%, transparent) 55%,
 		transparent
 	);
-	backdrop-filter: blur(20px);
+	backdrop-filter: blur(16px);
 	mask-image: linear-gradient(to bottom, #000 50%, transparent 85%);
 }
 /* Glass is a nicety. Asked for less, the bar is solid paper. */
