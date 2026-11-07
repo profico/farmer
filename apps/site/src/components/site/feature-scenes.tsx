@@ -163,14 +163,9 @@ function AuditScene() {
 	);
 }
 
-/** A swatch: `theme-preview.ts` moves the ring and writes the readout. */
+/** None: on this card the page itself changes color (`theme-preview.ts`). */
 function ThemeScene() {
-	return (
-		<div className="fp-scene-theme">
-			<span className="fp-scene-ring" />
-			<span className="fp-scene-readout" />
-		</div>
-	);
+	return null;
 }
 
 const SCENES = {
