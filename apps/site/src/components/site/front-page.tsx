@@ -44,6 +44,7 @@ import {
 } from "#/lib/links.ts";
 import type { ReleaseNote } from "#/lib/releases.ts";
 
+import { FeatureScene, type SceneName } from "./feature-scenes.tsx";
 import {
 	AssembleMock,
 	HomePreview,
@@ -288,60 +289,65 @@ function Reports() {
 	);
 }
 
-const features: { icon: Icon; title: string; body: string; motif: string }[] = [
+const features: {
+	icon: Icon;
+	title: string;
+	body: string;
+	scene: SceneName;
+}[] = [
 	{
 		icon: CalendarDotsIcon,
 		title: "Hours",
 		body: "A monthly hour fund, public holidays for your country, and working hours per person.",
-		motif: "flip",
+		scene: "hours",
 	},
 	{
 		icon: IdentificationBadgeIcon,
 		title: "People",
 		body: "Employees, students and contractors. Billable, overhead or hourly. Admins, Team Leads, PMs and per-project roles.",
-		motif: "swing",
+		scene: "people",
 	},
 	{
 		icon: FoldersIcon,
 		title: "Projects",
 		body: "A page per project with its hours, team and settings. Emoji or your own icon.",
-		motif: "lift",
+		scene: "projects",
 	},
 	{
 		icon: BellRingingIcon,
 		title: "Reminders",
 		body: "Slack DMs, a month-end nudge and an admin digest. Web push if you prefer the browser.",
-		motif: "ring",
+		scene: "reminders",
 	},
 	{
 		icon: PlugsConnectedIcon,
 		title: "Integrations",
 		body: "A GitHub App per organization, Google Calendar per person, Slack per organization, and outbound webhooks.",
-		motif: "plug",
+		scene: "integrations",
 	},
 	{
 		icon: TruckIcon,
 		title: "Moving from Harvest",
 		body: "Drop your Harvest CSV exports in Settings. Importing the same files twice changes nothing, and the last run can be undone.",
-		motif: "drive",
+		scene: "harvest",
 	},
 	{
 		icon: BuildingsIcon,
 		title: "Workspaces",
 		body: "One server holds as many organizations as you need, each with its own people and projects. Someone in two of them switches in the sidebar.",
-		motif: "swap",
+		scene: "workspaces",
 	},
 	{
 		icon: ClipboardTextIcon,
 		title: "Audit log",
 		body: "Who changed what, from the web, the CLI, the API or the assistant, and every sign-in. For admins, with export and a retention you choose.",
-		motif: "check",
+		scene: "audit",
 	},
 	{
 		icon: PaletteIcon,
 		title: "Make it yours",
 		body: "Light or dark, a palette from one color, high contrast, a plain font and less movement. Each person picks their own.",
-		motif: "hue",
+		scene: "theme",
 	},
 ];
 
@@ -352,8 +358,9 @@ function EverythingElse() {
 				Hours, people, projects <em className="fm-em">and the reminders.</em>
 			</h2>
 			<div className="fm-cells fp-features">
-				{features.map(({ icon: FeatureIcon, title, body, motif }) => (
-					<div key={title} className="fp-feature" data-motif={motif}>
+				{features.map(({ icon: FeatureIcon, title, body, scene }) => (
+					<div key={title} className="fp-feature">
+						<FeatureScene scene={scene} />
 						<FeatureIcon
 							weight="duotone"
 							size={26}

@@ -7,6 +7,7 @@ import {
 	ChartLineIcon,
 	CheckIcon,
 	ClockIcon,
+	CoffeeIcon,
 	DownloadSimpleIcon,
 	FolderSimpleIcon,
 	GearSixIcon,
@@ -15,7 +16,9 @@ import {
 	GitPullRequestIcon,
 	LockSimpleIcon,
 	MagicWandIcon,
+	MinusIcon,
 	PlusIcon,
+	SmileyIcon,
 	SparkleIcon,
 	SquaresFourIcon,
 	UmbrellaIcon,
@@ -77,7 +80,16 @@ function SourceMark({ source }: { source: Source }) {
 	}
 }
 
-function Entry({ entry, dashed }: { entry: MockEntry; dashed?: boolean }) {
+function Entry({
+	entry,
+	dashed,
+	aside,
+}: {
+	entry: MockEntry;
+	dashed?: boolean;
+	/** Drawn in place of the time. */
+	aside?: ReactNode;
+}) {
 	return (
 		<div className={dashed ? "fp-entry fp-entry-dashed" : "fp-entry"}>
 			<span className="fp-project-icon">{entry.icon}</span>
@@ -89,7 +101,7 @@ function Entry({ entry, dashed }: { entry: MockEntry; dashed?: boolean }) {
 				<div className="fp-small">{entry.task}</div>
 				{entry.note ? <div className="fp-small">{entry.note}</div> : null}
 			</div>
-			<span className="fm-mono fp-entry-time">{entry.time}</span>
+			{aside ?? <span className="fm-mono fp-entry-time">{entry.time}</span>}
 		</div>
 	);
 }
@@ -211,18 +223,18 @@ const MAX_QUARTERS = 8;
 export function HomePreview() {
 	const [quarters, setQuarters] = useState(0);
 	const [assembled, setAssembled] = useState(0);
-	const [shut, flashShut] = useFlash<"close" | "min" | "zoom">(900);
+	const [shake, flashShake] = useFlash<true>(500);
 	const today = 6 + quarters / 4;
 	return (
 		<figure
 			className="fp-window fp-figure"
-			data-shut={shut ?? undefined}
+			data-shake={shake ? "" : undefined}
 			aria-label="The Farmer home screen, with made-up entries: today's time filled in from a calendar and from GitHub, and the week so far."
 		>
 			<div className="fp-window-bar" aria-hidden>
-				<Play className="fp-window-dot" onClick={() => flashShut("close")} />
-				<Play className="fp-window-dot" onClick={() => flashShut("min")} />
-				<Play className="fp-window-dot" onClick={() => flashShut("zoom")} />
+				<Play className="fp-window-dot" onClick={() => flashShake(true)} />
+				<Play className="fp-window-dot" onClick={() => flashShake(true)} />
+				<Play className="fp-window-dot" onClick={() => flashShake(true)} />
 				<span className="fm-mono fp-window-url">farmer.profi.co</span>
 			</div>
 			<div className="fp-window-body fp-mock" aria-hidden>
@@ -455,8 +467,69 @@ function PhoneShot({ name, alt }: { name: string; alt: string }) {
 	);
 }
 
+const toMinutes = (time: string) => {
+	const [hours = "0", minutes = "0"] = time.split(":");
+	return Number(hours) * 60 + Number(minutes);
+};
+
+/** Where each piece of confetti lands, from the middle of the smiley. */
+const CONFETTI = Array.from({ length: 14 }, (_, i) => {
+	const angle = (i / 14) * Math.PI * 2;
+	const reach = 70 + (i % 3) * 22;
+	return {
+		x: Math.round(Math.cos(angle) * reach),
+		y: Math.round(Math.sin(angle) * reach * 0.7),
+	};
+});
+
+function Stepper({
+	minutes,
+	onChange,
+}: {
+	minutes: number;
+	onChange: (minutes: number) => void;
+}) {
+	return (
+		<span className="fp-stepper fm-mono">
+			<Play onClick={() => onChange(Math.max(15, minutes - 15))}>
+				<MinusIcon size={11} />
+			</Play>
+			{clock(minutes)}
+			<Play onClick={() => onChange(Math.min(480, minutes + 15))}>
+				<PlusIcon size={11} />
+			</Play>
+		</span>
+	);
+}
+
+function DayAccepted({ hours }: { hours: string }) {
+	return (
+		<div className="fp-accepted">
+			{CONFETTI.map(({ x, y }, i) => (
+				<span
+					key={`${x}-${y}`}
+					className="fp-confetti"
+					style={{ translate: `${x}px ${y}px`, animationDelay: `${i * 12}ms` }}
+				/>
+			))}
+			<SmileyIcon weight="duotone" size={64} className="fp-accepted-face" />
+			<div className="fm-serif fp-accepted-title">Day accepted</div>
+			<div className="fp-small" style={{ fontSize: 13.5 }}>
+				<span className="fm-mono">{hours}</span> hours on Fri, Jul 10. Enjoy the
+				rest of your day.
+			</div>
+		</div>
+	);
+}
+
 export function AssembleMock() {
-	const [accepted, setAccepted] = useState(false);
+	const [mode, setMode] = useState<"proposed" | "editing" | "accepted">(
+		"proposed",
+	);
+	const [times, setTimes] = useState(() =>
+		proposed.map((entry) => toMinutes(entry.time)),
+	);
+	const hours = (times.reduce((sum, value) => sum + value, 0) / 60).toFixed(2);
 	return (
 		<figure
 			className="fm-frame fp-figure"
@@ -475,37 +548,66 @@ export function AssembleMock() {
 						className="fm-mono"
 						style={{ fontSize: 18, color: "var(--acc)" }}
 					>
-						7.75
+						{hours}
 					</span>
 				</div>
-				<div className={accepted ? "fp-replay" : undefined}>
-					{proposed.map((entry, i) => (
-						<div
-							key={`${entry.project}-${entry.task}-${entry.note}`}
-							style={{ animationDelay: `${i * 70}ms` }}
-						>
-							<Entry entry={entry} dashed={!accepted} />
-						</div>
-					))}
+				<div className="fp-assemble-body" data-mode={mode}>
+					<div className="fp-assemble-list">
+						{proposed.map((entry, i) => (
+							<Entry
+								key={`${entry.project}-${entry.task}-${entry.note}`}
+								entry={{ ...entry, time: clock(times[i] ?? 0) }}
+								dashed
+								aside={
+									mode === "editing" ? (
+										<Stepper
+											minutes={times[i] ?? 0}
+											onChange={(minutes) =>
+												setTimes((all) =>
+													all.map((value, j) => (j === i ? minutes : value)),
+												)
+											}
+										/>
+									) : undefined
+								}
+							/>
+						))}
+					</div>
+					{mode === "accepted" ? <DayAccepted hours={hours} /> : null}
 				</div>
 				<div className="fp-mock-foot">
 					<span className="fp-small" style={{ flex: 1, minWidth: 180 }}>
-						{accepted
-							? "Saved to Fri, Jul 10. Edit any entry in the day view."
-							: "Nothing is written until you accept."}
+						{mode === "accepted"
+							? "Saved. Change an entry in the day view."
+							: mode === "editing"
+								? "Change a time, then accept."
+								: "Nothing is written until you accept."}
 					</span>
-					<Play className="fp-chip-btn" onClick={() => setAccepted(false)}>
-						{accepted ? "Undo" : "Edit"}
-					</Play>
-					<Play
-						className="fp-chip-btn fp-chip-btn-acc"
-						style={{ fontWeight: 500 }}
-						disabled={accepted}
-						onClick={() => setAccepted(true)}
-					>
-						<CheckIcon />
-						{accepted ? "Accepted" : "Accept day"}
-					</Play>
+					{mode === "accepted" ? (
+						<Play className="fp-chip-btn" onClick={() => setMode("proposed")}>
+							Undo
+						</Play>
+					) : (
+						<>
+							<Play
+								className="fp-chip-btn"
+								data-active={mode === "editing" ? "" : undefined}
+								onClick={() =>
+									setMode(mode === "editing" ? "proposed" : "editing")
+								}
+							>
+								{mode === "editing" ? "Done" : "Edit"}
+							</Play>
+							<Play
+								className="fp-chip-btn fp-chip-btn-acc"
+								style={{ fontWeight: 500 }}
+								onClick={() => setMode("accepted")}
+							>
+								<CheckIcon />
+								Accept day
+							</Play>
+						</>
+					)}
 				</div>
 			</div>
 		</figure>
@@ -519,7 +621,6 @@ type SheetRow = {
 	project: string;
 	task: string;
 	hours: string[];
-	total: string;
 	/** Made by automation: locked in the week, edited in the day view. */
 	auto?: boolean;
 	source?: Source;
@@ -530,19 +631,16 @@ const sheet: SheetRow[] = [
 		...ACME,
 		task: "Design",
 		hours: ["2:00", "3:30", "1:00", "4:00", "", "", ""],
-		total: "10:30",
 	},
 	{
 		...HARBOR,
 		task: "Development",
 		hours: ["4:30", "2:30", "5:00", "3:00", "5:15", "", ""],
-		total: "20:15",
 	},
 	{
 		...ACME,
 		task: "Meetings",
 		hours: ["1:00", "1:00", "", "1:00", "", "", ""],
-		total: "3:00",
 		auto: true,
 		source: { kind: "calendar" },
 	},
@@ -550,49 +648,76 @@ const sheet: SheetRow[] = [
 		...INTERNAL,
 		task: "Meetings · daily stand-up",
 		hours: ["0:15", "0:15", "0:15", "0:15", "0:15", "", ""],
-		total: "1:15",
 		auto: true,
 	},
 	{
 		...INTERNAL,
 		task: "Planning",
 		hours: ["", "1:00", "1:45", "", "0:30", "", ""],
-		total: "3:15",
 		auto: true,
 		source: { kind: "fill" },
 	},
 ];
 
-const sheetTotals = ["7:45", "8:15", "8:00", "8:15", "6:00", "", ""];
-const EMPTY_WEEK = ["", "", "", "", "", "", ""];
-const VIEWS = ["Day", "Week", "Month"];
+type View = "Day" | "Week" | "Month";
+const VIEWS: View[] = ["Day", "Week", "Month"];
 
-/** The label of the week `offset` weeks from July 6, 2026. */
-function weekLabel(offset: number) {
-	const start = new Date(2026, 6, 6 + 7 * offset);
-	const end = new Date(2026, 6, 12 + 7 * offset);
-	const month = (date: Date) =>
-		date.toLocaleDateString("en-US", { month: "long" });
+/** "Today" in the pictures. */
+const TODAY = new Date(2026, 6, 10);
+const dayOf = (date: Date) => (date.getDay() + 6) % 7;
+const shift = (date: Date, days: number) =>
+	new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+const weekStart = (date: Date) => shift(date, -dayOf(date));
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+const format = (date: Date, options: Intl.DateTimeFormatOptions) =>
+	date.toLocaleDateString("en-US", options);
+
+/**
+ * The made-up hours of a row on a date. Every past week repeats the week of
+ * July 6. A later week is empty until "Copy from previous week" fills it.
+ */
+type Hours = (row: SheetRow, date: Date) => string;
+
+function rangeLabel(view: View, cursor: Date) {
+	if (view === "Day") {
+		return format(cursor, {
+			weekday: "short",
+			month: "long",
+			day: "numeric",
+			year: "numeric",
+		});
+	}
+	if (view === "Month")
+		return format(cursor, { month: "long", year: "numeric" });
+	const start = weekStart(cursor);
+	const end = shift(start, 6);
 	const tail =
 		start.getMonth() === end.getMonth()
 			? `${end.getDate()}`
-			: `${month(end)} ${end.getDate()}`;
-	return {
-		label: `${month(start)} ${start.getDate()} – ${tail}, ${end.getFullYear()}`,
-		days: DAYS.map((_, i) => new Date(2026, 6, 6 + 7 * offset + i).getDate()),
-	};
+			: `${format(end, { month: "long" })} ${end.getDate()}`;
+	return `${format(start, { month: "long" })} ${start.getDate()} – ${tail}, ${end.getFullYear()}`;
 }
 
+function step(view: View, cursor: Date, by: 1 | -1) {
+	if (view === "Day") return shift(cursor, by);
+	if (view === "Week") return shift(cursor, 7 * by);
+	return new Date(cursor.getFullYear(), cursor.getMonth() + by, 1);
+}
+
+const dayMinutes = (hours: Hours, date: Date) =>
+	sheet.reduce((sum, row) => sum + toMinutes(hours(row, date) || "0:00"), 0);
+
 export function TimesheetMock() {
-	const [view, setView] = useState("Week");
-	const [offset, setOffset] = useState(0);
-	// The weeks after this one that "Copy from previous week" has filled.
-	const [copied, setCopied] = useState<number[]>([]);
-	// Past weeks show the same made-up hours; a later week is empty until
-	// it is copied into.
-	const filled = (week: number) => week <= 0 || copied.includes(week);
-	const shown = filled(offset);
-	const week = weekLabel(offset);
+	const [view, setView] = useState<View>("Week");
+	const [cursor, setCursor] = useState(TODAY);
+	// The week starts that "Copy from previous week" has filled.
+	const [copied, setCopied] = useState<string[]>([]);
+	const filled = (date: Date) =>
+		date <= TODAY || copied.includes(weekStart(date).toDateString());
+	const hours: Hours = (row, date) =>
+		filled(date) ? (row.hours[dayOf(date)] ?? "") : "";
+	const start = weekStart(cursor);
+	const weekFilled = filled(start);
 	return (
 		<figure
 			className="fm-frame fp-figure"
@@ -638,14 +763,14 @@ export function TimesheetMock() {
 						<PlusIcon />
 					</span>
 					<span className="fp-ts-range">
-						<Play onClick={() => setOffset((n) => n - 1)}>
+						<Play onClick={() => setCursor(step(view, cursor, -1))}>
 							<ArrowLeftIcon />
 						</Play>
 						<span className="fp-ts-range-label">
 							<CalendarBlankIcon weight="duotone" color="var(--mut)" />
-							{week.label}
+							{rangeLabel(view, cursor)}
 						</span>
-						<Play onClick={() => setOffset((n) => n + 1)}>
+						<Play onClick={() => setCursor(step(view, cursor, 1))}>
 							<ArrowRightIcon />
 						</Play>
 					</span>
@@ -654,92 +779,220 @@ export function TimesheetMock() {
 						Time off
 					</span>
 				</div>
-				<div className="fp-ts-scroll">
-					<div className="fp-ts-grid">
-						<div className="fp-ts-row fp-ts-labels">
-							<span />
-							{DAYS.map((day, i) => (
-								<span key={day} className="fp-ts-day">
-									{day}
-									<span>{week.days[i]}</span>
-								</span>
-							))}
-							<span className="fp-ts-day fp-ts-total">TOTAL</span>
-						</div>
-						{sheet.map((row) => (
-							<div
-								key={`${row.project}-${row.task}`}
-								className="fp-ts-row"
-								data-auto={row.auto ? "" : undefined}
-							>
-								<div className="fp-ts-project">
-									<span className="fp-project-icon">{row.icon}</span>
-									<div style={{ minWidth: 0, flex: 1 }}>
-										<div
-											style={{
-												display: "flex",
-												alignItems: "center",
-												gap: 6,
-												minWidth: 0,
-											}}
-										>
-											<span className="fp-ts-project-name">{row.project}</span>
-											{row.source ? <SourceMark source={row.source} /> : null}
-										</div>
-										<div className="fp-small" style={{ fontSize: 12 }}>
-											{row.task}
-										</div>
-									</div>
-									{row.auto ? (
-										<LockSimpleIcon
-											color="var(--faint)"
-											style={{ flex: "none" }}
-										/>
-									) : null}
-								</div>
-								{(shown ? row.hours : EMPTY_WEEK).map((value, i) => (
-									<span key={DAYS[i]} className="fm-mono fp-ts-cell">
-										{value}
-									</span>
-								))}
-								<span className="fm-mono fp-ts-total">
-									{shown ? row.total : ""}
-								</span>
-							</div>
-						))}
-						<div className="fp-ts-row fp-ts-foot">
-							<span style={{ paddingLeft: 18, color: "var(--mut)" }}>
-								Total
-							</span>
-							{(shown ? sheetTotals : EMPTY_WEEK).map((value, i) => (
-								<span key={DAYS[i]} className="fm-mono fp-ts-cell">
-									{value}
-								</span>
-							))}
-							<span
-								className="fm-mono fp-ts-total"
-								style={{ color: "var(--acc)", fontWeight: 500 }}
-							>
-								{shown ? "38:15" : "0:00"}
-							</span>
-						</div>
+				<div key={view} className="fp-ts-view">
+					{view === "Day" ? (
+						<TsDay cursor={cursor} hours={hours} onPick={setCursor} />
+					) : null}
+					{view === "Week" ? <TsWeek start={start} hours={hours} /> : null}
+					{view === "Month" ? (
+						<TsMonth
+							cursor={cursor}
+							hours={hours}
+							onPick={(date) => {
+								setCursor(date);
+								setView("Day");
+							}}
+						/>
+					) : null}
+				</div>
+				{view === "Week" ? (
+					<div className="fp-ts-actions">
+						<span className="fp-chip-btn">
+							<PlusIcon />
+							Add row
+						</span>
+						<Play
+							className="fp-chip-btn"
+							disabled={weekFilled || !filled(shift(start, -7))}
+							onClick={() =>
+								setCopied((weeks) => [...weeks, start.toDateString()])
+							}
+						>
+							Copy from previous week
+						</Play>
 					</div>
-				</div>
-				<div className="fp-ts-actions">
-					<span className="fp-chip-btn">
-						<PlusIcon />
-						Add row
-					</span>
-					<Play
-						className="fp-chip-btn"
-						disabled={shown || !filled(offset - 1)}
-						onClick={() => setCopied((weeks) => [...weeks, offset])}
-					>
-						Copy from previous week
-					</Play>
-				</div>
+				) : null}
 			</div>
 		</figure>
+	);
+}
+
+function RowLabel({ row }: { row: SheetRow }) {
+	return (
+		<div className="fp-ts-project">
+			<span className="fp-project-icon">{row.icon}</span>
+			<div style={{ minWidth: 0, flex: 1 }}>
+				<div
+					style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
+				>
+					<span className="fp-ts-project-name">{row.project}</span>
+					{row.source ? <SourceMark source={row.source} /> : null}
+				</div>
+				<div className="fp-small" style={{ fontSize: 12 }}>
+					{row.task}
+				</div>
+			</div>
+			{row.auto ? (
+				<LockSimpleIcon color="var(--faint)" style={{ flex: "none" }} />
+			) : null}
+		</div>
+	);
+}
+
+function TsWeek({ start, hours }: { start: Date; hours: Hours }) {
+	const dates = DAYS.map((_, i) => shift(start, i));
+	const total = (minutes: number) => (minutes ? clock(minutes) : "");
+	const week = dates.reduce((sum, date) => sum + dayMinutes(hours, date), 0);
+	return (
+		<div className="fp-ts-scroll">
+			<div className="fp-ts-grid">
+				<div className="fp-ts-row fp-ts-labels">
+					<span />
+					{dates.map((date, i) => (
+						<span key={DAYS[i]} className="fp-ts-day">
+							{DAYS[i]}
+							<span>{date.getDate()}</span>
+						</span>
+					))}
+					<span className="fp-ts-day fp-ts-total">TOTAL</span>
+				</div>
+				{sheet.map((row) => (
+					<div
+						key={`${row.project}-${row.task}`}
+						className="fp-ts-row"
+						data-auto={row.auto ? "" : undefined}
+					>
+						<RowLabel row={row} />
+						{dates.map((date, i) => (
+							<span key={DAYS[i]} className="fm-mono fp-ts-cell">
+								{hours(row, date)}
+							</span>
+						))}
+						<span className="fm-mono fp-ts-total">
+							{total(
+								dates.reduce(
+									(sum, date) => sum + toMinutes(hours(row, date) || "0:00"),
+									0,
+								),
+							)}
+						</span>
+					</div>
+				))}
+				<div className="fp-ts-row fp-ts-foot">
+					<span style={{ paddingLeft: 18, color: "var(--mut)" }}>Total</span>
+					{dates.map((date, i) => (
+						<span key={DAYS[i]} className="fm-mono fp-ts-cell">
+							{total(dayMinutes(hours, date))}
+						</span>
+					))}
+					<span
+						className="fm-mono fp-ts-total"
+						style={{ color: "var(--acc)", fontWeight: 500 }}
+					>
+						{clock(week)}
+					</span>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function TsDay({
+	cursor,
+	hours,
+	onPick,
+}: {
+	cursor: Date;
+	hours: Hours;
+	onPick: (date: Date) => void;
+}) {
+	const start = weekStart(cursor);
+	const rows = sheet.filter((row) => hours(row, cursor));
+	const weekend = dayOf(cursor) > 4;
+	return (
+		<div>
+			<div className="fp-ts-strip">
+				{DAYS.map((day, i) => {
+					const date = shift(start, i);
+					const minutes = dayMinutes(hours, date);
+					return (
+						<Play
+							key={day}
+							data-active={sameDay(date, cursor) ? "" : undefined}
+							onClick={() => onPick(date)}
+						>
+							<span>
+								{day} {date.getDate()}
+							</span>
+							<span className="fm-mono">{minutes ? clock(minutes) : "–"}</span>
+						</Play>
+					);
+				})}
+			</div>
+			{rows.length ? (
+				rows.map((row) => (
+					<Entry
+						key={`${row.project}-${row.task}`}
+						entry={{ ...row, time: hours(row, cursor) }}
+					/>
+				))
+			) : (
+				<div className="fp-ts-empty">
+					<CoffeeIcon weight="duotone" size={40} className="fp-acc" />
+					<span className="fm-serif" style={{ fontSize: 22 }}>
+						{weekend ? "Weekend." : "Nothing here yet."}
+					</span>
+					<span className="fp-small">
+						{weekend
+							? `Nothing to log on a ${format(cursor, { weekday: "long" })}.`
+							: "Farmer fills this day in from your calendar and GitHub."}
+					</span>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function TsMonth({
+	cursor,
+	hours,
+	onPick,
+}: {
+	cursor: Date;
+	hours: Hours;
+	onPick: (date: Date) => void;
+}) {
+	const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+	const length = new Date(
+		cursor.getFullYear(),
+		cursor.getMonth() + 1,
+		0,
+	).getDate();
+	const dates = Array.from({ length }, (_, i) => shift(first, i));
+	return (
+		<div className="fp-ts-month">
+			{DAYS.map((day) => (
+				<span key={day} className="fp-ts-day">
+					{day}
+				</span>
+			))}
+			{dates.map((date, i) => {
+				const minutes = dayMinutes(hours, date);
+				return (
+					<Play
+						key={date.toDateString()}
+						style={i === 0 ? { gridColumnStart: dayOf(date) + 1 } : undefined}
+						data-today={sameDay(date, TODAY) ? "" : undefined}
+						data-off={dayOf(date) > 4 ? "" : undefined}
+						onClick={() => onPick(date)}
+					>
+						<span>{date.getDate()}</span>
+						{minutes ? <span className="fm-mono">{clock(minutes)}</span> : null}
+						<i style={{ height: `${Math.min(100, (minutes / 480) * 100)}%` }} />
+					</Play>
+				);
+			})}
+		</div>
 	);
 }
 

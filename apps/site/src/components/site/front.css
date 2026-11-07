@@ -315,29 +315,24 @@
 .fm-site .fp-window-bar:hover .fp-window-dot:nth-child(3) {
 	background: #28c840;
 }
-/* The three dots close, minimise and zoom the window for a moment. `scale`,
-   `translate` and `opacity` leave the `transform` of the stand-up alone. */
-.fm-site .fp-window {
-	transition:
-		scale 420ms cubic-bezier(0.34, 1.4, 0.64, 1),
-		translate 420ms cubic-bezier(0.34, 1.4, 0.64, 1),
-		opacity 300ms;
+/* A click on a dot shakes the window. The stage shakes, not the window, so
+   the scroll animation of the window stays. */
+.fm-site .fp-preview-stage:has(.fp-window[data-shake]) {
+	animation: fp-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
-.fm-site .fp-window[data-shut] {
-	transition-duration: 240ms;
-	transition-timing-function: ease-in;
-}
-.fm-site .fp-window[data-shut="close"] {
-	scale: 0.9;
-	opacity: 0;
-}
-.fm-site .fp-window[data-shut="min"] {
-	scale: 0.3;
-	translate: 0 60%;
-	opacity: 0;
-}
-.fm-site .fp-window[data-shut="zoom"] {
-	scale: 1.03;
+@keyframes fp-shake {
+	15%,
+	85% {
+		translate: -2px 0;
+	}
+	30%,
+	70% {
+		translate: 5px 0;
+	}
+	45%,
+	55% {
+		translate: -7px 0;
+	}
 }
 .fm-site .fp-window-url {
 	flex: 1;
@@ -548,6 +543,103 @@
 	padding: 14px 20px;
 	border-top: 1px solid var(--line);
 }
+.fm-site .fp-chip-btn[data-active] {
+	background: var(--ground);
+}
+/* "Edit" swaps each time for a stepper. */
+.fm-site .fp-stepper {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	font-size: 13px;
+	animation: fp-arrive 240ms var(--ease-out) both;
+}
+.fm-site .fp-stepper > .fp-play {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	color: var(--mut);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-stepper > .fp-play:hover {
+		background: var(--ground);
+		color: var(--fg);
+	}
+}
+/* "Accept day" lays the accepted card over the list, which keeps the
+   height, so nothing below moves. */
+.fm-site .fp-assemble-body {
+	display: grid;
+}
+.fm-site .fp-assemble-body > * {
+	grid-area: 1 / 1;
+}
+.fm-site .fp-assemble-body[data-mode="accepted"] > .fp-assemble-list {
+	visibility: hidden;
+}
+.fm-site .fp-accepted {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 24px;
+	text-align: center;
+	animation: fp-arrive 300ms var(--ease-out) both;
+}
+.fm-site .fp-accepted-face {
+	color: var(--acc);
+	animation: fp-face 700ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes fp-face {
+	from {
+		scale: 0.2;
+		rotate: -30deg;
+	}
+}
+.fm-site .fp-accepted-title {
+	font-size: 26px;
+}
+.fm-site .fp-confetti {
+	position: absolute;
+	top: calc(50% - 40px);
+	left: calc(50% - 3px);
+	width: 6px;
+	height: 10px;
+	border-radius: 2px;
+	background: var(--acc);
+	opacity: 0;
+	animation: fp-confetti 900ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.fm-site .fp-confetti:nth-child(3n) {
+	background: var(--acc-mid);
+}
+.fm-site .fp-confetti:nth-child(3n + 1) {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--warn);
+}
+@keyframes fp-confetti {
+	from {
+		translate: 0 0;
+		rotate: 0deg;
+		opacity: 1;
+	}
+	70% {
+		opacity: 1;
+	}
+	to {
+		rotate: 260deg;
+		opacity: 0;
+	}
+}
 
 /* ---- 02 Timesheet ----------------------------------------------------- */
 .fm-site .fp-chips {
@@ -699,6 +791,104 @@
 	padding: 12px 24px;
 	border-top: 1px solid var(--line);
 }
+/* Day, Week and Month are real views. The minimum height keeps the page
+   below from jumping when the view changes. */
+.fm-site .fp-ts-view {
+	min-height: 420px;
+	border-top: 1px solid var(--line);
+	animation: fp-arrive 260ms var(--ease-out) both;
+}
+.fm-site .fp-ts-strip {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 6px;
+	padding: 12px 24px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-ts-strip > .fp-play {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 7px 0;
+	border-radius: 8px;
+	color: var(--mut);
+	font-size: 11px;
+	letter-spacing: 0.06em;
+}
+.fm-site .fp-ts-strip > .fp-play > .fm-mono {
+	color: var(--fg);
+	font-size: 13px;
+	letter-spacing: 0;
+}
+.fm-site .fp-ts-strip > [data-active] {
+	background: var(--acc);
+	color: var(--on-acc);
+}
+.fm-site .fp-ts-strip > [data-active] > .fm-mono {
+	color: var(--on-acc);
+}
+.fm-site .fp-ts-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 72px 24px;
+	text-align: center;
+}
+.fm-site .fp-ts-empty > svg {
+	animation: fp-face 600ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.fm-site .fp-ts-month {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 4px;
+	padding: 12px 24px 16px;
+}
+.fm-site .fp-ts-month > .fp-ts-day {
+	padding-bottom: 4px;
+}
+.fm-site .fp-ts-month > .fp-play {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	height: 58px;
+	padding: 6px 8px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	text-align: left;
+	font-size: 12px;
+}
+.fm-site .fp-ts-month > .fp-play > span {
+	position: relative;
+}
+.fm-site .fp-ts-month > .fp-play > .fm-mono {
+	align-self: flex-end;
+	font-size: 12px;
+}
+/* How full the day is, as a fill from the bottom. */
+.fm-site .fp-ts-month > .fp-play > i {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background: color-mix(in oklab, var(--acc) 14%, transparent);
+}
+.fm-site .fp-ts-month > [data-off] {
+	color: var(--faint);
+	background: var(--ground);
+}
+.fm-site .fp-ts-month > [data-today] {
+	border-color: var(--acc);
+	box-shadow: inset 0 0 0 1px var(--acc);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-ts-month > .fp-play:hover {
+		border-color: var(--faint);
+	}
+}
 
 /* ---- 03 Reports ------------------------------------------------------- */
 .fm-site .fp-report-kinds {
@@ -803,135 +993,451 @@
 	color: var(--mut);
 	text-wrap: pretty;
 }
-/* On hover, each icon does what it shows. The motif is `data-motif`. */
-.fm-site .fp-feature > svg {
-	transform-origin: 50% 50%;
+/* The scene behind each card (`feature-scenes.tsx`). It shows and plays on
+   hover. Each animation starts from a `from` keyframe, so with no motion the
+   scene stands in its end state. */
+.fm-site .fp-feature {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
 }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-	.fm-site .fp-feature:hover > svg {
-		animation: 700ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
-	}
-	.fm-site .fp-feature[data-motif="flip"]:hover > svg {
-		animation-name: fp-motif-flip;
-	}
-	.fm-site .fp-feature[data-motif="swing"] > svg,
-	.fm-site .fp-feature[data-motif="ring"] > svg {
-		transform-origin: 50% 0;
-	}
-	.fm-site .fp-feature[data-motif="swing"]:hover > svg {
-		animation-name: fp-motif-swing;
-		animation-duration: 900ms;
-	}
-	.fm-site .fp-feature[data-motif="lift"]:hover > svg {
-		animation-name: fp-motif-lift;
-	}
-	.fm-site .fp-feature[data-motif="ring"]:hover > svg {
-		animation-name: fp-motif-ring;
-		animation-duration: 800ms;
-	}
-	.fm-site .fp-feature[data-motif="plug"]:hover > svg {
-		animation-name: fp-motif-plug;
-	}
-	.fm-site .fp-feature[data-motif="drive"]:hover > svg {
-		animation-name: fp-motif-drive;
-		animation-duration: 1100ms;
-		animation-timing-function: ease-in-out;
-	}
-	.fm-site .fp-feature[data-motif="swap"]:hover > svg {
-		animation-name: fp-motif-swap;
-	}
-	.fm-site .fp-feature[data-motif="check"]:hover > svg {
-		animation-name: fp-motif-check;
-	}
-	.fm-site .fp-feature[data-motif="hue"]:hover > svg {
-		animation-name: fp-motif-hue;
-		animation-duration: 1400ms;
-		animation-timing-function: linear;
+.fm-site .fp-feature > :not(.fp-scene) {
+	position: relative;
+}
+.fm-site .fp-scene {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 300ms var(--ease-out);
+	--scene: color-mix(in oklab, var(--acc) 22%, var(--bg));
+	--scene-line: color-mix(in oklab, var(--acc) 35%, transparent);
+}
+.fm-site .fp-scene > * {
+	position: absolute;
+}
+@media (hover: hover) {
+	.fm-site .fp-feature:hover .fp-scene {
+		opacity: 1;
 	}
 }
-/* A page of the calendar turns. */
-@keyframes fp-motif-flip {
-	50% {
-		transform: perspective(80px) rotateX(-180deg);
+/* Nothing plays until the card is hovered, so each hover starts it again. */
+.fm-site .fp-feature:not(:hover) .fp-scene * {
+	animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+	.fm-site .fp-scene * {
+		animation: none !important;
+	}
+}
+
+/* Hours: the working days of the month fill in. */
+.fm-site .fp-scene-hours {
+	top: 22px;
+	right: 22px;
+	display: grid;
+	grid-template-columns: repeat(7, 10px);
+	gap: 4px;
+}
+.fm-site .fp-scene-hours > span {
+	height: 10px;
+	border-radius: 3px;
+	background: var(--acc-mid);
+	animation: fp-scene-fill 260ms var(--ease-out) both;
+}
+.fm-site .fp-scene-hours > [data-off] {
+	background: var(--line);
+}
+@keyframes fp-scene-fill {
+	from {
+		background: var(--line);
+		scale: 0.4;
+	}
+}
+
+/* People: the team lines up. */
+.fm-site .fp-scene-people {
+	top: 22px;
+	right: 22px;
+	display: flex;
+}
+.fm-site .fp-scene-people > span {
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	margin-left: -8px;
+	border: 2px solid var(--bg);
+	border-radius: 50%;
+	background: var(--scene);
+	color: var(--acc);
+	font-size: 10px;
+	font-weight: 600;
+	animation: fp-scene-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.fm-site .fp-scene-people > span:nth-child(2n) {
+	background: var(--acc-mid);
+	color: var(--on-acc);
+}
+.fm-site .fp-scene-people > .fp-scene-more {
+	width: auto;
+	padding: 0 8px;
+	border-radius: 999px;
+	background: var(--ground);
+	color: var(--mut);
+}
+@keyframes fp-scene-pop {
+	from {
+		opacity: 0;
+		translate: 0 10px;
+		scale: 0.6;
+	}
+}
+
+/* Projects: three project cards fan out of the corner. */
+.fm-site .fp-scene-projects {
+	top: -22px;
+	right: 40px;
+	width: 70px;
+	height: 84px;
+}
+.fm-site .fp-scene-projects > span {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: end center;
+	padding-bottom: 10px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	box-shadow: 0 6px 16px rgb(0 0 0 / 0.08);
+	font-size: 22px;
+	transform-origin: 50% -30%;
+	animation: fp-scene-fan 600ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.fm-site .fp-scene-projects > span:nth-child(1) {
+	rotate: -22deg;
+}
+.fm-site .fp-scene-projects > span:nth-child(2) {
+	rotate: 0deg;
+	animation-delay: 60ms;
+}
+.fm-site .fp-scene-projects > span:nth-child(3) {
+	rotate: 22deg;
+	animation-delay: 120ms;
+}
+@keyframes fp-scene-fan {
+	from {
+		rotate: 0deg;
+		translate: 0 -50px;
+	}
+}
+
+/* Reminders: the bell rings out, then a reminder slides in. */
+.fm-site .fp-scene-ripple {
+	top: 41px;
+	left: 41px;
+	width: 120px;
+	height: 120px;
+	margin: -60px 0 0 -60px;
+	border: 1.5px solid var(--scene-line);
+	border-radius: 50%;
+	scale: 0;
+	animation: fp-scene-ripple 1500ms var(--ease-out) infinite;
+}
+@keyframes fp-scene-ripple {
+	from {
+		scale: 0.2;
+		opacity: 1;
 	}
 	to {
-		transform: perspective(80px) rotateX(-360deg);
+		scale: 1.6;
+		opacity: 0;
 	}
 }
-/* A badge on a lanyard. */
-@keyframes fp-motif-swing {
-	20% {
-		rotate: 14deg;
-	}
-	45% {
-		rotate: -9deg;
-	}
-	70% {
-		rotate: 4deg;
-	}
+.fm-site .fp-scene-toast {
+	top: 18px;
+	right: 18px;
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 8px 12px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	box-shadow: 0 8px 20px rgb(0 0 0 / 0.08);
+	color: var(--acc);
+	font-size: 11.5px;
+	animation: fp-scene-toast 520ms cubic-bezier(0.34, 1.3, 0.64, 1) 350ms both;
 }
-/* The folder lifts off the stack. */
-@keyframes fp-motif-lift {
-	40% {
-		translate: 0 -5px;
-		rotate: -6deg;
-	}
+.fm-site .fp-scene-toast > span {
+	display: flex;
+	flex-direction: column;
+	color: var(--mut);
 }
-@keyframes fp-motif-ring {
-	10%,
-	50% {
-		rotate: 16deg;
-	}
-	30%,
-	70% {
-		rotate: -16deg;
-	}
-	85% {
-		rotate: 6deg;
-	}
+.fm-site .fp-scene-toast b {
+	color: var(--fg);
+	font-weight: 600;
 }
-/* The two halves pull apart and click back in. */
-@keyframes fp-motif-plug {
-	35% {
-		scale: 1.18 0.92;
-	}
-	55% {
-		scale: 0.94 1.04;
-	}
-}
-/* The truck drives out on the right and back in on the left. */
-@keyframes fp-motif-drive {
-	45% {
+@keyframes fp-scene-toast {
+	from {
+		opacity: 0;
 		translate: 40px 0;
-		opacity: 0;
-	}
-	46% {
-		translate: -40px 0;
-		opacity: 0;
 	}
 }
-@keyframes fp-motif-swap {
+
+/* Integrations: entries flow from GitHub, the calendar and Slack. */
+.fm-site .fp-scene-integrations {
+	top: 18px;
+	right: 20px;
+	width: 190px;
+	height: 70px;
+}
+.fm-site .fp-scene-integrations > * {
+	position: absolute;
+}
+.fm-site .fp-scene-integrations > svg {
+	width: 100%;
+	height: 100%;
+	fill: none;
+	stroke: var(--scene-line);
+	stroke-width: 1.5;
+	stroke-dasharray: 4 6;
+	animation: fp-scene-flow 900ms linear infinite;
+}
+@keyframes fp-scene-flow {
+	to {
+		stroke-dashoffset: -20;
+	}
+}
+.fm-site .fp-scene-integrations > span {
+	display: grid;
+	place-items: center;
+	left: 0;
+	width: 22px;
+	height: 22px;
+	border: 1px solid var(--line);
+	border-radius: 50%;
+	background: var(--bg);
+	color: var(--mut);
+}
+.fm-site .fp-scene-integrations > .fp-scene-hub {
+	right: 0;
+	left: auto;
+	width: 40px;
+	height: 40px;
+	border: 0;
+	background: var(--acc);
+	color: var(--on-acc);
+	animation: fp-scene-beat 900ms ease-in-out infinite;
+}
+@keyframes fp-scene-beat {
 	50% {
-		transform: rotateY(180deg);
-	}
-	to {
-		transform: rotateY(360deg);
+		scale: 1.1;
 	}
 }
-/* A tick on the clipboard. */
-@keyframes fp-motif-check {
-	30% {
-		scale: 1.12;
-		rotate: -8deg;
-	}
-	60% {
-		scale: 0.96;
-		rotate: 3deg;
+
+/* Moving from Harvest: a truck brings the CSV over. */
+.fm-site .fp-scene-harvest,
+.fm-site .fp-scene-reminders,
+.fm-site .fp-scene-theme {
+	inset: 0;
+}
+.fm-site .fp-scene-harvest > *,
+.fm-site .fp-scene-reminders > *,
+.fm-site .fp-scene-theme > * {
+	position: absolute;
+}
+.fm-site .fp-scene-road {
+	top: 74px;
+	right: 0;
+	left: 40%;
+	height: 2px;
+	mask-image: linear-gradient(to right, transparent, #000 30%);
+	background: repeating-linear-gradient(
+		to right,
+		var(--scene-line) 0 12px,
+		transparent 12px 22px
+	);
+	background-size: 22px 2px;
+	animation: fp-scene-road 400ms linear infinite;
+}
+@keyframes fp-scene-road {
+	to {
+		background-position: -22px 0;
 	}
 }
-@keyframes fp-motif-hue {
+.fm-site .fp-scene-truck {
+	top: 30px;
+	right: 28px;
+	display: flex;
+	align-items: flex-end;
+	color: var(--acc);
+	animation:
+		fp-scene-drive 1100ms cubic-bezier(0.2, 0.9, 0.3, 1) both,
+		fp-scene-bump 300ms ease-in-out 1100ms infinite;
+}
+.fm-site .fp-scene-crate {
+	margin: 0 -2px 18px 0;
+	padding: 3px 6px;
+	border-radius: 4px;
+	background: var(--acc-mid);
+	color: var(--on-acc);
+	font-family: var(--mono);
+	font-size: 9px;
+	font-weight: 600;
+}
+@keyframes fp-scene-drive {
+	from {
+		translate: -260px 0;
+		opacity: 0;
+	}
+}
+@keyframes fp-scene-bump {
+	50% {
+		translate: 0 -1.5px;
+	}
+}
+
+/* Workspaces: the switcher steps through three organizations. */
+.fm-site .fp-scene-workspaces {
+	top: 18px;
+	right: 18px;
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	font-size: 11.5px;
+	animation: fp-scene-pop 400ms var(--ease-out) both;
+}
+.fm-site .fp-scene-workspaces > span:not(.fp-scene-pick) {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+}
+.fm-site .fp-scene-workspaces b {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 5px;
+	background: var(--acc);
+	color: var(--on-acc);
+	font-size: 10px;
+}
+.fm-site .fp-scene-workspaces > span:nth-child(3) b {
+	background: var(--acc-mid);
+}
+.fm-site .fp-scene-workspaces > span:nth-child(4) b {
+	background: var(--fg);
+	color: var(--bg);
+}
+.fm-site .fp-scene-pick {
+	position: absolute;
+	top: 4px;
+	left: 4px;
+	width: 30px;
+	height: 30px;
+	border-radius: 7px;
+	background: var(--ground);
+	animation: fp-scene-pick 2400ms var(--ease-in-out) infinite;
+}
+@keyframes fp-scene-pick {
+	0%,
+	25% {
+		translate: 0 0;
+	}
+	33%,
+	58% {
+		translate: 34px 0;
+	}
+	66%,
+	92% {
+		translate: 68px 0;
+	}
+	100% {
+		translate: 0 0;
+	}
+}
+
+/* Audit log: the events scroll past. */
+.fm-site .fp-scene-audit {
+	top: 12px;
+	right: 20px;
+	height: 84px;
+	overflow: hidden;
+	color: var(--mut);
+	font-size: 11px;
+	line-height: 21px;
+	mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
+}
+.fm-site .fp-scene-audit > div {
+	display: flex;
+	flex-direction: column;
+	text-align: right;
+	animation: fp-scene-scroll 10s linear infinite;
+}
+.fm-site .fp-scene-audit i {
+	color: var(--acc);
+	font-style: normal;
+}
+@keyframes fp-scene-scroll {
+	from {
+		translate: 0 0;
+	}
 	to {
-		filter: hue-rotate(360deg);
+		translate: 0 -50%;
+	}
+}
+
+/* Make it yours: a color wheel turns, and a theme wipes across. */
+.fm-site .fp-scene-wheel {
+	right: -70px;
+	bottom: -70px;
+	width: 220px;
+	height: 220px;
+	border-radius: 50%;
+	background: conic-gradient(
+		oklch(0.7 0.15 0),
+		oklch(0.7 0.15 72),
+		oklch(0.7 0.15 144),
+		oklch(0.7 0.15 216),
+		oklch(0.7 0.15 288),
+		oklch(0.7 0.15 360)
+	);
+	filter: blur(28px);
+	opacity: 0.45;
+	animation: fp-scene-spin 3s linear infinite;
+}
+@keyframes fp-scene-spin {
+	to {
+		rotate: 1turn;
+	}
+}
+.fm-site .fp-scene-dark {
+	inset: 0;
+	background: linear-gradient(
+		100deg,
+		transparent 40%,
+		color-mix(in oklab, var(--fg) 7%, transparent) 50%,
+		transparent 60%
+	);
+	background-size: 300% 100%;
+	animation: fp-scene-wipe 2.4s var(--ease-in-out) infinite;
+}
+@keyframes fp-scene-wipe {
+	from {
+		background-position: 100% 0;
+	}
+	to {
+		background-position: 0 0;
 	}
 }
 
