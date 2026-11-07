@@ -62,7 +62,10 @@ export function FrontPage({
 	return (
 		<SitePage>
 			<Hero release={release} github={links.home} />
-			<section className="fm-container" aria-label="Product preview">
+			<section
+				className="fm-container fp-preview-stage"
+				aria-label="Product preview"
+			>
 				<HomePreview />
 			</section>
 			<Automation />

@@ -990,3 +990,27 @@
 .fm-site .fp-phone + .fp-phone {
 	translate: 0 48px;
 }
+
+/* ---- Preview motion --------------------------------------------------- */
+/* The preview leans back and stands up as it scrolls in. Decoration only: a
+   browser without view() timelines shows it flat. A scroll-driven animation
+   ignores the duration override of "Less movement", so the rule checks
+   `data-motion` itself. */
+.fm-site .fp-preview-stage {
+	perspective: 1600px;
+}
+@media (prefers-reduced-motion: no-preference) {
+	@supports ((animation-timeline: view()) and (animation-range: entry)) {
+		:root:not([data-motion="reduce"]) .fm-site .fp-preview-stage .fp-window {
+			transform-origin: 50% 0;
+			animation: fp-stand-up linear both;
+			animation-timeline: view();
+			animation-range: entry 0% cover 45%;
+		}
+	}
+}
+@keyframes fp-stand-up {
+	from {
+		transform: rotateX(16deg) scale(0.94);
+	}
+}
