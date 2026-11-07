@@ -58,6 +58,21 @@
 	gap: 10px;
 	margin-top: 4px;
 }
+.fm-site .fp-stores {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 10px;
+}
+.fm-site .fp-split .fp-stores {
+	justify-content: start;
+}
+.fm-site .fp-store {
+	padding: 5px 12px;
+}
+.fm-site .fp-store .fp-release-tag {
+	margin-inline-end: -6px;
+}
 
 /* ---- Sections --------------------------------------------------------- */
 .fm-site .fp-section {
@@ -948,4 +963,30 @@
 
 .fm-site .fp-figure {
 	margin: 0;
+}
+
+/* ---- App screenshots --------------------------------------------------- */
+.fm-site .fp-phones {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+	max-width: 520px;
+	justify-self: center;
+	padding-bottom: 48px;
+}
+.fm-site .fp-phone img {
+	vertical-align: top;
+	width: 100%;
+	height: auto;
+	filter: drop-shadow(0 24px 24px rgb(0 0 0 / 0.18));
+}
+.fm-site .fp-phone-dark,
+:root[data-theme="dark"] .fm-site .fp-phone-light {
+	display: none;
+}
+:root[data-theme="dark"] .fm-site .fp-phone-dark {
+	display: inline;
+}
+.fm-site .fp-phone + .fp-phone {
+	translate: 0 48px;
 }

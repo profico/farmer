@@ -1,4 +1,5 @@
 import {
+	AppleLogoIcon,
 	ArrowRightIcon,
 	BellRingingIcon,
 	BracketsCurlyIcon,
@@ -10,6 +11,8 @@ import {
 	FunnelIcon,
 	GitPullRequestIcon,
 	GithubLogoIcon,
+	GooglePlayLogoIcon,
+	HardDrivesIcon,
 	HourglassMediumIcon,
 	IdentificationBadgeIcon,
 	IslandIcon,
@@ -32,6 +35,7 @@ import {
 	CONTACT_EMAIL,
 	githubLinks,
 	LICENSE_NAME,
+	PLAY_STORE_URL,
 	REPOSITORY,
 } from "#/lib/links.ts";
 import type { ReleaseNote } from "#/lib/releases.ts";
@@ -39,6 +43,7 @@ import type { ReleaseNote } from "#/lib/releases.ts";
 import {
 	AssembleMock,
 	HomePreview,
+	PhoneShots,
 	TimesheetMock,
 	TrackingMock,
 } from "./front-mocks.tsx";
@@ -64,6 +69,7 @@ export function FrontPage({
 			<Timesheet />
 			<Reports />
 			<EverythingElse />
+			<Mobile />
 			<Developers />
 			<SelfHosting repository={REPOSITORY} github={links.home} />
 			<EarlyAccess />
@@ -113,6 +119,23 @@ function Hero({
 				</a>
 			</div>
 		</section>
+	);
+}
+
+function StoreBadges() {
+	return (
+		<div className="fp-stores">
+			<a href={PLAY_STORE_URL} className="fp-release fp-store">
+				<GooglePlayLogoIcon weight="fill" size={15} aria-hidden />
+				Get it on Google Play
+				<ArrowRightIcon size={12} aria-hidden />
+			</a>
+			<span className="fp-release fp-store">
+				<AppleLogoIcon weight="fill" size={15} aria-hidden />
+				App Store
+				<span className="fp-release-tag">Soon</span>
+			</span>
+		</div>
 	);
 }
 
@@ -199,7 +222,7 @@ function Timesheet() {
 					<div className="fp-chips">
 						<span className="fm-pill">
 							<TimerIcon weight="duotone" className="fp-acc" aria-hidden />
-							Stopwatch in web and CLI
+							Stopwatch in web, CLI and mobile
 						</span>
 						<span className="fm-pill">
 							<UmbrellaIcon weight="duotone" className="fp-acc" aria-hidden />
@@ -315,6 +338,47 @@ function EverythingElse() {
 						<p>{body}</p>
 					</div>
 				))}
+			</div>
+		</section>
+	);
+}
+
+function Mobile() {
+	return (
+		<section id="mobile" className="fm-container fp-section">
+			<div className="fp-split" style={{ alignItems: "center" }}>
+				<div className="fm-stack" style={{ gap: 28 }}>
+					<div className="fp-intro">
+						<h2 className="fp-h2-xl">
+							The timer, <em className="fm-em">in your pocket.</em>
+						</h2>
+						<p className="fm-lede" style={{ maxWidth: 520 }}>
+							The app for Android and iOS. Start the timer on the way to a
+							meeting, check the day on the train, and let a reminder tell you
+							when a day is short.
+						</p>
+					</div>
+					<div className="fp-points">
+						<Point icon={TimerIcon} title="On the lock screen">
+							The running timer stays in view. Pause it without opening the app.
+						</Point>
+						<Point icon={BellRingingIcon} title="Reminders">
+							A push when a day is short, and the same reminders as Slack.
+						</Point>
+						<Point
+							icon={ChatCircleDotsIcon}
+							title="Day, reports and the assistant"
+						>
+							Review the day, look at the hours, or ask the assistant.
+						</Point>
+						<Point icon={HardDrivesIcon} title="Your own server">
+							Sign in to any Farmer instance. Push content is end-to-end
+							encrypted.
+						</Point>
+					</div>
+					<StoreBadges />
+				</div>
+				<PhoneShots />
 			</div>
 		</section>
 	);

@@ -326,6 +326,42 @@ const proposed: MockEntry[] = [
 	},
 ];
 
+/** Screenshots of the app on the demo instance. The data is made up. */
+export function PhoneShots() {
+	return (
+		<div className="fp-phones">
+			<PhoneShot
+				name="timer"
+				alt="The Time screen of the app: the week against its target, the days of the week, and a running timer with Pause and Stop."
+			/>
+			<PhoneShot
+				name="reports"
+				alt="The Reports screen of the app: total hours for the month and the hours of each project."
+			/>
+		</div>
+	);
+}
+
+/** One screen in a light and a dark capture; CSS shows the one that matches
+ *  `data-theme`. */
+function PhoneShot({ name, alt }: { name: string; alt: string }) {
+	return (
+		<div className="fp-phone">
+			{(["light", "dark"] as const).map((theme) => (
+				<img
+					key={theme}
+					className={`fp-phone-${theme}`}
+					src={`/_site/mobile/${name}-${theme}.webp`}
+					width={600}
+					height={1224}
+					loading="lazy"
+					alt={alt}
+				/>
+			))}
+		</div>
+	);
+}
+
 export function AssembleMock() {
 	return (
 		<figure
