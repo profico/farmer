@@ -13,7 +13,6 @@ import {
 	GithubLogoIcon,
 	GooglePlayLogoIcon,
 	HardDrivesIcon,
-	HourglassMediumIcon,
 	IdentificationBadgeIcon,
 	IslandIcon,
 	PackageIcon,
@@ -172,7 +171,7 @@ function Automation() {
 				<p className="fm-lede" style={{ maxWidth: 600 }}>
 					Meetings live in the calendar. Code lives in Git. Farmer reads both,
 					adds the things that happen every day, and proposes a timesheet. You
-					only correct it.
+					review it.
 				</p>
 			</div>
 			<div
@@ -194,9 +193,6 @@ function Automation() {
 					</Point>
 					<Point icon={FunnelIcon} title="Filing rules">
 						A recurring meeting goes to the same project every time.
-					</Point>
-					<Point icon={HourglassMediumIcon} title="24 hours, no more">
-						A day can't hold more than 24 hours. Automation respects that.
 					</Point>
 				</div>
 				<AssembleMock />
