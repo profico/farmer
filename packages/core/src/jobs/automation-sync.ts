@@ -247,7 +247,6 @@ const runExclusive = (
 	);
 };
 
-/** One tick: run every enabled automation for everyone who has one. */
 export const runAutomationSyncOnce = async (
 	logger: Pick<SchedulerLogger, "error"> = {
 		error: (message) => {
