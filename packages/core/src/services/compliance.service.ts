@@ -22,37 +22,29 @@ import { membersService, type ResolvedMemberType } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
 
-// Tracking (PRD 6.2, revised Sept 2026) — one rule, two consumers: the Tracking
-// report and the reminders, so the two can never disagree about who is behind.
+// Tracking (PRD 6.2): one rule, two consumers (the Tracking report and the
+// reminders), so they never disagree about who is behind.
 //
-// The rule. For a month with hour fund F (Settings → Hour fund — the official
-// monthly figure, "radni sati": working days × 8h, holidays already out):
-// target so far = F × working days elapsed ÷ working days in the month, where
-// a working day is Monday to Friday that is not a public holiday. Dividing by
-// the same days the fund was built from is what keeps every working day worth
-// exactly 8h — dividing by all weekdays made a day worth 7h38m in any month
-// with a holiday. A person's total is work PLUS time off — a day of vacation is
-// a day accounted for, not a day short. On track when total ≥ target; slightly
-// behind when within the org's tolerance (default 5%); behind otherwise. Once
-// the month is over the target is the whole fund.
+// For a month with hour fund F (Settings → Hour fund, the official monthly
+// figure: working days × 8h, holidays out):
+// target so far = F × working days elapsed ÷ working days in the month.
+// A working day is Monday to Friday and not a public holiday. Dividing by the
+// same days that built the fund keeps every working day worth exactly 8h.
+// A person's total is work plus time off. On track when total ≥ target.
+// Slightly behind when within the org's tolerance (default 5%). Behind
+// otherwise. Once the month is over, the target is the whole fund.
 //
-// "Working days elapsed" counts only days strictly BEFORE today — today's own
-// working day is still in progress, so it is not "elapsed" yet. The nudge runs
-// at 09:00; counting today made a person who had logged a full day on every
-// earlier working day show up short by a day's worth of hours until evening,
-// and made the 1st of every month open with "No time logged yet" for
-// everyone. The totals (work + time off) still cover up to and including
-// today, so logging early in the day can only help, never hurt, a verdict. A
-// finished month's elapsed figure is still every working day it had — the
-// month is over, so nothing in it is still "in progress".
+// "Working days elapsed" counts only days strictly before today, because
+// today is still in progress. The nudge runs at 09:00, and counting today made
+// a person with every earlier day logged look a day short. The totals still
+// cover today, so early logging can only help a verdict. A finished month
+// counts every working day it had.
 //
-// Who has a target: employees, full-time students and full-time contractors —
-// the fund applies to them. Hourly people are listed with their hours and no
-// status unless an explicit expected-hours override was set for them. Overhead
-// people and archived people are not listed at all.
+// Who has a target: employees, full-time students and full-time contractors.
+// Hourly people show their hours and no status, unless an expected-hours
+// override exists. Overhead and archived people are not listed.
 //
-// Nothing about a person's own schedule enters this: the fund is an org-wide
-// figure, and the rule is the same for everyone it applies to.
+// A person's own schedule does not enter this. The fund is an org-wide figure.
 
 export type TrackingStatus = "on_track" | "slightly_behind" | "behind";
 

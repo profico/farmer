@@ -34,39 +34,28 @@ import {
 } from "#/server/request-body.ts";
 
 /**
- * The one pipeline every CLI route runs — `/api/v1/me`, `/api/v1/session` and
- * everything under `/api/v1/orgs/$orgSlug`.
+ * The one pipeline every CLI route runs (`/api/v1/me`, `/api/v1/session` and
+ * everything under `/api/v1/orgs/$orgSlug`). One helper keeps the steps in
+ * this order:
  *
- * A helper around server ROUTES, which ADR 0001 does not forbid: that decision
- * is about generating `createServerFn` declarations, and these are ordinary
- * runtime functions. The steps run in a fixed order, and the order is the
- * point of having one helper rather than seventeen handlers that each remember
- * it:
- *
- *  1. `CLI_ENABLED` — 404 before anything else, so a switched-off surface has
- *     no endpoint rather than one that authenticates and then refuses.
- *  2. The per-address limit, before any database read. Resolving a credential
- *     is a session read and a membership read; a flood of bad tokens must not
- *     cost those.
- *  3. The CLI version header — 426 for a binary too old to read the answer,
- *     before it gets an answer to misread. A request without the header is a
- *     browser or a script, and is let through.
+ *  1. `CLI_ENABLED`: 404 first, so a switched-off surface has no endpoint.
+ *  2. The per-address limit, before any database read, so a flood of bad
+ *     tokens costs no session or membership read.
+ *  3. The CLI version header: 426 for a binary that is too old. A request
+ *     without the header (a browser or a script) passes.
  *  4. The credential. See `cookieUser` below for when the session cookie
- *     counts. A read-only API token asking to write is a 403 here, before
- *     any budget is spent on it.
- *  5. The per-user limits, and the write limit for anything that is not a GET.
+ *     counts. A read-only API token that asks to write gets 403 here.
+ *  5. The per-user limits, and the write limit for anything but a GET.
  *  6. The Zod parse, with the schema from `@farmer/core/schema` that the web
- *     app's own server function uses. Never a hand-written check: that is how
- *     `api/v1/time-entries` once lost the 62-day ceiling.
+ *     server function uses. Never write a separate check here.
  *  7. The service call, and the error mapping in `failure`.
  *
  * Every error body is an `ApiError`, because an installed CLI branches on its
  * `code`.
  *
- * Not imported by anything the browser loads, and every `@farmer/core` import
- * that reaches the database is deferred into a function body regardless —
- * `routeTree.gen.ts` imports each route module statically, so a top-level
- * import here would land in the client graph.
+ * Defer every `@farmer/core` import that reaches the database into a function
+ * body. `routeTree.gen.ts` imports each route module statically, so a
+ * top-level import would reach the client graph.
  */
 
 /** The route params every org-scoped route has. */

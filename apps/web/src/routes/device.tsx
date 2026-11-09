@@ -31,38 +31,27 @@ import { getPublicAppConfig } from "#/server/config.ts";
 import { type DeviceClient, getDeviceClient } from "#/server/device.ts";
 
 /**
- * The approval half of `farmer login` — better-auth's device authorization
- * flow, where `verificationUri` is this page.
+ * The approval half of `farmer login`: better-auth's device authorization
+ * flow, where `verificationUri` is this page. The terminal shows a code, the
+ * person signs in here and approves the same code, and the terminal receives
+ * a session token.
  *
- * The terminal shows a code and opens `/device?user_code=…`; the person signs
- * in here, sees the same code, and approves it; the terminal, polling all the
- * while, receives a session token. So this page is the one place a CLI
- * credential is handed out, and it is built around the attack that flow
- * invites: somebody starts `farmer login` on THEIR machine and sends the link
- * to a victim. What stands against that is the ten-minute code lifetime
- * (server-side), and here the code in large type, the account it would sign in
- * as, and the warning to approve only a code your own terminal shows.
+ * This page hands out a CLI credential, so it guards against a phishing link:
+ * an attacker starts `farmer login` on their machine and sends the link to a
+ * victim. The defenses are the ten-minute code lifetime (server side), the
+ * code in large type, the account it signs in as, and a warning to approve
+ * only a code from your own terminal.
  *
  * **Opening the code is a write, so it happens in the browser, after mount.**
- * `GET /api/auth/device` binds a pending code to the signed-in user, and
- * approve refuses a code nobody has bound. That call has to carry the
- * browser's own cookie to better-auth, which is what `authClient` does, and it
- * must not run during a server render — a loader would, for every document
- * request, including a link preview fetching the URL. So the route renders on
- * the server as usual (the session check and the signed-out redirect happen
- * there, before any JavaScript), and `DeviceApproval` binds the code once it
- * is on screen.
+ * `GET /api/auth/device` binds a pending code to the signed-in user, with the
+ * browser's own cookie (`authClient`). A server render must not run it, or a
+ * link preview would bind the code. `DeviceApproval` binds the code once it is
+ * on screen. Do not use `ssr: false`: the signed-out redirect would then run
+ * during hydration and cause a hydration mismatch against `/login`.
  *
- * Not `ssr: false`, which was tried: a client-only route that redirects a
- * signed-out visitor does so during hydration, and React then hydrates
- * `/login`'s markup against this route's pending shell — a hydration mismatch
- * on the very page the person has to type into next.
- *
- * **The code is read from the raw query string**, not from the router's parsed
- * search. TanStack Router runs each search value through `JSON.parse`, and a
- * user code is drawn from letters and digits, so a code such as `2E345678`
- * would arrive as the number 2e345678 — Infinity — and be sent to the server as
- * the wrong code.
+ * **Read the code from the raw query string**, not from the router's parsed
+ * search. The router runs `JSON.parse` on each value, so a code such as
+ * `2E345678` would arrive as the number Infinity.
  */
 
 /**

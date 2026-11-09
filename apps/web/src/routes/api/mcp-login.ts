@@ -1,35 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * One hop, and the reason it exists is the whole point of the file.
+ * The better-auth mcp plugin sends an unauthenticated
+ * `/api/auth/mcp/authorize` request to `${loginPage}?${originalQuery}`. The
+ * query holds the OAuth parameters (`client_id`, `redirect_uri`, `state` and
+ * more).
  *
- * better-auth's mcp plugin sends an unauthenticated `/api/auth/mcp/authorize`
- * request to `${loginPage}?${originalQuery}` — eight OAuth parameters
- * (`client_id`, `redirect_uri`, `response_type`, `scope`, `state`,
- * `code_challenge`, `code_challenge_method` and whatever else the client sent)
- * on a path that is supposed to sign the person in and send them back.
+ * `/login` cannot take them. Its search schema names a fixed set of keys and Zod strips
+ * the rest. The return trip then has no `client_id` and redirects to the login
+ * page again, an infinite loop with no error. Do not widen that schema: it
+ * puts OAuth names on the sign-in screen, and the next new parameter breaks it
+ * again.
  *
- * `/login` cannot be that path. Its search schema names five keys and Zod
- * strips the rest, so the parameters would be gone by the time anything read
- * them, and the trip back to `/mcp/authorize` would arrive with no `client_id`
- * — which redirects to the login page again. It fails as an infinite loop, not
- * as an error. Widening that schema to eight OAuth parameters is the wrong fix:
- * it would put OAuth vocabulary on the app's own sign-in screen for a flow that
- * screen has nothing to do with, and the next parameter a client sends would
- * break it again the same silent way.
- *
- * So this route keeps the parameters as an opaque query string and puts them
- * where a whole URL is already carried safely:
+ * So this route keeps the query as an opaque string and carries it in the
+ * `redirect` parameter of `/login`:
  *
  *     /api/mcp-login?<oauth query>
  *       -> /login?redirect=<encoded "/api/auth/mcp/authorize?<oauth query>">
  *
- * `/login`, not `/api/login`: with more than one sign-in provider the person
- * has to choose, and `/login` still bounces straight to Google when Google is
- * the only way in. Both accept only a same-site absolute path as `redirect`
- * and reject `//evil.com`. The person comes back here through the provider's
- * callback with a cookie. One who is already signed in never reaches this
- * route: the plugin sends only an unauthenticated authorize request here.
+ * `/login` accepts only a same-site absolute path as `redirect` and rejects
+ * `//evil.com`. A person who is already signed in never reaches this route.
  */
 export const Route = createFileRoute("/api/mcp-login")({
 	server: {

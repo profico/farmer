@@ -1,44 +1,30 @@
 // Telling another system something.
 //
-// The sibling of `notify.ts`, and the same idea one step further out: `notify`
-// is the single way this app tells a PERSON something, and this is the single
-// way it tells a SERVER. Both exist because the alternative is a `fetch` in the
-// middle of a decision — four call sites each with their own retry, their own
-// swallowed error and their own idea of who may be contacted.
+// The sibling of `notify.ts`: `notify` tells a person, and this tells a server.
+// Both avoid a `fetch` in the middle of a decision, which gives each call site
+// its own retry, error handling and idea of who may be contacted.
 //
-// One rule holds the design up: **nothing here calls out.** `emitEvent` writes
-// one row to the `webhook_event` outbox, in the transaction of whatever caused
-// it, and returns. A time entry and the record that it happened commit or roll
-// back together, and the request ends without waiting for anybody's server.
-// `jobs/webhook-delivery.ts` does the rest, on its own clock, with the retries
-// and the log.
+// Nothing here calls out. `emitEvent` writes one row to the `webhook_event`
+// outbox, in the transaction of whatever caused it, and returns. The time entry
+// and its record commit or roll back together, and the request does not wait
+// for a server. `jobs/webhook-delivery.ts` sends the row, with retries and a
+// log.
 //
-// ── Why `build` is a function ───────────────────────────────────────────────
-//
-// Because almost no organization has an endpoint, and every one of them writes
-// time entries all day. A payload is a projection over three joins plus the
-// person's name, so building it eagerly would put a query on the hot path of
-// every write in the product in exchange for a row that is deleted unread.
-//
-// `webhookWants` answers from a 60-second cache, so the common case is a Map
-// lookup and a return. `build` runs only when somebody actually asked for that
-// kind. The cost of webhooks is paid by the organizations that use them.
+// `build` is a function because almost no organization has an endpoint, and
+// every organization writes time entries all day. An eager payload (three joins
+// plus the person's name) would put a query on every write for a row that is
+// deleted unread. `webhookWants` answers from a 60-second cache, and `build`
+// runs only when somebody asked for that kind.
 //
 // The cache is why a new endpoint can take up to a minute to start receiving.
-// `invalidateWebhookSubscriptions` makes that instant within one process; the
-// web host and the worker are two processes, so the TTL is the real bound and
-// the settings page says so.
+// `invalidateWebhookSubscriptions` is instant within one process only. The web
+// host and the worker are two processes, so the TTL is the real bound.
 //
-// ── What does NOT emit, and why it is written down ──────────────────────────
-//
-// The automation engines: fill blocks, synced meetings, materialized recurring
-// blocks and the commit/PR work blocks. They reconcile rather than append — a
-// sweep rewrites a block every twenty minutes as the day fills up — so a row
-// there is not "something happened", it is "the same thing, recalculated". The
-// Harvest import is silent for the same reason and sends `import.finished`
-// instead, with the counts. Both limits are in `docs/domains/webhooks.md`,
-// because a receiver that sees a person's typed entries and not their synced
-// meetings needs to know that is the rule and not a bug.
+// The automation engines do not emit: fill blocks, synced meetings, recurring
+// blocks and commit/PR work blocks. They reconcile, so a row would mean "the
+// same thing, recalculated". The Harvest import is silent for the same reason
+// and sends `import.finished` with the counts. Both limits are in
+// `docs/domains/webhooks.md`.
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 

@@ -12,63 +12,24 @@ import { AnswerChart, ChartPlaceholder } from "./answer-chart.tsx";
 import { type Align, parseBlocks, safeHref } from "./answer-parse.ts";
 import { useTypeset } from "./typeset.ts";
 
-// A deliberately small markdown reader.
+// A small markdown reader, so the browser does not get a markdown dependency.
+// Keep it in step with `systemPrompt` in assistant-tools.ts: a construct that
+// the prompt promises and this file does not know renders as syntax.
 //
-// Models write markdown whether or not you ask them to, so rendering the raw
-// string leaves `**bold**` and stray hyphens all over the answer. The full
-// grammar is not the point here: what shows up in answers about a timesheet is
-// paragraphs, lists, headings, inline code, bold — and, once a question is
-// about more than one number, TABLES. "Hours per project last month" is a table
-// whatever you do to the prompt, and a table rendered as raw pipes is the one
-// failure that makes the answer harder to read than no formatting at all.
-// Everything outside this set still falls through as text.
+// It parses the full string again on each streamed delta, so each rule must
+// accept a half-arrived string.
 //
-// The alternative was a markdown dependency — react-markdown plus remark-gfm
-// plus a sanitiser, all of it shipped to the browser — in an app with no
-// other renderer. Still not worth it, but the bar for
-// what has to be here has moved: see `systemPrompt` in assistant-tools.ts,
-// which is where the model is told what this renderer understands. Keep the two
-// in step — a construct promised there and missing here renders as syntax.
+// A fence tagged `farmer-chart` or `farmer-next` is a directive (a chart, or
+// follow-up chips), not markdown. A fence that this file does not know shows
+// as a code block. A small model can put a table in a fence or leave the chip
+// fence open, so both are accepted.
 //
-// Everything below has to survive a HALF-ARRIVED string: it re-parses from
-// scratch on every streamed delta. Hence the unterminated-fence rule, and hence
-// a table that is still one header row wide rendering as a paragraph until its
-// delimiter line lands.
-//
-// Two constructs are NOT markdown and are worth naming as the exception they
-// are: a fence tagged `farmer-chart` or `farmer-next` is a DIRECTIVE — a chart
-// and a set of follow-up chips respectively. They ride on the fence syntax
-// because that is the one construct a model already knows how to close, and
-// because anything it emits that this file doesn't recognise then degrades to a
-// visible code block rather than to invisible. Nothing here is a component the
-// model can compose: it picks from a fixed set and fills in data, which is the
-// difference between generative UI and letting a model write markup.
-//
-// Two rules below exist because the model on the other end is whatever the org
-// chose as its default, and a small one writes sloppier markdown than the
-// prompt asks for: a fence whose body is nothing but a pipe table is read as
-// that table, and the chip fence is read whether or not it was closed. Both
-// recover from a wrapper the model ADDED, never from data it left out — a
-// directive the model didn't write is still a directive nobody gets.
-//
-// Two of the props exist for the TURN IN FLIGHT and are off everywhere else,
-// because opening a stored thread must not replay it.
-//
-// `streaming` says the answer is still arriving, and the only thing it changes
-// is what an OPEN directive fence looks like. A chart cannot be drawn from half
-// a JSON object, so what the reader used to get was the raw object in a code
-// block, replaced by the chart on the last token; the chips grew one character
-// at a time beside it. Both render as a sized placeholder instead and cross
-// into the real thing when the fence closes. It is `streaming` and not `closed`
-// that decides, so the two fallbacks for a turn that stopped a token early are
-// untouched: a stored answer holding an unclosed fence still renders its chips,
-// and still shows a half-written chart's numbers as code.
-//
-// `reveal` blurs each word in as it arrives (`.answer-word` in styles.css),
-// which is what makes a paragraph read as written rather than as painted. It
-// pairs with `useTypeset` in `typeset.ts` — the reveal is the frame-level half
-// of one effect, and the drain is the part that decides when a word is there to
-// reveal.
+// `streaming` and `reveal` apply only to the turn in flight, because a stored
+// thread must not replay. `streaming` shows an open directive fence as a
+// placeholder. It is `streaming`, not `closed`, that decides: a stored answer
+// with an unclosed fence still shows its chips, and a half chart as code.
+// `reveal` fades in each word (`.answer-word` in styles.css,
+// `useTypeset` in typeset.ts).
 
 /** The host an `http(s)` link goes to, or null for a path or a `mailto:`.
  *  The label of a link is text the model wrote, so it can name one site and

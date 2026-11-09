@@ -148,32 +148,18 @@ export const requireOrgAdmin = async () => {
 // which stay exported because route `beforeLoad`s call them directly.
 
 /**
- * Run the rest of the chain, and give an authorization refusal its status code.
+ * Run the rest of the chain, and set status 403 on an `AccessError`.
  *
- * Services signal "you may not do that" by throwing `AccessError`
- * (services/access.service.ts) — every capability assertion on `Access` raises
- * one, as do the handful of checks that guard another person's data. Nothing
- * turned that into an HTTP status: it was mapped in exactly one place, the PDF
- * route, and every server function let it through as an ordinary error, so a
- * Member touching a PM-only action got a 500. A 403 is not decoration here — it
- * is the difference between "you can't" and "it broke", and the client cannot
- * tell them apart from a message.
+ * Services throw `AccessError` (services/access.service.ts) when a person may
+ * not do something. The 403 lets the client tell "you cannot" from "it broke".
+ * This function re-throws, so TanStack still carries the message to the caller.
+ * A `redirect(...)` throw is not an error and passes through untouched.
  *
- * Deliberately re-throws rather than answering: the error's message is written
- * for the person and TanStack still carries it to the caller. This only sets the
- * status alongside it.
- *
- * `redirect(...)` throws are how the middleware below sends a non-member home,
- * and they are NOT errors — `instanceof AccessError` leaves them untouched, and
- * they carry their own response.
- *
- * The `AccessError` class is a PARAMETER, not something this function imports.
- * A top-level function body in this module ships to the browser, so a deferred
- * `import("@farmer/core/services")` in here would become a real client chunk of
- * the services barrel — the same trap documented on `requireOrgAdmin` and
- * `orgMiddleware`. The callers
- * below are `.server()` callbacks, which are stripped from the client bundle,
- * so they can import it and hand it in.
+ * The `AccessError` class is a parameter, not an import. A top-level function
+ * body in this module ships to the browser, so a deferred import of
+ * `@farmer/core/services` here would become a client chunk (see
+ * `orgMiddleware`). The callers are `.server()` callbacks, which the client
+ * bundle strips, so they import the class and pass it in.
  */
 const withAccessStatus = async <T>(
 	AccessError: new (...args: never[]) => Error,
@@ -209,30 +195,22 @@ export const optionalSessionMiddleware = createMiddleware({
 
 // Authenticated + an active organization → `context.ctx` is the service ctx.
 //
-// The membership check is the point, and it is not the same check as
-// `requireOrgContext`'s. That one asks the session which organization is
-// active; `activeOrganizationId` is written when the workspace is entered and
-// is never revisited, and removing somebody from an organization does not
-// invalidate their sessions — so it says where they were, not where they still
-// belong. Resolving `Access` asks the database, and now throws `NotAMemberError`
-// when there is no membership row (services/access.service.ts).
+// The membership check is the point. `requireOrgContext` only reads
+// `activeOrganizationId` from the session, and removing a person from an
+// organization does not invalidate their sessions. Resolving `Access` asks the
+// database and throws `NotAMemberError` when there is no membership row
+// (services/access.service.ts).
 //
-// It also has to happen here rather than only inside each service, because the
-// org-wide reads are exactly the ones with nothing to assert: `clientsService.
-// list` and `orgSettingsService.get` are a tenancy predicate and no more, and
-// an ex-member's Ctx satisfies a tenancy predicate perfectly well.
+// The check must run here, not only in each service. An org-wide read such as
+// `clientsService.list` asserts nothing beyond a tenancy predicate, and an
+// ex-member's `Ctx` satisfies that. `Access` is memoized on the `Ctx`, so the
+// check costs the request nothing.
 //
-// The resolved Access is memoized on the Ctx, so this costs the request
-// nothing: every handler that goes on to resolve it gets this one.
-//
-// The `import("@farmer/core/services")` is INSIDE the `.server()` callback, and
-// has to stay there. Pulled out into a shared top-level helper in this file it
-// still typechecks, still runs, and breaks the client build: `.server()`
-// callbacks are stripped from the browser bundle, a top-level function body is
-// not, so the deferred import becomes a real client chunk of the whole services
-// barrel — `postgres` touches `Buffer` at module scope and crashes hydration
-// silently, and every other server-only module in it is dead weight that
-// `scripts/prune-client-assets.ts` then has to delete.
+// Keep the `import("@farmer/core/services")` inside the `.server()` callback.
+// In a shared top-level helper it still typechecks but breaks the client
+// build: `.server()` callbacks are stripped from the browser bundle and a
+// top-level function body is not. The import would then become a client chunk
+// of the services barrel, and `postgres` crashes hydration silently.
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();

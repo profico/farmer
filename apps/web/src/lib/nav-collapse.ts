@@ -2,29 +2,21 @@ import { useSyncExternalStore } from "react";
 
 // Whether the shell's nav column is an icon rail or a labelled sidebar.
 //
-// Built the way `lib/theme.ts` builds light/dark, for the same reasons. The
-// choice lives in localStorage, so it belongs to the device. It has to be on
-// <html> before the first paint — a collapsed sidebar that opens wide and then
-// shuts on hydrate is worse than one that was never collapsed — so an inline
-// script sets it. And the attribute IS the state, with no provider to disagree
-// with it: `styles.css` sizes `.app-nav` off it, so the width is right on the
-// first frame even though React only catches up a frame later.
+// It follows `lib/theme.ts`. The choice lives in localStorage, so it belongs to
+// the device. An inline script puts it on <html> before the first paint, so the
+// sidebar does not open wide and then shut on hydrate. The attribute is the
+// state, and `styles.css` sizes `.app-nav` off it.
 //
-// The reader's choice is not the only thing that collapses the column. A
-// section panel (Settings, Chat) collapses it too, and that one is decided by
-// the URL, which the server knows — so it rides a `data-panel` attribute on the
-// element rather than through here.
+// A section panel (Settings, Chat) also collapses the column. The URL decides
+// that, and the server knows the URL, so it uses a `data-panel` attribute and
+// not this module.
 //
-// A NARROW WINDOW is the third, and it overrides the reader rather than
-// replacing their choice. Between 768px (below which the column is off-canvas
-// and the tab bar takes over) and 1024px, a labelled column costs 184px of a
-// content area that is already under 600px — which is where the target band
-// ran its three figures into each other and an entry line truncated a project
-// name to four characters. The window is read here rather than in CSS so that
-// ONE attribute still drives everything: every rule in `styles.css` keys on
-// `data-nav`, and a media query beside them would be a second source of truth
-// that React could not see. Widening the window gives the reader their own
-// choice back, because it was never overwritten.
+// A narrow window also collapses it, and overrides the reader's choice without
+// replacing it. Between 768px (below it the tab bar takes over) and 1024px, a
+// labelled column costs 184px of an already narrow content area. This module
+// reads the window, not a CSS media query, so that `data-nav` stays the one
+// source of truth for every rule in `styles.css`. A wider window gives the
+// reader's choice back.
 
 const STORAGE_KEY = "farmer-nav-rail";
 const ATTRIBUTE = "data-nav";

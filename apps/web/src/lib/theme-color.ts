@@ -1,45 +1,33 @@
 // The browser chrome's color: the status bar of the installed PWA, the tab
 // strip on a phone browser, the title bar on a desktop one.
 //
-// It is the ground — `--ground`, the surface the islands stand on and the only
-// thing visible around them — so the chrome reads as part of the page below
-// it. It used to be the logo violet, which drew a purple band across the top
-// of every screen, in both themes, over content that has no violet surface
-// anywhere in it.
+// It is `--ground`, the surface the islands stand on, so the chrome reads as
+// part of the page.
 //
-// A static `<meta name="theme-color">` cannot say this, because the ground is
-// not one color: light and dark hold different literals, and Custom
-// (Preferences → Display → Colors) derives it from a seed. `media=` on the
-// meta follows the OS, not the stored choice. So the value is written by
-// script, in two steps:
+// A static `<meta name="theme-color">` cannot say this. Light and dark hold
+// different literals, Custom (Preferences → Display → Colors) derives the
+// ground from a seed, and `media=` follows the OS, not the stored choice. So
+// script writes the value in two steps:
 //
 //   1. `themeColorInitScript`, inline in <head> after the theme script: the
-//      vanilla ground of whichever theme `data-theme` holds. A guess, made
-//      before the stylesheet exists — exact for vanilla, the nearest grey for
-//      Custom — so the chrome is right at first paint rather than wrong for a
-//      frame.
-//   2. `startThemeColorSync`, once React is up: `--ground` off <html>, re-read
-//      whenever `data-theme`, `data-palette` or the seed changes.
+//      vanilla ground of the theme in `data-theme`. It runs before the
+//      stylesheet exists, so it is exact for vanilla and the nearest grey for
+//      Custom. The chrome is right at first paint.
+//   2. `startThemeColorSync`, once React is up: it reads `--ground` off <html>
+//      again whenever `data-theme`, `data-palette` or the seed changes.
 //
-// Two things here are load-bearing, and both were got wrong the first time:
+// The value must be sRGB, written as `#rrggbb`. Under a custom palette
+// `--ground` computes to an `oklch()` expression. A platform that cannot parse
+// the meta content ignores the meta and uses the web manifest's `theme_color`,
+// which is cached at install time (Android showed the old violet). `toSrgbHex`
+// resolves any parseable color to three bytes through a 1x1 canvas.
 //
-// **The value must be sRGB, written as `#rrggbb`.** Under a custom palette
-// `--ground` computes to an `oklch()` expression, and a platform that cannot
-// parse the meta's content does not fall back to something sensible — it
-// ignores the meta and uses the WEB MANIFEST's `theme_color` instead, which on
-// an installed app is whatever was cached at install time. That is how a
-// correct-looking `oklch()` meta still showed the old violet on Android.
-// `toSrgbHex` puts every value through a 1×1 canvas, which resolves any color
-// the browser can parse — hex, `rgb()`, `oklch()` — down to three bytes.
+// The source is `--ground`, not the body's computed background. The body
+// resolves to `--bg`, one step lighter, so the chrome would not match the
+// strip under it.
 //
-// **The source is `--ground`, not the body's computed background.** The body
-// resolves to `--bg`, the island paper, one step lighter than the ground; the
-// chrome then sat a shade off the strip directly under it. Reading the token
-// says which surface is meant and does not depend on which element ends up
-// painting it.
-//
-// The two literals below are copies of `--ground` in `styles.css`. Keep them
-// in step: a drift shows as one frame of the old color on a cold load.
+// The two literals below copy `--ground` in `styles.css`. Keep them in step,
+// or a cold load shows one frame of the old color.
 
 const VANILLA_GROUND = { light: "#efece5", dark: "#0e0d0a" } as const;
 

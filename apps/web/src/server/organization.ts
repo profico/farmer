@@ -19,33 +19,26 @@ import {
 /**
  * Everything `/$orgSlug`'s `beforeLoad` needs about the workspace being
  * entered, in one round trip: the session, the organization, and the caller's
- * role in it.
+ * role in it. `beforeLoad` runs on every client-side navigation into an org
+ * route.
  *
- * It replaces three sequential server-function calls — `requireSession()`, then
- * `setActiveOrgBySlug()`, then `getMyRole()` — and `beforeLoad` runs on every
- * client-side navigation into any org route, so those were three round trips
- * deep on every link click, before a loader had started.
+ * The write that sets the active organization is conditional. It runs only
+ * when the active organization differs, so a navigation inside one workspace
+ * does no writes.
  *
- * The second of them was also a WRITE. `setActiveOrganization` updates the
- * session row, and it ran on every navigation even when the session already
- * named this organization, which is the overwhelmingly common case — the org
- * only actually changes when somebody switches workspace. So the check is now
- * conditional: the write happens when the active org differs, and a plain
- * navigation inside one workspace does no writes at all.
+ * When the slug does not open a workspace, the answer says where to go, and
+ * `beforeLoad` turns that into the redirect:
  *
- * When the slug does not open a workspace, the answer says where to go
- * instead, and `beforeLoad` turns that into the redirect:
- *
- *  - `signed-out` — to `/login`, carrying the page that was asked for. The
- *    guard builds that redirect because only it knows the page.
- *  - `elsewhere` — the slug is a placeholder (`/:org/settings`, see
- *    `lib/org-redirect.ts`), names no organization, or names one the caller is
- *    not in. The last two are deliberately the same answer, so this cannot be
- *    used to probe which slugs are taken. `onlySlug` is set when the caller
- *    has exactly one workspace, so the guard can resolve a placeholder
- *    straight to it; otherwise the guard sends them to the chooser, and with
- *    no workspace to `/no-access`. In single-org mode the answer is always
- *    "no workspace".
+ *  - `signed-out`: go to `/login`. The guard builds the redirect, because only
+ *    it knows the requested page.
+ *  - `elsewhere`: the slug is a placeholder (`/:org/settings`, see
+ *    `lib/org-redirect.ts`), names no organization, or names one that the
+ *    caller is not in. The last two give the same answer on purpose, so a
+ *    caller cannot probe which slugs exist. `onlySlug` is set when the caller
+ *    has exactly one workspace, so the guard can resolve a placeholder to it.
+ *    Otherwise the guard sends the caller to the chooser, or to `/no-access`
+ *    with no workspace. In single-org mode the answer is always "no
+ *    workspace".
  */
 export const enterOrganization = createServerFn({ method: "POST" })
 	.middleware([optionalSessionMiddleware])

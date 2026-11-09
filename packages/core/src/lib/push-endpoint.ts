@@ -1,26 +1,22 @@
 // Deciding whether a push subscription's endpoint is a browser push service.
 //
 // A push subscription arrives from the browser as a URL, and `web-push` POSTs
-// to that URL from the server. Accepted as any URL, it was a way to make the
-// server connect to a host and port of the caller's choosing (blind SSRF, and
-// a port probe through the timing and the status it logged). A real
-// subscription never names anything but the push service of the browser that
-// made it, so the rule is an allowlist rather than an address guard like
-// `webhook-url.ts`:
+// to that URL from the server. Any URL would let a caller make the server
+// connect to a host and port of their choice (blind SSRF, and a port probe
+// through the timing and the logged status). A real subscription names only
+// the push service of its browser, so the rule is an allowlist, not an address
+// guard like `webhook-url.ts`:
 //
 //   * `https:` only, on the default port, with no credentials in the URL.
-//   * The host is one of the push services the major browsers use:
-//       - `fcm.googleapis.com` — Chrome and every Chromium browser that ships
-//         Google's push (Brave, Opera, Vivaldi, Samsung Internet).
-//       - `updates.push.services.mozilla.com` — Firefox (Mozilla autopush).
-//       - `*.push.apple.com` — Safari on macOS 13+ and iOS/iPadOS 16.4+
-//         (`web.push.apple.com` today).
-//       - `*.notify.windows.com` — Microsoft Edge, through WNS
-//         (`wns2-<region>.notify.windows.com` and similar).
+//   * The host is one of the push services of the major browsers:
+//       - `fcm.googleapis.com`: Chrome and the Chromium browsers.
+//       - `updates.push.services.mozilla.com`: Firefox.
+//       - `*.push.apple.com`: Safari on macOS 13+ and iOS/iPadOS 16.4+.
+//       - `*.notify.windows.com`: Microsoft Edge, through WNS.
 //
-// A browser that uses a push service not on this list cannot subscribe until
-// it is added here. That is the trade: a closed list fails loudly for one new
-// browser, an open one is a request the server makes on anyone's behalf.
+// A browser with a push service not on this list cannot subscribe until the
+// list adds it. A closed list fails loudly for one new browser. An open list
+// lets a caller make the server send requests.
 //
 // Pure and dependency-free, because the Zod schema that calls it also runs in
 // the browser as the form resolver.

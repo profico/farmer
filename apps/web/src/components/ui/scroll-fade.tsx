@@ -5,30 +5,22 @@ import { cn } from "#/lib/utils.ts";
 /**
  * A scroll region that fades at whichever edge has more content behind it.
  *
- * The fade is a mask on the SCROLLER, not a gradient overlay stacked on top of
- * it. An overlay has to be painted in the island's color, which means it stops
- * working the moment the thing underneath isn't that color (a table's banded
- * row, the calendar's tinted blocks) and it sits above the content, so it eats
- * pointer events at exactly the edge people flick from. A mask fades whatever
- * is actually there, in any theme, and is inert.
+ * The fade is a mask on the scroller, not an overlay. An overlay must match the
+ * island's color, and it blocks pointer events at the edge. A mask fades the
+ * content in any theme and takes no events.
  *
- * Measured in JS rather than driven by `animation-timeline: scroll()`, which
- * expresses this in three lines of CSS and is still Chromium-only — this runs on
- * a scroll listener and a ResizeObserver, which every browser has.
+ * It measures in JS (scroll listener and ResizeObserver) because
+ * `animation-timeline: scroll()` is still Chromium-only.
  *
- * The two edges are separate custom properties rather than one "is it
- * scrollable" flag, because the top and bottom answer different questions and
- * are wrong at different moments: at rest at the top there is nothing above to
- * hint at, and a short page has neither.
+ * The top and bottom edges are separate custom properties, because they differ:
+ * at rest there is nothing above, and a short page has neither edge.
  *
- * Keeps `--fade-top` / `--fade-bottom` on `ref` in step with its scroll
- * position. Pair it with the `scroll-fade` class, which is what turns those two
+ * This hook keeps `--fade-top` / `--fade-bottom` on `ref` in step with the
+ * scroll position. Pair it with the `scroll-fade` class, which turns the two
  * lengths into the mask.
  *
- * Split out from the component below because the sidebar's scroll region is
- * already a component with its own element (`SidebarContent`) — it needs the
- * behaviour without a wrapper div, and a second copy of this arithmetic is a
- * second thing to keep in step.
+ * It is a separate hook so that the sidebar's `SidebarContent` can use it
+ * without a wrapper div.
  */
 export function useScrollFade(
 	ref: React.RefObject<HTMLElement | null>,

@@ -1,72 +1,36 @@
 /// <reference types="bun-types" />
 /**
- * Production server entry — run with `bun run start` (i.e. `bun run server.ts`)
- * from `apps/web/` after `bun run build`.
+ * Production server entry. Run `bun run start` from `apps/web/` after
+ * `bun run build`.
  *
- * `vite build` here emits a web-standard `{ fetch }` handler
- * (`dist/server/server.js`) plus static client assets (`dist/client/`), but
- * nothing that listens on a port or serves those assets — TanStack Start only
- * wires that up automatically behind a hosting preset (Nitro), which doesn't
- * resolve under Bun's node_modules in this repo. So we bring our own host.
+ * `vite build` emits a `{ fetch }` handler and the client assets, but nothing
+ * that listens on a port. TanStack Start does that only behind a hosting preset
+ * (Nitro), which does not resolve under Bun here. So this file is the host.
  *
- * This is TanStack's official "Production server with Bun" reference
- * (examples/react/start-bun/server.ts), adapted only by adding the bun-types
- * reference above. Keep the body in sync with upstream so it stays low-maintenance:
- * hybrid asset loading (preload small files into memory, stream large ones on
- * demand), ETag/304, gzip, and cache headers — all env-configurable.
+ * It follows TanStack's "Production server with Bun" example
+ * (examples/react/start-bun/server.ts). Keep the body close to upstream.
  *
- * It also starts the background schedulers in-process. Those live in
- * @farmer/core/jobs (not here) so they can run as a standalone worker too —
- * `bun run worker` from packages/core, which is what runs them under `vite dev`.
- * Their env vars are documented there.
+ * It also starts the background schedulers in-process. They live in
+ * @farmer/core/jobs so that `bun run worker` can run them alone. Their env
+ * vars are documented there.
  *
- * Environment Variables:
+ * Environment variables (defaults are in the code below):
  *
- * PORT (number)
- *   - Server port number
- *   - Default: 3000
- *
- * ASSET_PRELOAD_MAX_SIZE (number)
- *   - Maximum file size in bytes to preload into memory
- *   - Files larger than this will be served on-demand from disk
- *   - Default: 5242880 (5MB)
- *
- * ASSET_PRELOAD_INCLUDE_PATTERNS (string)
- *   - Comma-separated list of glob patterns for files to include
- *   - If specified, only matching files are eligible for preloading
- *   - Patterns are matched against filenames only, not full paths
- *   - Example: ASSET_PRELOAD_INCLUDE_PATTERNS="*.js,*.css,*.woff2"
- *
- * ASSET_PRELOAD_EXCLUDE_PATTERNS (string)
- *   - Comma-separated list of glob patterns for files to exclude
- *   - Applied after include patterns
- *   - Patterns are matched against filenames only, not full paths
- *   - Example: ASSET_PRELOAD_EXCLUDE_PATTERNS="*.map,*.txt"
- *
- * ASSET_PRELOAD_VERBOSE_LOGGING (boolean)
- *   - Enable detailed logging of loaded and skipped files
- *   - Default: false
- *
- * ASSET_PRELOAD_ENABLE_ETAG (boolean)
- *   - Enable ETag generation for preloaded assets
- *   - Default: true
- *
- * ASSET_PRELOAD_ENABLE_GZIP (boolean)
- *   - Enable Gzip compression for eligible assets
- *   - Default: true
- *
- * ASSET_PRELOAD_GZIP_MIN_SIZE (number)
- *   - Minimum file size in bytes required for Gzip compression
- *   - Default: 1024 (1KB)
- *
- * ASSET_PRELOAD_GZIP_MIME_TYPES (string)
- *   - Comma-separated list of MIME types eligible for Gzip compression
- *   - Supports partial matching for types ending with "/"
- *   - Default: text/,application/javascript,application/json,application/xml,image/svg+xml
- *
- * MAX_REQUEST_BODY_BYTES (number)
- *   - The largest request body the server reads; a larger one gets a 413
- *   - Default: 33554432 (32MB) — see `MAX_REQUEST_BODY_BYTES` below for why
+ * - PORT: server port. Default 3000.
+ * - ASSET_PRELOAD_MAX_SIZE: largest file in bytes to preload into memory.
+ *   Larger files stream from disk. Default 5MB.
+ * - ASSET_PRELOAD_INCLUDE_PATTERNS: comma-separated globs. If set, only
+ *   matching files are preloaded. Globs match file names, not paths.
+ * - ASSET_PRELOAD_EXCLUDE_PATTERNS: same format, applied after the include
+ *   globs.
+ * - ASSET_PRELOAD_VERBOSE_LOGGING: log loaded and skipped files. Default false.
+ * - ASSET_PRELOAD_ENABLE_ETAG: ETag for preloaded assets. Default true.
+ * - ASSET_PRELOAD_ENABLE_GZIP: gzip for eligible assets. Default true.
+ * - ASSET_PRELOAD_GZIP_MIN_SIZE: smallest file in bytes to gzip. Default 1KB.
+ * - ASSET_PRELOAD_GZIP_MIME_TYPES: comma-separated MIME types to gzip. A type
+ *   that ends with "/" matches by prefix.
+ * - MAX_REQUEST_BODY_BYTES: largest request body. A larger one gets a 413.
+ *   Default 32MB. See `MAX_REQUEST_BODY_BYTES` below.
  */
 
 import path from "node:path";
@@ -700,31 +664,19 @@ async function initializeServer() {
 
 			// Fallback to TanStack Start handler for all other routes.
 			//
-			// Everything reaching this fallback is dynamic — the SSR HTML document,
-			// server functions, and API routes (static assets are served by the
-			// `routes` map above and never get here). None of it may be cached by a
-			// shared cache: the SSR HTML embeds per-build hashed chunk names, so a
-			// cached document from a previous deploy points browsers at chunk URLs
-			// that no longer exist → "Failed to fetch dynamically imported module"
-			// and a dead app until the cache expires. Worse, server-function URLs are
-			// identical for every user/org (auth rides on the cookie, not the URL), so
-			// a shared cache that ignores cookies would serve one org's private data —
-			// or a stale empty response — to another. We therefore stamp
-			// `private, no-store` (plus `Vary: Cookie`) on any response that doesn't
-			// already set its own Cache-Control: `private` forbids shared/CDN caches,
-			// `no-store` forbids the browser from storing it at all, and a handler that
-			// genuinely wants caching can still opt in by setting its own header.
+			// Everything here is dynamic: the SSR HTML, server functions and API
+			// routes. No shared cache may store it. The SSR HTML names per-build
+			// chunks, so a stale copy breaks the app after a deploy. Server function
+			// URLs are the same for every org (auth is in the cookie), so a shared
+			// cache could serve one org's data to another. So every response that
+			// sets no Cache-Control gets `private, no-store` and `Vary: Cookie`. A
+			// handler can still opt in to caching with its own header.
 			//
-			// This is only the origin's half. A Cloudflare "Cache Everything" rule
-			// with an Edge/Browser Cache TTL OVERRIDES these headers and will cache
-			// this dynamic traffic anyway — that rule must be scoped to static assets
-			// (`/assets/*`) only, or set to "respect existing headers", or these
-			// directives are moot. (This was the cause of the time-off list showing
-			// empty until the browser cache was disabled.)
+			// A Cloudflare "Cache Everything" rule overrides these headers. Scope
+			// that rule to `/assets/*`, or set it to respect existing headers.
 			//
-			// Every response here also gets the baseline security headers (see
-			// `lib/security-headers.ts`), including one that sets its own
-			// Cache-Control. A header the route set itself is kept.
+			// Every response here also gets the security headers from
+			// `lib/security-headers.ts`.
 			"/*": async (req, bunServer) => {
 				try {
 					// The socket address, for the per-address rate limits when the

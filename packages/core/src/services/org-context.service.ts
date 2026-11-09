@@ -31,26 +31,21 @@ export const orgContextService = {
 	 * The Ctx for a signed-in person asking about one organization by slug, or
 	 * null.
 	 *
-	 * **Membership is re-checked here and that is the point.** A session's
-	 * `activeOrganizationId` outlives the membership that set it, which is why
-	 * `orgMiddleware` and `resolveApiOrgContext` re-check; an MCP token or a CLI
-	 * token outlives it by much more, because each is a credential that sits in
-	 * a config file or a keyring until somebody revokes it. So this is the check
-	 * that decides whether the URL still answers, not a formality on the way to
-	 * one.
+	 * Membership is re-checked here, on purpose. A session's
+	 * `activeOrganizationId` outlives its membership, and an MCP or CLI token
+	 * outlives it for longer, because the token stays in a config file or a
+	 * keyring until somebody revokes it. This check decides whether the URL
+	 * still answers.
 	 *
-	 * **A slug nobody owns and a slug the caller is not in are the same answer**
-	 * — null, which the route turns into a 401. Deliberate, and the same rule
-	 * `enterOrganization` follows: otherwise a valid token is an oracle for
-	 * which workspaces exist on the deployment.
+	 * A slug that nobody owns and a slug that the caller is not in give the same
+	 * answer: null, which the route turns into a 401 (as `enterOrganization`
+	 * does). Else a valid token shows which workspaces exist on the deployment.
 	 *
-	 * `ctxAccess` runs before returning so the request's memo is warm: the
-	 * service calls under it then answer from one resolution instead of
-	 * repeating it.
+	 * `ctxAccess` runs before the return, so the request's memo is warm for the
+	 * service calls.
 	 *
-	 * `actor` is the door the request came through (MCP, the CLI, an API
-	 * token), for the audit log. The transport knows it; this function only
-	 * carries it onto the Ctx.
+	 * `actor` is the door of the request (MCP, the CLI, an API token), for the
+	 * audit log. The transport knows it. This function only carries it.
 	 */
 	resolveBySlug: async (
 		userId: string,

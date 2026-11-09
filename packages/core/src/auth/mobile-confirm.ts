@@ -15,18 +15,18 @@ import {
  * The confirmation page of the mobile sign-in (ADR 0005, RFC 8252 §8.6).
  *
  * A person can start an app sign-in and send the proxy link to somebody
- * else. Before this page, the other person signed in and the browser went
- * straight to `farmer://` with a code for their session. A hostile app that
- * claims `farmer://` on their phone then held the code, and the person who
- * started the flow held the verifier.
+ * else. Without this page, the other person would sign in and the browser
+ * would send a code for their session straight to `farmer://`. A hostile app
+ * that claims `farmer://` on their phone gets the code, and the sender holds
+ * the verifier, so the sender gets the session.
  *
- * Now the callback sends the browser here first. The page names the account
- * and the server, and asks the person to continue. Only a POST from the
- * same session, with the one-time id of the page, makes the code and sends
- * the browser to the app:
+ * The callback sends the browser here first. The page names the account and
+ * the server, and asks the person to continue. Only a POST from the same
+ * session, with the one-time id of the page, makes the code and sends the
+ * browser to the app:
  *
  *  - The id is 32 random bytes. The server keeps only its hash, with the
- *    session id, the challenge and the `farmer://` link. It lives for
+ *    session id, the challenge and the `farmer://` link, for
  *    `CONFIRMATION_TTL_MS`.
  *  - The POST spends the id first (one delete), so a used id, or an id sent
  *    with another session or with no session, fails and is burned.

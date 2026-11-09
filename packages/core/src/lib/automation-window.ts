@@ -2,42 +2,30 @@
 //
 // Three engines materialize entries nobody typed: the recurring block
 // materializer, the calendar meeting sync, and the commit work-time blocks.
-// They used to disagree about their reach — the meeting sync ran
-// [today-1, today+14], and the other two ran over whatever range the caller
-// happened to be READING, floored only at the day the switch was flipped. Two
-// consequences, both wrong:
+// They share one window, anchored on today, that never reaches forward:
 //
-//   - The past leak. `sinceKey` is a floor, not a window: it answers "did this
-//     switch exist yet?" and then permanently opens everything after it. Flip a
-//     switch in January, scroll back to January in August, and the engine files
-//     eight months of entries across already-filed timesheets. The older the
-//     switch, the wider the damage.
-//   - The future leak. A row on a day nobody has lived yet is a claim, not a
-//     record: it counts in reports and unfiled banners, and gets silently
-//     rewritten when the calendar changes underneath it. Showing next week's
-//     meetings is a display concern, and the app already has the primitive for
-//     it — `dayAssemblyService.suggest` proposes without writing.
-//
-// So: one window, anchored on today, never reaching forward.
-//
-//   to   = today (in the ORG timezone — one midnight for the whole org),
+//   to   = today (in the ORG timezone: one midnight for the whole org),
 //          or yesterday for an engine that may only write to days that are over
 //   from = the latest of: today - GRACE_DAYS
 //                         the day the switch was turned on
 //                         the day after the org's automation lock
 //
-// GRACE_DAYS is not a policy about how far back automation "should" go. It is a
-// recovery budget for the writer not having run: the engines are scheduled jobs
-// now (packages/core/src/jobs), so a day is normally synced while it IS today,
-// and the only reason to revisit it is that the worker was down, the token was
-// briefly revoked, or a meeting moved after it first synced. Three days covers a
-// weekend outage. It is deliberately short: every day inside the window is a day
-// whose sync-owned rows can still be rewritten from the source, so widening it
-// widens the window in which a person's manual correction gets reverted.
+// The window has no past leak. `sinceKey` is only a floor: alone, it would
+// let an engine file months of entries across timesheets that are already
+// filed.
+//
+// The window has no future leak. A row on a day that is not over is a claim,
+// not a record. It counts in reports, and it is rewritten when the calendar
+// changes. `dayAssemblyService.suggest` shows the future without a write.
+//
+// GRACE_DAYS is a recovery budget for a writer that did not run (worker down,
+// token revoked, a meeting that moved), not a backfill policy. Three days
+// covers a weekend outage. Keep it short: a sync can rewrite every day inside
+// the window, and that can revert a manual correction.
 //
 // Pure and its own module because the callers cannot import each other: the
 // per-user pass in the service layer, the background job, and the manual "Sync
-// now" button all have to agree on the same answer.
+// now" button must agree on the same answer.
 
 import { addDaysToKey, dayKeyInTz } from "./time";
 

@@ -3,33 +3,29 @@
  *
  * An upload saves nothing by itself (`uploadsService.uploadImage`), so a picker
  * closed without saving, a replaced icon and a cleared logo each leave an
- * object behind. The bucket has a quota, and those objects count against it.
+ * object behind that counts against the bucket quota.
  *
- * What still counts as used is read from the only two columns that can hold an
- * upload path: `project.icon` and `organization.logo`. Two projects may wear one
- * file ("Recently used" offers other projects' images), which is why nothing is
- * deleted at the moment of a replace — the sweep asks whether ANY row still
- * points at it.
+ * Only `project.icon` and `organization.logo` can hold an upload path. Two
+ * projects may use one file, so nothing is deleted at a replace: the sweep
+ * asks whether any row still points at the object.
  *
  * Three rules keep it from deleting what it should not:
  *
  *   - An object younger than `UPLOAD_SWEEP_GRACE_MS` stays. The upload and the
  *     save that references it are two requests, and a picker may sit open.
- *   - Only keys of the upload shape are considered. Anything else in the bucket
- *     was not put there by this app.
- *   - Only organizations this database knows are swept. A development database
- *     pointed at a bucket that production also uses sees none of production's
- *     organizations, so it deletes nothing of theirs. The same rule keeps the
- *     files of a deleted organization, since its row is gone too; at 1 MB each
- *     that is cheaper than telling the two cases apart.
+ *   - Only keys of the upload shape count. The app did not put anything else
+ *     in the bucket.
+ *   - Only organizations in this database are swept. A development database
+ *     on a bucket shared with production deletes nothing of production's. The
+ *     files of a deleted organization stay too, which is cheaper than telling
+ *     the two cases apart.
  *
- * The bucket is listed BEFORE the references are read, so a save that lands
- * while the listing runs is still seen. A client holding a stale "Recently used"
- * image can still save a path this sweep has just deleted; that icon then falls
- * back to the project's initial.
+ * The sweep lists the bucket before it reads the references, so a save that
+ * lands during the listing is still seen. A client with a stale "Recently used"
+ * image can still save a deleted path; that icon falls back to the initial.
  *
- * Only `orgs/` is listed, so the probe the Infrastructure page's storage test
- * writes (under `instance/`) is never a candidate, even if its delete failed.
+ * Only `orgs/` is listed, so the probe of the Infrastructure storage test
+ * (under `instance/`) is never a candidate.
  */
 
 import { inArray, like } from "drizzle-orm";

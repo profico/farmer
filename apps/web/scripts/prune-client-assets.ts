@@ -1,54 +1,29 @@
 /// <reference types="bun-types" />
 /**
- * Post-build step: delete client JS chunks that no browser can ever reach.
+ * Post-build step: delete client JS chunks that no browser can reach.
  *
- * WHY THIS EXISTS
+ * Why: server functions defer their server-only imports into the handler body
+ * (see the client-bundle rule in apps/web/CLAUDE.md). The bundler still sees
+ * those dynamic imports in the client build, because it chunks them before the
+ * TanStack Start transform strips the handler. So `dist/client/assets` holds
+ * about 1MB of orphan server code (auth config, drizzle schema, slack.service,
+ * notify). `server.ts` serves every file under `dist/client` as a public route,
+ * so `GET /assets/auth-<hash>.js` would expose that source. Env var values are
+ * not in it. The bundler cannot fix this, so this script deletes the files
+ * after the build.
  *
- * Every server function in this app defers its server-only imports into the
- * handler body (`await import("@farmer/core/services")` — see the client-bundle
- * rule in apps/web/CLAUDE.md). That keeps `postgres` out of the *executed*
- * client graph, which is what stops the hydration crash. It does NOT stop the
- * bundler from seeing those dynamic imports while it is building the CLIENT
- * environment: rolldown chunks them before TanStack Start's server-fn transform
- * strips the handler, so `dist/client/assets` ends up with an orphan island of
- * server code — the better-auth config, the drizzle schema, slack.service,
- * notify — roughly 1MB that nothing imports and no route preloads.
+ * Reachability: the roots are every `assets/<name>` string in the built server
+ * output (the TanStack Start route manifest lists the entry `scripts` and the
+ * route `preloads`) and in the non-asset client files. The script then follows
+ * mentions between client assets (static imports and `__vite__mapDeps`).
+ * Everything else is unreachable.
  *
- * Dead weight would be forgivable. Being *served* is not: `server.ts` globs
- * `**\/*` under `dist/client` and registers every file it finds as a public
- * route, so `GET /assets/auth-<hash>.js` handed anyone the auth configuration,
- * the full database schema and the Slack service source. The env var VALUES are
- * never in there (they are `process.env.X` property reads, evaluated at
- * runtime), but the internals were.
+ * Only `.js` is pruned. CSS and other assets stay, because this scan does not
+ * read all the places that can reference them.
  *
- * Fixing it at the bundler is not really available — the chunking happens
- * upstream of the transform that makes the code dead. So we delete it after the
- * fact, from the only vantage point that can tell reachable from unreachable:
- * the finished build.
- *
- * HOW REACHABILITY IS DECIDED
- *
- * Roots are every `assets/<name>` string that appears in the built SERVER
- * output or in the non-asset client files. That is not a heuristic about how
- * bundlers name things — it is the exact set of URLs the running app is capable
- * of putting in front of a browser: TanStack Start's route manifest (baked into
- * dist/server) lists the entry `scripts` and the per-route `preloads`, and
- * sw.js / any HTML would name anything else.
- *
- * From those roots we take the transitive closure over mentions *within* client
- * assets, which covers static `import "./chunk.js"` and the `__vite__mapDeps`
- * arrays behind lazy route components alike, because both land in the file as
- * literal filenames.
- *
- * Everything left over is unreachable by construction. Only `.js` is pruned;
- * CSS and any future font/image asset is left alone regardless, since those are
- * not where server code leaks and they can be referenced from places this scan
- * deliberately does not read.
- *
- * The guards below are the important part. A false positive here ships a broken
- * app that only fails in production, so this script aborts the build rather
- * than guess: no roots found, an implausible share of the bundle marked dead, or
- * a kept file still pointing at a pruned one all exit non-zero.
+ * A false positive ships an app that breaks only in production. So the script
+ * exits non-zero if it finds no roots, if it marks an implausible share of the
+ * bundle as dead, or if a kept file still points at a pruned one.
  */
 
 import { readdir, rm, stat } from "node:fs/promises";

@@ -164,35 +164,22 @@ const redactContent: BeforeSendFn = (event) => {
 /**
  * Wire one request's MCP server to PostHog. A no-op where PostHog is not set up.
  *
- * Called before the handlers are registered, which is what the SDK's example
- * does and what this one needs: `instrument` patches `setRequestHandler`, so a
- * handler added afterwards is wrapped and one added first is not.
+ * Call this before the handlers are registered. `instrument` patches
+ * `setRequestHandler`, so a handler added first is not wrapped.
  *
- * **The identity is static, and that is the whole reason this takes a `Ctx`.**
- * The SDK's `identify` option exists for a server that learns who is calling
- * from the request; here the route has already resolved the credential and the
- * membership before anything is constructed, so the answer is known and cannot
- * change for the life of this server.
+ * The identity is static, so this takes a `Ctx`. The route has already
+ * resolved the credential and the membership, and they cannot change for the
+ * life of this server.
  *
- * Two options are deliberately left off, because both change the tool SCHEMAS
- * the client is served:
+ * Keep `context`, `captureModel` and `enableConversationId` off (the last one
+ * is off by SDK default). Each one adds an argument to the tool schemas that
+ * the client is served. `context` would become a required argument on every
+ * tool, whose parameters are the app's own
+ * Zod inputs shared with the UI, the CLI and the assistant. That is a product
+ * decision, not an analytics one.
  *
- *  - `context` (on by default) adds a required `context` string to every tool,
- *    for the agent to narrate what the person is trying to do, and captures it
- *    as `$mcp_intent`. It is the most informative thing this SDK offers and it
- *    is also a required argument on 52 tools whose parameters are otherwise the
- *    app's own Zod inputs, shared with the UI, the CLI and the assistant. A
- *    measurement that rewrites the thing it measures is a product decision
- *    rather than an analytics one, so it is left to be made on purpose.
- *  - `captureModel` injects an `llm_model` argument the same way, for a value
- *    the SDK's own documentation calls unverified. `$mcp_client_name`,
- *    `$mcp_client_version` and `$mcp_client_user_agent` already arrive without
- *    it.
- *
- * `$session_id` is therefore one per REQUEST, not one per connection: this
- * server is stateless (`sessionIdGenerator: undefined`), so there is no session
- * id for the SDK to anchor on. `enableConversationId` is the SDK's answer and
- * injects an argument of its own, so it is off for the reason above.
+ * So `$session_id` is one per request, not per connection: this server is
+ * stateless (`sessionIdGenerator: undefined`).
  */
 export const instrumentMcpAnalytics = (server: Server, ctx: Ctx): void => {
 	const posthog = getPostHogClient();

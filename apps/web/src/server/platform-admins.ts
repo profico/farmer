@@ -70,27 +70,20 @@ const setPlatformAdminInput = z.object({
 /**
  * Promote or demote somebody.
  *
- * **Routed through better-auth's `admin/set-role` rather than an UPDATE.** The
- * plugin owns that column — it declares `role` with `input: false` and checks
- * the caller's own permission before writing — so going around it would mean
- * this app had two writers with two different ideas of who may write. The
- * middleware above and the plugin's check are deliberately both in the path:
- * one keeps the screen off a reader who should not see it, the other refuses
- * the write whatever called it.
+ * **Routed through better-auth's `admin/set-role`, not an UPDATE.** The plugin
+ * owns the `role` column (`input: false`) and checks the caller's permission
+ * before it writes. A second writer would split the rule about who may write.
+ * The middleware above and the plugin check both stay in the path: one keeps
+ * the screen from a reader, the other refuses the write from any caller.
  *
- * Two refusals the plugin does not make, because they are this deployment's
- * rules and not better-auth's:
+ * Two refusals are this deployment's rules, not better-auth's:
  *
- * - **Nobody demotes themselves.** Self-demotion is the one demotion that
- *   cannot be undone by the person who did it, and it reads as a misclick on a
- *   row that is already yours. Ask the other admin.
- * - **Never leave the instance with no platform admin.** The role cannot be
- *   granted from anywhere else — the bootstrap only ever fires for the first
- *   account — so an instance that reaches zero has no way back except SQL.
- *   Nothing reaches this one today: the caller is an admin, so demoting anybody
- *   else leaves at least the caller, and demoting the caller is refused above.
- *   It is kept as the invariant a future caller past a different gate would
- *   otherwise break.
+ * - **Nobody demotes themselves.** Only another admin can undo it.
+ * - **Never leave the instance with no platform admin.** Only the first
+ *   account gets the role by bootstrap, so zero admins has no way back except
+ *   SQL. No caller reaches this today, because the caller is an admin and
+ *   self-demotion is refused. Keep it as an invariant for a future caller
+ *   behind a different gate.
  */
 export const setPlatformAdmin = createServerFn({ method: "POST" })
 	.middleware([platformAdminMiddleware])

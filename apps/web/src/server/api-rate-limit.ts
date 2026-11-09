@@ -1,30 +1,22 @@
 /**
- * Per-user and per-address ceilings on the token-authenticated surfaces, held
- * in memory. One set of buckets per surface: the MCP server and the CLI's REST
- * API.
+ * Per-user and per-address ceilings on the token-authenticated surfaces (the
+ * MCP server and the CLI's REST API), held in memory. Each surface has its own
+ * buckets.
  *
- * The thing on the other end of either connection may be a loop, not a person.
- * A UI makes a request when somebody clicks; an agent makes one whenever it
- * decides to, and a shell script around the CLI makes one every time `watch`
- * ticks. Two ceilings rather than one, because the two failure modes cost
- * different things: a thousand reads a minute is load, and a thousand WRITES a
- * minute is a timesheet nobody can reconstruct — and reads are the ones a
- * legitimate session makes many of.
+ * A client may be a loop, not a person. There are two ceilings, reads and
+ * writes: a flood of reads is load, but a flood of writes is a timesheet that
+ * nobody can reconstruct. A legitimate session makes many reads.
  *
- * Separate buckets per surface, with the same numbers today. A person who has
- * Claude Code and a terminal open at once is two clients, and one of them
- * spending its budget must not refuse the other. The numbers can then drift
- * apart per surface without a second module.
+ * Buckets are separate per surface, so a client on one surface (Claude Code)
+ * cannot use up the budget of a client on the other (a terminal). The numbers
+ * can also differ per surface later.
  *
- * In memory, and so per process, which is the right shape here rather than a
- * concession: `startSchedulers` already assumes a single instance (see
- * the table in `docs/domains/deployment.md`), so there is no second web process for a
- * counter to disagree with. A deployment that grows one needs a shared store
- * for this and a lock for the jobs, in that order.
+ * The state is per process. `startSchedulers` already assumes a single
+ * instance (`docs/domains/deployment.md`). A deployment with more instances
+ * needs a shared store here and a lock for the jobs.
  *
- * A fixed window, not a sliding one. It admits a burst across a boundary — up
- * to twice the limit in a moment — and that is fine for a ceiling whose job is
- * to stop a runaway loop rather than to shape traffic.
+ * The window is fixed, not sliding. A burst across a boundary can reach twice
+ * the limit, which is fine for a ceiling that only stops a runaway loop.
  */
 
 import {

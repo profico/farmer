@@ -3,29 +3,25 @@ import type { HolidayLookup } from "./working-day";
 // What a working day says under it on the timesheet's week strip and the home
 // page's week chart: done, short, or nothing because the week has covered it.
 // Pure, because the browser draws it and `bun test` here is the only suite
-// that can hold it — apps/web has none.
+// that can hold it (apps/web has none).
 //
-// A day on its own cannot tell "forgot to log" from "worked six hours today
-// and ten tomorrow" (issue #58: somebody on track for the week and the month
-// whose shorter days were red regardless). The week can, so the week decides.
-// A day under a day's worth is `short` only while its week is behind, and
-// `covered` once the rest of the week has made up for it — hours logged on a
-// weekend included, as the targets count them.
+// A day alone cannot tell "forgot to log" from "worked six hours today and ten
+// tomorrow" (issue #58), so the week decides. A day under a day's worth is
+// `short` only while its week is behind. It is `covered` when the rest of the
+// week has made up for it, weekend hours included, as the targets count them.
 //
-// Past days and today are held to different yardsticks, on purpose:
+// Past days and today use different yardsticks, on purpose:
 //
-// - A PAST day asks the week tile's own question (`complianceService.myTargets`):
-//   the week's total through today against a day's worth for every working day
-//   strictly before today. So a past day is never red beside a tile that says
-//   on track, and a surplus does not vanish each morning just because the new
-//   day's worth arrived before its hours did.
-// - TODAY also counts its own day's worth. Held to the tile's yardstick it would
-//   go quiet whenever the week so far was exactly on target — every morning,
-//   for anyone who logs eight hours a day — and take away the one mark that
-//   says "log today".
+// - A past day asks the question of the week tile
+//   (`complianceService.myTargets`): the week's total through today against a
+//   day's worth for each working day strictly before today. A past day is never
+//   red beside a tile that says on track.
+// - Today also counts its own day's worth. With the tile's yardstick it would
+//   go quiet whenever the week was exactly on target, and the "log today" mark
+//   would disappear every morning.
 //
 // Only hours through today count, so time off booked for later in the week
-// cannot quiet a gap before it. The tile has the same guard.
+// cannot hide a gap before it. The tile has the same guard.
 
 export type DayMark = "done" | "covered" | "short";
 

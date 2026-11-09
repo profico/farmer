@@ -2,33 +2,25 @@ import { useCallback, useSyncExternalStore } from "react";
 
 // Preferences → Display → Colors: the one color the whole app is drawn from.
 //
-// Two choices, Vanilla and Custom. Vanilla is the palette `styles.css` has
-// always carried, untouched. Custom takes a single seed — a hue and a chroma,
-// nothing else — and `styles.css` derives every neutral, the accent, the status
-// colors and the chart series from it, the way Material You derives a scheme
-// from one source color.
+// Two choices: Vanilla (the palette in `styles.css`) and Custom. Custom takes
+// one seed, a hue and a chroma. `styles.css` derives every neutral, the accent,
+// the status colors and the chart series from it.
 //
-// Built the way `lib/theme.ts` builds light/dark and for the same reasons. The
-// choice lives in localStorage, so it belongs to the device; it has to be on
-// <html> before the first paint, so an inline script sets it; and the DOM is
-// the state, with no provider to disagree with it.
+// It follows `lib/theme.ts`. The choice lives in localStorage, so it belongs to
+// the device. An inline script puts it on <html> before the first paint, and
+// the DOM is the state.
 //
-// The seed is stored as the two numbers rather than as a hex, so the inline
-// script needs `parseFloat` and not a color-space conversion. Nothing in this
-// app converts between color spaces at all: the wheel picks an angle and a
-// radius, CSS turns those into every token, and there is no third place where
-// the two could drift apart.
+// The seed is stored as the two numbers, not as a hex, so the inline script
+// needs only `parseFloat`. The app never converts between color spaces. CSS
+// turns the angle and radius into every token.
 //
-// Intensity is one number and reaches further than the accent can use. Past
-// the default seed's chroma the greys take a growing share of it, so turning
-// the slider up keeps changing the app after the button has saturated. See
-// `--tint` in `styles.css`.
+// Intensity is one number and reaches further than the accent can use. Past the
+// default seed's chroma the greys take a growing share of it. See `--tint` in
+// `styles.css`.
 //
-// Why the lightness of every role is FIXED, and only hue and chroma move:
-// OKLCH lightness is perceptual, so text contrast stays near-constant whatever
-// hue somebody picks. A generated palette that also varies lightness cannot
-// promise that, and this one has to — see `scripts/check-palette-contrast.ts`,
-// which checks the promise across the whole wheel.
+// The lightness of every role is fixed, and only hue and chroma move. OKLCH
+// lightness is perceptual, so text contrast stays near-constant for any hue.
+// `scripts/check-palette-contrast.ts` checks this across the whole wheel.
 
 export type PaletteMode = "vanilla" | "custom";
 

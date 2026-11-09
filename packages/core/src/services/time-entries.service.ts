@@ -807,30 +807,20 @@ const syncMeetingsForRange = async (
 };
 
 // For every day the user pushed commits: attach those commits to the work entry
-// that already describes the day, and — only if nothing does — file a "rest of
-// day" fill block so tracked time expands to that day's working hours.
+// that already describes the day. Only if nothing does, file a "rest of day"
+// fill block so tracked time expands to that day's working hours.
 //
-// Two things this engine gets asked to do, and they are not the same thing:
+// Attaching and creating are separate jobs. The commits are evidence: they let
+// an entry answer "what was this?", so attach whenever an entry exists. Create a
+// block only when the day would otherwise go unaccounted for. Do not join them:
+// a full day with a real Development entry must still receive the commits, and
+// `computeDayFillSeconds` is <= 0 for that day. So resolve a target per project
+// first, attach there, and treat the fill block as the fallback.
 //
-//   1. ATTACH the commits. They are evidence: they name the block and let the
-//      entry answer "what was this?" without the person retyping it. This is
-//      almost free and is worth doing whenever there is anything to attach to.
-//   2. CREATE a block, when the day would otherwise go unaccounted for.
-//
-// They used to be welded together — the engine only ever wrote its own fill
-// block and only ever attached to that. So a person who had already logged their
-// day properly (a real Development entry per project, from Assemble my day or by
-// hand) got their commits attached to NOTHING: `computeDayFillSeconds` returned
-// <= 0 for a full day, the loop hit `continue`, and the evidence was dropped on
-// the floor. The commonest, best-behaved case was the one that lost data.
-//
-// So: resolve a target per project first (below), attach there, and treat the
-// fill block as the fallback it always was rather than the point.
-//
-// `range` is the window the caller has already decided this engine may touch —
-// see lib/automation-window, and note that this engine asks for
-// `completeDaysOnly`, because the block it writes is sized from the day's WHOLE
-// target and that number is only true once the day is over.
+// `range` is the window that the caller already decided this engine may touch
+// (see lib/automation-window). This engine asks for `completeDaysOnly`, because
+// the block is sized from the day's whole target, which is true only after the
+// day is over.
 /**
  * May the rest-of-day block be filed against this project?
  *
@@ -2388,40 +2378,32 @@ type CopyWeekResult = {
 };
 
 export const timeEntriesService = {
-	// Reading is reading. This used to run the recurring materializer and both
-	// integration sync engines first, so which entries got created depended on
-	// which screen was open — see the note above the engines. The worker owns
-	// that now.
+	// A read runs no import. The worker owns the recurring materializer and the
+	// integration sync engines.
 	//
-	// The one write left below is not an import: a fill block's duration is
-	// derived from what else the day holds, so it is recomputed (and dropped when
-	// squeezed to nothing) against the rows just read. That keeps a value
-	// consistent rather than inventing an entry.
+	// The one write left is a fill block: its duration derives from what else the
+	// day holds, so it is recomputed (and dropped when squeezed to nothing)
+	// against the rows just read.
 	//
-	// It is BOUNDED BY THE AUTOMATION WINDOW, though, and that is not a detail.
-	// Unwindowed, this was the last write-on-read path in the app and it had the
-	// widest reach of any of them: scrolling the Month view back — or, worse,
-	// `GET /api/v1/time-entries?from=…&to=…`, whose range is caller-supplied —
-	// rewrote and deleted fill blocks across the whole of a person's history,
-	// including months already locked, finalized and invoiced. `targetSecondsFor`
-	// reads the person's CURRENT working hours with no effective dating, so
-	// shortening your day from 8h to 6h silently resized every fill block you had
-	// ever had, the next time anyone happened to open that range.
+	// The automation window bounds this write, and that is load-bearing. Without
+	// it, scrolling the Month view back, or `GET /api/v1/time-entries?from=&to=`
+	// (a caller-supplied range), would rewrite and delete fill blocks across the
+	// whole history, including locked, finalized and invoiced months.
+	// `targetSecondsFor` reads the person's current working hours with no
+	// effective dating, so a change from 8h to 6h would resize every old block.
 	//
-	// So a read may only touch what an automation may touch. Outside the window a
-	// stored fill block is history and renders as it stands. Inside it, the block
-	// still tracks the day. A person editing their own old entry is a different
-	// thing entirely — a deliberate human act, which the app deliberately permits
-	// in closed months — so the WRITE path's recompute (`recomputeDayFill`) stays
-	// unwindowed. Automation is what the lock governs.
+	// So a read may touch only what an automation may touch. Outside the window a
+	// stored fill block is history and renders as it stands. A person who edits
+	// their own old entry acts on purpose, and the app permits it in closed
+	// months, so the write path's recompute (`recomputeDayFill`) is not windowed.
+	// The lock governs automation.
 	//
-	// `opts.persist: false` is the read-only variant. It computes the same fill
-	// blocks in memory and returns the same rows, but it neither updates nor
-	// deletes a fill block and it does not move commit evidence. The caller
-	// chooses it: the home route (which a phone refreshes often) and the
+	// `opts.persist: false` is the read-only variant. It returns the same rows
+	// and fill blocks, but it updates and deletes no fill block and it does not
+	// move commit evidence. The home route (a phone refreshes it often) and the
 	// org-scoped time-entries GET for a read-only API token pass `false`. The
-	// default is `true`, and the cookie-only `GET /api/v1/time-entries` and the
-	// web server functions use it.
+	// default is `true`, for the cookie-only `GET /api/v1/time-entries` and the
+	// web server functions.
 	listRange: async (
 		ctx: Ctx,
 		range: { from: string; to: string },
@@ -2571,30 +2553,23 @@ export const timeEntriesService = {
 	},
 
 	/**
-	 * One person's automations, in the order they depend on each other. This is
-	 * what the worker calls per (org, user) — see jobs/automation-sync.ts — and
-	 * what the manual "Sync now" button calls for one person on demand.
+	 * One person's automations, in the order they depend on each other. The
+	 * worker calls it per (org, user) (jobs/automation-sync.ts), and the manual
+	 * "Sync now" button calls it for one person.
 	 *
-	 * The order is load-bearing. A commit fill block claims "the rest of the
-	 * day", and its duration is computed from what the day already holds, so the
-	 * recurring break has to exist before it is sized. Running them the other way
-	 * round produces a fill block that is half an hour too long and only
-	 * self-corrects on the next read.
+	 * The order is load-bearing. A commit fill block claims "the rest of the day"
+	 * and is sized from what the day holds, so the recurring break must exist
+	 * first. The other order gives a fill block that is half an hour too long
+	 * until the next read.
 	 *
-	 * Each engine gets its own window because each has its own switch, and the
-	 * switches were flipped on different days. Every engine is independently
-	 * best-effort: a revoked Google token must not cost this person their
-	 * recurring blocks.
+	 * Each engine has its own window, because each has its own switch. Each
+	 * engine is best-effort alone: a revoked Google token must not cost the
+	 * person their recurring blocks.
 	 *
-	 * The four outcomes are reported separately because they are four different
-	 * answers. `skipped` in particular is not a quiet success: an engine whose
-	 * window came back null did NOTHING, and folding that into `ran` is what let
-	 * the "Sync now" button say "Synced" after a pass that touched nothing at all.
-	 *
-	 * `off` is the fourth: an engine the person has not switched on appeared in
-	 * none of the other three, so "Sync now" could not distinguish "your calendar
-	 * sync is off" from "synced" — which is the answer somebody who just came
-	 * looking for their meetings actually needs.
+	 * The four outcomes are separate answers. `skipped` is not a quiet success:
+	 * the engine had a null window and did nothing, so it must not count as
+	 * `ran`. `off` means the person has not switched the engine on, so "Sync now"
+	 * can tell "your calendar sync is off" from "synced".
 	 */
 	runAutomationsForUser: async (
 		ctx: Ctx,
@@ -3637,30 +3612,21 @@ export const timeEntriesService = {
 		});
 	},
 
-	/** Copy a day's entries onto another day. The backfill affordance for a
-	 *  repeating week: most people work a similar shape most days.
+	/** Copy a day's entries onto another day, to backfill a repeating week.
 	 *
-	 *  Four rules, each of which used to be missing:
+	 *  Four rules:
 	 *
-	 *  - A calendar-derived entry IS copied, as a plain manual entry. It used to
-	 *    be skipped on the reasoning that "a meeting belongs to the day it
-	 *    happened" — true of the calendar link, not of the time. Combined with
-	 *    the tombstone written on delete, skipping it meant a meeting entry
-	 *    deleted by mistake could not be recovered by ANY route. The link
-	 *    (`calendarEventId`, `meetingUrl`) is deliberately not carried over: the
-	 *    copy is new, hand-made time that happens to look like a meeting, and
-	 *    binding it to an event on another day would put it back under the sync
-	 *    engine's control.
-	 *  - A fill block IS copied — RE-DERIVED, not duplicated. Its duration is a
-	 *    function of what the TARGET day leaves over, so it is recreated at that
-	 *    size rather than at the source's. Dropping it entirely (which is what
-	 *    "copying one forward would just be recomputed away" actually did) meant
-	 *    a day whose hours live in a single "rest of day" block — the shape the
-	 *    day assembler produces — copied across as nothing at all, which is the
-	 *    "the copy button sometimes doesn't copy the day" report.
-	 *  - Copying twice is a no-op, not a doubling. An entry whose (project, task,
-	 *    duration, note) already sits on the target day is skipped, so leaning on
-	 *    the button is harmless.
+	 *  - A calendar-derived entry is copied, as a plain manual entry. The delete
+	 *    tombstone would otherwise make a meeting entry that was deleted by
+	 *    mistake unrecoverable. The link (`calendarEventId`, `meetingUrl`) is not
+	 *    carried over: the copy is hand-made time, and a link to an event on
+	 *    another day would put it under the sync engine's control.
+	 *  - A fill block is copied by re-deriving it, not by duplicating it. Its
+	 *    duration depends on what the target day leaves over. Skipping it would
+	 *    copy nothing for a day whose hours sit in one "rest of day" block (the
+	 *    day assembler makes this shape).
+	 *  - Copying twice is a no-op. An entry whose (project, task, duration, note)
+	 *    is already on the target day is skipped.
 	 *  - The result must fit in a day. */
 	copyDay: async (ctx: Ctx, input: CopyTimeEntriesInput) => {
 		if (input.fromDate === input.toDate) return { copied: 0, skipped: 0 };

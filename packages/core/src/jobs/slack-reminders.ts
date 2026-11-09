@@ -44,45 +44,37 @@ export type SlackReminderSummary = {
 //   admin_digest — on the digest day (Tue), DM to each Admin with the org-wide
 //                  compliance picture
 //
-// The cadence used to be two fixed nudges a week and NOT a setting, because
-// anything more frequent gets muted and a muted reminder is worse than none.
-// It is a setting now, and that reason is kept as limits instead: at most three
-// nudge days a week and no send time at night, in the schema and in a database
-// check. Who gets what is `services/reminder-recipients.ts`, shared with the
-// settings page's preview.
+// The cadence is a setting. The limits stay in the schema and in a database
+// check: at most three nudge days a week and no send time at night, because a
+// muted reminder is worse than none. Who gets what is
+// `services/reminder-recipients.ts`, shared with the settings page's preview.
 //
 // Idempotency lives in slack_reminder_log, claimed per (org, person, kind, day)
-// BEFORE the send. A crash mid-run therefore loses at most one DM rather than
-// re-sending the whole batch on the next tick — the safer direction for a
-// nag, where a duplicate is more damaging than a miss.
+// BEFORE the send. A crash mid-run loses at most one DM and does not re-send
+// the batch, because a duplicate nag does more harm than a miss.
 //
-// A send that comes back undelivered is a different case: nothing went out,
-// so the claim only stood between the person and a retry. Unless no retry can
-// help — they have no Slack identity, or Slack refused for good (a deactivated
-// account, an unknown user: `RECIPIENT_REFUSALS` in `lib/slack-client.ts`,
-// reported by `notify` as `"unreachable"`) — the claim row is marked for a
-// retry and the pass is left unfinished, so the next tick claims it again, at
-// most `MAX_SEND_ATTEMPTS` times a day, after which the claim stays. The count
-// is on the row (`attempts`), so a restart does not start it again. A
-// permanent refusal keeps its claim and counts as neither sent nor failed:
-// counting it would add three failures a day per deactivated account.
+// A send that comes back undelivered sent nothing, so the claim must not block
+// a retry. The claim row is marked for a retry and the pass stays unfinished,
+// so the next tick claims it again, at most `MAX_SEND_ATTEMPTS` times a day.
+// The count is on the row (`attempts`), so a restart keeps it. A permanent
+// refusal (no Slack identity, a deactivated account, an unknown user:
+// `RECIPIENT_REFUSALS` in `lib/slack-client.ts`, reported by `notify` as
+// `"unreachable"`) keeps its claim and counts as neither sent nor failed.
 //
-// A workspace with no Slack installation is still run when one of its people
-// has a phone that allows notifications. The pass then sends through the app
-// channel only (`notify` with `appOnly`), and never tries Slack. A person
-// without such a phone is skipped before the claim. A workspace with no such
-// phone at all is not run, and does not count as finished, so its first phone
-// or a Slack install still reaches everyone the same day. A phone that
-// registers after a pass finished waits for the next day, because `finishedRuns`
-// ends the pass of that kind for the day.
+// A workspace with no Slack installation still runs when one of its people has
+// a phone that allows notifications. The pass then sends through the app
+// channel only (`notify` with `appOnly`). A person without such a phone is
+// skipped before the claim. A workspace with no such phone is not run and does
+// not count as finished, so a later phone or Slack install reaches everyone the
+// same day. A phone that registers after a pass finished waits for the next
+// day, because `finishedRuns` ends the pass of that kind for the day.
 //
-// A refused bot token is neither case: it is about the credential, and every
-// send after it fails the same way. `sendDm` records it on the installation
-// (`slackService.rejectToken`), so after a failed send the job asks whether
-// the org still has Slack. When it does not, the send counts as failed, its
-// claim is marked for a retry like any other failure, and the org's pass ends there
-// rather than claiming and failing the rest of the list. Settings shows the
-// reconnect state, and a new install reaches everyone the same day.
+// A refused bot token is about the credential, so every later send fails the
+// same way. `sendDm` records it on the installation
+// (`slackService.rejectToken`). After a failed send the job asks whether the
+// org still has Slack. If not, the send counts as failed, its claim is marked
+// for a retry, and the org's pass ends there. Settings shows the reconnect
+// state.
 
 /** The three kinds this job sends, the claim key each has always used in
  *  `slack_reminder_log`, and the summary counter it adds to. */

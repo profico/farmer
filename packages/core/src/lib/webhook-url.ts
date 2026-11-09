@@ -1,46 +1,35 @@
 // Deciding whether the server may call a URL a person typed.
 //
-// This is the part of outbound webhooks that has to be right. Everything else
-// is a delivery log; this is server-side request forgery. The URL comes from an
-// admin's browser and the call is made by the process that holds the database
-// credentials, the object-store keys and — on any managed host — a metadata
-// endpoint that hands out cloud credentials to whoever asks it from inside.
-// `http://169.254.169.254/latest/meta-data/iam/security-credentials/` is not a
-// clever attack, it is one text field away by default.
+// This module is the SSRF boundary of outbound webhooks. An admin's browser
+// sends the URL, and the process that holds the database credentials, the
+// object-store keys and (on a managed host) the cloud metadata endpoint makes
+// the call. A text field can reach `http://169.254.169.254/...` by default.
 //
-// Four rules, and the order matters because each is cheap relative to the next:
+// Four rules:
 //
-//   1. **HTTPS only.** A plain-HTTP webhook puts a signed payload of somebody's
-//      timesheet notes on the wire in the clear. The signature proves who sent
-//      it; it hides nothing.
-//   2. **No credentials in the URL.** `https://user:pass@host/` is a way to
-//      reach something that trusts basic auth, and it puts the password in
-//      every log line that records the endpoint.
-//   3. **No non-public address**, whether it was typed as a literal or arrived
-//      from DNS: loopback, private, carrier-grade NAT, link-local (the metadata
-//      address), multicast, reserved, and the IPv6 forms of all of them
-//      including the IPv4-mapped and 6to4 disguises.
-//   4. **Checked again on every attempt, and no redirects followed.** A name
-//      that resolved publicly when it was registered can resolve to 127.0.0.1
-//      an hour later (DNS rebinding), and a 3xx is a redirect to a host nobody
-//      checked — which is why a 3xx counts as a FAILED delivery rather than
-//      being followed.
+//   1. HTTPS only. Plain HTTP sends the payload (timesheet notes) in the clear.
+//   2. No credentials in the URL. `https://user:pass@host/` reaches services
+//      that trust basic auth, and the password goes into every log line.
+//   3. No non-public address, typed as a literal or returned by DNS: loopback,
+//      private, carrier-grade NAT, link-local (the metadata address),
+//      multicast, reserved, and the IPv6 forms of these (IPv4-mapped, 6to4).
+//   4. Check again on every attempt, and follow no redirect. A name can resolve
+//      to 127.0.0.1 later (DNS rebinding), and a 3xx points to an unchecked
+//      host. A 3xx counts as a failed delivery.
 //
-// Rule 3 is only as good as the connection that follows it: handed the URL,
-// `fetch` would resolve the name a second time, and a resolver that answers
-// differently the second time would win. So `fetchWebhookTarget` connects to
-// an address this module checked, and the name travels only in the `Host`
-// header and the TLS server name.
+// Rule 3 also needs the connection to match the check. `fetch` would resolve
+// the name a second time, and a different answer would win. So
+// `fetchWebhookTarget` connects to an address that this module checked. The
+// name goes only in the `Host` header and the TLS server name.
 //
-// A refusal never tells a name that does not resolve from a name that resolves
-// to a private address, and never holds an address. Both give one text, and
-// the specific cause goes to the server log only. Else an admin could map the
-// internal DNS through the URL field.
+// A refusal gives one text for a name that does not resolve and for a name that
+// resolves to a private address, and it never holds an address. The specific
+// cause goes to the server log only. Else an admin could map the internal DNS
+// through the URL field.
 //
-// `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for the
-// self-hosted deployment whose receiver genuinely is on the same private
-// network. It is off by default and it is the operator's decision, never an
-// organization's — see `docs/domains/webhooks.md`.
+// `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for a
+// self-hosted receiver on the same private network. Only the operator sets it,
+// never an organization. See `docs/domains/webhooks.md`.
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";

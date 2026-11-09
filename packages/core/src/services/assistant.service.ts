@@ -1010,28 +1010,22 @@ const truncatedTitle = (message: string) => {
 /**
  * A real title for the thread, written by the model.
  *
- * The opening message truncated is a poor label: questions start with the same
- * few words ("how many hours did I…", "can you log…"), so a rail of them is a
- * column of identical prefixes with the distinguishing part cut off. A summary
- * puts the subject first, which is the only thing that makes a list of past
- * chats scannable.
+ * A truncated opening message is a poor label, because many questions start
+ * with the same words. A summary puts the subject first.
  *
- * Deliberately its own tiny completion with no tools and no history rather than
- * asking the answering model to also produce a title: the answer is streamed
- * token by token to the user, and anything else in that response would have to
- * be either shown to them or parsed back out of what they are already reading.
+ * It is its own small completion with no tools and no history. The answer
+ * streams to the user, so a title in the same response would need to be shown
+ * or parsed out.
  *
- * Best-effort by construction. Every failure — a rate limit, a refusal, a model
- * that ignores the instruction and writes a paragraph — returns null and leaves
- * the placeholder standing, because a thread whose label is slightly worse is
- * not worth failing a turn over.
+ * Best-effort: every failure (rate limit, refusal, a paragraph instead of a
+ * title) returns null and keeps the placeholder. A worse label is not worth a
+ * failed turn.
  */
 /** What one turn's model calls and tool runs are reported under.
  *
- *  Carried down the loop rather than rebuilt, because the whole value of a
- *  trace is that every call in one question shares an id. `generationId` is the
- *  last call made, which is the one whose `tool_calls` any span now running
- *  came from. */
+ *  Carry it down the loop: every call in one question shares an id.
+ *  `generationId` is the last call made, which is the call that produced the
+ *  `tool_calls` of any span now running. */
 type TurnTrace = {
 	id: string;
 	conversationId: string;

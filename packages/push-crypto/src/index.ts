@@ -1,31 +1,24 @@
 /**
  * The encryption contract between a farmer server and the mobile app, for a
- * push that goes through the push relay (`apps/push-relay`). The relay only
- * forwards the sealed value. It cannot open it, because only the device has
- * the private key.
+ * push through the push relay (`apps/push-relay`). The relay forwards the
+ * sealed value and cannot open it: only the device has the private key.
  *
- * The suite is HPKE base mode (RFC 9180):
- *
- *  - KEM: DHKEM(P-256, HKDF-SHA256), id 0x0010
- *  - KDF: HKDF-SHA256, id 0x0001
- *  - AEAD: AES-256-GCM, id 0x0002
- *
- * CryptoKit on iOS has this suite as `HPKE.Ciphersuite.P256_SHA256_AES_GCM_256`.
- * On Android and in JavaScript, WebCrypto has every part of it.
+ * The suite is HPKE base mode (RFC 9180): DHKEM(P-256, HKDF-SHA256) (0x0010),
+ * HKDF-SHA256 (0x0001) and AES-256-GCM (0x0002). On iOS this is CryptoKit's
+ * `HPKE.Ciphersuite.P256_SHA256_AES_GCM_256`.
  *
  * The sealed value is `base64url(enc || ct)`, with no padding. `enc` is the
- * 65-byte uncompressed P-256 point of the ephemeral key, and `ct` is the
- * AES-GCM output with its 16-byte tag at the end.
+ * 65-byte uncompressed P-256 point of the ephemeral key. `ct` is the AES-GCM
+ * output with its 16-byte tag at the end.
  *
  * The device gives its server the public key as the 65-byte uncompressed point
- * (`0x04 || x || y`). On iOS that is `P256.KeyAgreement.PublicKey
- * .x963Representation`, not `rawRepresentation` (64 bytes, no prefix).
- * `sealForDevice` also accepts the 64-byte form and adds the prefix.
+ * (`0x04 || x || y`). On iOS that is `x963Representation`, not
+ * `rawRepresentation` (64 bytes, no prefix). `sealForDevice` also accepts the
+ * 64-byte form and adds the prefix.
  *
- * The mobile app does not import this file: Hermes has no WebCrypto and no
- * `Buffer`. It imports `@farmer/push-crypto/device` (`device.ts`), which
- * opens the same sealed value in pure JavaScript. `device.test.ts` seals here
- * and opens there.
+ * The mobile app imports `@farmer/push-crypto/device` (`device.ts`) and not
+ * this file, because Hermes has no WebCrypto and no `Buffer`. `device.test.ts`
+ * seals here and opens there.
  */
 import {
 	Aes256Gcm,

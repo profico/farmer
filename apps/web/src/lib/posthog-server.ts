@@ -10,30 +10,24 @@ import { z } from "zod";
 /**
  * The server-side PostHog client, or null on a deployment without one.
  *
- * Reads the instance settings (`@farmer/core/lib/instance-settings`: the
- * environment, else the Infrastructure page) rather than `VITE_` variables, and
- * so does the browser half — see `posthogConfig` in `routes/__root.tsx`. A
- * `VITE_` value is substituted by `vite build`, which runs inside the Docker
- * image, so it can only ever hold what CI was given and never what a
- * deployment is configured with.
+ * It reads the instance settings (`@farmer/core/lib/instance-settings`), not
+ * `VITE_` variables, and so does the browser half (`posthogConfig` in
+ * `routes/__root.tsx`). `vite build` substitutes a `VITE_` value inside the
+ * Docker image, so it holds what CI was given, not the deployment's value.
  *
- * The client is kept with the token and host it was built from and rebuilt
- * when they change, so a token fixed on the page is used without a restart.
+ * The client is rebuilt when the token or host changes, so a token fixed on
+ * the page works without a restart.
  *
- * A missing token or host is "PostHog is not set up here", not a fault: every
- * caller gets null and carries on. Nothing about the product depends on
- * analytics being reachable.
+ * A missing token or host means PostHog is not set up here. Every caller gets
+ * null and carries on.
  *
- * **Development sends nothing, whatever the environment says.** A developer's
- * `.env` is a copy of a real deployment's, token included, so without this gate
- * every reload, every test click and every seeded row would land in the same
- * project the dashboards are built on — indistinguishable from a customer, and
- * un-deletable once counted. The gate is `NODE_ENV !== "production"`, the same
- * one `lib/dev-auth.ts` uses and for the same reason: an opt-in variable can be
- * copied onto a server, whereas the only host that sets `NODE_ENV=production`
- * is a host that is serving people. `vite dev` never does; the Dockerfile and
- * `apps/web`'s `start` script both pin it. The browser half is gated the same
- * way, in `routes/__root.tsx` — it never receives the credentials at all.
+ * Development sends nothing, whatever the environment says. A developer's
+ * `.env` copies a real deployment's token, and counted events cannot be
+ * deleted. The gate is `NODE_ENV !== "production"`, as in `lib/dev-auth.ts`.
+ * An opt-in variable can be copied to a server, but only a host that serves
+ * people sets `NODE_ENV=production`. The Dockerfile and the `start` script pin
+ * it. The browser half is gated the same way in `routes/__root.tsx`, and it
+ * never receives the credentials.
  */
 let posthogClient: { key: string; client: PostHog } | null = null;
 

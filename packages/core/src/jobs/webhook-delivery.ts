@@ -1,30 +1,26 @@
 /**
  * Sending the outbox.
  *
- * `services/events.ts` writes a `webhook_event` row and returns; this is the
- * half that talks to somebody else's server. It runs on `scheduler.ts`'s clock
- * for the reason that file gives — this deployment is one long-lived process,
- * so a job is a tick, not a queue worker — and it is idempotent at every step,
- * so a missed, repeated or overlapping tick is harmless.
+ * `services/events.ts` writes a `webhook_event` row and returns. This job
+ * talks to the other server. It runs on the clock of `scheduler.ts` and is
+ * idempotent at every step, so a missed, repeated or overlapping tick is
+ * harmless.
  *
  * One tick, in order:
  *
- *   1. **Fan out.** Turn each unsent event into one delivery row per endpoint
- *      that asked for its kind. Claimed on `fanned_out_at`, so an event cannot
- *      be fanned out twice; the unique index on (endpoint, event, attempt) is
- *      the second lock on the same door.
- *   2. **Claim.** Take the due rows with an `update … returning`, which is what
- *      makes two processes running this job safe rather than merely unlikely:
- *      the loser's `claimed_at is null` fails on re-evaluation and it gets the
- *      row back in the returning set of nobody.
- *   3. **Send**, a few at a time, each with its own deadline. A 2xx is a
- *      success. **A 3xx is a failure** — following a redirect would send a
- *      signed payload of somebody's timesheet to a host the address guard never
- *      checked, which is the whole attack `lib/webhook-url.ts` exists to stop.
- *   4. **Schedule the retry**, or give up on the endpoint if it has been
- *      failing for three days, and tell the organization's admins.
- *   5. **Sweep.** Clear payloads older than three days and delete log rows
- *      older than a fortnight.
+ *   1. Fan out. Turn each unsent event into one delivery row per endpoint that
+ *      asked for its kind. `fanned_out_at` is the claim, and the unique index
+ *      on (endpoint, event, attempt) is a second lock.
+ *   2. Claim. Take the due rows with `update … returning`. With two processes,
+ *      the loser's `claimed_at is null` fails on re-evaluation and it gets no
+ *      row.
+ *   3. Send, a few at a time, each with its own deadline. A 2xx is a success.
+ *      A 3xx is a failure: a redirect would send a signed payload to a host
+ *      that the address guard never checked (see `lib/webhook-url.ts`).
+ *   4. Schedule the retry, or give up on the endpoint after three days of
+ *      failure and tell the organization's admins.
+ *   5. Sweep. Clear payloads older than three days and delete log rows older
+ *      than a fortnight.
  *
  * Environment variables:
  *   WEBHOOK_DELIVERY_ENABLED           - "false" to stop sending (default: on)

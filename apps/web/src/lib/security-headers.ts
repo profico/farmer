@@ -1,27 +1,24 @@
 /**
- * The security headers the production host puts on every response — the SSR
- * document, server functions and API routes (`server.ts`'s `/*`), and the
- * static assets, whose routes answer before that wrapper and add them in
- * `createResponseHandler` and the on-demand file route.
+ * The security headers that the production host puts on every response: the
+ * SSR document, server functions and API routes (`server.ts`'s `/*`), and the
+ * static assets (`createResponseHandler` and the on-demand file route).
  *
- *  - `Content-Security-Policy: frame-ancestors 'none'` — no other site may
- *    frame the app, which is what a clickjacking page needs. Deliberately NOT
- *    a full policy: `__root.tsx` runs the theme script and the PostHog
- *    configuration inline in `<head>`, and a `script-src` without hashes or a
- *    nonce for them would switch both off.
- *  - `X-Content-Type-Options: nosniff` — the browser keeps to the declared
- *    type, so a JSON answer or a text body is never run as script.
- *  - `Referrer-Policy: strict-origin-when-cross-origin` — another origin sees
- *    this origin, never a path with an organization slug or an id in it. It is
- *    the browsers' default already; saying it keeps an older browser to it.
+ *  - `Content-Security-Policy: frame-ancestors 'none'` stops other sites from
+ *    framing the app (clickjacking). It is not a full policy on purpose:
+ *    `__root.tsx` runs the theme script and the PostHog configuration inline,
+ *    and a `script-src` without hashes or a nonce would switch both off.
+ *  - `X-Content-Type-Options: nosniff` stops the browser from running a JSON
+ *    or text body as script.
+ *  - `Referrer-Policy: strict-origin-when-cross-origin` hides paths that hold
+ *    an organization slug or an id. Browsers default to it, and this keeps old
+ *    browsers to it.
  *
- * No `Strict-Transport-Security`. TLS ends in front of this process (Cloudflare,
- * then the platform's proxy — see `docs/domains/deployment.md`), so the edge is
- * where HSTS belongs, and it can only be undone there. The origin cannot tell
- * whether every host name that reaches it is served over HTTPS.
+ * There is no `Strict-Transport-Security`. TLS ends in front of this process
+ * (see `docs/domains/deployment.md`), so HSTS belongs at the edge. The origin
+ * cannot know that every host name that reaches it uses HTTPS.
  *
- * A header the route set itself wins. `routes/api/files/$.ts` sends its own
- * `sandbox` policy for uploaded SVGs, and that policy must stay whole.
+ * A header that the route set itself wins. `routes/api/files/$.ts` sends its
+ * own `sandbox` policy for uploaded SVGs, and it must stay whole.
  */
 export const SECURITY_HEADERS = {
 	"Content-Security-Policy": "frame-ancestors 'none'",

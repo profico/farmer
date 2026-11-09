@@ -15,29 +15,23 @@ import type { CliReleaseAsset } from "./cli-install";
  * Where `/cli/download/<asset>` sends the install script: the public download
  * URL of one asset of the newest CLI release.
  *
- * The releases repository is meant to be public, so this reads the release
- * list with no token at all (`lib/github-public.ts`) and answers with the
- * asset's `browser_download_url`. GitHub redirects that once more, to its
- * storage, and the install script follows both. So the binary never passes
- * through this server, which would otherwise hold a request open for
- * megabytes it has no reason to see, under the 255 s `idleTimeout` in
- * `server.ts`.
+ * The releases repository is public, so this reads the release list with no
+ * token (`lib/github-public.ts`) and answers with the asset's
+ * `browser_download_url`. The install script follows the redirects, so the
+ * binary never passes through this server and its 255 s `idleTimeout`
+ * (`server.ts`).
  *
- * The scripts still ask THIS server rather than GitHub, because a deployment
- * installs the binaries its own operator points it at (`CLI_RELEASES_REPO`,
- * `lib/source-repository.ts`), and because the asset choice, the checksum and
- * the error text stay in one place.
+ * The scripts ask this server, not GitHub, because a deployment installs the
+ * binaries that its operator names (`CLI_RELEASES_REPO`,
+ * `lib/source-repository.ts`).
  *
  * "Newest CLI release" is the most recently published release whose tag starts
- * with `cli-v`, skipping drafts and pre-releases. The lookup is cached for five
- * minutes per repository: an install fetches two or three assets and a team
- * installs in a burst, and GitHub's anonymous budget is 60 requests an hour per IP
- * address, shared with the contributors card. When GitHub refuses, the last
- * good answer keeps being served; with none, the cache stops asking until the
- * limit resets (`cachedRead`).
+ * with `cli-v`, without drafts and pre-releases. The lookup is cached for five
+ * minutes per repository, because GitHub's anonymous budget is 60 requests an
+ * hour per IP address, shared with the contributors card. When GitHub refuses,
+ * the last good answer stays in use (`cachedRead`).
  *
- * A 404 on the release list means the repository is missing, for example a
- * fork whose `CLI_RELEASES_REPO` names a repository that does not exist.
+ * A 404 on the release list means the repository does not exist.
  */
 
 const RELEASE_TAG_PREFIX = "cli-v";

@@ -12,33 +12,24 @@ import {
 } from "#/server/api-rate-limit.ts";
 
 /**
- * The MCP server — the assistant's tool layer over Streamable HTTP, for Claude
- * Code and any other MCP client.
+ * The MCP server: the assistant's tool layer over Streamable HTTP. See
+ * `docs/domains/mcp-server.md`.
  *
- * A server ROUTE rather than a `createServerFn`, for the same reason the
- * assistant's own stream is one: this speaks a wire protocol, not a function
- * call. It authenticates through `server/api-auth.ts` rather than the
- * middleware in `server/auth.ts` — see the note at the top of that file.
+ * It is a server route, not a `createServerFn`, because it speaks a wire
+ * protocol. It authenticates through `server/api-auth.ts`, not the middleware
+ * in `server/auth.ts`.
  *
- * **The organization is in the URL.** An access token resolves to a `userId`
- * and scopes; there is no `session.activeOrganizationId` for it to carry, and
- * every service Ctx needs an organization. Putting the slug in the path matches
- * the service layer's own rule that tenancy is an explicit parameter, and gives
- * a person who works in two workspaces two connector entries rather than a mode
- * they have to remember they are in. The alternative — an `org` argument on
- * every one of the tools — is a second copy of something the URL already says,
- * on 52 schemas.
+ * **The organization is in the URL.** An access token carries a `userId` and
+ * scopes, not an active organization, and every service `Ctx` needs one. The
+ * slug in the path keeps tenancy an explicit parameter.
  *
- * **The authorization is the caller's own Ctx and nothing here.** Every tool
- * runs a service with it, and each service re-resolves `Access` and asserts. So
- * this file holds no permission logic at all: `available` below decides what
- * the client is TOLD it can do, exactly as it does for the assistant.
+ * **The authorization is the caller's own `Ctx`.** Every tool runs a service
+ * with it, and each service re-resolves `Access` and asserts. This file holds
+ * no permission logic: `available` only decides what the client is told.
  *
- * **Stateless, one server per request.** There is nowhere to keep an MCP
- * session across requests in a process that may be restarted under the client,
- * so `sessionIdGenerator: undefined`, and `enableJsonResponse` because a plain
- * JSON body is what a server-route handler returns — SSE here would buy nothing
- * the assistant's own stream route does not already own.
+ * **Stateless, one server per request.** A restart loses an MCP session, so
+ * `sessionIdGenerator` is `undefined`. `enableJsonResponse` fits a plain JSON
+ * body from a server-route handler.
  */
 
 /** Every tool call's arguments, before the tool's own schema narrows them.

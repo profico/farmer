@@ -1,41 +1,33 @@
 import crypto from "node:crypto";
 
-// Encryption at rest for the credentials this app stores itself — the org's
-// OpenRouter key (`assistant_settings.api_key`), its Slack bot token
-// (`slack_installation.bot_token`) and the instance's secret settings
-// (`instance_setting`, `instance_oauth_provider.client_secret`). All are
-// bearer tokens for a third party, so a database dump or a read-only SQL
-// injection used to hand them over verbatim. OAuth account tokens are not
-// here: better-auth encrypts those itself (`account.encryptOAuthTokens` in
-// `auth/index.ts`).
+// Encryption at rest for the third-party credentials that this app stores:
+// the org's OpenRouter key, its Slack bot token and the instance's secret
+// settings. The columns: `assistant_settings.api_key`,
+// `slack_installation.bot_token`, `instance_setting` and
+// `instance_oauth_provider.client_secret`. better-auth encrypts OAuth account
+// tokens itself (`account.encryptOAuthTokens` in `auth/index.ts`).
 //
-// AES-256-GCM, with the key derived (HKDF-SHA256) from better-auth's own
-// secrets, so a deployment has nothing new to configure. The derivation's
-// `info` names this use, so a key here is never the one better-auth derives
-// from the same secret.
+// AES-256-GCM. The key comes from HKDF-SHA256 over the better-auth secrets, so
+// a deployment needs no new setting. The derivation `info` names this use, so
+// the key differs from the key that better-auth derives from the same secret.
 //
 // Two stored forms, both base64url(iv ‖ ciphertext ‖ tag) behind a prefix:
 //
-// - `enc:v1:<data>` — keyed from BETTER_AUTH_SECRET. What `sealSecret` writes
-//   when BETTER_AUTH_SECRETS is not set, exactly as before rotation existed.
-// - `enc:v2:<version>:<data>` — keyed from that version's entry in
-//   BETTER_AUTH_SECRETS. What `sealSecret` writes when it is set.
+// - `enc:v1:<data>` - keyed from BETTER_AUTH_SECRET. `sealSecret` writes it
+//   when BETTER_AUTH_SECRETS is not set.
+// - `enc:v2:<version>:<data>` - keyed from that version in BETTER_AUTH_SECRETS.
+//   `sealSecret` writes it when BETTER_AUTH_SECRETS is set.
 //
-// Rotation follows better-auth (`better-auth/dist/context/secret-utils.mjs`,
-// 1.6.23), so an operator configures it once for both. BETTER_AUTH_SECRETS is
-// `<version>:<secret>` entries separated by commas; the FIRST entry is the
-// current one and seals, the rest only open. BETTER_AUTH_SECRET stays the
-// legacy secret, which opens `enc:v1:` values. Opening is a direct version
-// lookup, never trial decryption, and a version the list no longer holds is
-// refused like a bad decrypt.
+// Rotation follows better-auth (`secret-utils.mjs`). BETTER_AUTH_SECRETS is a
+// comma-separated list of `<version>:<secret>`. The first entry seals. The
+// other entries only open. Opening is a direct version lookup, never a trial
+// decryption. A version that is not in the list fails like a bad decrypt.
 //
-// The prefix also tells a sealed value from a row written before this existed:
-// `openSecret` hands an unprefixed value back as it is. `openAndHeal` (and the
-// instance settings loader) rewrite a value that is plaintext or sealed under
-// a key that is not the current one, so rows heal on their next read after a
-// rotation — no migration and no hand-run SQL.
+// `openSecret` returns an unprefixed value as it is, because older rows hold
+// plaintext. `openAndHeal` and the instance settings loader rewrite a value
+// that is plaintext or sealed under an old key, so rows heal on the next read.
 //
-// SERVER ONLY — it reads `process.env`.
+// SERVER ONLY: it reads `process.env`.
 
 const V1 = "enc:v1:";
 const V2 = "enc:v2:";

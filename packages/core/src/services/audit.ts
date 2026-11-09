@@ -1,35 +1,25 @@
 // The audit log: what changed in an organization, by whom, and through which
 // door. Issue #112. See `docs/domains/audit-log.md`.
 //
-// The third sibling of `notify.ts` and `events.ts`, and the same idea:
 // `recordAudit(ctx, entry)` writes one row, in the caller's transaction when
-// there is one, and returns. Never throws: an audit row is a consequence of a
-// decision that has already been made, and it must not undo it.
+// there is one, and returns. It never throws: the audit row follows a decision
+// that is already made, and it must not undo it.
 //
-// ── Why the entry is a value and `emitEvent`'s is a function ────────────────
+// The entry is a value, not a builder like the one in `emitEvent`. Every
+// organization has an audit log, so every entry is written. The actor's name is
+// a subquery in the insert, not a second round trip.
 //
-// `emitEvent` takes a builder because almost no organization has a webhook
-// endpoint, so the payload is usually thrown away. Every organization has an
-// audit log, so every entry is written, and a builder would save nothing. The
-// entries are also cheap: the caller already holds the row before and after,
-// and the one extra fact (the actor's name) is a subquery inside the insert,
-// not a second round trip.
+// Not recorded:
 //
-// ── What is NOT recorded, and why it is written down ────────────────────────
-//
-// - **A person's own time and own preferences.** Logging your own day, your
-//   working hours, your filing rules, your hidden tasks: none of it changes
-//   the organization. Time is recorded only when somebody changes the time of
-//   ANOTHER person (the PM absence writes).
-// - **The automation engines**, for the reason `events.ts` gives: a sweep
-//   recalculates rather than decides.
-// - **Reads.** Opening a report is not a change. The one exception is the
-//   export of this log, because a copy of it leaving the building is itself
-//   something an administrator wants to see.
+// - A person's own time and preferences. These do not change the organization.
+//   Time is recorded only when somebody changes the time of another person
+//   (the PM absence writes).
+// - The automation engines (see `events.ts`): a sweep recalculates and does not
+//   decide.
+// - Reads. The one exception is the export of this log.
 //
 // `services/audit-coverage.test.ts` lists every write of every audited service
-// as either recorded or exempt with a reason, so a new function cannot slip in
-// between the two.
+// as recorded or exempt with a reason, so a new function cannot skip both.
 
 import {
 	and,

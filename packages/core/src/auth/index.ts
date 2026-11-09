@@ -143,28 +143,22 @@ const PLATFORM_ADMIN_LOCK = 8_531_207;
 /**
  * Give the instance's first account the platform admin role.
  *
- * Whoever deploys Farmer and signs in first operates it — the same shape as
- * single-org mode's "first person to sign in claims the instance", and what
- * issue #75 records for the wider Infrastructure work. Everybody after them is
- * promoted by somebody who already holds it (better-auth's `admin/set-role`).
- * There is no environment variable: the grant is a database value.
+ * The person who signs in first operates the instance. Each later admin is
+ * promoted by an existing one (better-auth's `admin/set-role`). The grant is a
+ * database value, not an environment variable.
  *
- * **The rule is "the oldest `user` row, and only while nobody holds it", not
- * "nobody holds it".** Those come apart on a populated instance: an open
- * deployment accepts a Google sign-up from anybody, so "grant it to the next
- * person who signs in when the role is vacant" hands the deployment to a
- * stranger the moment the one admin is deleted. Being the oldest row is
- * something a later signup can never become.
+ * The rule is "the oldest `user` row, and only while nobody holds the role",
+ * not "nobody holds the role". An open deployment accepts any sign-up, so the
+ * second rule would hand the instance to a stranger when the one admin is
+ * deleted. A later sign-up can never be the oldest row.
  *
- * Runs AFTER the insert, because the question is about a row that now exists,
- * and inside an advisory lock, because two first signups a millisecond apart
- * would otherwise both read an empty table and both grant. The lock costs one
- * round trip per account created, once in that account's life.
+ * It runs after the insert, inside an advisory lock. Without the lock, two
+ * first sign-ups a millisecond apart would both read an empty table and both
+ * get the grant.
  *
- * A plain `update`, not the internal adapter: the admin plugin declares `role`
- * with `input: false`, so better-auth's own update path drops it — and it is
- * right to, since the point of that flag is that no request may set its own
- * role. This is the instance bootstrapping itself, not a caller.
+ * It uses a plain `update`, not the internal adapter. The admin plugin sets
+ * `input: false` on `role`, so better-auth's update path drops it. This is the
+ * instance bootstrapping itself, not a request.
  */
 const claimPlatformAdmin = async (userId: string) => {
 	await db.transaction(async (tx) => {
@@ -242,38 +236,27 @@ const githubRefusal = z.object({
 });
 
 /**
- * Refresh a GitHub user token, and FAIL when GitHub refuses it.
+ * Refresh a GitHub user token, and fail when GitHub refuses it.
  *
- * `GITHUB_CLIENT_ID` is a GitHub App client id, so a user token is a
- * user-to-server token: it dies after 8 hours, and its refresh token is single
- * use — GitHub invalidates the old one the moment it issues a new pair.
+ * A user token of a GitHub App dies after 8 hours. Its refresh token is single
+ * use: GitHub invalidates the old one when it issues a new pair.
  *
- * GitHub answers a spent refresh token with HTTP **200** and an `error` body
- * (`bad_refresh_token`), not with a 4xx. better-auth's helper only throws on a
- * non-2xx, so it read that as a refresh that succeeded and returned nothing —
- * and `getValidAccessToken` then wrote the refresh token it had READ back over
- * the fresh pair a concurrent caller had just stored. Two callers arriving
- * together at the 8-hour boundary is all it took, and from that second on
- * every refresh failed, the access token died, and the person had to connect
- * GitHub again. The rows said so: a refresh-token expiry OLDER than the
- * access-token expiry, and `updated_at` moving every twenty minutes while
- * neither expiry did.
+ * GitHub answers a spent refresh token with HTTP 200 and an `error` body
+ * (`bad_refresh_token`), not a 4xx. better-auth's helper throws only on a
+ * non-2xx, so it treated that as a success with no token. Then
+ * `getValidAccessToken` wrote the old refresh token over the fresh pair that a
+ * concurrent caller had just stored, and the person had to connect GitHub
+ * again. A refresh that gives no access token must throw, so the stored row
+ * stays as it was.
  *
- * A refresh that produced no access token is a failure. Throwing leaves the
- * stored row exactly as it was, so the caller that won the race keeps its
- * tokens and the one that lost costs a single failed read.
+ * The request is better-auth's own (`refreshAccessTokenRequest`). The answer
+ * goes through `getOAuth2Tokens`, which maps `refresh_token_expires_in`.
+ * `github` is the object that the provider is built from, so the refresh sends
+ * the same credentials as the sign-in.
  *
- * The request is better-auth's own (`refreshAccessTokenRequest`: the
- * credentials in the POST body, `accept: application/json`), and the answer
- * goes through `getOAuth2Tokens`, which maps `refresh_token_expires_in` (so the
- * stored refresh-token expiry moves with every renewal) and keeps the raw body
- * for the log below. `github` is the object the provider itself is built
- * from, so the refresh can never send other credentials than the sign-in did.
- *
- * `getValidAccessToken` swallows this throw into a generic
+ * `getValidAccessToken` turns this throw into a generic
  * `FAILED_TO_GET_ACCESS_TOKEN`, so the refusal is logged here, where GitHub's
- * `error` code is still in hand. The caller has no user id to give; the
- * `[github] getAccessToken failed` line that follows it names the user.
+ * `error` code is still known.
  */
 const refreshGithubToken =
 	(github: OAuthCredentials) => async (refreshToken: string) => {
@@ -1053,33 +1036,22 @@ const buildAuth = () => {
 					...enabledOAuthProviders().map(oidcProvider),
 				],
 			}),
-			// The OAuth authorization server behind `/api/mcp/<orgSlug>`, so an MCP
-			// client (Claude Code and friends) can sign a person in and hold a token
-			// of its own. It brings dynamic client registration (RFC 7591),
-			// `/mcp/authorize`, `/mcp/token`, `getMcpSession` and both discovery
-			// documents; the three tables it declares (oauthApplication,
-			// oauthAccessToken, oauthConsent) are why `auth.ts` was regenerated.
+			// The OAuth authorization server behind `/api/mcp/<orgSlug>`. An MCP
+			// client uses it to sign a person in and hold its own token.
 			//
-			// `loginPage` is a dedicated server route, NOT `/login`. The plugin
-			// redirects an unauthenticated authorize request to
-			// `${loginPage}?${originalQuery}`, carrying eight OAuth parameters that
-			// `/login`'s search schema parses none of and Zod therefore strips — so
-			// the round trip would come back to `/mcp/authorize` with no client_id
-			// and bounce forever. `api/mcp-login.ts` rebuilds the authorize URL from
-			// whatever query it was handed and hands it to `/api/login` as a
-			// `redirect`, which is a parameter that path already carries safely.
+			// `loginPage` is a dedicated route, not `/login`. The plugin redirects an
+			// unauthenticated authorize request to `${loginPage}?${originalQuery}`.
+			// The search schema of `/login` strips the OAuth parameters, so the
+			// round trip would lose `client_id` and loop. `api/mcp-login.ts`
+			// rebuilds the authorize URL and passes it to `/api/login` as `redirect`.
 			//
-			// Every authorization stops at a consent screen, `MCP_CONSENT_PAGE`
-			// (`routes/mcp-consent.tsx` in the web app). There used to be none, on
-			// the reasoning that the person already consents in their MCP client.
-			// That holds only for a client the person runs: registration is open to
-			// anybody with any redirect, so an authorize link from a stranger sent
-			// the person's code to the stranger's server without a single prompt.
-			// better-auth shows the page only when the client asks for it with
-			// `prompt=consent`, so `hooks.before` above asks on every request, and
+			// Every authorization stops at the consent screen `MCP_CONSENT_PAGE`.
+			// Registration is open to anybody with any redirect, so without it a
+			// stranger's authorize link would send the person's code to the
+			// stranger's server. better-auth shows the page only on
+			// `prompt=consent`, so `hooks.before` above sets it on every request and
 			// holds the consent and token endpoints to it (`./mcp-consent.ts`).
-			// `oidcConfig.loginPage` is only there because the type requires it;
-			// the plugin takes the top-level one.
+			// `oidcConfig.loginPage` is there only because the type requires it.
 			//
 			// Mounted whatever `MCP_ENABLED` says; see lib/mcp-flag.ts.
 			mcp({
@@ -1089,29 +1061,22 @@ const buildAuth = () => {
 					consentPage: MCP_CONSENT_PAGE,
 				},
 			}),
-			// The command-line tool's sign-in: RFC 8628's device flow. `farmer login`
-			// asks `/device/code` for a pair of codes, the person approves the user
-			// code on `/device` in a browser where they are already signed in, and the
-			// CLI's poll of `/device/token` comes back with `access_token` =
-			// `session.token`. So the CLI holds an ordinary better-auth session row,
-			// which is what lets Preferences list it and revoke it like any other.
+			// The command-line tool's sign-in: the device flow of RFC 8628. The
+			// `access_token` that `/device/token` returns is `session.token`, so the
+			// CLI holds an ordinary session row. Preferences can list and revoke it.
 			//
-			// The server reads that token itself, in `resolveCliUser`
-			// (`apps/web/src/server/api-auth.ts`), and deliberately NOT through the
-			// `bearer` plugin: that plugin makes an `Authorization` header a session
-			// for EVERY endpoint and server function, which is a far wider change than
-			// one API surface needs, and it would break the credential order that
+			// The server reads that token in `resolveCliUser`
+			// (`apps/web/src/server/api-auth.ts`), not through the `bearer` plugin.
+			// That plugin makes an `Authorization` header a session for every
+			// endpoint, and it would break the credential order that
 			// `resolveMcpOrgContext` relies on.
 			//
-			// `validateClient` accepts only the ids in `DEVICE_CLIENT_IDS`: the CLI
-			// and the mobile app. Nothing else in this app runs the device flow, and
-			// an open client list is a code any third party can start and then phish
-			// somebody into approving.
+			// `validateClient` accepts only the ids in `DEVICE_CLIENT_IDS`. An open
+			// client list lets a third party start a code and phish a person into
+			// approving it.
 			//
-			// `expiresIn: "10m"`, down from the plugin's 30. The code lifetime is the
-			// phishing window: an attacker who starts a flow must get the person to
-			// approve that exact code before it dies, and ten minutes is still plenty
-			// for someone who is looking at their own terminal.
+			// `expiresIn: "10m"` (the plugin default is 30). The code lifetime is the
+			// phishing window.
 			//
 			// Mounted whatever `CLI_ENABLED` says, like `mcp` above; the catch-all
 			// auth route answers 404 for these paths when the flag is off.
@@ -1120,33 +1085,24 @@ const buildAuth = () => {
 				expiresIn: "10m",
 				verificationUri: "/device",
 			}),
-			// Impersonation, and nothing else this plugin offers.
+			// Impersonation, and nothing else this plugin offers. An operator uses it
+			// to see the screen that the person sees: a timesheet depends on
+			// memberships, assignments, working hours, calendar grants and filing
+			// rules, and no admin view shows that combination.
 			//
-			// It exists so somebody operating the deployment can answer "it doesn't
-			// work for me" by looking at the screen the person is looking at. A
-			// timesheet is assembled from that person's memberships, project
-			// assignments, working hours, calendar grants and filing rules, and no
-			// admin view reproduces that combination — reading the database tells you
-			// what the rows say, not what the app draws from them.
+			// Who may do it is `user.role`, not an org role. See
+			// `lib/platform-admin.ts` for the reason, and `claimPlatformAdmin` above
+			// for the first grant. Later grants come from `admin/set-role`.
 			//
-			// **Who may do it is `user.role`, not an org role.** See
-			// `lib/platform-admin.ts` for why the two are deliberately different
-			// columns, and `claimPlatformAdmin` above for how the first one is
-			// written. Every one after that comes from this plugin's own
-			// `admin/set-role`, which requires the role it grants.
+			// `roles` is required. The plugin looks the session user's role up in this
+			// map (`hasPermission`). `adminRoles` only marks the roles that you may
+			// not impersonate. A role that is in `adminRoles` and not in `roles` fails
+			// every check, and the endpoint answers 403 for the admins.
 			//
-			// `roles` has to be given explicitly, and is not decoration. The plugin
-			// resolves a permission by looking the session user's role up in this map
-			// (`hasPermission` in better-auth's admin plugin); `adminRoles` only says
-			// which roles count as "an admin you may not impersonate". Name a role in
-			// `adminRoles` without putting it in `roles` and every check fails
-			// closed — the endpoint 403s for the very people it was added for.
-			//
-			// The plugin's other endpoints (ban, set-role, create-user, delete-user,
-			// list-users) are mounted too and cannot be switched off individually.
-			// `adminAc` grants them, so a platform admin can reach them over the API.
-			// Nothing in this app's UI calls them, and they are not an escalation
-			// beyond impersonation, which already lets you become anyone.
+			// The other endpoints of the plugin (ban, set-role, create-user,
+			// delete-user, list-users) are mounted too and cannot be switched off one
+			// by one. No UI calls them. They give no power beyond impersonation, which
+			// already lets an admin become anyone.
 			admin({
 				roles: { [PLATFORM_ADMIN_ROLE]: adminAc, [PLATFORM_USER_ROLE]: userAc },
 				adminRoles: [PLATFORM_ADMIN_ROLE],
