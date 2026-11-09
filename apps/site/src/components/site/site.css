@@ -130,40 +130,6 @@ html:has(.fm-site) {
 	font-style: italic;
 	color: var(--acc);
 }
-/* One pass of light through the phrase: once when it scrolls into view, again
-   on hover (`useEmSheen` in site-chrome.tsx sets `data-sheen` and clears it on
-   `animationend`). At rest the phrase is plain `--acc`, so selection and high
-   contrast never meet the gradient. The inline padding, cancelled by the
-   margin, keeps the italic overhang inside the clipped background. */
-.fm-site .fm-em[data-sheen] {
-	padding-inline: 0.1em;
-	margin-inline: -0.1em;
-	background: linear-gradient(
-			100deg,
-			var(--acc) 40%,
-			color-mix(in oklab, var(--acc) 35%, white) 50%,
-			var(--acc) 60%
-		)
-		100% 0 / 300% 100%;
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	animation: fm-sheen 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.fm-site .fm-em[data-sheen="view"] {
-	animation-delay: 0.2s;
-}
-@keyframes fm-sheen {
-	to {
-		background-position: 0 0;
-	}
-}
-@media (prefers-reduced-motion: reduce) {
-	.fm-site .fm-em[data-sheen] {
-		animation-duration: 0.01ms;
-		animation-delay: 0s;
-	}
-}
 .fm-site .fm-eyebrow {
 	font-size: 10.5px;
 	letter-spacing: 0.14em;
