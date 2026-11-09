@@ -44,7 +44,8 @@
 	font-size: 12px;
 	padding: 2px 9px;
 }
-.fm-site .fm-changelog-tag-cli {
+.fm-site .fm-changelog-tag-cli,
+.fm-site .fm-changelog-tag-mobile {
 	background: var(--ground);
 	color: var(--fg);
 	border-color: transparent;

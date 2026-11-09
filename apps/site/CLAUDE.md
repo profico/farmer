@@ -32,7 +32,10 @@ bun run test       # bun test
 - `scripts/fetch-releases.ts` reads the GitHub API and writes `src/generated/releases.json`. `bun run build` runs it first, but the script does nothing unless `SITE_FETCH_RELEASES=1`. The script uses `GITHUB_TOKEN` when it is set.
 - On a network error or a rate limit, the script prints a warning and writes empty data. With `SITE_STRICT_RELEASES=1` it exits with an error. The image build sets both variables.
 - The repository holds an empty stub of `releases.json`, so typecheck, tests and the CI build pass without a network. A plain local build keeps the stub. Do not commit real data. If you set `SITE_FETCH_RELEASES=1` locally, run `git checkout` on the file after the build.
-- The parse step leaves out the `mobile-*` tags (the store app). The front page pill shows the newest web release.
+- The parse step reads `cli-v*` tags as CLI releases and `mobile-v*` tags as mobile releases. It leaves out `mobile-latest`, because that tag moves to each new build. A mobile release body lists every commit since the last build, so its notes are only the `(mobile)` lines under `## Changes`.
+- `commitKind` reads the type and the scope of a commit subject. `(mobile)` is the mobile app and `(cli)` is the CLI. `ci`, `(deps…)` and `(site)` are internal. All other commits are the web app.
+- The Web filter groups the web commits by day. The Mobile and CLI filters show the releases, so their commits do not show as days.
+- The front page pill shows the date of the newest web commit.
 - `src/lib/release-notes.ts` has the shapes and the parsing. `src/lib/releases.ts` reads the JSON file.
 - The site shows the commits on `main`. It does not show which build runs.
 

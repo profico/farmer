@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { FrontPage } from "#/components/site/front-page.tsx";
-import { releases } from "#/lib/releases.ts";
+import { commitKind } from "#/lib/release-notes.ts";
+import { webChanges } from "#/lib/releases.ts";
 
 export const Route = createFileRoute("/")({
 	head: () => ({
@@ -13,7 +14,11 @@ export const Route = createFileRoute("/")({
 function Home() {
 	return (
 		<FrontPage
-			release={releases.find((release) => release.kind === "web") ?? null}
+			updatedAt={
+				webChanges.commits.find(
+					(commit) => commitKind(commit.subject) === "web",
+				)?.committedAt || null
+			}
 		/>
 	);
 }
