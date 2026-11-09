@@ -356,6 +356,7 @@ const meetingRowFor = (
 	rawSeconds: number,
 	meetingTask: { id: string },
 	rule: ReturnType<FilingRules["get"]>,
+	fallbackProjectId: string | null,
 	tz: string,
 ) => {
 	const date = dayKeyInTz(startedAt, tz);
@@ -376,7 +377,11 @@ const meetingRowFor = (
 		// A rule may also name the task (a design review is not a Meeting to
 		// the person billing it). The upsert never rewrites the task or
 		// the project of a row that exists, so this lands on the first write.
-		projectId: rule?.projectId ?? null,
+		//
+		// With no rule, the person's fallback project applies. It is already
+		// checked (see `filingRulesService.usableFallback`), and it lands on the
+		// first write only, like a rule.
+		projectId: rule?.projectId ?? fallbackProjectId,
 		taskId: rule?.taskId ?? meetingTask.id,
 		description: event.title,
 		date,
@@ -397,6 +402,7 @@ const meetingRowsFor = (
 	events: MeetingEvents,
 	tombstoned: Set<string>,
 	rules: FilingRules,
+	fallbackProjectId: string | null,
 	meetingTask: { id: string },
 	range: MeetingRange,
 	tz: string,
@@ -423,6 +429,7 @@ const meetingRowsFor = (
 			rawSeconds,
 			meetingTask,
 			rule,
+			fallbackProjectId,
 			tz,
 		);
 		// Only days this engine may write to. `range` is the automation window, and
@@ -752,6 +759,12 @@ const syncMeetingsForRange = async (
 	// and already filtered to projects the person may still write to — see
 	// filingRulesService.resolve.
 	const filingRules = await filingRulesService.resolve(ctx, [meetingTask.id]);
+	// The fallback for a meeting that no rule matches. Read once per pass.
+	const fallbackProjectId = await filingRulesService.usableFallback(
+		ctx,
+		(await integrationSettingsService.get(ctx)).googleMeetingFallbackProjectId,
+		meetingTask.id,
+	);
 	const tombstoned = await loadTombstonedEventIds(ctx);
 	const existing = await loadSyncedRows(ctx, range);
 
@@ -775,6 +788,7 @@ const syncMeetingsForRange = async (
 		[...events, ...confirmedLive],
 		tombstoned,
 		filingRules,
+		fallbackProjectId,
 		meetingTask,
 		range,
 		tz,

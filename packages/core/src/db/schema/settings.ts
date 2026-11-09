@@ -45,6 +45,11 @@ export const integrationSettings = pgTable(
 		googleAutoSyncMeetings: boolean("google_auto_sync_meetings")
 			.notNull()
 			.default(false),
+		// Where a synced meeting goes when no filing rule matches it. Applied on
+		// the first write of a row only. Null means no project.
+		googleMeetingFallbackProjectId: uuid(
+			"google_meeting_fallback_project_id",
+		).references(() => project.id, { onDelete: "set null" }),
 		// GitHub
 		githubAutoLoadCommits: boolean("github_auto_load_commits")
 			.notNull()

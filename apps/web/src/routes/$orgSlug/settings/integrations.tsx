@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 import {
 	useMutation,
+	useQuery,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
@@ -43,6 +45,7 @@ import { githubConnectionStatusQuery } from "#/queries/github.ts";
 import { googleCalendarStatusQuery } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { myProjectsQuery } from "#/queries/projects.ts";
 import { syncGoogleMeetings } from "#/server/google-calendar.ts";
 import { updateIntegrationSettings } from "#/server/integration-settings.ts";
 
@@ -94,6 +97,43 @@ function SettingToggleRow({
 				<Switch
 					checked={checked}
 					onCheckedChange={(value) => mutation.mutate(value)}
+					disabled={mutation.isPending}
+				/>
+			}
+		/>
+	);
+}
+
+// The project for a synced meeting that no filing rule matches.
+function FallbackProjectRow({ projectId }: { projectId: string | null }) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const { data: projects = [] } = useQuery(myProjectsQuery(orgSlug));
+	const mutation = useMutation({
+		mutationFn: (value: string | null) =>
+			updateIntegrationSettings({
+				data: { googleMeetingFallbackProjectId: value },
+			}),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: integrationSettingsQuery(orgSlug).queryKey,
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not update setting");
+		},
+	});
+	return (
+		<SettingRow
+			title={<label htmlFor="fallback-project">Fallback project</label>}
+			description="Meetings that no filing rule matches go to this project."
+			action={
+				<ProjectPicker
+					id="fallback-project"
+					projects={projects}
+					value={projectId}
+					onValueChange={(value) => mutation.mutate(value)}
+					noProject="None"
 					disabled={mutation.isPending}
 				/>
 			}
@@ -375,6 +415,9 @@ function IntegrationsSettingsPage() {
 							description="Turn calendar meetings into time entries automatically, rounded to the nearest 15 minutes."
 							checked={settings.googleAutoSyncMeetings}
 							patch={(value) => ({ googleAutoSyncMeetings: value })}
+						/>
+						<FallbackProjectRow
+							projectId={settings.googleMeetingFallbackProjectId}
 						/>
 						<SettingRow
 							title="Sync now"

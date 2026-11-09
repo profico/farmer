@@ -4376,6 +4376,7 @@ export interface components {
         };
         IntegrationSettingsPatch: {
             googleAutoSyncMeetings?: boolean;
+            googleMeetingFallbackProjectId?: string | null;
             githubAutoLoadCommits?: boolean;
             githubSyncCommitsAsWorkTime?: boolean;
         };

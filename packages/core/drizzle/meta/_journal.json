@@ -582,6 +582,13 @@
       "when": 1793957671340,
       "tag": "0082_tricky_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1794231768774,
+      "tag": "0083_supreme_hellion",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
-  "id": "044f51aa-e1b5-427c-9d74-7551912b2db6",
-  "prevId": "4bed4b5a-7617-4f24-a6a0-45c4a00d1ce2",
+  "id": "1f03650c-9b1c-4274-8f6a-0ef7bbd92521",
+  "prevId": "044f51aa-e1b5-427c-9d74-7551912b2db6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5896,6 +5896,12 @@
           "notNull": true,
           "default": false
         },
+        "google_meeting_fallback_project_id": {
+          "name": "google_meeting_fallback_project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "github_auto_load_commits": {
           "name": "github_auto_load_commits",
           "type": "boolean",
@@ -5963,6 +5969,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "integration_settings_google_meeting_fallback_project_id_project_id_fk": {
+          "name": "integration_settings_google_meeting_fallback_project_id_project_id_fk",
+          "tableFrom": "integration_settings",
+          "tableTo": "project",
+          "columnsFrom": [
+            "google_meeting_fallback_project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
