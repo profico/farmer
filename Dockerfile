@@ -137,11 +137,14 @@ COPY --from=build /app/packages/core/drizzle ./drizzle
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 
 # Install only the packages that survive as bare imports at runtime.
-# The lockfile matters as much as the manifest. The six versions below are
+# The lockfile matters as much as the manifest. The versions in the manifest are
 # pinned exactly, but their transitive graph is not, so installing without one
 # resolved it fresh on every build — two images built from the same commit could
-# ship different code. docker/bun.lock is generated from this manifest and has
-# to be regenerated when a version in it changes; runtime.package.json says how.
+# ship different code. Keep the manifest's versions equal to apps/web and
+# packages/core, and regenerate docker/bun.lock when one changes:
+#   mkdir -p /tmp/rt && cp docker/runtime.package.json /tmp/rt/package.json
+#   (cd /tmp/rt && bunx bun@<BUN_VERSION> install --lockfile-only)
+#   cp /tmp/rt/bun.lock docker/bun.lock
 # It has to be written by THIS Bun: a newer Bun can write a lockfile version an
 # older one cannot read (bun 1.4 writes lockfileVersion 2, which 1.3 answers
 # with "Unknown lockfile version"), and the frozen install then fails. The root
