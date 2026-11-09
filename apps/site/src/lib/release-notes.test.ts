@@ -58,10 +58,34 @@ describe("releaseNotesFromList", () => {
 		]);
 		const notes = releaseNotesFromList(list);
 		expect(notes.map((n) => [n.version, n.kind])).toEqual([
+			["1.0.0", "mobile"],
 			["2.0.0", "web"],
 			["0.1.0", "cli"],
 		]);
-		expect(notes[0]?.title).toBe("v2.0.0");
+		expect(notes[1]?.title).toBe("v2.0.0");
+	});
+
+	test("keeps only the mobile lines of a mobile release's Changes", () => {
+		const [note] = releaseNotesFromList(
+			githubReleaseList.parse([
+				{
+					...release("mobile-v1.0.1", "2026-11-09T00:00:00Z"),
+					body: [
+						"Farmer mobile 1.0.1.",
+						"## Files",
+						"- `farmer-1.0.1.apk` is for Android.",
+						"## Changes",
+						"- fix(mobile): inset screens for the iOS keyboard (#239)",
+						"- feat: finish the versions plan (#230)",
+						"## Next",
+						"- feat(mobile): not a change",
+					].join("\n"),
+				},
+			]),
+		);
+		expect(note?.notes).toEqual([
+			"fix(mobile): inset screens for the iOS keyboard (#239)",
+		]);
 	});
 });
 
@@ -92,11 +116,17 @@ describe("webCommitsFromList", () => {
 });
 
 describe("commitKind", () => {
+	test("marks CI, dependency and site commits internal", () => {
+		expect(commitKind("ci(mobile): sign the build")).toBe("internal");
+		expect(commitKind("chore(deps): bump actions/cache")).toBe("internal");
+		expect(commitKind("chore(deps-dev): bump vite")).toBe("internal");
+		expect(commitKind("feat(site): add the public site")).toBe("internal");
+	});
+
 	test("reads the mobile and CLI scopes and calls the rest web", () => {
 		expect(commitKind("fix(mobile): inset screens for the iOS keyboard")).toBe(
 			"mobile",
 		);
-		expect(commitKind("ci(mobile): sign the simulator build")).toBe("mobile");
 		expect(commitKind("feat(cli)!: rename the timer command")).toBe("cli");
 		expect(commitKind("fix(web): keep the week view")).toBe("web");
 		expect(commitKind("chore: remove the token fallback")).toBe("web");

@@ -37,9 +37,10 @@ const FILTERS: { kind: ChangelogKind; label: string }[] = [
 	{ kind: "cli", label: "CLI" },
 ];
 
-const DAY_TAGS = {
+const TAGS = {
 	web: { label: "Web", Icon: BrowserIcon },
 	mobile: { label: "Mobile", Icon: DeviceMobileIcon },
+	cli: { label: "CLI", Icon: GitCommitIcon },
 } as const;
 
 // In UTC: the commit days are UTC calendar days (`groupCommitsByDay`), and
@@ -90,35 +91,31 @@ function Page() {
 	const kind = hydrated ? urlKind : "all";
 	const { releases: releasesUrl, home } = githubLinks(REPOSITORY);
 
-	const cliReleases = releases.filter((release) => release.kind === "cli");
-
-	const cliEntries: Entry[] = cliReleases.map((release) => ({
-		date: release.publishedAt,
-		node: <ReleaseArticle key={release.tag} release={release} />,
+	const releaseEntries = (releaseKind: "cli" | "mobile"): Entry[] =>
+		releases
+			.filter((release) => release.kind === releaseKind)
+			.map((release) => ({
+				date: release.publishedAt,
+				node: <ReleaseArticle key={release.tag} release={release} />,
+			}));
+	// Mobile and CLI commits stay out: their releases already list them.
+	const webEntries: Entry[] = groupCommitsByDay(
+		webChanges.commits.filter((c) => commitKind(c.subject) === "web"),
+	).map((group) => ({
+		date: `${group.day}T00:00:00.000Z`,
+		node: <WebDayArticle key={group.day} group={group} />,
 	}));
-	// CLI commits stay out: the CLI releases above already list them.
-	const dayEntries = (dayKind: keyof typeof DAY_TAGS): Entry[] =>
-		groupCommitsByDay(
-			webChanges.commits.filter((c) => commitKind(c.subject) === dayKind),
-		).map((group) => ({
-			date: `${group.day}T00:00:00.000Z`,
-			node: (
-				<DayArticle
-					key={`${dayKind}-${group.day}`}
-					kind={dayKind}
-					group={group}
-				/>
-			),
-		}));
 
 	const entries =
-		kind === "cli"
-			? cliEntries
+		kind === "web"
+			? webEntries
 			: kind === "all"
-				? [...cliEntries, ...dayEntries("web"), ...dayEntries("mobile")].sort(
-						(a, b) => b.date.localeCompare(a.date),
-					)
-				: dayEntries(kind);
+				? [
+						...releaseEntries("cli"),
+						...releaseEntries("mobile"),
+						...webEntries,
+					].sort((a, b) => b.date.localeCompare(a.date))
+				: releaseEntries(kind);
 
 	return (
 		<SitePage>
@@ -167,14 +164,21 @@ function Page() {
 	);
 }
 
+function KindTag({ kind }: { kind: keyof typeof TAGS }) {
+	const { label, Icon } = TAGS[kind];
+	return (
+		<span className={`fm-pill fm-changelog-tag fm-changelog-tag-${kind}`}>
+			<Icon weight="duotone" size={14} aria-hidden />
+			{label}
+		</span>
+	);
+}
+
 function ReleaseArticle({ release }: { release: ReleaseNote }) {
 	return (
 		<article className="fm-changelog-item">
 			<div className="fm-changelog-meta">
-				<span className="fm-pill fm-changelog-tag fm-changelog-tag-cli">
-					<GitCommitIcon weight="duotone" size={14} aria-hidden />
-					CLI
-				</span>
+				<KindTag kind={release.kind} />
 				<span className="fm-mono fm-changelog-version">{release.version}</span>
 				<span className="fm-faint fm-changelog-date">
 					{dateFormatter.format(new Date(release.publishedAt))}
@@ -192,21 +196,11 @@ function ReleaseArticle({ release }: { release: ReleaseNote }) {
 	);
 }
 
-function DayArticle({
-	kind,
-	group,
-}: {
-	kind: keyof typeof DAY_TAGS;
-	group: DayGroup;
-}) {
-	const { label, Icon } = DAY_TAGS[kind];
+function WebDayArticle({ group }: { group: DayGroup }) {
 	return (
 		<article className="fm-changelog-item">
 			<div className="fm-changelog-meta">
-				<span className={`fm-pill fm-changelog-tag fm-changelog-tag-${kind}`}>
-					<Icon weight="duotone" size={14} aria-hidden />
-					{label}
-				</span>
+				<KindTag kind="web" />
 				<span className="fm-mono fm-changelog-version">
 					{dateFormatter.format(new Date(`${group.day}T00:00:00.000Z`))}
 				</span>

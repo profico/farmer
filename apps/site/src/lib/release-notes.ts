@@ -9,9 +9,9 @@ import { z } from "zod";
 
 export const releaseNoteSchema = z.object({
 	tag: z.string(),
-	/** What the Changelog filters by. A `cli-v…` tag is the CLI; anything else
-	 *  is the web app. */
-	kind: z.enum(["web", "cli"]),
+	/** What the Changelog filters by. A `cli-v…` tag is the CLI, a `mobile-v…`
+	 *  tag the mobile app, and anything else the web app. */
+	kind: z.enum(["web", "cli", "mobile"]),
 	/** The version without its prefix: `cli-v0.4.1` is `0.4.1`. */
 	version: z.string(),
 	/** The release name, or the tag when the release has none. */
@@ -38,12 +38,16 @@ export const webCommitSchema = z.object({
 
 export type WebCommit = z.infer<typeof webCommitSchema>;
 
-export type CommitKind = "web" | "mobile" | "cli";
+export type CommitKind = "web" | "mobile" | "cli" | "internal";
 
-/** The app a commit is for, from its conventional-commit scope:
- *  `fix(mobile): …` is the mobile app, `feat(cli): …` the CLI, all else web. */
+/** The app a commit is for, from its conventional-commit type and scope:
+ *  `fix(mobile): …` is the mobile app and `feat(cli): …` the CLI. CI, the
+ *  dependency bumps and the public site are "internal": no app changed. */
 export const commitKind = (subject: string): CommitKind => {
-	const scope = /^\w+\((mobile|cli)\)!?:/.exec(subject)?.[1];
+	const [, type, scope = ""] = /^(\w+)(?:\(([^)]*)\))?!?:/.exec(subject) ?? [];
+	if (type === "ci" || scope === "site" || scope.startsWith("deps")) {
+		return "internal";
+	}
 	return scope === "mobile" || scope === "cli" ? scope : "web";
 };
 
@@ -102,12 +106,19 @@ export const releaseNotesFromBody = (body: string): string[] =>
 		.filter(Boolean);
 
 const kindOf = (tag: string): ReleaseKind =>
-	tag.startsWith("cli-") ? "cli" : "web";
+	tag.startsWith("cli-") ? "cli" : tag.startsWith("mobile-") ? "mobile" : "web";
 
-const versionOf = (tag: string): string => tag.replace(/^(cli-)?v/, "");
+const versionOf = (tag: string): string => tag.replace(/^(cli-|mobile-)?v/, "");
 
-/** Published releases, newest first. A `mobile-` tag is the store app. It has
- *  no place in the changelog, so it is left out. */
+/** A mobile body lists its files and then every commit since the last
+ *  build, web ones included. Only the mobile lines of "## Changes" are notes. */
+const mobileNotesFromBody = (body: string): string[] =>
+	releaseNotesFromBody(
+		body.split(/^## Changes\s*$/m)[1]?.split(/^## /m)[0] ?? "",
+	).filter((note) => commitKind(note) === "mobile");
+
+/** Published releases, newest first. `mobile-latest` moves to each new build
+ *  and has no version, so it is left out. */
 export const releaseNotesFromList = (
 	list: z.infer<typeof githubReleaseList>,
 ): ReleaseNote[] =>
@@ -116,17 +127,24 @@ export const releaseNotesFromList = (
 			(release) =>
 				!release.draft &&
 				release.published_at &&
-				!release.tag_name.startsWith("mobile-"),
+				release.tag_name !== "mobile-latest",
 		)
-		.map((release) => ({
-			tag: release.tag_name,
-			kind: kindOf(release.tag_name),
-			version: versionOf(release.tag_name),
-			title: release.name?.trim() || release.tag_name,
-			publishedAt: release.published_at ?? "",
-			notes: releaseNotesFromBody(release.body ?? ""),
-			url: release.html_url,
-		}))
+		.map((release) => {
+			const kind = kindOf(release.tag_name);
+			const body = release.body ?? "";
+			return {
+				tag: release.tag_name,
+				kind,
+				version: versionOf(release.tag_name),
+				title: release.name?.trim() || release.tag_name,
+				publishedAt: release.published_at ?? "",
+				notes:
+					kind === "mobile"
+						? mobileNotesFromBody(body)
+						: releaseNotesFromBody(body),
+				url: release.html_url,
+			};
+		})
 		.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 
 /** The commits of the default branch, merge commits left out. */
