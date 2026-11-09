@@ -49,6 +49,10 @@ export const CONTACT_EMAIL = "farmer@profi.co";
 export const EARLY_ACCESS_FORM_URL =
 	"https://docs.google.com/forms/d/e/1FAIpQLSdtMKedZUzdy-jyoXNnzMkrUUA8_T84c4d-fgynrcNnCg1kMQ/viewform?usp=header";
 
+/** The Android app's store listing. */
+export const PLAY_STORE_URL =
+	"https://play.google.com/store/apps/details?id=com.profico.farmer";
+
 /** The repository the site describes, as `owner/name`. A fixed value: the
  *  site is Profico's, so it has no instance setting to read. */
 export const REPOSITORY = "profico/farmer";

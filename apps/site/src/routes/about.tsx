@@ -79,7 +79,7 @@ function About() {
 					<p>
 						Most of a work day is already recorded somewhere: in the calendar,
 						in the Git history. Typing it into a timesheet again is busywork.
-						Farmer fills the timesheet in, and people only correct it.
+						Farmer fills the timesheet in, and people review it.
 					</p>
 				</div>
 			</section>

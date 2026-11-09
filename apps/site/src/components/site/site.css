@@ -24,14 +24,16 @@
 	--on-acc: var(--bg);
 	--acc-soft: color-mix(in oklab, var(--acc) 13%, transparent);
 	--acc-mid: color-mix(in oklab, var(--acc) 38%, var(--bg));
-	--ink: #15140f;
-	--ink-deep: #0e0d0a;
-	--ink-fg: #ede8de;
-	--ink-mut: #8f887c;
-	--ink-line: rgba(237, 232, 222, 0.13);
+	/* The ink band: the dark palette's violet-tinted greys, a step darker. */
+	--ink: oklch(0.185 0.009 293);
+	--ink-deep: oklch(0.1591 0.0072 293);
+	--ink-fg: oklch(0.9322 0.0161 293);
+	--ink-mut: oklch(0.6293 0.0218 293);
+	--ink-line: color-mix(in srgb, var(--ink-fg) 13%, transparent);
 	--ink-acc: #9178de;
 	--ink-ok: #9fbf8f;
-	--fm-shadow-window: 0 30px 60px -40px rgba(27, 26, 23, 0.35);
+	--fm-shadow-window: 0 30px 60px -40px
+		color-mix(in srgb, var(--fg) 35%, transparent);
 	/* The page's own palette, for the header to blend from (see Header). */
 	--page-bg: var(--bg);
 	--page-fg: var(--fg);
@@ -444,7 +446,7 @@ html:has(.fm-site) {
 	);
 	--sel: color-mix(
 		in oklab,
-		rgb(237 232 222 / 0.08) calc(100% * var(--i)),
+		color-mix(in srgb, var(--ink-fg) 8%, transparent) calc(100% * var(--i)),
 		var(--page-sel)
 	);
 	--acc: color-mix(
@@ -461,40 +463,63 @@ html:has(.fm-site) {
 	position: sticky;
 	top: 0;
 	z-index: 20;
+	padding: 10px 12px 0;
 }
-/* The glass, and the hairline under it. */
-.fm-site .fm-header::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-	z-index: -1;
-	background: color-mix(in oklab, var(--bg) calc(94% * var(--s)), transparent);
-	/* Slight: at 94% the paper hides most of what passes under it, and the
-	   blur only softens the rest. */
-	backdrop-filter: blur(calc(8px * var(--s)))
-		saturate(calc(100% + 40% * var(--s)));
-	-webkit-backdrop-filter: blur(calc(8px * var(--s)))
-		saturate(calc(100% + 40% * var(--s)));
-	border-bottom: 1px solid
-		color-mix(in oklab, var(--line) calc(100% * var(--s)), transparent);
-}
+/* The bar is an island, cut like the app's: a 14px corner (`--island-radius`
+   in the app) around 8px buttons. Its shape never changes; scrolled, only the
+   glass gets denser and the shadow comes in. */
 .fm-site .fm-header-inner {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 28px;
-	padding: 13px 24px;
+	max-width: 1152px;
+	padding: 6px 6px 6px 14px;
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	background: color-mix(
+		in oklab,
+		var(--bg) calc(70% + 25% * var(--s)),
+		transparent
+	);
+	/* Only the unprefixed property: the minifier adds the -webkit- copy, and
+	   with both written it keeps only the prefixed one, which Chrome ignores. */
+	backdrop-filter: blur(12px) saturate(140%);
 }
-/* Glass is a nicety. Asked for less, the scrolled bar is solid paper. */
+/* No shadow under the island. Behind it, the page blurs as it reaches the
+   top: two blur layers, the stronger one nearer the edge, each faded out
+   downwards. Only a thin tint, so the content is blurred, not covered. All
+   of it comes in with the scroll. */
+.fm-site .fm-header::before,
+.fm-site .fm-header::after {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: calc(100% + 32px);
+	pointer-events: none;
+	opacity: var(--s);
+}
+.fm-site .fm-header::before {
+	backdrop-filter: blur(4px);
+	mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+.fm-site .fm-header::after {
+	background: color-mix(in oklab, var(--bg) 35%, transparent);
+	backdrop-filter: blur(14px);
+	mask-image: linear-gradient(to bottom, #000 55%, transparent 90%);
+}
+/* Glass is a nicety. Asked for less, the bar is solid paper. */
 @media (prefers-reduced-transparency: reduce) {
-	.fm-site .fm-header::before {
-		background: color-mix(
-			in oklab,
-			var(--bg) calc(100% * var(--s)),
-			transparent
-		);
+	.fm-site .fm-header::before,
+	.fm-site .fm-header::after {
 		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
+	}
+	.fm-site .fm-header-inner {
+		background: var(--bg);
+		backdrop-filter: none;
 	}
 }
 .fm-site .fm-brand {
@@ -527,7 +552,7 @@ html:has(.fm-site) {
 	align-items: center;
 	height: 34px;
 	padding: 0 12px;
-	border-radius: 999px;
+	border-radius: 8px;
 	color: var(--mut);
 	white-space: nowrap;
 	transition:

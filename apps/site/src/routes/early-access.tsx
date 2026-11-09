@@ -47,8 +47,7 @@ function Page() {
 					</h1>
 					<p className="fm-lede" style={{ maxWidth: 480 }}>
 						Profico is preparing a hosted Farmer. We would run the server, the
-						database and the updates. There are no plans or prices yet, and we
-						won't pretend otherwise.
+						database and the updates. There are no plans or prices yet.
 					</p>
 					<div className="fm-early-points">
 						{POINTS.map(({ Icon, text }) => (
@@ -71,9 +70,8 @@ function Page() {
 						</span>
 						<div className="fm-early-cta-title">Join the list</div>
 						<p className="fm-early-cta-body">
-							Tell us you're interested and we'll write to you the moment hosted
-							Farmer is ready to try. Nothing else, and no plans yet to sign up
-							for.
+							Tell us you're interested and we'll write to you when hosted
+							Farmer is ready to try.
 						</p>
 						<a
 							className="fm-btn fm-btn-block"
