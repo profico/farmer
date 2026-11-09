@@ -33,6 +33,15 @@ const readTheme = (): Theme =>
 		? "dark"
 		: "light";
 
+const hasStoredTheme = () => {
+	try {
+		const stored = localStorage.getItem(STORAGE_KEY);
+		return stored === "dark" || stored === "light";
+	} catch {
+		return false;
+	}
+};
+
 export const setTheme = (theme: Theme) => {
 	document.documentElement.setAttribute("data-theme", theme);
 	try {
@@ -54,11 +63,23 @@ const subscribe = (onChange: () => void) => {
 		document.documentElement.setAttribute("data-theme", next);
 		onChange();
 	};
+	// No stored choice follows the OS, so an OS switch repaints the open page.
+	const os = window.matchMedia("(prefers-color-scheme: dark)");
+	const onOs = () => {
+		if (hasStoredTheme()) return;
+		document.documentElement.setAttribute(
+			"data-theme",
+			os.matches ? "dark" : "light",
+		);
+		onChange();
+	};
 	window.addEventListener(CHANGE_EVENT, onChange);
 	window.addEventListener("storage", onStorage);
+	os.addEventListener("change", onOs);
 	return () => {
 		window.removeEventListener(CHANGE_EVENT, onChange);
 		window.removeEventListener("storage", onStorage);
+		os.removeEventListener("change", onOs);
 	};
 };
 
