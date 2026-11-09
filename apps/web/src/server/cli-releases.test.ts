@@ -118,7 +118,7 @@ describe("resolveCliDownload", () => {
 		});
 	});
 
-	test("a missing or private repository says which one", async () => {
+	test("a missing repository says so", async () => {
 		serve(404, { message: "Not Found" });
 
 		expect(await resolveCliDownload("farmer-linux-x64")).toEqual({

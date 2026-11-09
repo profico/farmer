@@ -1,13 +1,8 @@
 import {
-	getRepoContentsReadToken,
-	isGithubAppConfigured,
-} from "@farmer/core/lib/github-client";
-import {
 	cachedRead,
 	GithubPublicRateLimitError,
 	githubPublicGet,
 } from "@farmer/core/lib/github-public";
-import { externalFetch } from "@farmer/core/lib/http";
 import {
 	DEFAULT_SOURCE_REPOSITORY,
 	sourceRepository,
@@ -61,7 +56,7 @@ export type Contributor = {
 
 export type DeploymentInfo = {
 	/** Most commits first. Empty when GitHub refused, or when the repository is
-	 *  not public — the card renders nothing rather than an error. */
+	 *  missing — the card renders nothing rather than an error. */
 	contributors: Contributor[];
 	/** The commit this process is running, or null off a real build. */
 	commit: { sha: string; shortSha: string; url: string } | null;
@@ -127,14 +122,8 @@ const resolveNames = async (logins: string[]): Promise<void> => {
 
 /**
  * Everyone with a commit on the default branch, most commits first, read from
- * the public repository with no token.
- *
- * FALLBACK, until the repository is public: an anonymous 404 also means
- * "private", which this card should still show a roster for while the
- * repository has not gone public yet. So when the GitHub App is configured,
- * a 404 is retried with the App's installation token, narrowed to this one
- * repository (`getRepoContentsReadToken`, `lib/github-client.ts`). Remove
- * this fallback once the repository is public for good.
+ * the public repository with no token. A 404 means the repository is missing,
+ * and the roster is empty.
  */
 const readContributors = async (): Promise<Contributor[]> => {
 	const repo = sourceRepository();
@@ -146,7 +135,7 @@ const readContributors = async (): Promise<Contributor[]> => {
 		);
 		if (response.status === 404) {
 			await response.body?.cancel();
-			return isGithubAppConfigured() ? readContributorsWithToken(repo) : [];
+			return [];
 		}
 		if (!response.ok) {
 			await response.body?.cancel();
@@ -160,10 +149,9 @@ const readContributors = async (): Promise<Contributor[]> => {
 
 /** Turns a raw `GET /repos/:repo/contributors` `Response` into the roster the
  *  card draws: bots dropped, sorted by commit count, capped, names resolved.
- *  Shared by the anonymous read and the token fallback below, which parse the
- *  same shape from two different requests. Parses straight off the `Response`
- *  — the I/O boundary — rather than taking already-decoded JSON, which
- *  `no-unknown-parameters` would otherwise flag as an unparsed `unknown`. */
+ *  Parses straight off the `Response` — the I/O boundary — rather than taking
+ *  already-decoded JSON, which `no-unknown-parameters` would otherwise flag as
+ *  an unparsed `unknown`. */
 const projectContributors = async (
 	response: Response,
 ): Promise<Contributor[]> => {
@@ -193,37 +181,6 @@ const projectContributors = async (
 		profileUrl: person.html_url,
 		contributions: person.contributions,
 	}));
-};
-
-/** The FALLBACK read: the App's installation token in place of the anonymous
- *  request. `[]` when the App is not installed on this repository either —
- *  from here that reads the same as "no repository". See the module comment
- *  on `readContributors`. */
-const readContributorsWithToken = async (
-	repo: string,
-): Promise<Contributor[]> => {
-	const [owner, name] = repo.split("/");
-	if (!owner || !name) return [];
-	const token = await getRepoContentsReadToken(owner, name);
-	if (!token) return [];
-	const response = await externalFetch(
-		`https://api.github.com/repos/${repo}/contributors?per_page=100`,
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/vnd.github+json",
-				"X-GitHub-Api-Version": "2022-11-28",
-				"User-Agent": USER_AGENT,
-			},
-		},
-	);
-	if (!response.ok) {
-		await response.body?.cancel();
-		throw new Error(
-			`GitHub answered ${response.status} for the contributor list (fallback token)`,
-		);
-	}
-	return projectContributors(response);
 };
 
 /**
