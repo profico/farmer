@@ -6,30 +6,19 @@ import { cn } from "#/lib/utils.ts";
 /**
  * The layout vocabulary every $orgSlug/* screen is built from.
  *
- * The app is a centered frame (`.app-frame`) holding islands (`.island`): the
- * sidebar, and the page beside it. An island carries the surface and the corner;
- * what separates one from the next is the ground showing through the gap. That
- * is the whole model, and it replaces the previous one, where a section was a
- * hairline rule pulled out to the content edge by a negative margin. That idiom
- * was copy-pasted into fourteen places and had drifted in every one of them —
- * different top margins, `border-t` vs `border-y` vs `border-b` — and the
- * negative margin resolved against whatever max-width each screen happened to
- * set for itself, so the same "full-bleed" rule stopped at a different x on Day,
- * on Week and on Settings. Islands have no such freedom: the frame sets the one
- * width, and an island simply fills it.
+ * The app is a centered frame (`.app-frame`) that holds islands (`.island`):
+ * the sidebar and the page beside it. An island carries the surface and the
+ * corner. The ground showing through the gap separates one island from the
+ * next. The frame sets the one width, and an island fills it. Do not pull a
+ * hairline to the content edge with a negative margin.
  *
  * Use `Page` for a normal scrolling screen and `PageFull` for one that owns the
  * viewport height (the calendar views, the master/detail screens). Inside
  * either, `PageSection` is a stacked island and `SettingList`/`SettingRow` are
  * the one ruled-list idiom.
  *
- * Both carry the `.screen` entrance (styles.css), and neither lets a caller ask
- * for it. It used to be a class each screen passed in, which is the kind of
- * thing that is right thirteen times and then forgotten: every `Page` opted in
- * and no `PageFull` did, so the timesheet, Projects and the assistant were
- * among the screens in the app that arrived without the stagger
- * their neighbours arrive with. The entrance says "a page landed", so it
- * belongs to the thing that IS the page.
+ * Both carry the `.screen` entrance (styles.css). A caller cannot ask for it,
+ * so no screen can forget it.
  */
 
 /**
@@ -123,29 +112,18 @@ export function PageColumn({
  * same height whether or not the screen has one, and a control never moves as
  * you walk through the sidebar.
  *
- * **An eyebrow carries live context or a way back** — a date, a period, a
- * count, a return link. Never a static label: "Settings" over "Settings" says
- * nothing the title does not. With neither an eyebrow nor an action the row is
- * dropped and the title opens the header.
+ * An eyebrow carries live context or a way back: a date, a period, a count, a
+ * return link. It is never a static label. With neither an eyebrow nor an
+ * action the row is dropped and the title opens the header.
  *
- * **The header owns the gap under itself, and no caller may set it.** The gap is
- * `mb-7` — the same 1.75rem that separates one `PageSection` from the next, so a
- * screen's first block and its second sit at the identical distance from what
- * precedes them. It used to be an overridable default, and every one of the
- * thirteen screens overrode it: twelve to `mb-0` and one to `mb-6`, each then
- * re-declaring its own gap on whatever came next. The result was three different
- * openings — 16px on Tasks, 24px on People/Clients/Reports/Projects, 28px on
- * Organization/Preferences — for what is the same relationship on every screen.
- * `className` is still taken, for the flex-layout concerns of a `PageFull` child
- * (`shrink-0`), but a margin passed here is a margin two screens will disagree
- * about within the month.
+ * The header owns the gap under itself (`mb-7`, the same 1.75rem as between
+ * two `PageSection`s), and no caller may set it. Every screen must open with
+ * the same distance. `className` is for flex-layout concerns only (`shrink-0`
+ * in a `PageFull` child), not for a margin.
  *
- * **Nothing may sit in that gap either** — see the `.screen` rules in styles.css,
- * which drop the hairline off whichever of the two openings a page uses: the
- * first `PageSection`, or a bleeding `<Table>` placed directly under the header.
- * The header is already the boundary; a rule 28px under a title is a second one
- * saying the same thing, and it was the visible difference between Organization
- * (ruled) and People (not).
+ * Nothing may sit in that gap. The `.screen` rules in styles.css drop the
+ * hairline off the first `PageSection`, or off a bleeding `<Table>` placed
+ * directly under the header, because the header is already the boundary.
  */
 export function PageHeader({
 	eyebrow,

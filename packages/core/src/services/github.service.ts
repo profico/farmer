@@ -301,34 +301,23 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 /**
  * The linked repos a commit scan for this person should read.
  *
- * Scoped to the projects they hold an ACTIVE assignment on, not to every repo
- * in the organization — which is what the two cross-repo scans below used to do,
- * and it is what made the automation sweep cost (org repos x people) GitHub
- * calls every twenty minutes. Thirty repos and forty people is 1,200 calls a
- * sweep, 3,600 an hour, against an installation rate limit that starts at 5,000
- * — and the sweep runs four people at a time, so each of those was also thirty
- * sockets opened at once.
+ * Only the projects where they hold an active assignment, not every repo in the
+ * organization. A scan of all repos costs (org repos x people) GitHub calls in
+ * each sweep (every twenty minutes), against an installation rate limit.
  *
- * The scope is also the more correct answer, not merely the cheaper one. A
- * commit on a project you are not assigned to cannot be attributed to it: the
- * engine attaches per project by finding YOUR work entry on that project, and
- * `assertCanTrackOn` means you have none. Such commits only ever fell through to
- * the day's project-less fill block, so the effect of scoping is that work you
- * are not on stops seeding a block about work you are not on. If somebody's
- * commits ought to count, the fix is to assign them to the project — which is
- * the same thing that lets them log the time.
+ * The scope is also more correct. The engine attaches a commit through the
+ * person's own work entry on that project, and `assertCanTrackOn` means they
+ * have none on an unassigned project. To count such commits, assign the person
+ * to the project.
  *
  * `suggestCommits` and `suggestPullRequests` read through here too, narrowed to
- * the one project the caller named. `assertProjectInOrg` alone used to gate
- * `suggestCommits`, which let a member scan any project's repos, private ones
- * included, with the installation token; and a commit it offered there was
- * one `attachCommits` would then refuse.
+ * the one project the caller named. This also stops a member from scanning the
+ * repos of any project (private ones too) with the installation token.
  *
- * There is no admin bypass, here or in `attachCommits`, which reads through
- * this too: the argument above is about attribution, and being an admin does
- * not make a commit on a project you are not on your work on it.
+ * There is no admin bypass, here or in `attachCommits`. Being an admin does not
+ * make a commit on a project your work on it.
  *
- * `ids` narrows it to those repos, for a caller that was handed repo ids.
+ * `ids` narrows it to those repos, for a caller that has repo ids.
  */
 const reposForUser = async (ctx: Ctx, ids?: string[]) => {
 	// A deployment that lost a webhook carries its orphans until something
@@ -364,30 +353,23 @@ const reposForUser = async (ctx: Ctx, ids?: string[]) => {
 
 /** Repoint repo rows whose installation the org no longer holds.
  *
- *  `projectGithubRepo.installationId` is frozen at link time, and an
- *  installation's id is not: removing the App on GitHub and adding it back
- *  mints a new one. `forgetInstallation` used to drop only the
- *  `orgGithubInstallation` row, so every repo linked under the old id kept
- *  naming it — and every commit and pull request read 404ed on a token mint,
- *  forever. Reconnecting could not fix it, because connecting writes a new row
- *  rather than repairing old ones, which read as "no commits" with a log full
- *  of 404s.
+ *  `projectGithubRepo.installationId` is frozen at link time, but removing the
+ *  App on GitHub and adding it back mints a new installation id. A repo that
+ *  names the old id fails with a 404 on every token mint. Reconnecting does not
+ *  repair old rows.
  *
- *  The repair needs no call to GitHub: an orphan is a row naming an
- *  installation that is not in the org's own set. A repo is rebound to the
- *  installation on the account that OWNS it — `accountLogin` against `owner` —
- *  never merely to whichever installation the org has, because an installation
- *  on one account cannot read another account's repos, and a wrong id trades a
- *  loud 404 for a silent empty answer.
+ *  The repair needs no GitHub call: an orphan names an installation that is not
+ *  in the org's own set. Rebind a repo to the installation on the account that
+ *  owns it (`accountLogin` against `owner`), never to any installation of the
+ *  org. An installation on one account cannot read another account's repos, and
+ *  a wrong id turns a loud 404 into a silent empty answer.
  *
- *  An orphan with no installation on its owner is set to NULL: the App really
- *  is gone from that account, and NULL is the state the column already
- *  documents for a repo nothing can read. It is logged, because from here on
- *  the repo answers "no activity" rather than failing.
+ *  An orphan with no installation on its owner is set to NULL, the state that
+ *  the column documents for a repo nothing can read. The code logs it, because
+ *  the repo then answers "no activity" and does not fail.
  *
- *  Takes no `Ctx`: which orgs named the installation is what this looks up
- *  rather than what it is told, the same reasoning as `forgetInstallation`.
- *  Scoped to one org when a read is what triggered it. */
+ *  Takes no `Ctx`: it looks up which orgs named the installation, like
+ *  `forgetInstallation`. Scoped to one org when a read triggered it. */
 const rebindOrphanedRepos = async (
 	organizationId?: string,
 ): Promise<number> => {

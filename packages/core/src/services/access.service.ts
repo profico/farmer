@@ -9,29 +9,24 @@ import type { Ctx } from "./types";
 
 // The section-4 capability matrix, in one place.
 //
-// Three independent axes (revised Sept 2026):
-//   * ONE global role — org Admin (better-auth's member.role owner|admin). There
-//     is deliberately no super-admin tier: Admin is a small trusted group.
-//   * A PER-ASSIGNMENT project role — Member / Team Lead / PM. The same person is
-//     PM on one project and a plain member on another, so a project role is never
-//     a property of the person.
-//   * A PEOPLE LIST — the Team Lead of the org chart. Somebody with people on
-//     their list (`team_lead_person`, edited by an Admin) sees everything about
-//     those people: their time on every project, their Tracking status, their
-//     time off. And on any project where their OWN assignment is `team_lead`,
-//     they see and manage it as a PM does. A plain `member` assignment stays
-//     `member` — a people list is not a blanket PM grant on every project the
-//     lead happens to be on.
+// Three independent axes:
+//   * One global role: org Admin (better-auth's member.role owner|admin). There
+//     is no super-admin tier.
+//   * A per-assignment project role: Member, Team Lead or PM. A person can be PM
+//     on one project and a member on another, so the role is not a property of
+//     the person.
+//   * A people list (`team_lead_person`, edited by an Admin). A person with
+//     people on the list sees everything about them: time on every project,
+//     Tracking status and time off. On a project where their own assignment is
+//     `team_lead`, they manage it as a PM. A `member` assignment stays `member`.
 //
-// Guiding principles this file exists to enforce:
-//   * Members see strictly their own time entries and nothing at project level —
-//     not even the project's total hours. They do get every report, scoped to
-//     themselves: a report about yourself is still a report.
-//   * PM = project config + money context on their own projects, and the people
-//     on those projects in the people-shaped reports — nothing about any other
-//     project.
-//   * Team Lead = their people everywhere, their projects as a PM.
-//   * Admin sees everything.
+// The rules that this file enforces:
+//   * A member sees only their own time entries, and nothing at project level,
+//     not even the project's total hours. Every report is scoped to themselves.
+//   * A PM sees project config and money context on their own projects, and the
+//     people on those projects in the people reports. Nothing else.
+//   * A Team Lead sees their people everywhere, and their projects as a PM.
+//   * An Admin sees everything.
 
 export type ProjectRole = "member" | "team_lead" | "pm";
 

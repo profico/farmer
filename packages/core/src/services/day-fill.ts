@@ -73,29 +73,24 @@ export const computeDayFillSeconds = async (
 
 /**
  * Before a squeezed-out fill block is dropped, move its commits and pull
- * request events to the entry
- * the commit engine would have chosen had the block never existed: that
+ * request events to the entry that the commit engine would have chosen: that
  * project's own Development entry on the day, else a project-less one.
  *
- * The attachments cascade with the row, and the engine does not bring them
- * back on its own — it only revisits days inside its window, and even there it
- * files a block only when the day has room, which is exactly what this day no
- * longer has. So dropping the block silently dropped the day's evidence.
+ * The attachments cascade with the row. The engine does not restore them,
+ * because it files a block only when the day has room, and this day has none.
  *
- * Both places that drop an emptied block call this — `recomputeDayFill` below,
- * on every write path, and `listRange`'s read-path recompute — so the two
- * cannot disagree about where the evidence goes.
+ * `recomputeDayFill` (every write path) and the `listRange` read-path recompute
+ * both call this, so they agree on where the evidence goes.
  *
- * Deliberately no tombstone. A tombstone records a person saying no; here the
- * block went because the day filled up, and a tombstone would stop the engine
- * filing one on this day even after the day empties again.
+ * There is no tombstone. A tombstone records a person saying no. Here the day
+ * filled up, and a tombstone would stop the engine after the day empties.
  *
- * A commit with no such entry is still lost with the block. The day was filled
- * by something that is not development work (meetings, absence), and attaching
- * a commit to a meeting would be a claim the commit does not make.
+ * A commit with no such entry is lost with the block. The day holds no
+ * development work (meetings, absence), and a commit on a meeting is a false
+ * claim.
  *
- * Reads and writes through `ctxDb(ctx)`: `recomputeDayFill` runs inside the
- * caller's transaction, and an ambient query from there deadlocks.
+ * Use `ctxDb(ctx)`: `recomputeDayFill` runs inside the caller's transaction,
+ * and an ambient query from there deadlocks.
  */
 export const rehomeDroppedFillEvidence = async (
 	ctx: Ctx,

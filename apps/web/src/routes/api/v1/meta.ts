@@ -7,31 +7,23 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * `GET /api/v1/meta` — the one unauthenticated CLI route, and the first thing
- * `farmer login` and the mobile app ask a URL.
+ * `GET /api/v1/meta`: the one unauthenticated CLI route. `farmer login` and
+ * the mobile app call it first.
  *
  * It answers even when `CLI_ENABLED=false`, with `cliEnabled: false`, where
- * every other CLI route answers 404. That is the difference between "this is a
- * Farmer server that does not run the CLI" and "this is not a Farmer server",
- * and the person typing the URL needs to be told which mistake they made.
+ * every other CLI route answers 404. This tells "a Farmer server without the
+ * CLI" from "not a Farmer server".
  *
- * It is the version contract for the mobile app: `apiVersion`,
- * `minMobileVersion` and the sign-in methods. The methods are the ones the
- * login page draws, from the same two functions. The only read is the check
- * for a password form, which `passwordOffered` answers with at most two small
- * queries and none in development. Nothing in the answer names a person or
- * holds a secret.
+ * It is the version contract for the mobile app (`apiVersion`,
+ * `minMobileVersion`) and lists the sign-in methods from the same functions as
+ * the login page. `pushRelay` tells the app whether to register with the push
+ * relay (ADR 0006). `uploadsEnabled` and `organizationCreation` come from
+ * `getPublicAppConfig`. Nothing in the answer names a person or holds a
+ * secret.
  *
- * `pushRelay` tells the app whether to register with the push relay (ADR
- * 0006). The relay URL is public: it is the same for every server that uses
- * Profico's relay.
- *
- * `uploadsEnabled` and `organizationCreation` are what `getPublicAppConfig`
- * tells the browser: whether an upload control may show, and whether "New
- * workspace" may show. Two facts about the deployment, not about a person.
- *
- * No rate limit and no credential, so the password answer is kept for
- * `PASSWORD_TTL_MS`: a loop on this URL costs at most two queries in that time.
+ * The route has no rate limit and no credential, so the password answer is
+ * cached for `PASSWORD_TTL_MS`. A loop on this URL then costs at most two
+ * queries in that time.
  */
 const PASSWORD_TTL_MS = 30_000;
 let password: { value: boolean; at: number } | null = null;

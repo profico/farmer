@@ -3,42 +3,28 @@
  *
  *   bun run scripts/check-palette-contrast.ts
  *
- * Preferences → Display → Colors lets somebody generate a palette nobody has
- * ever looked at. The whole reason that is allowed near a timesheet is that
- * every role's LIGHTNESS is fixed and only hue and chroma move — OKLCH
- * lightness is perceptual, so contrast should barely notice the hue. "Barely"
- * is not "not at all": WCAG's own contrast formula is not perceptually
- * uniform, and a yellow at a given OKLCH lightness carries more relative
- * luminance than a blue at the same one. This walks the wheel and says whether
- * the drift ever grows into a real loss.
+ * A custom palette (Preferences, Display, Colors) fixes the lightness of each
+ * role and moves only hue and chroma. OKLCH lightness is perceptual, but the
+ * WCAG contrast formula is not, so a yellow carries more luminance than a blue
+ * at the same lightness. This script walks the hue wheel and reports where the
+ * contrast drops too far.
  *
- * THE THRESHOLD IS VANILLA, NOT WCAG. Measured against the hexes it ships,
- * vanilla is 4.20 for muted text on a band and 2.26 for `--faint` on one; a
- * check written to the round numbers those were meant to hit would fail the
- * palette this app has used all along, and a check the shipped design fails
- * teaches everyone to ignore it. So the promise made here is the one worth
- * keeping: a color somebody generated is never materially worse than the
- * color they would have had. `--fg` also carries an absolute floor, since
- * body text is the one pair no tolerance should be able to eat into.
+ * The threshold is the vanilla palette, not WCAG. Vanilla scores 4.20 for muted
+ * text on a band and 2.26 for `--faint`, so a WCAG threshold would fail the
+ * shipped design. A generated color must never be materially worse than the
+ * vanilla color. `--fg` also has an absolute floor.
  *
- * It also checks that every constant in that block was DERIVED from vanilla
- * rather than guessed. Seed (293, 0.168) — the logo's own #6f4ebe — has to
- * reproduce vanilla's accent and all six harmonised colors exactly. The
- * neutrals cannot be checked that way and must not be: vanilla pairs a WARM
- * ground with a COOL accent on purpose, and a one-seed scheme tints the greys
- * with the accent's own hue by definition, so Custom is a sibling of vanilla
- * and not a superset of it. What the neutrals owe vanilla is their LIGHTNESS
- * and their CHROMA, so each is checked at its own vanilla hue instead, which
- * is exactly the claim the ratios make.
+ * It also checks that the constants were derived from vanilla. Seed (293,
+ * 0.168) must reproduce the vanilla accent and the six harmonised colors. The
+ * neutrals cannot match, because vanilla pairs a warm ground with a cool
+ * accent. Each neutral is checked at its own vanilla hue, for lightness and
+ * chroma.
  *
- * It is a script rather than a test because `apps/web` has no test suite, and
- * because its answer only changes when the numbers in `styles.css` do. Run it
- * after touching the custom palette block; a failure names the hue, the pair
- * and the ratio it got.
+ * This is a script, not a test, because `apps/web` has no test suite. Run it
+ * after you change the custom palette block in `styles.css`.
  *
- * The lightness and chroma constants below are copied from that block. They
- * are the one duplication here, and a mismatch shows up as a check that passes
- * against numbers the app does not use — so change them together.
+ * The lightness and chroma constants below are copied from that block. Change
+ * both together, or the check passes against numbers the app does not use.
  */
 
 /** Every token this checks, and the only keys any table below may carry. A

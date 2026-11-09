@@ -382,42 +382,24 @@ export function EntryBlockRow({
 	});
 
 	return (
-		// Wraps in a narrow column. The figure and the four word-buttons are a
-		// fixed ~250px; holding them on the same line as the text squeezed a
-		// project name down to a dozen characters and turned every note into a
-		// five-line column, so under 28rem they drop to their own right-aligned
-		// line.
+		// Under 28rem the figure and the word-buttons (about 250px) wrap to their
+		// own right-aligned line. On the same line they squeeze the project name.
 		//
-		// That 28rem is the LIST's width (`@container/entries`, declared by the
-		// two lists that render this row), not the window's. On the viewport this
-		// was `sm:`, which is 640px of window — but on the home page the list is
-		// two thirds of the page, which is itself the window minus the nav column,
-		// so a 1024px window handed this row 470px and the rule read it as wide.
-		// The result was the shape the rule exists to prevent: "[BDT] …" beside a
-		// full row of buttons.
+		// The 28rem is the width of the list (`@container/entries`, declared by
+		// the two lists that render this row), not of the window. The list is
+		// narrower than the window, so a viewport breakpoint reads the row as wide
+		// too early. The inset stays on the viewport (`px-4 sm:px-8`), because
+		// every band on the page shares it.
 		//
-		// The INSET stays on the viewport (`px-4 sm:px-8`). It is the island's own
-		// padding rather than anything about this row, and every band on the page
-		// shares it.
+		// Delete collapses the row, so the "Undo" toast stays tied to the row it
+		// restores. There is no matching enter, because a new row arrives as its
+		// dialog closes. The collapse and the delete start together: the request
+		// never waits for the animation.
 		//
-		// Delete only, no enter. Deleting a row used to drop it instantly and snap
-		// everything below it upward while the "Undo" toast slid in from the far
-		// corner — two unrelated movements for one action, and no clue which row
-		// the toast was offering back. Collapsing the row instead keeps the two
-		// tied together. There is deliberately no matching enter: a new row
-		// arrives as its dialog closes, and that beat is already covered.
-		//
-		// Collapsing and deleting start together rather than in sequence: the
-		// request is never gated on an animation finishing, so a frame that never
-		// arrives can cost the collapse but never the delete.
-		//
-		// `overflow-hidden` is what makes the collapse read as the row closing
-		// rather than its contents spilling; the controls inside are inset far
-		// enough from the edges that it never clips a focus ring.
-		// `prefers-reduced-motion` is NOT covered by the root
-		// <MotionConfig reducedMotion="user"> here: it drops transform, scale and
-		// slide, and this collapse is height and padding. `useHeightTransition`
-		// is what answers the preference — see `lib/motion.ts`.
+		// `overflow-hidden` makes the collapse read as the row closing. The root
+		// <MotionConfig reducedMotion="user"> does not cover this collapse (it
+		// animates height and padding). `useHeightTransition` answers
+		// `prefers-reduced-motion` (`lib/motion.ts`).
 		<motion.div
 			animate={
 				collapsing

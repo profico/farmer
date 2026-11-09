@@ -1,31 +1,25 @@
 /**
  * The instance's configuration: one value per name, from three sources.
  *
- * **The environment wins, then the database, then the default.** The rule and
- * the reason are in `docs/adr/0004-environment-overrides-the-database.md`;
- * read it before adding a second way to set anything listed here. In short: a
- * value set in the environment locks the matching field on the Infrastructure
- * pages, so an operator who pins a value in a deploy manifest is never
- * overridden by somebody with a browser.
+ * The environment wins, then the database, then the default. The rule and the
+ * reason are in `docs/adr/0004-environment-overrides-the-database.md`; read it
+ * before you add a second way to set a value listed here. A value set in the
+ * environment locks the matching field on the Infrastructure pages.
  *
- * **Read synchronously, loaded asynchronously.** `setting()` is synchronous and
- * reads an in-memory snapshot, so the readers that used to read `process.env`
- * per call (`objectStore()`, the three feature flags, the mail transport) stay
- * synchronous and cost nothing on a hot path such as `/api/files`. The
- * snapshot is filled by `refreshInstanceSettings` in
- * `services/instance-settings.service.ts`, which every entry point awaits
- * before it reads: the web app's global request middleware
- * (`apps/web/src/start.ts`), each scheduler tick (`jobs/scheduler.ts`) and
- * the worker's start. The refresh is cached for a few seconds and shared by
- * concurrent callers, so a request pays for at most one small query.
+ * `setting()` is synchronous and reads an in-memory snapshot, so the readers
+ * stay synchronous and cost nothing on a hot path such as `/api/files`.
+ * `refreshInstanceSettings` in `services/instance-settings.service.ts` fills
+ * the snapshot. Every entry point awaits it before it reads: the request
+ * middleware (`apps/web/src/start.ts`), each scheduler tick
+ * (`jobs/scheduler.ts`) and the worker start. The refresh is cached for a few
+ * seconds and shared by concurrent callers.
  *
  * This module has no database import on purpose. The flags and the storage
  * module import it, and they must stay importable from code that never opens a
  * connection (a unit test, the build).
  *
- * The name of a setting IS its environment variable. One name per value, in
- * the environment, in the `instance_setting` table and on the page, so nobody
- * has to translate between them.
+ * The name of a setting is its environment variable, in the environment, in the
+ * `instance_setting` table and on the page.
  */
 
 export type SettingSection =

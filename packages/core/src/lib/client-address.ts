@@ -1,29 +1,26 @@
 /**
- * The address a request came from, read from ONE header this deployment says
- * it can trust, and from nothing a caller can choose.
+ * The address a request came from, read from one header that this deployment
+ * trusts, and from nothing a caller can choose.
  *
- * The per-address rate limits (`server/api-rate-limit.ts`) key on it. They
- * used to read `cf-connecting-ip`, then `x-real-ip`, then the first
- * `x-forwarded-for` hop, whichever came first. Only the proxy in front of this
- * process sets the right one, and a caller can send all three, so a caller
- * that went around the header the proxy sets picked its own bucket — a fresh
- * one per request.
+ * The per-address rate limits (`server/api-rate-limit.ts`) key on it. Only the
+ * proxy in front of this process sets the right header, and a caller can send
+ * all of them. A caller that used another header would get its own rate-limit
+ * bucket on each request.
  *
  * `TRUSTED_IP_HEADER` names the header, and only that one is read:
  *
- *  - Default `none` (or empty): no header; the socket address only. A caller
- *    can send any header, so no header is trusted until the operator names one.
- *  - `x-forwarded-for`: the LAST entry, the one the proxy nearest this
- *    process appended. The first entry is whatever the caller wrote. With two
- *    proxies in the chain the last entry is the outer proxy, so name the outer
- *    proxy's own header instead.
+ *  - Default `none` (or empty): no header; the socket address only. No header
+ *    is trusted until the operator names one.
+ *  - `x-forwarded-for`: the last entry, which the proxy nearest this process
+ *    appended. The caller wrote the first entry. With two proxies, the last
+ *    entry is the outer proxy, so name the header of the outer proxy instead.
  *  - `cf-connecting-ip` behind Cloudflare, `x-real-ip`, or any other
- *    single-address header a proxy overwrites.
+ *    single-address header that a proxy overwrites.
  *
  * When the header is missing, the socket address is the fallback. The
  * production host (`server.ts`) writes it into `SOCKET_ADDRESS_HEADER` after
- * it deletes any copy the caller sent; `vite dev` does not, so there the
- * answer is `"unknown"`, one shared bucket, which is the conservative answer.
+ * it deletes any copy from the caller. `vite dev` does not, so there the answer
+ * is `"unknown"`, one shared bucket, which is the safe answer.
  *
  * The header only means something if the proxy is the one way in. An origin
  * that answers on its public address as well lets a caller set the header

@@ -91,34 +91,20 @@ export const resolveApiOrgContext = async (request: Request) => {
 /**
  * The caller's service Ctx for an MCP request, or null.
  *
- * Two things make this a different question from `resolveApiOrgContext`, not a
- * parameterization of it:
+ * It differs from `resolveApiOrgContext` in two ways:
  *
  *  1. **The credential may be a bearer token.** An MCP client holds one of the
- *     authorization server's own access tokens, not a session cookie. Both are
- *     accepted — a browser hitting the same URL while signed in is a useful
- *     thing during development — and the cookie is tried first, because no
- *     `apiKey` or `bearer` plugin is enabled here, so an `Authorization` header
- *     is inert for `getSession` and needs no special handling. If either plugin
- *     is ever added, this ordering stops being free and has to be revisited.
- *     The CLI's device-flow token does not change that: it is a session token,
- *     but `getSession` reads a session only from the signed cookie, and the
- *     CLI's token is read by `resolveCliUser` below and nowhere else. An MCP
- *     client that sends a CLI token here therefore gets `getMcpSession`'s
- *     answer, which is no one.
- *  2. **The organization comes from the URL.** An access token resolves to a
- *     `userId` and scopes; there is no `session.activeOrganizationId` to read,
- *     and every Ctx needs an organization. `/api/mcp/$orgSlug` is where it comes
- *     from, which matches the service layer's own rule that tenancy is an
- *     explicit parameter — and gives somebody who works in two workspaces two
- *     connector entries rather than a mode they have to remember they are in.
+ *     authorization server's access tokens, not a cookie. This function
+ *     accepts both and tries the cookie first. No `apiKey` or `bearer` plugin
+ *     is enabled, so an `Authorization` header is inert for `getSession`. If
+ *     either plugin is ever added, revisit this order. A CLI device-flow token
+ *     is a session token, but only `resolveCliUser` reads it, so an MCP client
+ *     that sends one here gets no user.
+ *  2. **The organization comes from the URL** (`/api/mcp/$orgSlug`), because an
+ *     access token has no `session.activeOrganizationId`.
  *
- * Which credential was presented is the only part of that this file can answer,
- * so it is the only part that stays here. Slug plus user id to a membership-
- * checked Ctx is `orgContextService.resolveBySlug`, in `packages/core` — a
- * domain question, testable under `bun test`, shared with the CLI, and asked in
- * the same words by a future `apps/mcp` process that has no TanStack route to
- * put it in.
+ * This file only decides which credential was presented. The slug-to-`Ctx`
+ * membership check is `orgContextService.resolveBySlug` in `packages/core`.
  */
 export const resolveMcpOrgContext = async (
 	request: Request,
@@ -185,32 +171,24 @@ export type CliUser = {
  * The person a CLI request's `Authorization: Bearer <token>` belongs to, or
  * null.
  *
- * Two kinds of token arrive here. A personal API token (`fmr_…`) is looked up
- * by `apiTokensService.authenticate`, which also refuses an expired one. Every
- * other token is a device-flow token, and the rest of this comment is about
- * that kind.
- *
- * The device-flow token is a better-auth session token: the device flow's `/device/token`
- * answers `access_token: session.token` for a session it has just created. So
- * the lookup is the session table, through better-auth's own internal adapter,
- * and NOT the `bearer` plugin — see the note on `deviceAuthorization` in
- * `packages/core/src/auth/index.ts` for why that plugin stays off.
+ * A personal API token (`fmr_...`) goes to `apiTokensService.authenticate`,
+ * which also refuses an expired one. Every other token is a device-flow token.
+ * It is a better-auth session token (`/device/token` answers
+ * `access_token: session.token`), so the lookup reads the session table
+ * through better-auth's internal adapter, not the `bearer` plugin. See the
+ * note on `deviceAuthorization` in `packages/core/src/auth/index.ts`.
  *
  * Null for no header, a header that is not a bearer credential, a token that
- * matches no session, and a session that has expired. The route answers all of
- * them with the same 401, which is what tells the CLI to run `farmer login`.
+ * matches no session, and an expired session. The route answers all of them
+ * with the same 401, which tells the CLI to run `farmer login`.
  *
- * **The session is refreshed here, by hand.** `getSession` slides a session's
- * expiry forward when it is used after `updateAge` (a day by default), and a
- * browser session lives on for as long as somebody keeps opening the app. It
- * does that inside the `/get-session` endpoint, though, not inside
- * `findSession` — so a session found this way never slides, and a CLI token
- * used every day would still die seven days after `farmer login`. The rule
- * below is the endpoint's own, copied rather than approximated: better-auth
- * 1.6.23, `dist/api/routes/session.mjs`, the `shouldBeUpdated` /
- * `internalAdapter.updateSession` branch of `getSession`. That branch also skips
- * the refresh under `session.disableSessionRefresh`; this app does not set it,
- * so the copy leaves it out, and must gain it if the option is ever turned on.
+ * **The session is refreshed here, by hand.** better-auth slides the expiry in
+ * its `/get-session` endpoint, not in `findSession`, so a CLI token would die
+ * seven days after `farmer login` even with daily use. The rule below is a
+ * copy of the `shouldBeUpdated` / `internalAdapter.updateSession` branch of
+ * `getSession` (better-auth 1.6.23, `dist/api/routes/session.mjs`). The copy
+ * leaves out the `session.disableSessionRefresh` check, because this app does
+ * not set it. Add the check if that option is ever turned on.
  */
 export const resolveCliUser = async (
 	request: Request,

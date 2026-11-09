@@ -1,28 +1,22 @@
 /**
  * The task runner.
  *
- * This deployment is a single long-lived Bun process, not a serverless
- * function, so an interval loop is the whole mechanism — no external cron, no
- * queue. That is also why nothing in this app needs to hang background work off
- * a page load; if you find yourself writing entries inside a read handler, this
- * file is the reason you don't have to.
+ * This deployment is a single long-lived Bun process, so an interval loop is
+ * the whole mechanism: no external cron, no queue. Do not hang background work
+ * off a read handler.
  *
- * It lives in `packages/core` rather than in `apps/web/server.ts` (where it
- * started) for two reasons:
+ * It lives in `packages/core`, not in `apps/web/server.ts`, for two reasons:
  *
- *   - `vite dev` never loads server.ts, so with the sync engines moved off the
- *     read path there would otherwise be NOTHING running them in development.
- *     `bun run worker` (jobs/worker.ts) starts exactly these schedulers as their
- *     own process.
- *   - It makes the worker separable in production. Today the web host starts it
- *     in-process; splitting it onto its own container is now a deploy change,
- *     not a code change.
+ *   - `vite dev` never loads server.ts, so nothing would run the sync engines
+ *     in development. `bun run worker` (jobs/worker.ts) starts these schedulers
+ *     as their own process.
+ *   - The worker can move to its own container in production with a deploy
+ *     change only.
  *
- * Every job is idempotent by construction (the automation sweep reconciles
- * rather than appends; the log reminder guards on
- * notificationSettings.lastLogReminderDay; the Slack reminder claims a row in
- * slack_reminder_log before each send), so a missed, repeated or overlapping
- * tick is harmless.
+ * Every job is idempotent (the automation sweep reconciles, the log reminder
+ * guards on notificationSettings.lastLogReminderDay, the Slack reminder claims
+ * a row in slack_reminder_log before each send), so a missed, repeated or
+ * overlapping tick is harmless.
  *
  * Environment variables:
  *   AUTOMATION_SYNC_ENABLED           - "false" to disable the automation sweep (default: on)

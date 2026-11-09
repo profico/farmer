@@ -107,30 +107,19 @@ export const syncedMeetingTombstone = pgTable(
 // The same idea for the commit work-time engine's fill block: a day whose
 // "rest of day" block the person deleted.
 //
-// Every other automation already had a way to be told no — a deleted meeting
-// leaves a `syncedMeetingTombstone`, a deleted recurring block leaves a
-// `recurringBlockRuleSkip` — and this engine had nothing. Its only guard was
-// `te_fill_day_uidx`, which stops a SECOND fill block existing and says nothing
-// about one that used to. So deleting the block removed the row the guard was
-// reading and the next sweep put it straight back.
+// `te_fill_day_uidx` stops a second fill block but cannot remember a deleted
+// one, so without this row the next sweep would put the block back.
 //
-// It went unnoticed while the engines ran on page load, because you had to
-// reload the page to make it happen and it looked like the page had simply not
-// caught up. On a 20-minute timer it is a block that will not stay deleted.
-//
-// Keyed by DAY, not by entry: what the person rejected is "a rest-of-day block
-// on this day", and it has to outlive the row they deleted or it means nothing.
-// Any fill block counts, not just this engine's — there is no marker
-// distinguishing one it wrote from one made by hand, and "I deleted the
-// rest-of-day block, don't put another one back" is the right reading of both.
+// The key is the day, not the entry, because the row must outlive the entry
+// that the person deleted. Any fill block counts, because nothing marks which
+// ones the engine wrote.
 //
 // `projectId` narrows the no to one project. The engine splits a day across the
 // projects its commits name, so deleting the block on project P (the fill, a
 // split entry, or any Development entry holding P's GitHub evidence) says "not
-// P", and the other projects still share the day. A NULL project is the old
-// meaning, kept for every row written before the column existed: a project-less
-// fill block was deleted, and no block at all is filed that day. NULLS NOT
-// DISTINCT makes the day-level row unique too.
+// P", and the other projects still share the day. A NULL project means the
+// whole day: a project-less fill block was deleted, so no block is filed that
+// day. NULLS NOT DISTINCT makes the day-level row unique too.
 export const commitFillTombstone = pgTable(
 	"commit_fill_tombstone",
 	{

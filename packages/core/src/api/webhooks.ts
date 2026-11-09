@@ -1,11 +1,9 @@
 /**
  * What an outbound webhook actually carries.
  *
- * A projection, never a row — the same rule as `time-entries.ts`, and for a
- * sharper reason: a receiver here is somebody else's server, written once and
- * left running. A column added to `time_entry` next month must not become a
- * field their script depends on, and a renamed one must not break it, because
- * nobody on this side will find out until they complain.
+ * A projection, never a row (as in `time-entries.ts`). A receiver is another
+ * person's server that runs unattended, so a new or renamed column must not
+ * change a field that it reads.
  *
  * The envelope is the same for every kind:
  *
@@ -18,15 +16,13 @@
  *       "data":      { … }                     decided by `kind`
  *     }
  *
- * **Order is not guaranteed and never will be.** Guaranteeing it costs a queue
- * per organization, in which every event waits behind a dead endpoint's
- * retries. Use `id` to drop a duplicate and `createdAt` to decide which of two
- * events about one entry is the later.
+ * **Order is not guaranteed.** A guarantee needs a queue per organization,
+ * where every event waits behind the retries of a dead endpoint. Use `id` to
+ * drop a duplicate and `createdAt` to order two events about one entry.
  *
- * **One version for the whole deployment, not one per endpoint.** Stripe pins
- * an API version per endpoint; that is worth its machinery when the shapes
- * below have a second version to pin, and not before. When that day comes, the
- * column goes on `webhook_endpoint` and this constant becomes its default.
+ * **One version for the whole deployment, not one per endpoint.** Add a
+ * version column to `webhook_endpoint` when the shapes get a second version.
+ * This constant then becomes its default.
  */
 
 import type { ApiProjectRef, ApiTaskRef } from "./time-entries";

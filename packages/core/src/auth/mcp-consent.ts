@@ -9,34 +9,27 @@ import { oauthApplication, oauthConsent } from "../db/schema/auth";
 /**
  * The person approves every MCP connection on a Farmer screen.
  *
- * better-auth's mcp plugin takes dynamic client registration (RFC 7591) from
- * anybody, with any `redirect_uris`, and it asks for consent only when the
- * CLIENT sends `prompt=consent`. So `/mcp/authorize` was a link a stranger
- * could send: register a client whose redirect is their own server, send a
- * signed-in person the authorize URL with a PKCE challenge of their own, and
- * the person's browser delivered a code for that person's account straight to
- * them — no prompt, no click — which the stranger exchanged for a token and a
- * refresh token.
+ * better-auth's mcp plugin accepts dynamic client registration (RFC 7591) from
+ * anybody, with any `redirect_uris`. It asks for consent only when the client
+ * sends `prompt=consent`. Without the checks below, a stranger could register
+ * a client with their own redirect and send a signed-in person the authorize
+ * URL. The browser would deliver a code for that account to the stranger with
+ * no prompt.
  *
  * Three checks in `hooks.before` (`./index.ts`) close it, one per endpoint:
  *
- * - `/mcp/authorize` always runs as `prompt=consent`, whatever the client
- *   sent, so the plugin sends the browser to `MCP_CONSENT_PAGE` rather than to
- *   the redirect. A signed-out request is saved in a cookie with that prompt
- *   and replayed after sign-in, so it reaches the same screen.
- * - `/oauth2/consent` (better-auth's, which the page posts to) accepts a
- *   consent code only from the account it was issued to. better-auth checks
- *   that somebody is signed in, not who, so a consent code that leaked (a URL
- *   in an analytics event, a shared screen) could otherwise be approved by the
- *   stranger's own session, for the person's account.
- * - `/mcp/token` refuses a code that is still waiting for consent, and one for
- *   a client this person never approved. The plugin's token endpoint checks
- *   neither, so without this the consent code itself was a token.
+ * - `/mcp/authorize` always runs as `prompt=consent`, so the browser goes to
+ *   `MCP_CONSENT_PAGE`. A signed-out request is saved in a cookie and replayed
+ *   after sign-in.
+ * - `/oauth2/consent` accepts a consent code only from the account that
+ *   received it. better-auth checks that somebody is signed in, not who. A
+ *   leaked consent code could otherwise be approved by the stranger's session.
+ * - `/mcp/token` refuses a code that still waits for consent, and a code for a
+ *   client that this person never approved. The plugin checks neither.
  *
- * Every authorization shows the screen, including the next one for a client
- * the person approved before. The approval is recorded (`oauthConsent`) but not
- * used to skip the screen: a connection is rare, and the screen is the one
- * place the person sees where their access is going.
+ * Every authorization shows the screen, also for a client that the person
+ * approved before. `oauthConsent` records the approval but does not skip the
+ * screen: it is the one place where the person sees where their access goes.
  */
 
 /** better-auth's paths, without the `/api/auth` base. */

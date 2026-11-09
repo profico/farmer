@@ -2194,33 +2194,18 @@ html {
 
   /* ------------------------------------------------- assistant answers --- */
 
-  /* A table or a chart inside an answer, allowed out of the reading column.
+  /* A table or a chart inside an answer, allowed out of the 46rem reading
+   * column.
    *
-   * An answer is set in a 46rem column because that is the measure prose is
-   * read at, and the same 46rem is a cage for the two things in an answer that
-   * are NOT prose: a table with a description column, and a trend chart of
-   * forty days. Both were being squeezed into a horizontal scrollbar inside a
-   * column that had a screen's worth of empty room either side of it.
+   * `max-content` lets the block take the width its content needs. A narrow
+   * table still lines up with the paragraph above it (`min-width: 100%`).
+   * `100cqw` is the transcript viewport. The 2rem is the column gutter, so the
+   * transcript never scrolls sideways. The 72rem ceiling is a reading limit.
    *
-   * `max-content` is the whole idea — the block asks for the width its own
-   * content needs and nothing more, so a two-column table still lines up with
-   * the paragraph above it (`min-width: 100%`) and only a wide one spreads.
-   * `100cqw` is the transcript viewport, which is the container; the 2rem is
-   * that column's own gutter, so the widest block stops exactly where the
-   * padding does and nothing ever scrolls the transcript sideways. The 72rem
-   * ceiling is a reading limit rather than a layout one: past about that width
-   * a row's eye travel costs more than the extra column bought, and a table
-   * three times the width of the sentence introducing it reads as a different
-   * document.
-   *
-   * The block grows symmetrically out of the text rather than leaning off one
-   * side, and `align-self` is the only thing that does it. An answer is a flex
-   * column, so this is cross-axis alignment, and box alignment centers an item
-   * that is WIDER than its line. `margin-inline: auto` does not: auto margins
-   * take the free space BEFORE alignment is consulted, and once the free space
-   * is negative they resolve to zero — which reads as a wide table hanging off
-   * the right edge of the screen with the alignment property computing to
-   * `center` and doing nothing. Do not add them back as a "fallback". */
+   * `align-self` centers a block that is wider than its line. An answer is a
+   * flex column, and box alignment centers an item that overflows. Do not use
+   * `margin-inline: auto`: auto margins resolve to zero when the free space is
+   * negative, so a wide table would hang off the right edge. */
   .answer-wide {
     width: max-content;
     min-width: 100%;
@@ -2481,29 +2466,20 @@ html {
 
   /* One word of a streamed answer arriving.
    *
-   * The cadence an answer arrives at belongs to whichever model the org chose:
-   * one sends a token per frame and the next sends a paragraph in one. The pace
-   * is evened out in `typeset.ts`, which hands the reader whole words at a
-   * steady rate; this is the other half, and what it adds is a leading EDGE.
-   * Text that simply switches on has a hard boundary between what is written
-   * and what is not, and the eye reads that boundary as a cursor rather than as
-   * writing. Blurred, the boundary is a few words deep and the answer reads as
-   * being set down.
+   * `typeset.ts` evens out the pace and hands over whole words. This rule adds
+   * a blurred leading edge, so the text reads as being written and not as a
+   * cursor.
    *
-   * 300ms is longer than any token on the scale above, and deliberately: the
-   * reveals OVERLAP. Several words are mid-reveal at any moment, which is what
-   * makes the edge a gradient instead of a line, and at `--dur-fast` each word
-   * would finish before its neighbour started and the edge would strobe. It is
-   * narration rather than a state change, so it is timed like the other
-   * narration in this file (`field-in`, the shimmer) instead of like a control.
+   * 300ms is longer than the other duration tokens on purpose. The reveals
+   * overlap, which makes the edge a gradient. At `--dur-fast` each word would
+   * end before the next one starts and the edge would strobe. The timing
+   * matches the other narration in this file (`field-in`, the shimmer).
    *
-   * `backwards` matters more than the duration. The reveal has to be the
-   * element's FIRST painted state, or a word appears solid for one frame and
-   * then blurs, which reads as a flicker in the middle of a sentence.
+   * Keep `backwards`: the reveal must be the first painted state, or a word
+   * shows solid for one frame and then blurs.
    *
-   * 3px of blur, not more. Every word in a long answer carries this on mount,
-   * so a rejoined thread can start a few hundred at once — a heavy blur there
-   * is a compositor stall on the frame the reader arrives. */
+   * Keep the blur at 3px. A rejoined thread mounts hundreds of words at once,
+   * and a heavy blur stalls the compositor. */
   .answer-word {
     animation: word-in 300ms var(--ease-out) backwards;
   }
@@ -2716,32 +2692,21 @@ html {
 
 /* A page opens with air, never with a rule.
  *
- * `PageHeader` carries the one gap (`mb-7`) and the first band under it drops
- * the hairline it would otherwise open with, because the header is already that
- * boundary — a rule 28px below a title is a second one saying the same thing. It
- * was also the visible difference between Organization and People: identical
- * headers, one of them followed by a line and one not.
+ * `PageHeader` carries the one gap (`mb-7`). The first band under it drops its
+ * hairline, because the header is already the boundary.
  *
- * A page has two ways of opening, not one: a `PageSection`, and a bleeding
- * `<Table>` (People, Clients, Tasks, Hour fund, Recurring blocks). The table
- * carries `border-y`, so covering only the section would leave those five
- * screens opening on the rule the other eight had just lost — the same split,
- * moved. The table needs no rule of its own there: its head row already draws
- * one under itself, which is the boundary a section's eyebrow does without.
+ * A page opens with a `PageSection` or with a bleeding `<Table>`. The table
+ * carries `border-y`, so both selectors are needed. The table needs no rule
+ * of its own, because its head row draws one.
  *
- * Here rather than as a prop on `PageSection` because a per-caller opt-out is
- * exactly the thing that is right twelve times and then forgotten on the
- * thirteenth screen — which is what happened to the `divided` prop this
- * replaces, never passed once in the whole tree. Both selectors are scoped to a
- * direct child of `.screen`, so they can only ever mean "the page's own first
- * band", never a <section> or a table some component nests inside one.
+ * This is CSS, not a prop on `PageSection`, because a per-caller opt-out gets
+ * forgotten on some screen. Both selectors match only a direct child of
+ * `.screen`, so they never match a section or table that a component nests.
  *
- * **Unlayered, and that is the whole reason it works.** Written inside
- * `@layer components` — where everything else in this file lives — it lost to
- * `border-t`/`border-y` however specific it was, because the cascade consults
- * the layer before it ever reaches specificity and `utilities` sorts after
- * `components`. Unlayered rules outrank every layer, so this is the one place
- * in the app that can overrule a utility class without `!important`. */
+ * **Keep this unlayered.** Inside `@layer components` it loses to
+ * `border-t`/`border-y`, because the cascade compares layers before
+ * specificity and `utilities` sorts after `components`. An unlayered rule
+ * outranks every layer, so it overrules a utility class without `!important`. */
 .screen > section:first-of-type,
 .screen > header + [data-slot='table-container'] {
   border-top-width: 0;

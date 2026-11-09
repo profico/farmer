@@ -82,31 +82,19 @@ import { myAccessQuery } from "#/queries/access.ts";
 
 /**
  * The shell's left edge: a NAV column that names the sections, and a PANEL
- * beside it that lists what is inside the one you are in.
+ * beside it that lists what is inside the current section.
  *
- * It replaces a single labelled column that had to carry both at once — four
- * work rows, a Settings row, and twelve settings pages unrolling underneath it,
- * plus a Browse/Chat switch to reach the assistant's threads. Depth goes
- * sideways now: the nav never changes, and the panel is the section's own
- * contents.
+ * The panel exists only where there is a list to show: Settings (the hub's two
+ * groups) and Chat (the thread list). The other sections have no second level,
+ * so the nav keeps its labels there and the page takes the width.
  *
- * **The panel exists only where there is a list to put in it** — Settings (the
- * hub's two groups) and Chat (the thread list). Home, Time, Projects and
- * Reports have no second level, so the nav keeps its labels there and the page
- * takes the width back. A panel drawn empty would be a promise of depth that
- * isn't there.
+ * The nav collapses to an icon rail when a panel opens, so two labelled columns
+ * never sit side by side. The reader can also collapse it, and that choice
+ * persists (`lib/nav-collapse.ts`).
  *
- * **The nav collapses to an icon rail when a panel opens** — two labelled
- * columns side by side are two sidebars, and the second one is the specific
- * one. The reader can also collapse it themselves, anywhere, and that choice
- * sticks (`lib/nav-collapse.ts`).
- *
- * Both columns live in ONE island, rather than two with ground between them:
- * the nav is not a peer of the panel, it is what the panel belongs to. One
- * paper throughout, at both widths: the rail is the same surface as the page
- * beside it, and the hairline that appears once there are two columns is the
- * only thing that marks the boundary. A tinted rail made the shell read as
- * three materials for what is one sheet with a fold in it.
+ * Both columns live in one island on one surface. The rail has the same
+ * background as the page, and a hairline marks the boundary once there are two
+ * columns. Do not tint the rail.
  */
 
 /** Which list the panel is showing, or `null` for a section that has none. */

@@ -24,27 +24,21 @@ import type { Ctx } from "./types";
 /**
  * The stopwatch (issues #59 and #43).
  *
- * It measures. It does not record: `confirm` is the only function here that
- * writes a time entry, and it writes one through `timeEntriesService.create`,
- * so every rule an entry has — the day's 24 hours, the mandatory note, the task
- * taxonomy — applies to a measured hour exactly as it does to a typed one.
- * That is the whole answer to "a stopwatch produces figures like 2:12": the
- * figure is snapped before anybody sees it, and the measured part they saw is saved, and
- * an edit of the entry hours is kept.
+ * It measures and does not record. `confirm` is the only function here that
+ * writes a time entry, and it writes through `timeEntriesService.create`, so
+ * every entry rule (24 hours a day, the mandatory note, the task taxonomy)
+ * applies to a measured hour as it does to a typed one. The figure is snapped
+ * before anybody sees it.
  *
- * One timer per PERSON, not per workspace — see `db/schema/timer.ts`. Every
- * function still takes a Ctx, and a function that writes still names the
- * organization, but `get` deliberately does not filter by it: a timer running
- * in another workspace must be visible from this one, or the person is told
- * that nothing is running while something is.
+ * One timer per person, not per workspace (see `db/schema/timer.ts`). Every
+ * function takes a Ctx and a write names the organization, but `get` does not
+ * filter by it. A timer in another workspace must be visible from this one.
  *
- * A timer may continue an entry (issue #107): it then measures on top of the
- * entry's own duration, and confirming it rewrites that entry through
- * `timeEntriesService.update` instead of writing a new one. The entry's
- * duration, project, task and note are joined on every read (issue #121)
- * rather than copied at start, so the clock and the timesheet never disagree
- * about what the entry holds. The copy in `running_timer` is used only when
- * the entry is gone.
+ * A timer may continue an entry (issue #107). It measures on top of the entry's
+ * duration, and confirming it rewrites the entry through
+ * `timeEntriesService.update`. Every read joins the entry's duration, project,
+ * task and note (issue #121), so the clock and the timesheet agree. The copy in
+ * `running_timer` is used only when the entry is gone.
  */
 
 /** The default cap on a timer nobody stopped. A missing `timer_settings` row
@@ -483,39 +477,35 @@ export const timersService = {
 	/**
 	 * Log the measured time and clear the timer, in one transaction.
 	 *
-	 * Everything that can refuse the entry refuses the whole thing, and the
-	 * timer survives: an archived task, a note the task requires and nobody
-	 * wrote, a day already holding 24 hours. Losing a measurement to a message
-	 * the person can act on would be the one unforgivable bug in a stopwatch.
+	 * Anything that can refuse the entry (an archived task, a missing required
+	 * note, a day with 24 hours) refuses the whole confirm, and the timer
+	 * survives. Never lose a measurement to a message the person can act on.
 	 *
 	 * The project is re-checked for being live, because a timer outlives the
-	 * project state that was true when it started — the same reason a recurring
-	 * block rule re-checks on every materializing pass.
+	 * project state at its start.
 	 *
-	 * A timer that continues an entry rewrites that entry through
-	 * `timeEntriesService.update`, which owes the day the same rules `create`
-	 * does. `update` is a full-form edit, so every field the caller left out is
-	 * taken from the entry: an absent project or note keeps the entry's, and the
-	 * overtime mark is kept, since no surface that confirms a timer shows it.
+	 * A timer that continues an entry rewrites it through
+	 * `timeEntriesService.update`, which applies the same day rules as `create`.
+	 * `update` is a full-form edit, so a field that the caller left out comes
+	 * from the entry. The overtime mark is kept, because no confirming surface
+	 * shows it.
 	 *
-	 * Every input field but `overtime` is optional, and an absent date, project,
-	 * task or note takes the live value, read under the lock: the entry's own,
-	 * or the timer's copy once the entry is gone. The duration is the entry's
-	 * live hours plus the measured part, snapped. A caller that read the timer
-	 * sends that part as `measuredSeconds`, so the measured part that the person saw
-	 * is saved, and an inline edit of the entry's hours is kept and added to. Without it the server uses its own measured time. `durationSeconds`
-	 * wins when sent.
+	 * Every input field but `overtime` is optional. An absent date, project,
+	 * task or note takes the live value, read under the lock: the entry's, or
+	 * the timer's copy once the entry is gone. The duration is the entry's live
+	 * hours plus the measured part, snapped. A caller that read the timer sends
+	 * that part as `measuredSeconds`, so the person's figure is saved and an
+	 * inline edit of the hours is kept. Without it, the server uses its own
+	 * measured time. `durationSeconds` wins when sent.
 	 *
-	 * Everything is read INSIDE the transaction, and the continued entry is
-	 * locked there before it is written. An entry deleted in another tab has
-	 * then either gone already — the lock finds nothing, and the figure becomes
-	 * a new entry, as `on delete set null` promises — or has to wait for this
-	 * write to commit. Deleting the timer's row last, and requiring that it
-	 * still be there, is what stops two surfaces confirming one timer twice.
+	 * Read everything inside the transaction, and lock the continued entry
+	 * before the write. An entry deleted in another tab is then either gone (the
+	 * figure becomes a new entry, as `on delete set null` promises) or the
+	 * delete waits for this write. The timer row is deleted last, and it must
+	 * still exist, so two surfaces cannot confirm one timer twice.
 	 *
-	 * The phones hear of it after the transaction commits. A caller that
-	 * already holds a transaction would send before its commit; no caller
-	 * does that today.
+	 * The phones hear of it after the commit. A caller that already holds a
+	 * transaction would send before its commit. No caller does this today.
 	 */
 	confirm: async (
 		ctx: Ctx,

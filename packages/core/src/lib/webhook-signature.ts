@@ -1,32 +1,25 @@
 // Proving a webhook came from this deployment.
 //
-// The scheme is Stripe's, because a receiver has probably written it once
-// already and because it is the one shape with libraries in every language:
+// The scheme is Stripe's, so a receiver can use a library in any language:
 //
 //     Farmer-Signature: t=1758096662,v1=<hex>[,v1=<hex>]
 //
-// where each `v1` is the HMAC-SHA256 of the ASCII string `"<t>.<raw body>"`
-// under one of the endpoint's live secrets.
+// Each `v1` is the HMAC-SHA256 of the ASCII string `"<t>.<raw body>"` under one
+// of the endpoint's live secrets.
 //
-// Three details are load-bearing and each answers an attack:
+// Three details are load-bearing, and each stops an attack:
 //
-//   * **The timestamp is INSIDE the signed string.** A signature over the body
-//     alone can be replayed for ever, because the attacker resends bytes that
-//     were validly signed. Signing `t` with it means an old capture carries an
-//     old `t`, and a receiver that enforces the tolerance refuses it.
-//   * **The raw body, not a re-serialization.** A receiver that parses the JSON
-//     and re-encodes it before checking will get a different byte string on the
-//     first payload whose key order or unicode escaping differs. The docs say
-//     to read the body as text first.
-//   * **A constant-time compare.** `===` on a hex digest leaks where the first
-//     differing byte is, which is enough to forge a signature one byte at a
-//     time.
+//   * The timestamp is inside the signed string. A signature over the body
+//     alone can be replayed for ever. With `t` signed, an old capture carries
+//     an old `t`, and a receiver that enforces the tolerance refuses it.
+//   * The signature covers the raw body, not a re-serialization. A re-encoded
+//     JSON body can differ in key order or unicode escaping.
+//   * The compare is constant-time. `===` on a hex digest leaks the position of
+//     the first different byte.
 //
-// A rolled secret produces two `v1` values for 24 hours (see `webhookEndpoint`
-// in `db/schema/webhooks.ts`) so a receiver can be redeployed at its own pace.
-// A verifier that checks "any v1 matches my secret" handles that with no
-// change, which is why the header holds a list rather than a second header
-// name.
+// A rolled secret gives two `v1` values for 24 hours (see `webhookEndpoint` in
+// `db/schema/webhooks.ts`). A verifier that accepts any matching `v1` needs no
+// change, which is why the header holds a list.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 

@@ -2686,35 +2686,26 @@ export const toolDefinitions = (access: Access) =>
 /**
  * The system prompt.
  *
- * Dated and zoned explicitly because every question this assistant gets is
- * relative ("last week", "yesterday") and a model with no date silently anchors
- * on its training cutoff — which produces entries filed months into the past,
- * quietly, onto months that may already be reconciled.
+ * The date and the time zone are explicit, because every question is relative
+ * ("last week"). A model with no date anchors on its training cutoff and files
+ * entries in months that may already be reconciled.
  *
- * `houseRules` is the org's own addition (assistantSettings.systemPrompt),
- * APPENDED rather than substituted, fenced, and explicitly ranked below the
- * rules above it. An admin is trusted — they already hold the API key — so
- * this is not a security boundary. It is a precedence one: the
- * base rules encode facts about the DOMAIN (quarter-hour granularity, ids are
- * looked up not invented, deletes need consent) that stay true no matter what
- * conventions an org layers on top, and a pasted paragraph that happens to
- * contradict one of them should lose rather than silently win.
+ * `houseRules` is the org's own addition (assistantSettings.systemPrompt). The
+ * prompt appends it, fences it and ranks it below the base rules. This is a
+ * precedence rule, not a security boundary, because an admin is trusted. The
+ * base rules state domain facts (quarter-hour granularity, ids are looked up,
+ * deletes need consent) that a pasted paragraph must not override.
  */
 /**
  * Who the model is talking to, as two lines of the system prompt.
  *
- * It used to be told only the date, and that `whoami` existed. That is not the
- * same thing: asked for "Omar's notes" it read the member list, found no Omar
- * among the first page of a 200-person roster, and reported that no such person
- * works here — to Omar. A model cannot be expected to guess that the question
- * is about the person asking it, and the fix is not a better tool description;
- * it is telling it whose session this is before it reads anything.
+ * The model must know whose session this is before it reads anything. Asked
+ * for "Omar's notes", a model that knew only the date read the first page of a
+ * 200-person roster, found no Omar and told Omar that he does not exist.
  *
- * The name and the id both, because every other tool takes an id and the reader
- * only ever types a name. Deliberately NOT the whole `whoami` answer — working
- * hours, member type and the project list are a real read and belong behind a
- * tool the model calls when a question turns on them, whereas identity is
- * needed to understand the question at all.
+ * The line holds the name and the id, because every other tool takes an id and
+ * the reader types a name. It does not hold the whole `whoami` answer: that is
+ * a real read, and the model calls the tool when a question needs it.
  *
  * One query, on `ctxDb`, beside the memoized `Access` the caller already has.
  */

@@ -2,42 +2,29 @@ import { useCallback, useSyncExternalStore } from "react";
 
 // Preferences → Display → Scale: how large the app is drawn, on this device.
 //
-// It is CSS `zoom` on <html>, which is the browser's own zoom in one property:
-// it scales text, borders, radii, icons and images together, it drives the
-// layout rather than transforming a finished one, and the media queries see
-// the result. The alternative — a root font size with everything in rem —
-// cannot work in this app without first taking `--fs-micro`…`--fs-lg`, `.h1`,
-// `.h2`, `--radius` and `--mobile-nav-h` out of px, which is a large diff for a
-// worse result.
+// It is CSS `zoom` on <html>, the browser's own zoom in one property. It
+// scales text, borders, radii, icons and images together, it drives the layout,
+// and media queries see the result. A root font size would first need every px
+// token (`--fs-*`, `.h1`, `.h2`, `--radius`, `--mobile-nav-h`) converted to rem.
 //
-// `zoom` gets two things wrong, and `styles.css` corrects both at the call
-// sites rather than here. A viewport unit and an `env()` inset are resolved
-// against the UNZOOMED viewport and then scaled, so they come out too big;
-// every one of them divides by `--ui-scale`. Search the tree for
-// `var(--ui-scale` to find them — a new `svh`, `dvh`, `vw` or `env(safe-area-*)`
-// length needs the same division or it overflows at 150%.
+// `zoom` gets two things wrong, and `styles.css` corrects them at the call
+// sites. A viewport unit or an `env()` inset resolves against the unzoomed
+// viewport and then scales, so it comes out too big. Each one divides by
+// `--ui-scale` (search for `var(--ui-scale`). A new `svh`, `dvh`, `vw` or
+// `env(safe-area-*)` length needs the same division, or it overflows at 150%.
 //
-// A third thing it gets wrong is not a length, so no division reaches it:
-// inside a zoomed subtree Chrome offsets a `position: sticky` element by its
-// own `top` ON TOP of its static position, as soon as the element has a
-// scrollable ancestor to stick within. The sidebar island is `sticky
-// top-(--frame-pad)` inside a frame that must never scroll, so it dropped a
-// frame-padding down the page on any screen long enough to give the frame
-// scrollable overflow — and only at 125% and above, because at 100% the same
-// screen fits. `styles.css` closes both halves: `.app-frame` is `overflow:
-// clip`, which paints as `hidden` did but leaves no scroll container behind,
-// and `.scroll-fade` is `position: relative`, so what a scroll area scrolls
-// cannot escape it and count as the frame's overflow.
+// The other is not a length. In a zoomed subtree, Chrome offsets a
+// `position: sticky` element by its own `top` on top of its static position,
+// when it has a scrollable ancestor. The sidebar island would drop a
+// frame-padding at 125% and above. So `.app-frame` is `overflow: clip`, which
+// leaves no scroll container, and `.scroll-fade` is `position: relative`, so
+// its scrolling cannot count as the frame's overflow.
 //
-// One consequence is deliberate and not corrected: at a large scale the media
-// queries report a narrower viewport, so a laptop switches to the mobile layout
-// and the tab bar appears. That is what browser zoom does. Freezing the
-// breakpoints instead would scale the type and keep a desktop grid that no
-// longer fits it.
+// At a large scale the media queries report a narrower viewport, so a laptop
+// gets the mobile layout. This is deliberate and matches browser zoom.
 //
-// Built the way `lib/theme.ts` builds light/dark, for the same reasons: it
-// belongs to the device, it has to apply before the first paint, and the DOM is
-// the state.
+// It follows `lib/theme.ts`: it belongs to the device, it applies before the
+// first paint, and the DOM is the state.
 
 /** The steps, as percentages. A short list rather than a slider: every value
  *  here is one somebody would choose on purpose, and a scale of 103% is not. */

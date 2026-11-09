@@ -1,36 +1,29 @@
-// Harvest exports numbers in two locale formats, sometimes in the same
-// export: `"10.773,68"` (decimal comma, thousands dot — the time report and
-// project list) and `"40.0"` (plain decimal point, no grouping — the people
-// list's Capacity column). A value never mixes both separators within one
-// number field in the real files, but the parser below tolerates the
-// ambiguous case anyway, because a future export is not guaranteed to be as
-// clean.
+// Harvest exports numbers in two locale formats, sometimes in one export:
+// `"10.773,68"` (decimal comma, thousands dot) and `"40.0"` (decimal point,
+// no grouping). The real files never mix both separators in one value, but
+// the parser accepts that case, because a future export may do it.
 //
 // The rule, in order:
 //
-// 1. Both `,` and `.` appear: the one that occurs LAST in the string is the
-//    decimal separator; every other occurrence of either character is a
-//    thousands separator and is stripped. This matches both `"10.773,68"`
-//    (comma last → decimal comma) and `"10,773.68"` (dot last → decimal
-//    point).
-// 2. Only `,` appears: look at the digits after the LAST comma.
-//    - 1 or 2 trailing digits → decimal comma (`"0,5"`, `"8,25"`, `"40,0"`).
-//    - exactly 3 trailing digits, running to the end of the string → a
-//      thousands separator with no fractional part (`"10,773"` = 10773).
-//      Every comma in the string is stripped on this branch, so
-//      `"1,234,567"` also reads as an integer.
-//    - anything else (0, or 4+) → decimal comma, since a real thousands
-//      group is always exactly 3 digits.
-// 3. Only `.` appears: the mirror image, with one difference — a dot
-//    followed by exactly 3 digits is only read as thousands grouping when
-//    there is MORE THAN ONE dot in the string (`"1.234.567"`). A single dot
-//    with 3 trailing digits and nothing else (`"1.234"`) has no grouping
-//    evidence, so it is read as a decimal point.
+// 1. Both `,` and `.` appear: the last one in the string is the decimal
+//    separator. Every other `,` or `.` is a thousands separator and is
+//    stripped (`"10.773,68"` and `"10,773.68"` both give 10773.68).
+// 2. Only `,` appears: look at the digits after the last comma.
+//    - 1 or 2 digits: decimal comma (`"0,5"`, `"8,25"`).
+//    - exactly 3 digits to the end of the string: a thousands separator
+//      (`"10,773"` = 10773). Every comma is stripped, so `"1,234,567"` is an
+//      integer.
+//    - 0 or 4+ digits: decimal comma, because a thousands group has exactly 3
+//      digits.
+// 3. Only `.` appears: the same, with one difference. A dot with exactly 3
+//    digits after it is thousands grouping only when the string has more than
+//    one dot (`"1.234.567"`). A single dot (`"1.234"`) has no grouping
+//    evidence, so it is a decimal point.
 // 4. Neither appears: the whole string is the integer part.
 //
-// A leading `+` or `-` is preserved. An empty (or whitespace-only) string is
-// `null`. A string that still contains a non-digit character after applying
-// the rule above is `null` — the caller decides whether that is an error.
+// A leading `+` or `-` is kept. An empty or whitespace-only string gives
+// `null`. A string with a non-digit character left after the rule gives `null`;
+// the caller decides whether that is an error.
 export function parseHarvestNumber(raw: string): number | null {
 	const trimmed = raw.trim();
 	if (trimmed === "") return null;

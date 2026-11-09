@@ -12,20 +12,17 @@ import { isInstanceEmpty } from "./sign-in-methods";
 
 /**
  * Who may create an account. Called from `databaseHooks.user.create.before`
- * in `./index.ts`, because signing in with Google or an OpenID Connect source
- * IS the signup: the user row is created in the middle of the OAuth callback,
- * with no form in the path. One hook is the only place that covers every way
- * a user row is made.
+ * in `./index.ts`. A sign-in with Google or an OpenID Connect source is the
+ * signup, so the user row is made in the middle of the OAuth callback. This
+ * one hook covers every way to make a user row.
  *
  * Issue #75, decision 3: the first account configures the instance, and then
  * registration closes. In order:
  *
- * 1. Single-org mode with its organization claimed: an invitation to THAT
- *    organization, or `INVITE_ONLY`. `REGISTRATION_OPEN` does not widen it;
- *    the mode is the operator saying "one workspace, by invitation".
- * 2. A password signup outside development: only the first account. The
- *    password form exists in production for the bootstrap and nothing else
- *    (see `passwordSignIn` in `./sign-in-methods.ts`).
+ * 1. Single-org mode with its organization claimed: an invitation to that
+ *    organization, or `INVITE_ONLY`. `REGISTRATION_OPEN` does not widen it.
+ * 2. A password signup outside development: only the first account (see
+ *    `passwordSignIn` in `./sign-in-methods.ts`).
  * 3. The instance has no user: allowed. This account becomes the platform
  *    admin (`claimPlatformAdmin`) and, in single-org mode, claims the
  *    organization.
@@ -36,21 +33,16 @@ import { isInstanceEmpty } from "./sign-in-methods";
  *
  * An invitation is matched by address alone, so it counts only when the
  * address is verified (`mayClaimInvitation`). An OpenID Connect source with
- * open self-registration hands out any address it is asked for, unverified;
- * without the check, a stranger there could take an invitation meant for
- * somebody else, admin role and all. The same check guards accepting one
- * (`requireEmailVerificationOnInvitation` in `./index.ts`) and listing one
- * (`listMyPendingInvitations` in the web app).
+ * open self-registration gives out any address, unverified. Without the check,
+ * a stranger could take an invitation for somebody else, admin role included.
+ * `requireEmailVerificationOnInvitation` in `./index.ts` and
+ * `listMyPendingInvitations` in the web app use the same check.
  *
- * Single-org mode with its organization NOT claimed yet falls through to 3-6.
- * It used to be open to anybody, which on a populated instance handed the
- * organization to whichever stranger signed up first.
+ * Single-org mode with an unclaimed organization falls through to 3-6.
  *
- * The `code` of each APIError is load-bearing: better-auth's OAuth callbacks
- * (the social one and genericOAuth's) turn a thrown APIError into a redirect
- * to `errorCallbackURL` only when it carries a `code`, with the message as
- * `error_description`. Without one the visitor gets a raw 403 in the middle of
- * the round trip instead of the login page's message.
+ * The `code` of each APIError is required. better-auth's OAuth callbacks
+ * redirect to `errorCallbackURL` only when the thrown APIError has a `code`.
+ * Without one the visitor gets a raw 403 in the middle of the round trip.
  *
  * "The instance has no user" is a read before a write, so two first signups
  * in the same instant can both pass. The cost is a second ordinary account;

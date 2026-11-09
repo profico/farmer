@@ -1,45 +1,31 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-// Preferences → Display → Font: which faces the app is set in, on this device.
+// Preferences → Display → Font: which faces the app uses, on this device.
 //
-// Three roles, because the app has three faces and they do different jobs:
+// Three roles: body (`--sans`, all text), display (`--serif`, page titles and
+// big numbers) and mono (`--mono`, durations and code).
 //
-//   body     `--sans`   everything that is read as text
-//   display  `--serif`  page titles and the big numbers (`.h1`, `.h2`)
-//   mono     `--mono`   durations and code, where figures have to line up
+// It follows `lib/theme.ts`: the choice belongs to the device, it applies
+// before the first paint, and the DOM is the state.
 //
-// Built the way `lib/theme.ts` builds light/dark, for the same reasons: the
-// choice belongs to the device, it has to be applied before the first paint,
-// and the DOM is the state.
+// `styles.css` declares `--sans`, `--serif` and `--mono` on `:root`. `@theme
+// inline` points Tailwind's `--font-*` variables at them. Keep `inline`:
+// without it Tailwind bakes the family name into the utility, and a runtime
+// choice never reaches a `font-sans` class.
 //
-// HOW A CHOICE REACHES THE UTILITIES. `styles.css` declares `--sans`, `--serif`
-// and `--mono` as ordinary properties on `:root`, and `@theme inline` points
-// Tailwind's `--font-sans` / `--font-display` / `--font-mono` at them. The
-// `inline` is load-bearing: it inlines the *reference* into every generated
-// utility, so `font-sans` compiles to `font-family: var(--sans)` and follows a
-// runtime change. Written without it, Tailwind would bake the family name into
-// the utility and no choice would ever reach a `font-sans` class.
+// Nothing downloads until someone picks a non-default face. The three defaults
+// come from the static `@import` in `styles.css`. Any other face is one
+// injected <link>, built in the inline script so it loads before first paint.
 //
-// WHAT GETS DOWNLOADED. Nothing, until somebody picks a non-default face.
-// The three defaults are in the static `@import` at the top of `styles.css`
-// and are already on the page; anything else arrives as one injected <link>,
-// built in the inline script so the face is requested before the first paint
-// rather than after hydration.
+// Only a face id is read from localStorage, and only an id in this catalogue
+// is used. Do not write a stored family name or CSS value into a style
+// property, because that would let storage put arbitrary CSS on the page.
 //
-// Only a face id is ever read out of localStorage, and only an id this
-// catalogue knows is acted on. A family name or a CSS value read from storage
-// and written into a style property would be a way to put arbitrary CSS on the
-// page; an id checked against a table is not.
-//
-// ONE EXCEPTION, and it is narrow: a font from the device is stored as
-// `local:<family>`. That id is acted on only when <family> matches
-// `LOCAL_FAMILY` (letters, marks, digits, space, `-`, `_`, `.`, `(`, `)` and
-// `+`, 1 to 64 long). The pattern has no quote, backslash, semicolon, brace
-// or colon, so the family
-// can only ever be one quoted name inside the stack that is built here. Both
-// `fontsInitScript` and `readStored` check it, and anything else is the default.
-// Nothing is downloaded for such a face: the device either has it or the stack
-// falls back.
+// The one exception is a font from the device, stored as `local:<family>`. It
+// is used only when <family> matches `LOCAL_FAMILY`. The pattern allows no
+// quote, backslash, semicolon, brace or colon, so the family can only be one
+// quoted name in the stack. Both `fontsInitScript` and `readStored` check it,
+// and anything else gives the default. Nothing downloads for such a face.
 
 export type FaceRole = "body" | "display" | "mono";
 

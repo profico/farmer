@@ -1,34 +1,22 @@
 import type { JsonValue } from "@farmer/core/lib/json";
 import { createFileRoute } from "@tanstack/react-router";
 
-// GitHub's deliveries about the App itself. One event matters and one is a
-// courtesy:
+// GitHub's deliveries about the App itself:
 //
-//  - `installation.deleted` / `installation.suspend` — the App was removed or
-//    suspended on GitHub. Without this the `org_github_installation` row
-//    outlives the installation it names, and every commit and pull request
-//    read fails against a dead installation id: a sync that is broken while
-//    Integrations still shows the account as connected. Disconnecting inside
-//    the app can uninstall on GitHub (Settings → Integrations), but nothing
-//    stops an owner doing it from GitHub's own settings page, which is where
-//    most of them will.
-//  - `installation_repositories` — the repository selection changed. The repo
-//    list is cached for five minutes to a day, so an admin who just changed it
-//    on GitHub would come back to the old list.
+//  - `installation.deleted` / `installation.suspend`: the owner removed the
+//    App on GitHub. Without this, the `org_github_installation` row names a
+//    dead installation and every commit and pull request read fails.
+//  - `installation_repositories`: the repository selection changed. This
+//    clears the cached repo list.
 //
 // This route is PUBLIC: no session, no org, no CSRF token. The HMAC signature
-// over the raw body is the entire authorization, so nothing here reads an id
-// from anywhere but the verified payload, and every answer is the same shape
-// whether or not the installation was known — an unverified caller learns
-// nothing about which accounts this deployment holds.
+// over the raw body is the only authorization. Read an id only from the
+// verified payload. Give the same answer shape whether or not the
+// installation is known, so an unverified caller learns nothing.
 //
-// Configure it in the App settings: Webhook URL
-// {BETTER_AUTH_URL}/api/github/webhook, "Active" ticked, and a Webhook secret
-// matching GITHUB_WEBHOOK_SECRET. Neither event is subscribed to — GitHub
-// sends `installation` and `installation_repositories` to every App and says
-// so: "All GitHub Apps receive this event by default. You cannot manually
-// subscribe to this event." So a webhook URL and a secret are the whole
-// setup, and an App with an empty "Subscribe to events" list still gets both.
+// Setup: set the App webhook URL to {BETTER_AUTH_URL}/api/github/webhook and
+// the secret to GITHUB_WEBHOOK_SECRET. GitHub sends both events to every App,
+// so the "Subscribe to events" list can stay empty.
 export const Route = createFileRoute("/api/github/webhook")({
 	server: {
 		handlers: {

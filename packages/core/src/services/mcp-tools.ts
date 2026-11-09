@@ -1,35 +1,25 @@
 /**
  * The assistant's tool registry, described the way MCP describes tools.
  *
- * A mapping and nothing else. `assistant-tools.ts` already holds a `name`, a
- * `description`, a Zod schema and a `run(ctx, args)` per tool, `toolsFor`
- * already scopes the list to a caller and `findTool` already dispatches by
- * name — so an MCP server needs no registry of its own, no layer that invents
- * tool names from HTTP routes, and no second copy of the §4 matrix. What it
- * needs is the same list under MCP's field names.
+ * A mapping and nothing else. `assistant-tools.ts` holds each tool's `name`,
+ * `description`, Zod schema and `run(ctx, args)`, and `toolsFor` and `findTool`
+ * already scope and dispatch. MCP needs the same list under its own field
+ * names, with no second registry and no second copy of the §4 matrix.
  *
- * It lives in `packages/core` and imports no MCP SDK, on purpose. The
- * boundary rule says this package never learns about a transport, and the
- * return type below is plain data that `apps/web` hands to the SDK — which is
- * also what lets a future `apps/mcp` process use it without either of them
- * owning the mapping.
+ * This module imports no MCP SDK, on purpose: `packages/core` never learns
+ * about a transport. The return type is plain data that `apps/web` hands to
+ * the SDK.
  *
- * Two things do not survive the trip, and both are Farmer UI concepts rather
- * than losses:
+ * Two Farmer UI concepts do not survive the mapping:
  *
- *   * **The approval tiers.** MCP has no server-side approval protocol — the
- *     CLIENT prompts, from the annotations below. So every tool is exposed and
- *     `kind` becomes a hint: `read` is `readOnlyHint`, `destructive` is
- *     `destructiveHint`. Withholding the destructive tools instead would not
- *     make anything safer (the services assert either way) and would take the
- *     one thing an agent needs to correct its own mistake — deleting the entry
- *     it just created wrong.
- *   * **The row-by-row card.** `apply_day_assembly` and `file_time_entries`
- *     suspend the assistant's turn and come back with a ticked subset;
- *     `preview`/`withSelection` have no MCP spelling, so over this transport
- *     they are all-or-nothing writes. Their `run` already behaves that way —
- *     the selection is applied to the ARGUMENTS before it is called — so this
- *     costs the partial "yes", not correctness.
+ *   * The approval tiers. MCP has no server-side approval, so the client
+ *     prompts from the annotations. Every tool is exposed, and `kind` becomes a
+ *     hint: `read` is `readOnlyHint`, `destructive` is `destructiveHint`. Hiding
+ *     the destructive tools adds no safety (the services assert either way) and
+ *     removes the way for an agent to undo its own mistake.
+ *   * The row-by-row card. `apply_day_assembly` and `file_time_entries` suspend
+ *     the turn for a ticked subset. Over MCP they are all-or-nothing writes,
+ *     because `run` applies the selection to the arguments before it runs.
  */
 
 import type { JsonRecord } from "../lib/json";

@@ -67,28 +67,23 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
 /**
  * The taxonomy gate on every entry write. Four shapes are legal:
  *
- *   * a WORKED entry — a non-absence task the project has cherry-picked, plus
- *     that project;
- *   * a UNIVERSAL entry — a site-scoped non-absence built-in (Meeting, Break)
- *     plus any project in the org. These are not cherry-picked: see below;
- *   * an ABSENCE entry — one of the built-in absence tasks and no project at
- *     all, because absence carries no client and no project;
- *   * an UNFILED entry — a non-absence task and no project yet. A draft: real
- *     time on the day, not yet attributed to a project.
+ *   * a worked entry: a non-absence task that the project has cherry-picked,
+ *     plus that project;
+ *   * a universal entry: a site-scoped non-absence built-in (Meeting, Break)
+ *     plus any project in the org. These are not cherry-picked;
+ *   * an absence entry: a built-in absence task and no project;
+ *   * an unfiled entry: a non-absence task and no project yet. This is a draft.
  *
- * Unfiled used to be rejected here ("Pick a project for this task") while three
- * engines wrote it straight to the database anyway, bypassing this guard: the
- * calendar sync files imported meetings with no project, and the commit fill
- * block and day assembler do the same. The result was a row the app could
- * produce but neither create by hand nor edit — opening a synced meeting and
- * saving it threw, because `update` runs this guard too. Admitting the shape is
- * what makes those entries editable; `timeEntriesService.countUnfiled` and the
- * close guard are what stop them from being forgotten.
+ * The unfiled shape must stay legal. The calendar sync, the commit fill block
+ * and the day assembler write it, and `update` runs this guard, so a synced
+ * meeting would fail to save. `timeEntriesService.countUnfiled` and the close
+ * guard stop these entries from being forgotten.
  *
- * Anything else (an absence task pinned to a project, another org's task, an
- * archived task) is still rejected. Resolves to the task's flags, so a caller
- * that also needs `isAbsence` or `systemKey` does not fetch the row twice. This is the service-layer half
- * of the invariant; the database can't express it because the checks need joins.
+ * Anything else (an absence task on a project, another org's task, an archived
+ * task) is rejected. It resolves to the task's flags, so a caller that needs
+ * `isAbsence` or `systemKey` does not fetch the row twice. This is the
+ * service-layer half of the invariant. The database cannot express it, because
+ * the checks need joins.
  */
 export const assertTaskAvailable = async (
 	ctx: Ctx,

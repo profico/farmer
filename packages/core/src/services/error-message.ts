@@ -10,35 +10,29 @@ import { DayCapacityError } from "./time-entries.service";
 
 /**
  * What a caller outside this process may be told about an error a service
- * threw — one answer for the CLI's REST API, the MCP server and the tool
- * results the assistant sends to its model provider.
+ * threw. The CLI's REST API, the MCP server and the assistant's tool results
+ * all use this one answer.
  *
- *  - `validation` — a `ZodError`: the input was understood and refused.
- *  - `capacity` — a `DayCapacityError`: the day is full.
- *  - `forbidden` — an `AccessError`. Its message is written for the person
- *    ("You are not assigned to this project").
- *  - `not_found` / `refused` — any other `UserFacingError`
- *    (`lib/user-facing-error.ts`): a class that promises its message is a
- *    sentence for the person — an upload refused, GitHub throttling, the
- *    assistant not connected. Also an error whose constructor is exactly
- *    `Error` and carries no `code`: a sentence a service threw ON PURPOSE —
- *    `throw new Error("Time entry not found")`. `not_found` when the sentence
- *    says "not found".
- *  - `unsafe` — anything else. A `DrizzleQueryError` carries the SQL and its
- *    parameters, a `PostgresError` a table name, a `TypeError` a file path.
- *    It belongs in the server log, never in an answer.
+ *  - `validation`: a `ZodError`. The input was understood and refused.
+ *  - `capacity`: a `DayCapacityError`. The day is full.
+ *  - `forbidden`: an `AccessError`. Its message is written for the person.
+ *  - `not_found` / `refused`: any other `UserFacingError`
+ *    (`lib/user-facing-error.ts`), or an error whose constructor is exactly
+ *    `Error` and has no `code`: a sentence that a service threw on purpose,
+ *    such as `throw new Error("Time entry not found")`. `not_found` when the
+ *    sentence says "not found".
+ *  - `unsafe`: anything else. A `DrizzleQueryError` carries the SQL, a
+ *    `PostgresError` a table name, a `TypeError` a file path. These go to the
+ *    server log, never to an answer.
  *
  * Exposure is a property of the class: extend `UserFacingError` to be read.
- * The bare-`Error` branch is the fallback for the services' many
- * `throw new Error("…")` sentences, and it is the one to watch — it is a
- * convention rather than a type. The integration clients in `lib/` break it
- * today (`github-client.ts` throws `GitHub API error 404: <url>`), and a
- * service that starts throwing a bare `Error` with a raw database message in
- * it would put that text in front of a client. Throw a subclass for anything
- * that is not a sentence for the person.
+ * The bare-`Error` branch is a convention, not a type, so watch it. A service
+ * that throws a bare `Error` with a raw database message would show that text
+ * to a client. `github-client.ts` already does this (`GitHub API error 404:
+ * <url>`). Throw a subclass for anything that is not a sentence for the person.
  *
- * The `code` test exists because Node-style system errors (`ECONNREFUSED`
- * with an address in it) are bare `Error`s too; what marks them is `code`.
+ * The `code` test excludes Node system errors (`ECONNREFUSED` with an address),
+ * which are bare `Error`s too.
  */
 export type ServiceErrorVerdict =
 	| { kind: "validation"; message: string; error: z.core.$ZodError }

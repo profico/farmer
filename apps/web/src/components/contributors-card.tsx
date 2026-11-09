@@ -23,51 +23,25 @@ import type { Contributor } from "#/server/deployment-info.ts";
 /**
  * Who built this, at the foot of Settings.
  *
- * It is the whole of what was going to be an About page. A page would have been
- * a destination nobody navigates to, holding one fact; the same fact sits at
- * the bottom of a screen people already open, where "who made this" is a
- * question somebody has while they are there.
+ * The band has the height (`--footer-h`) and hairline of the account row, so
+ * the rule that closes the panel and the rule that closes the nav column are
+ * one line across the foot of the app. It is one row: the count on the left,
+ * the faces on the right. The count is muted, because the faces are the focus.
  *
- * **A band, not a card, and the account row's band exactly.** It takes
- * `--footer-h` and its own hairline, so the rule that closes the panel and the
- * rule that closes the nav column beside it are ONE line across the app's foot
- * — the same way the timesheet's footer aligns to it. A bordered box floating
- * inside a 240px column read as a widget somebody dropped in, and a band of its
- * own height read as a near miss, which is worse than either.
+ * `--colophon-px` is the horizontal margin of the contents. The padding must
+ * be on the control, not on the block, so that the fill reaches the edges. A
+ * caller that bleeds the band to a wider gutter (Settings, below `md`) changes
+ * the one variable.
  *
- * The fixed height is what decides the contents: one row, the count on the
- * left and the faces pushed to the right edge, so the band reads across the
- * column rather than as a clump at one end of it. There is no GitHub mark and
- * no second line — a stack of faces beside the word "contributors" says whose
- * repository it is without a logo, and a colophon does not need to introduce
- * itself twice. The count is muted: it labels the faces, and the faces are the
- * thing.
+ * The stack shows a few faces and a +N for the rest. Hover or click opens the
+ * full list with the same control, because a touch screen has no hover.
  *
- * `--colophon-px` is the horizontal margin the contents sit on, because the
- * padding has to be on the CONTROL rather than on the block for the fill to
- * reach the edges — so a caller that bleeds the band to a wider gutter
- * (Settings, below `md`) moves the two together instead of nesting one inside
- * the other.
+ * It renders nothing when the deployment has no contributors to show (for
+ * example, no GitHub App).
  *
- * **A few faces and a +N, because a few is what fits and eleven is what
- * matters.** The stack is a count you can see rather than read, and the number
- * beside it is the honest remainder. Opening it — by hover or by click, the
- * same control either way — is what turns the count into people, since a touch
- * screen has no hover and a stack that only answers to a pointer answers to
- * nobody on a phone.
- *
- * Renders nothing at all when the deployment has nobody to show — no GitHub
- * App configured is a perfectly ordinary way to run this, and an empty band
- * explaining its own absence is worse than none.
- *
- * **It arrives, it does not appear.** Nothing here is worth interrupting the
- * page for, so the question is only whether the reader sees it turn up. Two
- * answers, in this order: after a first visit it is drawn from the stored
- * answer in the first frame and there is nothing to see (`queries/about.ts`),
- * and when it genuinely does arrive late it rises the house four pixels into
- * place on `springProductive` rather than switching itself on. It rises rather
- * than falls because it is docked to the bottom of what it sits in, so it
- * enters from the edge it belongs to.
+ * It must not pop in. After a first visit it draws from the stored answer in
+ * the first frame (`queries/about.ts`). When it arrives late, it rises four
+ * pixels on `springProductive`, because it is docked to the bottom edge.
  */
 
 /** The most faces the stack draws before the rest become a number. Five and

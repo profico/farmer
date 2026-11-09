@@ -1,29 +1,19 @@
 // Every service function that opens a transaction, driven with a COLD Ctx.
 //
-// This is the shape of the bug it exists to catch: `ctxTimezone` resolved
-// through the ambient `db` handle, and `remove`, `copyDay` and `setWeekCell`
-// all call it from INSIDE their own `withCtxTx`. `db.transaction` reserves a
-// connection for its whole duration, so an ambient read at that point needs a
-// second connection while still holding the first. The pool is 10 wide with no
-// `connect_timeout`, so ten concurrent such requests hold all ten connections
-// and every one of them waits forever for an eleventh.
+// The bug it catches: a read through the ambient `db` handle (such as
+// `ctxTimezone`) inside `withCtxTx`. `db.transaction` holds a connection, so
+// the ambient read needs a second one. The pool has 10 connections and no
+// `connect_timeout`, so ten concurrent requests hold all ten and wait for an
+// eleventh for ever.
 //
-// Two things hid it. In production the memo is usually warm by the time a
-// transaction opens, so the ambient read never happens — but
-// `requireOrgContext` returns a bare `{ organizationId, userId }` literal per
-// request, so "usually" is doing a lot of work. And in tests, every file shares
-// one module-level `ctx` object that an earlier call already populated, which
-// is why 228 passing tests never touched it.
+// Production and the other tests hide it: the memo is usually warm, and the
+// test files share one `ctx` that an earlier call already populated.
 //
-// So the rule this file enforces is: a Ctx that has never been used before must
-// survive every transactional entry point. `freshCtx()` below is deliberately
-// not shared and deliberately not warmed.
+// The rule: a Ctx that has never been used must survive every transactional
+// entry point. `freshCtx()` below is not shared and not warmed.
 //
-// PGLite makes the failure deterministic rather than load-dependent: it has ONE
-// connection, so an ambient read inside a transaction deadlocks on the first
-// try instead of at concurrency 10. Each test therefore carries an explicit
-// timeout — a regression here hangs, it does not throw, and a hang with no
-// deadline would take the whole suite down with it.
+// PGLite has one connection, so the deadlock happens on the first try. A
+// regression hangs and does not throw, so each test has an explicit timeout.
 
 import {
 	afterAll,

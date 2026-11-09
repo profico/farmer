@@ -22,32 +22,26 @@ import { session, verification } from "../db/schema/auth";
  *
  * The flow, as PKCE (RFC 7636) with the method S256:
  *
- *  1. The app makes a random verifier and sends only its challenge, the
- *     base64url SHA-256 of the verifier, as the `cc` parameter of the
- *     `callbackURL` that it gives to the sign-in start.
+ *  1. The app makes a random verifier and sends only its challenge (the
+ *     base64url SHA-256) as the `cc` parameter of the `callbackURL` that it
+ *     gives to the sign-in start.
  *  2. The provider callback redirects to that `callbackURL`. The `expo()`
  *     plugin adds `cookie=<Set-Cookie>`. The hook below runs after the plugin
- *     and removes the cookie and `cc`. The plugin keeps the `callbackURL`
- *     query intact, so `cc` is in the redirect (the proxy and the OAuth state
- *     hold the URL as the app gave it).
- *  3. The hook does not send the browser to the app. It stores a pending
- *     confirmation and sends the browser to the confirmation page
- *     (`mobile-confirm.ts`). When the person continues there, the server
- *     makes `code=<random>` and redirects to the app.
+ *     and removes the cookie and `cc`.
+ *  3. The hook stores a pending confirmation and sends the browser to the
+ *     confirmation page (`mobile-confirm.ts`). When the person continues
+ *     there, the server makes `code=<random>` and redirects to the app.
  *  4. The app sends the code and the verifier to `POST /mobile/exchange`. The
  *     answer is the session token.
  *
  * The code is 32 random bytes. The server keeps only its SHA-256, in the
- * `verification` table of better-auth, with the challenge and the id of the
- * session. A code lives for `EXCHANGE_TTL_MS` and works once: an attempt
- * deletes the row, whether the verifier is right or not. A wrong verifier
- * burns that one code and no other, so a hostile app that holds a code can
- * stop a sign-in but cannot make a session. The app starts the flow again.
+ * `verification` table of better-auth, with the challenge and the session id.
+ * A code lives for `EXCHANGE_TTL_MS` and works once: an attempt deletes the
+ * row, whether the verifier is right or not. A hostile app that holds a code
+ * can stop a sign-in but cannot make a session.
  *
- * The exchange is the only path. The link of a callback that ends at the app
- * never carries the session: with no valid `cc` it carries
- * `error=exchange_failed`. The app ships with the server, so no app asks for
- * the old `cookie` link.
+ * The exchange is the only path. A callback link never carries the session:
+ * with no valid `cc` it carries `error=exchange_failed`.
  */
 
 /** How long a code lives. The app redeems it as soon as the link opens. */

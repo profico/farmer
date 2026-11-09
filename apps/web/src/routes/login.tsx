@@ -130,30 +130,19 @@ const GENERIC_ERROR: SignInFailure = {
 };
 
 /**
- * The sign-in screen — which, when Google is the only way in, is still not a
- * screen.
- *
- * With Google as the one provider, and no password form to offer, this route
- * bounces straight into the Google flow, exactly as it always has. It stays a
- * *page* route rather than becoming a second server route so its call sites
- * need no ceremony: `beforeLoad` runs on the server for a document request and
- * in the browser during SPA navigation, and `reloadDocument` turns both into
- * the full-page hop `/api/login` needs.
+ * The sign-in screen. With Google as the only provider and no password form,
+ * `beforeLoad` redirects straight into the Google flow. This is a page route,
+ * not a server route, so call sites need no change: `reloadDocument` makes
+ * the full-page hop that `/api/login` needs.
  *
  * Everything else renders:
  *
- *  - `?error=…` — better-auth's `errorCallbackURL`, most usefully the
- *    registration and invite-only gates. Redirecting here would bounce a
- *    refused visitor between this route and the provider forever.
- *  - more than one provider (Google and the OpenID Connect sources from
- *    Infrastructure → Sign-in), or one that is not Google: a button each.
- *  - no provider at all: "sign-in is not configured yet", and the password
- *    form for the first account or the administrator (`getPasswordSignIn`).
+ *  - `?error=...`: better-auth's `errorCallbackURL`. Do not redirect here, or
+ *    a refused visitor bounces between this route and the provider forever.
+ *  - more than one provider, or one that is not Google: a button each.
+ *  - no provider: "sign-in is not configured yet", and the password form for
+ *    the first account or the administrator (`getPasswordSignIn`).
  *  - development (`config.devAuth`): the development password form.
- *
- * Resolving the config costs nothing on the redirect path that matters: a
- * document request runs these server functions in-process during SSR, not
- * over HTTP.
  */
 export const Route = createFileRoute("/login")({
 	validateSearch: searchSchema,

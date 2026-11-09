@@ -101,27 +101,18 @@ export type PagePoint = { x: number; y: number };
 /**
  * What `zoom` gets wrong in JavaScript, where no CSS correction reaches.
  *
- * Preferences → Display → Scale is `zoom` on `<html>` (`lib/scale.ts`), and
- * `getBoundingClientRect()` answers in the viewport's own pixels — so inside
- * the zoomed root it reports every length multiplied by the scale. motion
- * measures through that rect for all three things it has to measure: the value
- * a `height: "auto"` keyframe resolves to, the boxes a `layoutId` transition
- * interpolates between, and the pointer coordinates a drag follows.
+ * Preferences → Display → Scale is `zoom` on `<html>` (`lib/scale.ts`).
+ * `getBoundingClientRect()` answers in viewport pixels, so inside the zoomed
+ * root every length is multiplied by the scale. motion measures through that
+ * rect for a `height: "auto"` keyframe, for `layoutId` boxes and for drag
+ * pointer coordinates, so all three come out wrong without a correction.
  *
- * At 110% the "Connect your integrations" banner therefore sprang open to 71px,
- * which is its 64px measured once too often, and snapped back the moment motion
- * handed the height back to `auto`. Every height-collapse banner in the app did
- * the same, and a shared-element pill slid one whole scale past its target.
+ * `transformPagePoint` is motion's seam for a transformed page. Dividing by the
+ * scale makes a pixel a CSS pixel again. Set it once on the root
+ * `<MotionConfig>` (`routes/__root.tsx`), never per component.
  *
- * `transformPagePoint` is motion's own seam for a transformed page: every
- * measured point passes through it before motion does arithmetic on it. Divide
- * by the scale and a pixel is a CSS pixel again, which is what all of that
- * arithmetic assumed. It is set once on the root `<MotionConfig>`
- * (`routes/__root.tsx`), never per component.
- *
- * The scale is read per call rather than captured: this is one stable function
- * for the app's life, and `MotionConfig` re-renders every motion component
- * under it whenever that identity changes.
+ * The scale is read per call, not captured. The function stays one stable
+ * identity, and a changed identity would re-render every motion component.
  */
 export function unzoomPagePoint(point: PagePoint): PagePoint {
 	const scale = scaleFactor();
