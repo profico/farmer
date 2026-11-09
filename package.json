@@ -27,16 +27,14 @@
 		"check": "oxfmt --check && oxlint",
 		"complexity": "cccc --top-cognitive 10 . && cccc --top-cyclomatic 10 ."
 	},
-	"dependencies": {
-		"@posthog/react": "1.11.0",
-		"posthog-js": "1.433.5",
-		"posthog-node": "5.52.4"
-	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.80.0",
 		"oxfmt": "0.65.0",
 		"oxlint": "1.80.0",
-		"turbo": "2.10.4"
+		"turbo": "2.11.10"
+	},
+	"overrides": {
+		"tinypool": "2.1.2"
 	},
 	"packageManager": "bun@1.4.2"
 }

@@ -58,11 +58,15 @@ export const Route = createFileRoute("/$orgSlug/rewind")({
 
 function RewindError({ error }: ErrorComponentProps) {
 	// Same recovery as `RouteError`: a chunk that a deploy removed needs a reload.
+	const failure = error instanceof Error ? error : undefined;
 	useEffect(() => {
-		reloadIfStaleChunk(error, browserEnv());
-	}, [error]);
+		reloadIfStaleChunk(failure, browserEnv());
+	}, [failure]);
 	return (
-		<RewindMessage title="This Rewind did not load." line={error.message} />
+		<RewindMessage
+			title="This Rewind did not load."
+			line={failure?.message ?? String(error)}
+		/>
 	);
 }
 

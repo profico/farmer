@@ -44,6 +44,7 @@ function Dialog({
 	onOpenChange,
 	onOpenChangeComplete,
 	children,
+	handle,
 	...props
 }: DialogProps) {
 	const [value, setOpen] = useControllableOpen<ModalChangeEventDetails>({
@@ -72,6 +73,7 @@ function Dialog({
 					<DialogPrimitive.Root
 						data-slot="dialog"
 						{...props}
+						handle={handle}
 						open={value}
 						onOpenChange={setOpen}
 						onOpenChangeComplete={onOpenChangeComplete}
