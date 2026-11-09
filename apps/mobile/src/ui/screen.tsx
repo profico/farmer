@@ -110,6 +110,8 @@ export function Screen({
 				scrollEventThrottle={onScrollOffset ? 32 : undefined}
 				contentInsetAdjustmentBehavior={native ? "automatic" : "never"}
 				keyboardShouldPersistTaps="handled"
+				// iOS: keep a focused field above the keyboard.
+				automaticallyAdjustKeyboardInsets
 				refreshControl={
 					onRefresh ? (
 						<RefreshControl
