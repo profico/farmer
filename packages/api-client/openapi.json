@@ -13088,15 +13088,11 @@
 						"description": "The version of this contract. The mobile app reads it to find out whether the routes that it needs exist."
 					},
 					"serverVersion": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "The release this server was built from, or null for a nightly or a local build."
+						"description": "The release this server was built from, or null for a nightly or a local build.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"minMobileVersion": {
 						"type": "string",
@@ -13141,15 +13137,11 @@
 								"type": "boolean"
 							},
 							"url": {
-								"anyOf": [
-									{
-										"type": "string"
-									},
-									{
-										"type": "null"
-									}
-								],
-								"description": "The relay's base URL, or null while push is off."
+								"description": "The relay's base URL, or null while push is off.",
+								"type": [
+									"string",
+									"null"
+								]
 							}
 						},
 						"required": [
@@ -13237,23 +13229,15 @@
 						"description": "A UUID."
 					},
 					"name": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"email": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"organization": {
@@ -13272,13 +13256,9 @@
 						]
 					},
 					"orgRole": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"isAdmin": {
@@ -13448,13 +13428,9 @@
 						"type": "string"
 					},
 					"code": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"client": {
@@ -13650,13 +13626,9 @@
 						]
 					},
 					"meetingUrl": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -13683,13 +13655,9 @@
 						"maximum": 9007199254740991
 					},
 					"firstError": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -13800,13 +13768,9 @@
 						"type": "string"
 					},
 					"code": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"status": {
@@ -13905,13 +13869,9 @@
 						"type": "boolean"
 					},
 					"systemKey": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -14422,13 +14382,9 @@
 								"type": "string"
 							},
 							"code": {
-								"anyOf": [
-									{
-										"type": "string"
-									},
-									{
-										"type": "null"
-									}
+								"type": [
+									"string",
+									"null"
 								]
 							}
 						},
@@ -14465,26 +14421,18 @@
 						"type": "boolean"
 					},
 					"startTime": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "HH:mm."
+						"description": "HH:mm.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"endTime": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "HH:mm."
+						"description": "HH:mm.",
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				},
 				"required": [
@@ -14530,13 +14478,9 @@
 										"type": "string"
 									},
 									"code": {
-										"anyOf": [
-											{
-												"type": "string"
-											},
-											{
-												"type": "null"
-											}
+										"type": [
+											"string",
+											"null"
 										]
 									}
 								},
@@ -14654,13 +14598,9 @@
 								"type": "boolean"
 							},
 							"login": {
-								"anyOf": [
-									{
-										"type": "string"
-									},
-									{
-										"type": "null"
-									}
+								"type": [
+									"string",
+									"null"
 								]
 							},
 							"unreachable": {
@@ -14686,13 +14626,9 @@
 								"type": "boolean"
 							},
 							"email": {
-								"anyOf": [
-									{
-										"type": "string"
-									},
-									{
-										"type": "null"
-									}
+								"type": [
+									"string",
+									"null"
 								]
 							},
 							"unreachable": {
@@ -14866,23 +14802,15 @@
 									"description": "Clients: projects with time. Projects: people with time. Teammates: projects."
 								},
 								"clientName": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"code": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"archived": {
@@ -14962,13 +14890,9 @@
 											"type": "string"
 										},
 										"code": {
-											"anyOf": [
-												{
-													"type": "string"
-												},
-												{
-													"type": "null"
-												}
+											"type": [
+												"string",
+												"null"
 											]
 										}
 									},
@@ -15097,13 +15021,9 @@
 												"type": "string"
 											},
 											"projectCode": {
-												"anyOf": [
-													{
-														"type": "string"
-													},
-													{
-														"type": "null"
-													}
+												"type": [
+													"string",
+													"null"
 												]
 											},
 											"taskName": {
@@ -15656,13 +15576,9 @@
 									"type": "string"
 								},
 								"icon": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"clientName": {
@@ -15886,13 +15802,9 @@
 									"maximum": 9007199254740991
 								},
 								"holiday": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"mark": {
@@ -16064,26 +15976,18 @@
 						"description": "A day, yyyy-MM-dd."
 					},
 					"skipped": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "Why nothing of this kind goes out on `date`, or null."
+						"description": "Why nothing of this kind goes out on `date`, or null.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"sendsAt": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "HH:mm in the organization's timezone, or null for the end of each person's own workday."
+						"description": "HH:mm in the organization's timezone, or null for the end of each person's own workday.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"recipients": {
 						"type": "array",
@@ -16267,23 +16171,15 @@
 						]
 					},
 					"teamId": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"teamName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"connectedAt": {
@@ -16358,13 +16254,9 @@
 						"type": "string"
 					},
 					"description": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"enabledEvents": {
@@ -16415,13 +16307,9 @@
 						]
 					},
 					"disabledReason": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"lastSuccessAt": {
@@ -16451,13 +16339,9 @@
 						"description": "An instant, ISO 8601 in UTC."
 					},
 					"createdByName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -16563,23 +16447,15 @@
 						]
 					},
 					"error": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"responseSample": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"durationMs": {
@@ -16697,96 +16573,60 @@
 						"description": "The sentence the web app shows."
 					},
 					"actorUserId": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"actorName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"impersonatorName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"via": {
 						"type": "string"
 					},
 					"ip": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"userAgent": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"targetType": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"targetId": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"targetLabel": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"subjectUserId": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"changes": {
@@ -16903,15 +16743,11 @@
 						}
 					},
 					"nextCursor": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "Send it as `cursor` for the next page. Null on the last."
+						"description": "Send it as `cursor` for the next page. Null on the last.",
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				},
 				"required": [
@@ -16974,34 +16810,22 @@
 						"description": "False when an admin paused the assistant here."
 					},
 					"defaultModel": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"keyHint": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "The first characters of the key. Never the key."
+						"description": "The first characters of the key. Never the key.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"systemPrompt": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"connectedAt": {
@@ -17049,15 +16873,11 @@
 						]
 					},
 					"promptPrice": {
-						"anyOf": [
-							{
-								"type": "number"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "USD per million prompt tokens."
+						"description": "USD per million prompt tokens.",
+						"type": [
+							"number",
+							"null"
+						]
 					},
 					"supportsTools": {
 						"type": "boolean"
@@ -17145,24 +16965,16 @@
 						]
 					},
 					"toolCallId": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "On a `tool` row: the call it answers."
+						"description": "On a `tool` row: the call it answers.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"toolName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"pendingApproval": {
@@ -17184,13 +16996,9 @@
 						]
 					},
 					"approvalSummary": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"approvalPreview": {
@@ -17226,13 +17034,9 @@
 										}
 									},
 									"note": {
-										"anyOf": [
-											{
-												"type": "string"
-											},
-											{
-												"type": "null"
-											}
+										"type": [
+											"string",
+											"null"
 										]
 									},
 									"selectable": {
@@ -17519,13 +17323,9 @@
 						"type": "string"
 					},
 					"code": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"status": {
@@ -17568,15 +17368,11 @@
 						"description": "`product_team`, `fixed_scope`, `hourly`, `maintenance` or `internal`."
 					},
 					"icon": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "An emoji, or the path of an uploaded image."
+						"description": "An emoji, or the path of an uploaded image.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"openToOrg": {
 						"type": "boolean",
@@ -17596,26 +17392,18 @@
 						"description": "Fixed scope only. Null also for a caller who may not see money."
 					},
 					"budgetAmount": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "A decimal. Null for a caller who may not see money."
+						"description": "A decimal. Null for a caller who may not see money.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"hourlyPrice": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "A decimal. Null for a caller who may not see money."
+						"description": "A decimal. Null for a caller who may not see money.",
+						"type": [
+							"string",
+							"null"
+						]
 					},
 					"stats": {
 						"type": "object",
@@ -17844,13 +17632,9 @@
 						"type": "boolean"
 					},
 					"systemKey": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"scope": {
@@ -17858,23 +17642,15 @@
 						"description": "`site` for a built-in, which cannot be changed."
 					},
 					"color": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"description": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"archivedAt": {
@@ -18096,13 +17872,9 @@
 						"type": "string"
 					},
 					"role": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"status": {
@@ -18130,13 +17902,9 @@
 										]
 									},
 									"error": {
-										"anyOf": [
-											{
-												"type": "string"
-											},
-											{
-												"type": "null"
-											}
+										"type": [
+											"string",
+											"null"
 										]
 									}
 								},
@@ -18235,13 +18003,9 @@
 						"description": "1 is Monday, 0 is Sunday."
 					},
 					"logo": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -18314,13 +18078,9 @@
 						]
 					},
 					"ipAddress": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"createdAt": {
@@ -18521,13 +18281,9 @@
 									]
 								},
 								"projectName": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"description": {
@@ -18542,23 +18298,15 @@
 									"type": "boolean"
 								},
 								"meetingUrl": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"calendarEventId": {
-									"anyOf": [
-										{
-											"type": "string"
-										},
-										{
-											"type": "null"
-										}
+									"type": [
+										"string",
+										"null"
 									]
 								},
 								"commits": {
@@ -18733,23 +18481,15 @@
 						"description": "An instant, ISO 8601 in UTC."
 					},
 					"meetingUrl": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"htmlLink": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -18779,13 +18519,9 @@
 						"type": "string"
 					},
 					"authorLogin": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"committedAt": {
@@ -18820,13 +18556,9 @@
 						"type": "string"
 					},
 					"authorLogin": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"committedAt": {
@@ -18837,15 +18569,11 @@
 						"type": "string"
 					},
 					"repoFullName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"description": "Null when the repository was unlinked later."
+						"description": "Null when the repository was unlinked later.",
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				},
 				"required": [
@@ -18985,13 +18713,9 @@
 						"description": "An instant, ISO 8601 in UTC."
 					},
 					"repoFullName": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					}
 				},
@@ -19104,13 +18828,9 @@
 													"description": "A UUID."
 												},
 												"projectName": {
-													"anyOf": [
-														{
-															"type": "string"
-														},
-														{
-															"type": "null"
-														}
+													"type": [
+														"string",
+														"null"
 													]
 												}
 											},
@@ -19216,13 +18936,9 @@
 						"type": "string"
 					},
 					"role": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"organization": {
@@ -19281,13 +18997,9 @@
 						"type": "string"
 					},
 					"logo": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
+						"type": [
+							"string",
+							"null"
 						]
 					},
 					"since": {
@@ -20650,7 +20362,7 @@
 					"email": {
 						"type": "string",
 						"format": "email",
-						"pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+						"pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
 					},
 					"role": {
 						"type": "string",

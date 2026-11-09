@@ -45,6 +45,9 @@ const makeErrorRef = () => {
 export function RouteError({ error, reset }: ErrorComponentProps) {
 	const posthog = usePostHog();
 	const message = error instanceof Error ? error.message : String(error);
+	// The router types a route error as `unknown`; only an `Error` can be a
+	// stale chunk failure.
+	const failure = error instanceof Error ? error : undefined;
 	const [errorRef] = useState(makeErrorRef);
 	const inside = useInsideSidebar();
 	const { orgSlug } = useParams({ strict: false });
@@ -56,11 +59,11 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 		// A follow-on error of a pending reload (a module that came back empty)
 		// is part of the same event and is not a fault either.
 		const env = browserEnv();
-		if (reloadIfStaleChunk(error, env) || isReloadPending(env)) return;
+		if (reloadIfStaleChunk(failure, env) || isReloadPending(env)) return;
 		// A stale chunk error is cached by the lazy component and thrown again on
 		// each render, so it is captured once per page load.
-		if (claimStaleChunkFault(error)) posthog.captureException(error);
-	}, [error, posthog]);
+		if (claimStaleChunkFault(failure)) posthog.captureException(error);
+	}, [error, failure, posthog]);
 
 	return (
 		<ErrorScreen>
@@ -78,7 +81,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 								posthog.capture("route_error_retry_clicked");
 								// A stale chunk error is cached by the lazy component, so a
 								// re-render throws it again. Only a new page can fix it.
-								if (isStaleChunkError(error)) browserEnv().reload();
+								if (isStaleChunkError(failure)) browserEnv().reload();
 								else reset();
 							}}
 						>

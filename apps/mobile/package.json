@@ -24,7 +24,7 @@
 		"@expo/vector-icons": "15.1.1",
 		"@farmer/api-client": "workspace:*",
 		"@farmer/push-crypto": "workspace:*",
-		"@tanstack/react-query": "5.101.2",
+		"@tanstack/react-query": "5.107.1",
 		"better-auth": "1.6.23",
 		"expo": "57.0.26",
 		"expo-build-properties": "57.0.22",
@@ -55,7 +55,7 @@
 		"react-native-screens": "4.26.2",
 		"react-native-svg": "15.15.4",
 		"react-native-worklets": "0.10.1",
-		"zod": "4.4.3"
+		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@bacons/apple-targets": "5.0.0",
