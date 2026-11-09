@@ -3,7 +3,7 @@ import {
 	DeviceMobileIcon,
 	GitCommitIcon,
 } from "@phosphor-icons/react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
 
@@ -134,19 +134,18 @@ function Page() {
 				</div>
 				<nav className="fm-segmented" aria-label="Filter by release kind">
 					{FILTERS.map((f) => (
-						<Link
+						// A plain link, not <Link>: on a first load with `?kind=`,
+						// the router still thinks All is active and forces its own
+						// `aria-current` over this one, so no filter lit up.
+						<a
 							key={f.kind}
-							to="/changelog"
-							search={f.kind === "all" ? {} : { kind: f.kind }}
-							// The router marks an active link `aria-current="page"`
-							// itself, and by default an empty search matches every
-							// search, so All lit up on every filter. Exact matching
-							// makes its answer the same as this one.
-							activeOptions={{ exact: true, includeSearch: true }}
+							href={
+								f.kind === "all" ? "/changelog" : `/changelog?kind=${f.kind}`
+							}
 							aria-current={kind === f.kind ? "page" : undefined}
 						>
 							{f.label}
-						</Link>
+						</a>
 					))}
 				</nav>
 			</section>
