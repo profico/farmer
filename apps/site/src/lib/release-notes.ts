@@ -38,7 +38,16 @@ export const webCommitSchema = z.object({
 
 export type WebCommit = z.infer<typeof webCommitSchema>;
 
-/** The web app's changes: the default branch's commits, newest first. */
+export type CommitKind = "web" | "mobile" | "cli";
+
+/** The app a commit is for, from its conventional-commit scope:
+ *  `fix(mobile): …` is the mobile app, `feat(cli): …` the CLI, all else web. */
+export const commitKind = (subject: string): CommitKind => {
+	const scope = /^\w+\((mobile|cli)\)!?:/.exec(subject)?.[1];
+	return scope === "mobile" || scope === "cli" ? scope : "web";
+};
+
+/** The default branch's commits, newest first. */
 export type WebChanges = { commits: WebCommit[] };
 
 /** The file the build script writes. */

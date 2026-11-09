@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+	commitKind,
 	githubCommitList,
 	githubReleaseList,
 	releaseNotesFromBody,
@@ -87,5 +88,18 @@ describe("webCommitsFromList", () => {
 				url: "https://example.com/abcdef1234",
 			},
 		]);
+	});
+});
+
+describe("commitKind", () => {
+	test("reads the mobile and CLI scopes and calls the rest web", () => {
+		expect(commitKind("fix(mobile): inset screens for the iOS keyboard")).toBe(
+			"mobile",
+		);
+		expect(commitKind("ci(mobile): sign the simulator build")).toBe("mobile");
+		expect(commitKind("feat(cli)!: rename the timer command")).toBe("cli");
+		expect(commitKind("fix(web): keep the week view")).toBe("web");
+		expect(commitKind("chore: remove the token fallback")).toBe("web");
+		expect(commitKind("feat(mobile-relay): x")).toBe("web");
 	});
 });

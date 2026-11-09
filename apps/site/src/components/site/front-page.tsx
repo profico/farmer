@@ -42,7 +42,6 @@ import {
 	PLAY_STORE_URL,
 	REPOSITORY,
 } from "#/lib/links.ts";
-import type { ReleaseNote } from "#/lib/releases.ts";
 import { useThemePreview } from "#/lib/theme-preview.ts";
 
 import { FeatureScene, type SceneName } from "./feature-scenes.tsx";
@@ -59,15 +58,15 @@ import "./front.css";
 
 /** The public front page: what Farmer does, in six parts. */
 export function FrontPage({
-	release,
+	updatedAt,
 }: {
-	/** The newest release note, for the pill above the headline. */
-	release: ReleaseNote | null;
+	/** When the web app last changed (ISO), for the pill above the headline. */
+	updatedAt: string | null;
 }) {
 	const links = githubLinks(REPOSITORY);
 	return (
 		<SitePage>
-			<Hero release={release} github={links.home} />
+			<Hero updatedAt={updatedAt} github={links.home} />
 			<section
 				className="fm-container fp-preview-stage"
 				aria-label="Product preview"
@@ -86,23 +85,29 @@ export function FrontPage({
 	);
 }
 
+// In UTC, like the changelog, so the prerendered HTML matches every browser.
+const updatedFormatter = new Intl.DateTimeFormat("en-US", {
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+	timeZone: "UTC",
+});
+
 function Hero({
-	release,
+	updatedAt,
 	github,
 }: {
-	release: ReleaseNote | null;
+	updatedAt: string | null;
 	github: string;
 }) {
 	return (
 		<section className="fm-container fp-hero">
-			{release ? (
-				<Link
-					to="/changelog"
-					search={{ kind: release.kind }}
-					className="fp-release"
-				>
-					<span className="fm-mono fp-release-tag">v{release.version}</span>
-					Latest release note
+			{updatedAt ? (
+				<Link to="/changelog" search={{ kind: "web" }} className="fp-release">
+					<span className="fm-mono fp-release-tag">
+						{updatedFormatter.format(new Date(updatedAt))}
+					</span>
+					What changed
 					<ArrowRightIcon size={12} aria-hidden />
 				</Link>
 			) : null}
