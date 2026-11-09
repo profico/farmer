@@ -831,6 +831,9 @@ const integrationSettings = z.object({
 	githubSyncCommitsAsWorkTimeSince: iso
 		.nullable()
 		.describe("When the commit sync went on: the first day it may write to."),
+	googleMeetingFallbackProjectId: uuid
+		.nullable()
+		.describe("The project for a synced meeting that no filing rule matches."),
 });
 
 const apiIntegrations = named(
