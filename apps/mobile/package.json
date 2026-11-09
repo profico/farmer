@@ -49,6 +49,7 @@
 		"expo-task-manager": "57.0.21",
 		"expo-web-browser": "57.0.3",
 		"react": "19.2.7",
+		"react-dom": "19.2.7",
 		"react-native": "0.86.3",
 		"react-native-reanimated": "4.5.1",
 		"react-native-safe-area-context": "5.7.0",
@@ -60,7 +61,7 @@
 	"devDependencies": {
 		"@bacons/apple-targets": "5.0.0",
 		"@types/react": "~19.2.0",
-		"bun-types": "1.4.2",
+		"bun-types": "1.4.4",
 		"typescript": "^6.0.2"
 	}
 }

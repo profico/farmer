@@ -50,7 +50,6 @@ function AlertDialog({
 				<DrawerPrimitive.Root
 					data-slot="alert-dialog"
 					{...props}
-					handle={handle}
 					open={value}
 					onOpenChange={setOpen}
 					onOpenChangeComplete={onOpenChangeComplete}
