@@ -61,7 +61,7 @@ function AcceptInvitePage() {
 			await navigate({ to: "/$orgSlug", params: { orgSlug } });
 			return;
 		}
-		await navigate({ to: "/" });
+		await navigate({ to: "/$orgSlug", params: { orgSlug: "_" } });
 	};
 
 	const handleSignOutAndSwitch = async () => {
@@ -146,7 +146,8 @@ function AcceptInvitePage() {
 					</button>
 				) : null}
 				<Link
-					to="/"
+					to="/$orgSlug"
+					params={{ orgSlug: "_" }}
 					className={
 						session && emailMismatch
 							? "fm-btn fm-btn-outline fm-auth-grow"

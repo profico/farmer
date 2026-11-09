@@ -30,7 +30,7 @@ export const Route = createFileRoute("/api/login")({
 				// supplied in principle (it rides in a link), so only a same-site
 				// absolute path is accepted (`safeRedirectPath`).
 				const target =
-					safeRedirectPath(url.searchParams.get("redirect")) ?? "/";
+					safeRedirectPath(url.searchParams.get("redirect")) ?? "/_";
 				// Invite context (org/orgSlug/role/email) rides along as query params
 				// so an invited visitor lands on the same accept-invite screen the
 				// email link would have taken them to, still knowing which org it is.

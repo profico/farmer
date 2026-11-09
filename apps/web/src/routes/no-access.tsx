@@ -82,7 +82,7 @@ function NoAccessPage() {
 		// Into the link that was asked for, which the guard resolves against the
 		// workspace just joined.
 		if (target) await navigate({ href: target });
-		else await navigate({ to: "/" });
+		else await navigate({ href: "/_" });
 	};
 
 	const handleClaim = async (

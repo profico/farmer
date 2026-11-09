@@ -54,7 +54,7 @@ const signInHref = (search: Search, path = "/api/login") => {
  * absolute path is accepted (`safeRedirectPath`).
  */
 const destination = (search: Search) => {
-	const target = safeRedirectPath(search.redirect) ?? "/";
+	const target = safeRedirectPath(search.redirect) ?? "/_";
 	const context = new URLSearchParams();
 	for (const key of ["email", "org", "orgSlug", "role"] as const) {
 		const value = search[key];

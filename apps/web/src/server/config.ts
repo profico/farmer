@@ -191,52 +191,16 @@ export const getPasswordSignIn = createServerFn({ method: "GET" }).handler(
 );
 
 /**
- * What the public pages' header and footer need: the `owner/name` that
- * `getPublicAppConfig` also carries, and whether `/` is the product page
- * (`HOMEPAGE_ENABLED`). With it off, `/` redirects into the workspace, so the
- * chrome must not offer a link to `/` as a page of the site.
+ * The workspace slug that `/` redirects to. In single-organization mode it is
+ * the one workspace. Otherwise, and before anyone has claimed the instance, it
+ * is the `_` placeholder, which `/$orgSlug`'s guard resolves: sign-in, the only
+ * workspace, the chooser or `/no-access`.
  *
- * Its own function because every public page's loader runs for every
- * signed-out visitor, and pulling these through `getPublicAppConfig` cost the
- * eight modules that function imports (`findSingleOrg` among them) on every
- * anonymous hit. This reads two modules and no database row.
- */
-export const getSiteConfig = createServerFn({ method: "GET" }).handler(
-	async (): Promise<{ repository: string; homepageEnabled: boolean }> => {
-		const [
-			{ sourceRepository, DEFAULT_SOURCE_REPOSITORY },
-			{ settingEnabled },
-		] = await Promise.all([
-			import("@farmer/core/lib/source-repository"),
-			import("@farmer/core/lib/instance-settings"),
-		]);
-		return {
-			repository: sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY,
-			homepageEnabled: settingEnabled("HOMEPAGE_ENABLED"),
-		};
-	},
-);
-
-/**
- * Where `/` sends the visitor instead of drawing the product page: the
- * workspace slug to redirect to, or null to draw the page.
- *
- * `HOMEPAGE_ENABLED` decides it, not single-organization mode. On, `/` is the
- * product page in every mode. Off (the default), `/` is only a way into the
- * app: the one workspace in single-organization mode, else the `_`
- * placeholder, which `/$orgSlug`'s guard resolves — sign-in, the only
- * workspace, the chooser or `/no-access`. Single-organization mode before
- * anyone has claimed the instance has no slug to name yet, so it takes the
- * placeholder too.
- *
- * Its own function for the same reason as `getSiteConfig`: `/` runs for
- * every anonymous visitor and needs only this.
+ * Its own function because `/` runs for every anonymous visitor and needs
+ * only this.
  */
 export const getHomeRedirect = createServerFn({ method: "GET" }).handler(
-	async (): Promise<string | null> => {
-		const { settingEnabled } =
-			await import("@farmer/core/lib/instance-settings");
-		if (settingEnabled("HOMEPAGE_ENABLED")) return null;
+	async (): Promise<string> => {
 		const { findSingleOrg } = await import("@farmer/core/lib/single-org");
 		const org = await findSingleOrg();
 		return org?.slug ?? "_";

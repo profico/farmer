@@ -27,7 +27,8 @@ export function ErrorScreen({ children }: { children: ReactNode }) {
 		>
 			{!inside && (
 				<Link
-					to="/"
+					to="/$orgSlug"
+					params={{ orgSlug: "_" }}
 					className="inline-flex items-center gap-2 self-start font-display text-2xl"
 				>
 					<FarmerMark size={24} />
