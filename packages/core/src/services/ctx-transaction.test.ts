@@ -6,8 +6,9 @@
 // `connect_timeout`, so ten concurrent requests hold all ten and wait for an
 // eleventh for ever.
 //
-// Production and the other tests hide it: the memo is usually warm, and the
-// test files share one `ctx` that an earlier call already populated.
+// The other tests hide it, because they share one `ctx` that an earlier call
+// already populated. Production does not: `requireOrgContext` makes a new
+// `{ organizationId, userId }` for each request, so the memo can be cold.
 //
 // The rule: a Ctx that has never been used must survive every transactional
 // entry point. `freshCtx()` below is not shared and not warmed.

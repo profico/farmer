@@ -6,7 +6,7 @@ import { createFileRoute } from "@tanstack/react-router";
  * query holds the OAuth parameters (`client_id`, `redirect_uri`, `state` and
  * more).
  *
- * `/login` cannot take them. Its search schema names five keys and Zod strips
+ * `/login` cannot take them. Its search schema names a fixed set of keys and Zod strips
  * the rest. The return trip then has no `client_id` and redirects to the login
  * page again, an infinite loop with no error. Do not widen that schema: it
  * puts OAuth names on the sign-in screen, and the next new parameter breaks it

@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 // GitHub's deliveries about the App itself:
 //
-//  - `installation.deleted` / `installation.suspend`: the owner removed the
-//    App on GitHub. Without this, the `org_github_installation` row names a
+//  - `installation.deleted` / `installation.suspend`: the owner removed or
+//    suspended the App on GitHub. Without this, the `org_github_installation` row names a
 //    dead installation and every commit and pull request read fails.
 //  - `installation_repositories`: the repository selection changed. This
 //    clears the cached repo list.

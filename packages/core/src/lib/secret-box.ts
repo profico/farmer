@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 
 // Encryption at rest for the third-party credentials that this app stores:
 // the org's OpenRouter key, its Slack bot token and the instance's secret
-// settings. better-auth encrypts OAuth account tokens itself, so they are not
-// here.
+// settings. The columns: `assistant_settings.api_key`,
+// `slack_installation.bot_token`, `instance_setting` and
+// `instance_oauth_provider.client_secret`. better-auth encrypts OAuth account
+// tokens itself (`account.encryptOAuthTokens` in `auth/index.ts`).
 //
 // AES-256-GCM. The key comes from HKDF-SHA256 over the better-auth secrets, so
 // a deployment needs no new setting. The derivation `info` names this use, so

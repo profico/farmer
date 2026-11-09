@@ -38,7 +38,8 @@ import { isInstanceEmpty } from "./sign-in-methods";
  * `requireEmailVerificationOnInvitation` in `./index.ts` and
  * `listMyPendingInvitations` in the web app use the same check.
  *
- * Single-org mode with an unclaimed organization falls through to 3-6.
+ * Single-org mode with an unclaimed organization falls through to 3-6. If it
+ * allowed everybody, the first stranger to sign up would get the organization.
  *
  * The `code` of each APIError is required. better-auth's OAuth callbacks
  * redirect to `errorCallbackURL` only when the thrown APIError has a `code`.

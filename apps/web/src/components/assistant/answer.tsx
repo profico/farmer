@@ -26,7 +26,9 @@ import { useTypeset } from "./typeset.ts";
 //
 // `streaming` and `reveal` apply only to the turn in flight, because a stored
 // thread must not replay. `streaming` shows an open directive fence as a
-// placeholder. `reveal` fades in each word (`.answer-word` in styles.css,
+// placeholder. It is `streaming`, not `closed`, that decides: a stored answer
+// with an unclosed fence still shows its chips, and a half chart as code.
+// `reveal` fades in each word (`.answer-word` in styles.css,
 // `useTypeset` in typeset.ts).
 
 /** The host an `http(s)` link goes to, or null for a path or a `mailto:`.

@@ -76,8 +76,8 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
  *
  * The unfiled shape must stay legal. The calendar sync, the commit fill block
  * and the day assembler write it, and `update` runs this guard, so a synced
- * meeting would fail to save. `timeEntriesService.countUnfiled` and the close
- * guard stop these entries from being forgotten.
+ * meeting would fail to save. `listUnfiledForUser` and the close guard stop
+ * these entries from being forgotten.
  *
  * Anything else (an absence task on a project, another org's task, an archived
  * task) is rejected. It resolves to the task's flags, so a caller that needs

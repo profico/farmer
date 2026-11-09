@@ -171,9 +171,10 @@ const redactContent: BeforeSendFn = (event) => {
  * resolved the credential and the membership, and they cannot change for the
  * life of this server.
  *
- * Keep `context`, `captureModel` and `enableConversationId` off. Each one adds
- * an argument to the tool schemas that the client is served. `context` would
- * become a required argument on 52 tools, whose parameters are the app's own
+ * Keep `context`, `captureModel` and `enableConversationId` off (the last one
+ * is off by SDK default). Each one adds an argument to the tool schemas that
+ * the client is served. `context` would become a required argument on every
+ * tool, whose parameters are the app's own
  * Zod inputs shared with the UI, the CLI and the assistant. That is a product
  * decision, not an analytics one.
  *

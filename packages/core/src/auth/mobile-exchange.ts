@@ -25,9 +25,10 @@ import { session, verification } from "../db/schema/auth";
  *  1. The app makes a random verifier and sends only its challenge (the
  *     base64url SHA-256) as the `cc` parameter of the `callbackURL` that it
  *     gives to the sign-in start.
- *  2. The provider callback redirects to that `callbackURL`. The `expo()`
- *     plugin adds `cookie=<Set-Cookie>`. The hook below runs after the plugin
- *     and removes the cookie and `cc`.
+ *  2. The provider callback redirects to that `callbackURL`. `cc` survives the
+ *     round trip, because the OAuth state keeps the URL as the app gave it.
+ *     The `expo()` plugin adds `cookie=<Set-Cookie>`. The hook below runs
+ *     after the plugin and removes the cookie and `cc`.
  *  3. The hook stores a pending confirmation and sends the browser to the
  *     confirmation page (`mobile-confirm.ts`). When the person continues
  *     there, the server makes `code=<random>` and redirects to the app.

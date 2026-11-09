@@ -16,7 +16,9 @@ import {
  *
  * A person can start an app sign-in and send the proxy link to somebody
  * else. Without this page, the other person would sign in and the browser
- * would send a code for their session straight to `farmer://`.
+ * would send a code for their session straight to `farmer://`. A hostile app
+ * that claims `farmer://` on their phone gets the code, and the sender holds
+ * the verifier, so the sender gets the session.
  *
  * The callback sends the browser here first. The page names the account and
  * the server, and asks the person to continue. Only a POST from the same
