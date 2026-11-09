@@ -105,7 +105,15 @@ Project icons and organization logos are in the S3-compatible bucket that you se
 
 Keep a copy of `.env`, outside the server. Without `BETTER_AUTH_SECRET`, a restored database cannot open its stored secrets.
 
-## Versions of the mobile app and the CLI
+## Versions and compatibility
+
+The server, the CLI and the mobile app have their own releases:
+
+| Part | Tag | How it updates |
+|---|---|---|
+| Server | `v*` | You pull a new image (see "Upgrade"). |
+| CLI | `cli-v*` | `farmer update` downloads the release from your server. |
+| Mobile app | `mobile-v*` | Google Play and TestFlight. |
 
 The server and its clients are released separately. Each client asks `GET /api/v1/meta` (no sign-in needed) when it connects. The answer has these fields:
 
@@ -115,6 +123,15 @@ The server and its clients are released separately. Each client asks `GET /api/v
 - `minMobileVersion`: the oldest mobile app that this server supports.
 
 The CLI and the mobile app compare their own version with the minimum. If a client is older, the server does not support it, and the user must update it. The maintainers raise the minimum only when a change breaks old clients. When you upgrade the server, check the release notes for a new minimum, and tell the users to update their apps. Use a client release that is not older than the minimum of your server.
+
+What a client does when the versions do not match:
+
+- **The CLI is too old.** The server answers `426`, and the CLI tells the user to run `farmer update`.
+- **The server is too old for a CLI command.** The server has no route for the command. The CLI tells the user to ask the administrator to update Farmer. The other commands continue to work.
+- **The mobile app is too old.** The app refuses the server and shows a button that opens the store.
+- **The server is too old for the mobile app.** The server sends an `apiVersion` below the one that the app needs. The app refuses the server and tells the user to ask the administrator to update it.
+
+For maintainers: `API_VERSION` in `packages/core/src/api/meta.ts` and `REQUIRED_API_VERSION` in `packages/api-client/src/meta.ts` change together. CI regenerates `packages/api-client/openapi.json` and fails when the committed copy is different. After you change a `/api/v1` route, run `bun run generate` in `packages/api-client` and commit the result.
 
 ## Background jobs
 

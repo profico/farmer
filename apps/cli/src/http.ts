@@ -169,6 +169,15 @@ const failureMessage = async (response: Response, origin: string) => {
 		parsed = null;
 	}
 	if (!parsed?.success) {
+		// Every Farmer route answers a 404 with an `ApiError` body, so a bare 404
+		// is usually a route newer than the server. A wrong address looks the
+		// same, so the message keeps the status.
+		if (response.status === 404) {
+			return {
+				message: `${origin} answered 404 Not Found. The server may be older than this command: ask the administrator to update Farmer.`,
+				code: undefined,
+			};
+		}
 		return {
 			message:
 				`${origin} answered ${response.status} ${response.statusText}`.trim(),

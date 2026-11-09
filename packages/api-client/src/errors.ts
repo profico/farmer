@@ -14,6 +14,8 @@ export type ApiClientErrorKind =
 	| "api_disabled"
 	/** The server asks for a newer app (`minMobileVersion`). */
 	| "update_required"
+	/** The server is older than the routes this client needs (`apiVersion`). */
+	| "server_outdated"
 	/** The token is dead: revoked, expired or not valid. Sign in again. */
 	| "unauthorized"
 	/** The token is good, but not for this workspace. */
