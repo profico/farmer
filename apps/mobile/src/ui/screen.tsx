@@ -65,6 +65,10 @@ export type ScreenProps = {
 	bottomSpace?: number;
 	/** The vertical scroll offset, on each scroll event. */
 	onScrollOffset?: (offset: number) => void;
+	/** iOS: keep a focused field above the keyboard. Opt in only: with a
+	 *  large title it moves the content under the bar, and RN 0.86 keeps
+	 *  the inset on a recycled scroll view (react-native#57755). */
+	keyboardInsets?: boolean;
 	children: ReactNode;
 };
 
@@ -81,6 +85,7 @@ export function Screen({
 	topInset = true,
 	bottomSpace = 0,
 	onScrollOffset,
+	keyboardInsets = false,
 	children,
 }: ScreenProps) {
 	const palette = usePalette();
@@ -110,8 +115,7 @@ export function Screen({
 				scrollEventThrottle={onScrollOffset ? 32 : undefined}
 				contentInsetAdjustmentBehavior={native ? "automatic" : "never"}
 				keyboardShouldPersistTaps="handled"
-				// iOS: keep a focused field above the keyboard.
-				automaticallyAdjustKeyboardInsets
+				automaticallyAdjustKeyboardInsets={keyboardInsets}
 				refreshControl={
 					onRefresh ? (
 						<RefreshControl
