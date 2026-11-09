@@ -33,6 +33,15 @@ const readTheme = (): Theme =>
 		? "dark"
 		: "light";
 
+const hasStoredTheme = () => {
+	try {
+		const stored = localStorage.getItem(STORAGE_KEY);
+		return stored === "dark" || stored === "light";
+	} catch {
+		return false;
+	}
+};
+
 export const setTheme = (theme: Theme) => {
 	document.documentElement.setAttribute("data-theme", theme);
 	try {
@@ -45,20 +54,33 @@ export const setTheme = (theme: Theme) => {
 };
 
 const subscribe = (onChange: () => void) => {
+	// No stored choice follows the OS, so an OS switch repaints the open page.
+	const os = window.matchMedia("(prefers-color-scheme: dark)");
+	const osTheme = (): Theme => (os.matches ? "dark" : "light");
 	// A `storage` event is another tab's switch, so the attribute here is still
 	// the old one — apply it first, or the snapshot read that follows returns
-	// what this tab already had and nothing repaints.
+	// what this tab already had and nothing repaints. A cleared key follows the OS.
 	const onStorage = (event: StorageEvent) => {
 		if (event.key !== STORAGE_KEY) return;
-		const next = event.newValue === "dark" ? "dark" : "light";
+		const next =
+			event.newValue === "dark" || event.newValue === "light"
+				? event.newValue
+				: osTheme();
 		document.documentElement.setAttribute("data-theme", next);
+		onChange();
+	};
+	const onOs = () => {
+		if (hasStoredTheme()) return;
+		document.documentElement.setAttribute("data-theme", osTheme());
 		onChange();
 	};
 	window.addEventListener(CHANGE_EVENT, onChange);
 	window.addEventListener("storage", onStorage);
+	os.addEventListener("change", onOs);
 	return () => {
 		window.removeEventListener(CHANGE_EVENT, onChange);
 		window.removeEventListener("storage", onStorage);
+		os.removeEventListener("change", onOs);
 	};
 };
 
