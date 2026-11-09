@@ -186,11 +186,15 @@ function ReleaseArticle({ release }: { release: ReleaseNote }) {
 			</div>
 			<div className="fm-changelog-body">
 				<h2 className="fm-serif fm-changelog-title">{release.title}</h2>
-				<ul className="fm-muted fm-changelog-notes">
-					{release.notes.map((note) => (
-						<li key={note}>{note}</li>
-					))}
-				</ul>
+				{release.notes.length > 0 ? (
+					<ul className="fm-muted fm-changelog-notes">
+						{release.notes.map((note) => (
+							<li key={note}>{note}</li>
+						))}
+					</ul>
+				) : (
+					<p className="fm-faint">Build and release changes only.</p>
+				)}
 			</div>
 		</article>
 	);
