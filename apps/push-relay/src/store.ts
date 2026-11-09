@@ -334,7 +334,6 @@ export class DeviceStore {
 		return oldest?.relay_id === relayId;
 	}
 
-	/** Delete every device last seen before `cutoff`. Returns the count. */
 	pruneUnseenSince(cutoff: number): number {
 		return this.#db
 			.query("DELETE FROM device WHERE last_seen_at < $cutoff")
@@ -357,7 +356,6 @@ export class DeviceStore {
 			.run({ relayId, pushToken });
 	}
 
-	/** The relay id that a per-activity token is bound to, or null. */
 	activityTokenOwner(token: string): string | null {
 		return (
 			this.#db
@@ -411,7 +409,6 @@ export class DeviceStore {
 		})();
 	}
 
-	/** Unbind one per-activity token of one device. */
 	removeActivityToken(relayId: string, token: string): void {
 		this.#db
 			.query(
@@ -420,7 +417,6 @@ export class DeviceStore {
 			.run({ relayId, token });
 	}
 
-	/** Unbind every per-activity token of one device. */
 	clearActivityTokens(relayId: string): void {
 		this.#db
 			.query("DELETE FROM live_activity_token WHERE relay_id = $relayId")
@@ -510,7 +506,6 @@ export class DeviceStore {
 			.run({ keyId, month: monthOf(countedAt) });
 	}
 
-	/** The pushes that a key sent in the month of `now`. */
 	usage(keyId: string, now: number): number {
 		return (
 			this.#db

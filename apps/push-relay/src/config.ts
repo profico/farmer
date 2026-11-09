@@ -7,7 +7,6 @@ export type RelayConfig = {
 	port: number;
 	dbPath: string;
 	trustedIpHeader: string | undefined;
-	/** The most devices that the relay holds. */
 	maxDevices: number;
 	/** True: `POST /v1/push` needs a server key. */
 	requireServerKey: boolean;

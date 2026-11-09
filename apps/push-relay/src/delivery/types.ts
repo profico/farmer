@@ -24,7 +24,6 @@ export type DeliveryResult =
 	 *  hold no secret. */
 	| { outcome: "failed"; status: number; reason: string };
 
-/** Send one push to one device. */
 export type Sender = (
 	device: Device,
 	push: PushBody,
