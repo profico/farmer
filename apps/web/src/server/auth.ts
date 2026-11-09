@@ -64,7 +64,7 @@ const requestOrigin = createIsomorphicFn()
 export const requireOrgContext = async () => {
 	const session = await requireSession();
 	if (!session.session.activeOrganizationId) {
-		throw redirect({ to: "/" });
+		throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 	}
 	return {
 		organizationId: session.session.activeOrganizationId,
@@ -133,7 +133,7 @@ export const requireOrgAdmin = async () => {
 	const ctx = await requireOrgContext();
 	const role = await getMyRole();
 	if (role !== "owner" && role !== "admin") {
-		throw redirect({ to: "/" });
+		throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 	}
 	return ctx;
 };
@@ -244,7 +244,8 @@ export const orgMiddleware = createMiddleware({ type: "function" }).server(
 		} catch (error) {
 			// "Not in this workspace" is a navigation outcome, not a failure — `/`
 			// sends them to a workspace they do belong to, or to `/no-access`.
-			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
+			if (error instanceof NotAMemberError)
+				throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 			throw error;
 		}
 		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
@@ -276,13 +277,15 @@ export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 		try {
 			access = await ctxAccess(ctx);
 		} catch (error) {
-			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
+			if (error instanceof NotAMemberError)
+				throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 			throw error;
 		}
 		// Matches `requireOrgAdmin`'s behaviour: a non-admin member is sent home
 		// rather than shown an error, because every caller of this middleware backs
 		// a screen they should not have reached.
-		if (!access.isAdmin) throw redirect({ to: "/" });
+		if (!access.isAdmin)
+			throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );
@@ -310,6 +313,7 @@ export const platformAdminMiddleware = createMiddleware({
 	const session = await requireSession();
 	const { isPlatformAdminRole } =
 		await import("@farmer/core/lib/platform-admin");
-	if (!isPlatformAdminRole(session.user.role)) throw redirect({ to: "/" });
+	if (!isPlatformAdminRole(session.user.role))
+		throw redirect({ to: "/$orgSlug", params: { orgSlug: "_" } });
 	return next({ context: { session } });
 });

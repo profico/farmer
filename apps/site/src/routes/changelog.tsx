@@ -1,14 +1,14 @@
 import { BrowserIcon, GitCommitIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { z } from "zod";
 
-import { loadSiteVisitor, SitePage } from "#/components/site/site-chrome.tsx";
+import { SitePage } from "#/components/site/site-chrome.tsx";
 
 import "#/components/site/changelog.css";
-import { githubLinks } from "#/lib/links.ts";
-import type { ReleaseNote, WebCommit } from "#/server/release-notes.ts";
-import { getReleaseNotes, getWebChanges } from "#/server/releases.ts";
+import { githubLinks, REPOSITORY } from "#/lib/links.ts";
+import { releases, webChanges } from "#/lib/releases.ts";
+import type { ReleaseNote, WebCommit } from "#/lib/releases.ts";
 
 const KINDS = ["all", "web", "cli"] as const;
 type ChangelogKind = (typeof KINDS)[number];
@@ -21,14 +21,6 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute("/changelog")({
 	validateSearch: searchSchema,
-	loader: async () => {
-		const [visitor, releases, webChanges] = await Promise.all([
-			loadSiteVisitor(),
-			getReleaseNotes(),
-			getWebChanges(),
-		]);
-		return { visitor, releases, webChanges };
-	},
 	head: () => ({ meta: [{ title: "Changelog · Farmer" }] }),
 	component: Page,
 });
@@ -72,16 +64,23 @@ const groupCommitsByDay = (commits: WebCommit[]): DayGroup[] => {
 
 type Entry = { date: string; node: ReactNode };
 
+const subscribeNever = () => () => {};
+
 function Page() {
-	const { visitor, releases, webChanges } = Route.useLoaderData();
-	const kind = Route.useSearch().kind ?? "all";
-	const { releases: releasesUrl, home } = githubLinks(visitor.repository);
+	// The page is prerendered for "all" and the static host ignores the query.
+	// The first client render must match that HTML, so the filter applies only
+	// after hydration.
+	const hydrated = useSyncExternalStore(
+		subscribeNever,
+		() => true,
+		() => false,
+	);
+	const urlKind = Route.useSearch().kind ?? "all";
+	const kind = hydrated ? urlKind : "all";
+	const { releases: releasesUrl, home } = githubLinks(REPOSITORY);
 
 	const cliReleases = releases.filter((release) => release.kind === "cli");
 	const dayGroups = groupCommitsByDay(webChanges.commits);
-	const deployedIndex = webChanges.commits.findIndex((c) => c.deployed);
-	const deployedNotInList =
-		webChanges.deployed !== null && !webChanges.commits.some((c) => c.deployed);
 
 	const cliEntries: Entry[] = cliReleases.map((release) => ({
 		date: release.publishedAt,
@@ -89,14 +88,7 @@ function Page() {
 	}));
 	const webEntries: Entry[] = dayGroups.map((group) => ({
 		date: `${group.day}T00:00:00.000Z`,
-		node: (
-			<WebDayArticle
-				key={group.day}
-				group={group}
-				commits={webChanges.commits}
-				deployedIndex={deployedIndex}
-			/>
-		),
+		node: <WebDayArticle key={group.day} group={group} />,
 	}));
 
 	const entries =
@@ -108,10 +100,8 @@ function Page() {
 						b.date.localeCompare(a.date),
 					);
 
-	const showDeployedBanner = deployedNotInList && kind !== "cli";
-
 	return (
-		<SitePage visitor={visitor}>
+		<SitePage>
 			<section className="fm-container fm-changelog-head">
 				<div className="fm-stack fm-changelog-heading">
 					<h1 className="fm-h1">
@@ -140,12 +130,6 @@ function Page() {
 				</nav>
 			</section>
 			<section className="fm-container fm-changelog-list">
-				{showDeployedBanner && webChanges.deployed && (
-					<p className="fm-mono fm-changelog-deployed-banner">
-						This server runs{" "}
-						<a href={webChanges.deployed.url}>{webChanges.deployed.shortSha}</a>
-					</p>
-				)}
 				{entries.length === 0 ? (
 					<p className="fm-muted fm-changelog-empty">
 						No releases to show for this filter yet.
@@ -188,15 +172,7 @@ function ReleaseArticle({ release }: { release: ReleaseNote }) {
 	);
 }
 
-function WebDayArticle({
-	group,
-	commits,
-	deployedIndex,
-}: {
-	group: DayGroup;
-	commits: WebCommit[];
-	deployedIndex: number;
-}) {
+function WebDayArticle({ group }: { group: DayGroup }) {
 	return (
 		<article className="fm-changelog-item">
 			<div className="fm-changelog-meta">
@@ -214,24 +190,12 @@ function WebDayArticle({
 			</div>
 			<div className="fm-changelog-body">
 				<ul className="fm-muted fm-changelog-notes fm-changelog-commits">
-					{group.commits.map((commit) => {
-						const index = commits.indexOf(commit);
-						const pending = deployedIndex >= 0 && index < deployedIndex;
-						return (
-							<li
-								key={commit.sha}
-								className={pending ? "fm-changelog-commit-pending" : undefined}
-							>
-								<a href={commit.url}>{commit.subject}</a>{" "}
-								<span className="fm-mono fm-faint">{commit.shortSha}</span>
-								{commit.deployed && (
-									<span className="fm-pill fm-changelog-running">
-										Running here
-									</span>
-								)}
-							</li>
-						);
-					})}
+					{group.commits.map((commit) => (
+						<li key={commit.sha}>
+							<a href={commit.url}>{commit.subject}</a>{" "}
+							<span className="fm-mono fm-faint">{commit.shortSha}</span>
+						</li>
+					))}
 				</ul>
 			</div>
 		</article>

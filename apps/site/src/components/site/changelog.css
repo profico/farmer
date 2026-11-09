@@ -19,12 +19,6 @@
 	padding-bottom: 120px;
 }
 
-.fm-site .fm-changelog-deployed-banner {
-	margin: 0 0 20px;
-	color: var(--mut);
-	font-size: 13.5px;
-}
-
 .fm-site .fm-changelog-empty {
 	padding: 40px 0;
 }
@@ -93,16 +87,6 @@
 	flex-wrap: wrap;
 	align-items: baseline;
 	gap: 8px;
-}
-.fm-site .fm-changelog-commit-pending {
-	opacity: 0.6;
-}
-.fm-site .fm-changelog-running {
-	padding: 1px 8px;
-	font-size: 11px;
-	background: var(--acc-soft);
-	color: var(--acc);
-	border-color: transparent;
 }
 
 .fm-site .fm-changelog-more {

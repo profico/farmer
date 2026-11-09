@@ -11,12 +11,19 @@ import { isWellFormedSlug, RESERVED_SLUGS } from "@farmer/core/lib/slug";
 
 /** The first path segment of each route file and directory. `__root` and
  *  `$orgSlug` are no slug, and neither is `[.]well-known`; `index` is `/`. */
-const routeSegments = () =>
-	readdirSync(join(import.meta.dir, "../routes"), { withFileTypes: true })
+const segmentsOf = (routesDir: string) =>
+	readdirSync(join(import.meta.dir, routesDir), { withFileTypes: true })
 		.map((entry) =>
 			entry.isDirectory() ? entry.name : entry.name.replace(/\.tsx?$/, ""),
 		)
 		.filter((name) => name !== "index" && isWellFormedSlug(name));
+
+/** The routes of the app, and of the public site (`apps/site`), which is served
+ *  on the same domain: a site page hides an organization of the same name. */
+const routeSegments = () => [
+	...segmentsOf("../routes"),
+	...segmentsOf("../../../site/src/routes"),
+];
 
 describe("RESERVED_SLUGS", () => {
 	test("holds every top-level route", () => {
@@ -31,11 +38,14 @@ describe("RESERVED_SLUGS", () => {
 	});
 
 	test("holds every top-level directory the host serves files from", () => {
-		const publicDirs = readdirSync(join(import.meta.dir, "../../public"), {
-			withFileTypes: true,
-		})
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name);
+		const dirsOf = (dir: string) =>
+			readdirSync(join(import.meta.dir, dir), { withFileTypes: true })
+				.filter((entry) => entry.isDirectory() && isWellFormedSlug(entry.name))
+				.map((entry) => entry.name);
+		const publicDirs = [
+			...dirsOf("../../public"),
+			...dirsOf("../../../site/public"),
+		];
 		for (const segment of [...publicDirs, "assets"]) {
 			expect({ segment, reserved: RESERVED_SLUGS.has(segment) }).toEqual({
 				segment,

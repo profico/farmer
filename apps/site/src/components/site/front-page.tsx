@@ -1,19 +1,25 @@
 import {
+	AppleLogoIcon,
 	ArrowRightIcon,
 	BellRingingIcon,
 	BracketsCurlyIcon,
+	BuildingsIcon,
 	CalendarCheckIcon,
 	CalendarDotsIcon,
 	ChatCircleDotsIcon,
+	ClipboardTextIcon,
 	ClockIcon,
 	FoldersIcon,
 	FunnelIcon,
 	GitPullRequestIcon,
 	GithubLogoIcon,
-	HourglassMediumIcon,
+	GooglePlayLogoIcon,
+	HardDrivesIcon,
 	IdentificationBadgeIcon,
 	IslandIcon,
+	KeyIcon,
 	PackageIcon,
+	PaletteIcon,
 	PlugsConnectedIcon,
 	PlugsIcon,
 	RepeatIcon,
@@ -24,60 +30,66 @@ import {
 	TrendUpIcon,
 	TruckIcon,
 	UmbrellaIcon,
+	WebhooksLogoIcon,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 
-import { CONTACT_EMAIL, githubLinks, LICENSE_NAME } from "#/lib/links.ts";
-import type { ReleaseNote } from "#/server/release-notes.ts";
+import {
+	CONTACT_EMAIL,
+	githubLinks,
+	LICENSE_NAME,
+	PLAY_STORE_URL,
+	REPOSITORY,
+} from "#/lib/links.ts";
+import type { ReleaseNote } from "#/lib/releases.ts";
+import { useThemePreview } from "#/lib/theme-preview.ts";
 
+import { FeatureScene, type SceneName } from "./feature-scenes.tsx";
 import {
 	AssembleMock,
 	HomePreview,
+	PhoneShots,
 	TimesheetMock,
 	TrackingMock,
 } from "./front-mocks.tsx";
-import { type SiteVisitor, SitePage, VisitorCta } from "./site-chrome.tsx";
+import { SiteCta, SitePage } from "./site-chrome.tsx";
 
 import "./front.css";
 
-/**
- * The public front page: what Farmer does, in six parts. Only a deployment
- * with `HOMEPAGE_ENABLED` on draws it; any other sends `/` into the workspace
- * (see `routes/index.tsx`).
- */
+/** The public front page: what Farmer does, in six parts. */
 export function FrontPage({
-	visitor,
 	release,
 }: {
-	visitor: SiteVisitor;
 	/** The newest release note, for the pill above the headline. */
 	release: ReleaseNote | null;
 }) {
-	const links = githubLinks(visitor.repository);
+	const links = githubLinks(REPOSITORY);
 	return (
-		<SitePage visitor={visitor}>
-			<Hero visitor={visitor} release={release} github={links.home} />
-			<section className="fm-container" aria-label="Product preview">
+		<SitePage>
+			<Hero release={release} github={links.home} />
+			<section
+				className="fm-container fp-preview-stage"
+				aria-label="Product preview"
+			>
 				<HomePreview />
 			</section>
 			<Automation />
 			<Timesheet />
 			<Reports />
 			<EverythingElse />
+			<Mobile />
 			<Developers />
-			<SelfHosting repository={visitor.repository} github={links.home} />
+			<SelfHosting repository={REPOSITORY} github={links.home} />
 			<EarlyAccess />
 		</SitePage>
 	);
 }
 
 function Hero({
-	visitor,
 	release,
 	github,
 }: {
-	visitor: SiteVisitor;
 	release: ReleaseNote | null;
 	github: string;
 }) {
@@ -105,7 +117,7 @@ function Hero({
 				work. Open source, on your own server.
 			</p>
 			<div className="fp-actions">
-				<VisitorCta visitor={visitor} />
+				<SiteCta />
 				<Link to="/self-hosting" className="fm-btn fm-btn-outline">
 					<PackageIcon weight="duotone" size={18} aria-hidden />
 					Self-host it
@@ -115,13 +127,24 @@ function Hero({
 					Star on GitHub
 				</a>
 			</div>
-			{visitor.user ? (
-				<p className="fp-signed">
-					Signed in as {visitor.user.email}
-					{visitor.orgSlug ? null : " · not a member of a workspace yet"}
-				</p>
-			) : null}
 		</section>
+	);
+}
+
+function StoreBadges() {
+	return (
+		<div className="fp-stores">
+			<a href={PLAY_STORE_URL} className="fp-release fp-store">
+				<GooglePlayLogoIcon weight="fill" size={15} aria-hidden />
+				Get it on Google Play
+				<ArrowRightIcon size={12} aria-hidden />
+			</a>
+			<span className="fp-release fp-store">
+				<AppleLogoIcon weight="fill" size={15} aria-hidden />
+				App Store
+				<span className="fp-release-tag">Soon</span>
+			</span>
+		</div>
 	);
 }
 
@@ -155,7 +178,7 @@ function Automation() {
 				<p className="fm-lede" style={{ maxWidth: 600 }}>
 					Meetings live in the calendar. Code lives in Git. Farmer reads both,
 					adds the things that happen every day, and proposes a timesheet. You
-					only correct it.
+					review it.
 				</p>
 			</div>
 			<div
@@ -177,9 +200,6 @@ function Automation() {
 					</Point>
 					<Point icon={FunnelIcon} title="Filing rules">
 						A recurring meeting goes to the same project every time.
-					</Point>
-					<Point icon={HourglassMediumIcon} title="24 hours, no more">
-						A day can't hold more than 24 hours. Automation respects that.
 					</Point>
 				</div>
 				<AssembleMock />
@@ -208,7 +228,7 @@ function Timesheet() {
 					<div className="fp-chips">
 						<span className="fm-pill">
 							<TimerIcon weight="duotone" className="fp-acc" aria-hidden />
-							Stopwatch in web and CLI
+							Stopwatch in web, CLI and mobile
 						</span>
 						<span className="fm-pill">
 							<UmbrellaIcon weight="duotone" className="fp-acc" aria-hidden />
@@ -270,48 +290,83 @@ function Reports() {
 	);
 }
 
-const features: { icon: Icon; title: string; body: string }[] = [
+const features: {
+	icon: Icon;
+	title: string;
+	body: string;
+	scene: SceneName;
+}[] = [
 	{
 		icon: CalendarDotsIcon,
 		title: "Hours",
 		body: "A monthly hour fund, public holidays for your country, and working hours per person.",
+		scene: "hours",
 	},
 	{
 		icon: IdentificationBadgeIcon,
 		title: "People",
 		body: "Employees, students and contractors. Billable, overhead or hourly. Admins, Team Leads, PMs and per-project roles.",
+		scene: "people",
 	},
 	{
 		icon: FoldersIcon,
 		title: "Projects",
 		body: "A page per project with its hours, team and settings. Emoji or your own icon.",
+		scene: "projects",
 	},
 	{
 		icon: BellRingingIcon,
 		title: "Reminders",
 		body: "Slack DMs, a month-end nudge and an admin digest. Web push if you prefer the browser.",
+		scene: "reminders",
 	},
 	{
 		icon: PlugsConnectedIcon,
 		title: "Integrations",
 		body: "A GitHub App per organization, Google Calendar per person, Slack per organization, and outbound webhooks.",
+		scene: "integrations",
 	},
 	{
 		icon: TruckIcon,
 		title: "Moving from Harvest",
 		body: "Drop your Harvest CSV exports in Settings. Importing the same files twice changes nothing, and the last run can be undone.",
+		scene: "harvest",
+	},
+	{
+		icon: BuildingsIcon,
+		title: "Workspaces",
+		body: "One server holds as many organizations as you need, each with its own people and projects. Someone in two of them switches in the sidebar.",
+		scene: "workspaces",
+	},
+	{
+		icon: ClipboardTextIcon,
+		title: "Audit log",
+		body: "Who changed what, from the web, the CLI, the API or the assistant, and every sign-in. For admins, with export and a retention you choose.",
+		scene: "audit",
+	},
+	{
+		icon: PaletteIcon,
+		title: "Make it yours",
+		body: "Light or dark, a palette from one color, high contrast, a plain font and less movement. Each person picks their own.",
+		scene: "theme",
 	},
 ];
 
 function EverythingElse() {
+	const preview = useThemePreview();
 	return (
 		<section className="fm-container fp-section">
 			<h2 className="fm-h2" style={{ maxWidth: 640 }}>
 				Hours, people, projects <em className="fm-em">and the reminders.</em>
 			</h2>
 			<div className="fm-cells fp-features">
-				{features.map(({ icon: FeatureIcon, title, body }) => (
-					<div key={title} className="fp-feature">
+				{features.map(({ icon: FeatureIcon, title, body, scene }) => (
+					<div
+						key={title}
+						className="fp-feature"
+						{...(scene === "theme" ? preview : {})}
+					>
+						<FeatureScene scene={scene} />
 						<FeatureIcon
 							weight="duotone"
 							size={26}
@@ -324,6 +379,47 @@ function EverythingElse() {
 						<p>{body}</p>
 					</div>
 				))}
+			</div>
+		</section>
+	);
+}
+
+function Mobile() {
+	return (
+		<section id="mobile" className="fm-container fp-section">
+			<div className="fp-split" style={{ alignItems: "center" }}>
+				<div className="fm-stack" style={{ gap: 28 }}>
+					<div className="fp-intro">
+						<h2 className="fp-h2-xl">
+							The timer, <em className="fm-em">in your pocket.</em>
+						</h2>
+						<p className="fm-lede" style={{ maxWidth: 520 }}>
+							The app for Android and iOS. Start the timer on the way to a
+							meeting, check the day on the train, and let a reminder tell you
+							when a day is short.
+						</p>
+					</div>
+					<div className="fp-points">
+						<Point icon={TimerIcon} title="On the lock screen">
+							The running timer stays in view. Pause it without opening the app.
+						</Point>
+						<Point icon={BellRingingIcon} title="Reminders">
+							A push when a day is short, and the same reminders as Slack.
+						</Point>
+						<Point
+							icon={ChatCircleDotsIcon}
+							title="Day, reports and the assistant"
+						>
+							Review the day, look at the hours, or ask the assistant.
+						</Point>
+						<Point icon={HardDrivesIcon} title="Your own server">
+							Sign in to any Farmer instance. Push content is end-to-end
+							encrypted.
+						</Point>
+					</div>
+					<StoreBadges />
+				</div>
+				<PhoneShots />
 			</div>
 		</section>
 	);
@@ -453,7 +549,7 @@ function Developers() {
 						</div>
 					</div>
 				</div>
-				<Link to="/api-docs" className="fp-rest">
+				<a href="/api-docs" className="fp-rest">
 					<span
 						style={{
 							display: "inline-flex",
@@ -475,7 +571,39 @@ function Developers() {
 						Everything the CLI does. Read the API docs
 						<ArrowRightIcon size={14} aria-hidden />
 					</span>
-				</Link>
+				</a>
+				<div className="fp-dev-extras">
+					<div className="fp-dev-extra">
+						<WebhooksLogoIcon
+							weight="duotone"
+							size={18}
+							className="fp-ink-acc"
+							aria-hidden
+						/>
+						<div>
+							<h3>Webhooks</h3>
+							<p>
+								A signed POST for each time entry, absence, project, client and
+								member change. Retries, a delivery log and Resend.
+							</p>
+						</div>
+					</div>
+					<div className="fp-dev-extra">
+						<KeyIcon
+							weight="duotone"
+							size={18}
+							className="fp-ink-acc"
+							aria-hidden
+						/>
+						<div>
+							<h3>API tokens</h3>
+							<p>
+								Read-only or read-write, with an expiry, for a cron job, a CI
+								step or a spreadsheet. Revoke one any time.
+							</p>
+						</div>
+					</div>
+				</div>
 			</div>
 		</section>
 	);
@@ -567,8 +695,7 @@ function SelfHosting({
 						style={{ margin: "4px 0 0", fontSize: 14, textWrap: "pretty" }}
 					>
 						Single-organization mode gives you one invite-only workspace with
-						your own logo on the sign-in page. Light and dark themes, a custom
-						accent and high contrast come built in.
+						your own logo on the sign-in page.
 					</p>
 				</div>
 			</div>

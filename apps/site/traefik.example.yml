@@ -1,0 +1,24 @@
+# Example Traefik dynamic configuration for the public site.
+#
+# Coolify gives the web app the domain farmer.profi.co. Coolify domain paths
+# are string prefixes, so they cannot split the domain safely. This file adds
+# one router for the site instead. Put it in the Coolify proxy dynamic
+# configuration folder. Change the service URL to the real site container.
+#
+# Everything that this rule does not match goes to the web app.
+http:
+  routers:
+    farmer-site:
+      rule: 'Host(`farmer.profi.co`) && (Path(`/`) || PathRegexp(`^/(about|changelog|self-hosting|early-access|privacy|terms|delete-account)/?$`) || PathPrefix(`/_site/`))'
+      entryPoints:
+        - https
+      service: farmer-site
+      # Higher than the router that Coolify generates for the web app.
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
+  services:
+    farmer-site:
+      loadBalancer:
+        servers:
+          - url: http://farmer-site:3000

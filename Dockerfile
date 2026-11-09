@@ -53,6 +53,10 @@ COPY packages/api-client/package.json packages/api-client/
 # nothing from either workspace.
 COPY apps/push-relay/package.json apps/push-relay/
 COPY packages/push-crypto/package.json packages/push-crypto/
+# The public site is a workspace too, with its own image (apps/site/Dockerfile).
+# Only the manifest is needed here. This image does not build the site, and
+# its runtime stage does not hold it.
+COPY apps/site/package.json apps/site/
 # Cap network concurrency and retry: the default 48 parallel requests saturate
 # a shared/constrained builder (the Coolify arm64 host runs many containers and
 # builds --no-cache, re-downloading everything each time), which has corrupted a

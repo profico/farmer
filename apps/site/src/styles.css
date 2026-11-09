@@ -1,0 +1,163 @@
+/* The public site's base sheet: the reset, the fonts and the colour tokens
+   that the `.fm-site` rules read. The values are copies of the app's own
+   (apps/web/src/styles.css), so the site and the app look the same on one
+   domain. If a palette value changes there, change it here.
+
+   Only the light and dark palettes and the high contrast, boring font and
+   less movement switches are here. The switches come from the same
+   localStorage keys as the app's (see `lib/display-init.ts`). The custom
+   palette, the scale and the other font choices are not in the site. */
+
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap");
+@import "tailwindcss/preflight.css";
+
+:root {
+	color-scheme: light;
+
+	/* The neutrals are the app's Custom palette at the violet seed (hue 293,
+	   chroma 0.168; `--seed-*` in apps/web/src/styles.css): the greys the phone
+	   captures and the app show, not the warm Vanilla ones. */
+	--bg: oklch(0.982 0.004 293);
+	--ground: oklch(0.9435 0.0099 293);
+	--bg2: oklch(0.9613 0.0071 293);
+	--fg: oklch(0.2178 0.0059 293);
+	--mut: oklch(0.5582 0.0155 293);
+	--faint: oklch(0.7147 0.019 293);
+	--line: color-mix(in srgb, var(--fg) 11%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 5.5%, transparent);
+	--acc: #6f4ebe;
+	--warn: #8a6a1f;
+	--ok: #4a7050;
+	--bad: #b3423f;
+	--sel: color-mix(in srgb, var(--fg) 4.5%, transparent);
+	--text-sel: color-mix(in srgb, var(--acc) 22%, transparent);
+	--lift: 0 8px 22px color-mix(in srgb, var(--fg) 14%, transparent);
+	--shadow-pop:
+		0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
+
+	--sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+	--serif: "Instrument Serif", ui-serif, Georgia, serif;
+	--mono: "Geist Mono", ui-monospace, monospace;
+
+	--dur-fast: 120ms;
+	--dur-base: 150ms;
+	--dur-slow: 180ms;
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+	/* The app divides these by its scale. The site has no scale. */
+	--svh: 1svh;
+	--dvh: 1dvh;
+	--vw: 1vw;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+
+	--bg: oklch(0.2127 0.0108 293);
+	--ground: oklch(0.1591 0.0072 293);
+	--bg2: oklch(0.25 0.0183 293);
+	--fg: oklch(0.9322 0.0161 293);
+	--mut: oklch(0.6293 0.0218 293);
+	--faint: oklch(0.5064 0.0215 293);
+	--line: color-mix(in srgb, var(--fg) 13%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 6%, transparent);
+	--acc: #9178de;
+	--warn: #c0a15a;
+	--ok: #7fa887;
+	--bad: #d98782;
+	--sel: color-mix(in srgb, var(--fg) 5%, transparent);
+	--text-sel: color-mix(in srgb, var(--acc) 28%, transparent);
+	--lift: 0 8px 22px rgba(0, 0, 0, 0.5);
+	--shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+}
+
+/* "High contrast". The same numbers as the app's vanilla palette. */
+:root[data-contrast="high"]:not([data-theme="dark"]) {
+	--line: color-mix(in srgb, var(--fg) 28%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 15%, transparent);
+	--sel: color-mix(in srgb, var(--fg) 10%, transparent);
+	--text-sel: color-mix(in srgb, var(--acc) 40%, transparent);
+	--mut: #524d44;
+	--faint: #70695e;
+	--acc: #5733a1;
+	--warn: #664700;
+	--ok: #305537;
+	--bad: #922224;
+}
+
+:root[data-theme="dark"][data-contrast="high"] {
+	--line: color-mix(in srgb, var(--fg) 32%, transparent);
+	--line2: color-mix(in srgb, var(--fg) 17%, transparent);
+	--sel: color-mix(in srgb, var(--fg) 11%, transparent);
+	--text-sel: color-mix(in srgb, var(--acc) 45%, transparent);
+	--mut: #b4ab9d;
+	--faint: #90887b;
+	--acc: #b49cff;
+	--warn: #cbac65;
+	--ok: #90b997;
+	--bad: #ed9994;
+}
+
+:root[data-contrast="high"] *:focus-visible {
+	outline: 2px solid var(--acc);
+	outline-offset: 2px;
+}
+
+/* "Boring font": the display face in the body face. */
+:root[data-font="sans"] {
+	--serif: var(--sans);
+}
+
+/* "Less movement". */
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+	animation-duration: 0.01ms !important;
+	animation-delay: 0s !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: var(--dur-fast) !important;
+	transition-delay: 0s !important;
+}
+
+:root[data-motion="reduce"] {
+	scroll-behavior: auto !important;
+}
+
+html,
+body {
+	min-height: 100%;
+}
+
+body {
+	margin: 0;
+	font-family: var(--sans);
+	font-size: 14px;
+	color: var(--fg);
+	background: var(--ground);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in oklab, var(--mut) 30%, transparent) transparent;
+}
+
+html {
+	scrollbar-gutter: stable;
+	-webkit-tap-highlight-color: transparent;
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+button,
+a,
+summary,
+label {
+	touch-action: manipulation;
+}
+
+::selection {
+	background: var(--text-sel);
+}

@@ -16,6 +16,11 @@ export const slugify = (input: string): string =>
  * fails when a new route is not. The rest keep names free for pages the
  * product may grow, so adding one later cannot strand an organization.
  *
+ * The public site pages (`about`, `changelog`, `delete-account`,
+ * `early-access`, `privacy`, `self-hosting`, `terms`) are routes of
+ * `apps/site`, not of the web app. They stay here because the proxy on the
+ * shared domain still sends those paths to the site.
+ *
  * `_` and `:org` are the placeholders of `lib/org-redirect.ts` in apps/web.
  * Neither passes `isWellFormedSlug` anyway; they are listed so the one list says
  * everything a slug cannot be.

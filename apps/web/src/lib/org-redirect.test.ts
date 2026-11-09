@@ -3,6 +3,16 @@ import { describe, expect, test } from "bun:test";
 
 import { safeRedirectPath, withOrgSlug } from "./org-redirect.ts";
 
+describe("safeRedirectPath", () => {
+	// Web code falls back to `/_`, because `/` is the public site.
+	test("accepts the workspace placeholder", () => {
+		expect(safeRedirectPath("/_")).toBe("/_");
+		expect(safeRedirectPath("/_?email=person%40example.com")).toBe(
+			"/_?email=person%40example.com",
+		);
+	});
+});
+
 describe("withOrgSlug", () => {
 	test("leaves a slugified slug as it is", () => {
 		expect(withOrgSlug("/", "acme-co")).toBe("/acme-co");

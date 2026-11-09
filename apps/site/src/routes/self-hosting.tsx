@@ -15,13 +15,12 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { type ComponentType, useEffect, useState } from "react";
 
-import { loadSiteVisitor, SitePage } from "#/components/site/site-chrome.tsx";
+import { SitePage } from "#/components/site/site-chrome.tsx";
 
 import "#/components/site/self-hosting.css";
-import { githubLinks, LICENSE_NAME } from "#/lib/links.ts";
+import { githubLinks, LICENSE_NAME, REPOSITORY } from "#/lib/links.ts";
 
 export const Route = createFileRoute("/self-hosting")({
-	loader: loadSiteVisitor,
 	head: () => ({ meta: [{ title: "Self-hosting · Farmer" }] }),
 	component: Page,
 });
@@ -150,12 +149,11 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function Page() {
-	const visitor = Route.useLoaderData();
-	const links = githubLinks(visitor.repository);
-	const image = `ghcr.io/${visitor.repository.toLowerCase()}:latest`;
+	const links = githubLinks(REPOSITORY);
+	const image = `ghcr.io/${REPOSITORY.toLowerCase()}:latest`;
 
 	return (
-		<SitePage visitor={visitor}>
+		<SitePage>
 			<section className="fm-container fm-hosting-hero">
 				<h1 className="fm-h1">
 					One image, one database, <em className="fm-em">three variables.</em>
@@ -219,11 +217,9 @@ function Page() {
 										</pre>
 									</div>
 									<p className="fm-faint" style={{ margin: 0, fontSize: 14 }}>
-										<code className="fm-code">
-											{visitor.repository.toLowerCase()}
-										</code>{" "}
-										is the repository this instance was built from. Migrations
-										run on start.
+										<code className="fm-code">{REPOSITORY.toLowerCase()}</code>{" "}
+										is the repository this image is built from. Migrations run
+										on start.
 									</p>
 								</>
 							) : null}
@@ -312,12 +308,10 @@ function Page() {
 						<ArrowUpRightIcon weight="regular" size={15} />
 					</a>
 				</div>
-				{visitor.homepageEnabled ? (
-					<p className="fm-muted" style={{ margin: "24px 0 0", fontSize: 15 }}>
-						Rather not run it yourself?{" "}
-						<Link to="/early-access">Get early access to hosted Farmer</Link>.
-					</p>
-				) : null}
+				<p className="fm-muted" style={{ margin: "24px 0 0", fontSize: 15 }}>
+					Rather not run it yourself?{" "}
+					<Link to="/early-access">Get early access to hosted Farmer</Link>.
+				</p>
 			</section>
 		</SitePage>
 	);

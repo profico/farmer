@@ -1,0 +1,1878 @@
+/* The front page (`front-page.tsx`, `front-preview.tsx`).
+ *
+ * Every rule is scoped under `.fm-site`, and reads the tokens and classes of
+ * `site.css` — this file only adds what the front page draws and nothing
+ * else does: the hero, the product mock-ups and the ink Developers band.
+ */
+
+/* ---- Hero ------------------------------------------------------------- */
+.fm-site .fp-hero {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 26px;
+	padding-top: 96px;
+	padding-bottom: 64px;
+	text-align: center;
+}
+.fm-site .fp-release {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 12px 5px 6px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	font-size: 13px;
+	color: var(--mut);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site a.fp-release:hover {
+		text-decoration: none;
+		border-color: color-mix(in srgb, var(--mut) 60%, transparent);
+	}
+}
+.fm-site .fp-release-tag {
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--acc-soft);
+	color: var(--acc);
+	font-size: 12px;
+}
+.fm-site .fp-display {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: clamp(52px, 8.4vw, 112px);
+	line-height: 0.94;
+	letter-spacing: -0.025em;
+	text-wrap: balance;
+}
+.fm-site .fp-hero-lede {
+	max-width: 600px;
+	font-size: clamp(17px, 1.6vw, 19px);
+}
+.fm-site .fp-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 10px;
+	margin-top: 4px;
+}
+.fm-site .fp-stores {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 10px;
+}
+.fm-site .fp-split .fp-stores {
+	justify-content: start;
+}
+.fm-site .fp-store {
+	padding: 5px 12px;
+	user-select: none;
+}
+/* The App Store pill is not a link yet. */
+.fm-site span.fp-store {
+	cursor: default;
+}
+.fm-site .fp-store .fp-release-tag {
+	margin-inline-end: -6px;
+}
+
+/* ---- Sections --------------------------------------------------------- */
+.fm-site .fp-section {
+	padding-top: 140px;
+}
+/* The larger of the two section headlines, for the three that open a part. */
+.fm-site .fp-h2-xl {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: clamp(40px, 5.2vw, 68px);
+	line-height: 1;
+	letter-spacing: -0.02em;
+	text-wrap: balance;
+}
+.fm-site .fp-intro {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	max-width: 760px;
+}
+.fm-site .fp-split {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+	gap: 48px;
+}
+.fm-site .fp-split-sm {
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+}
+
+/* ---- Product mock-ups: shared ----------------------------------------- */
+.fm-site .fp-mock {
+	font-size: 13.5px;
+}
+/* A control in a mock-up. `:where` keeps the reset weaker than the class
+   that draws it (`.fp-chip-btn`, `.fp-sidebar-icon`). */
+:where(.fm-site button.fp-play) {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.fm-site .fp-play {
+	transition:
+		background var(--dur-fast),
+		opacity var(--dur-fast),
+		scale var(--dur-fast);
+}
+.fm-site .fp-play:active:not(:disabled) {
+	scale: 0.96;
+}
+.fm-site .fp-play:disabled {
+	cursor: default;
+}
+.fm-site .fp-play:disabled:not(.fp-chip-btn-acc) {
+	opacity: 0.55;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-chip-btn.fp-play:not(.fp-chip-btn-acc, :disabled):hover,
+	.fm-site .fp-sidebar-icon.fp-play:hover {
+		background: var(--ground);
+	}
+	.fm-site .fp-chip-btn-acc.fp-play:not(:disabled):hover {
+		background: color-mix(in oklab, var(--acc) 88%, var(--fg));
+	}
+}
+/* "Assemble my day" and "Accept day" run the entries in again. */
+.fm-site .fp-replay > * {
+	animation: fp-arrive 420ms var(--ease-out, ease-out) both;
+}
+@keyframes fp-arrive {
+	from {
+		opacity: 0;
+		translate: 0 6px;
+	}
+}
+.fm-site .fp-chip-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	font-size: 13px;
+	white-space: nowrap;
+}
+.fm-site .fp-chip-btn-acc {
+	border-color: transparent;
+	background: var(--acc);
+	color: var(--on-acc);
+}
+.fm-site .fp-metrics {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	margin-right: -1px;
+	border-top: 1px solid var(--line);
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-metric {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	padding: 16px 24px 0;
+	border-right: 1px solid var(--line);
+}
+.fm-site .fp-metric-head {
+	display: flex;
+	align-items: center;
+}
+.fm-site .fp-metric-value {
+	display: flex;
+	align-items: baseline;
+	gap: 4px;
+	margin-top: 6px;
+}
+.fm-site .fp-metric-value .fm-mono {
+	font-size: 28px;
+	line-height: 1.1;
+}
+.fm-site .fp-small {
+	font-size: 12.5px;
+	color: var(--mut);
+}
+.fm-site .fp-rail-bar {
+	height: 2px;
+	margin: 14px 0 16px;
+	border-radius: 1px;
+	background: var(--line);
+}
+.fm-site .fp-rail-bar > span {
+	display: block;
+	height: 100%;
+	border-radius: 1px;
+	background: var(--acc);
+	transition: width 400ms var(--ease-out);
+}
+.fm-site .fp-status {
+	margin-left: auto;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--bad) 14%, transparent);
+	color: var(--bad);
+	font-size: 11.5px;
+}
+
+/* One time entry: the project's icon, what it is, how long. */
+.fm-site .fp-entry {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 11px 24px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-entry-dashed {
+	padding: 11px 20px;
+	border-bottom-style: dashed;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-entry:hover,
+	.fm-site .fp-ts-row:hover {
+		background: var(--ground);
+	}
+}
+.fm-site .fp-project-icon {
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	border-radius: 7px;
+	background: var(--ground);
+	font-size: 15px;
+}
+.fm-site .fp-entry-main {
+	flex: 1;
+	min-width: 0;
+}
+.fm-site .fp-entry-title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.fm-site .fp-entry-name {
+	font-weight: 500;
+}
+.fm-site .fp-entry-time {
+	padding-top: 3px;
+	font-size: 14px;
+}
+.fm-site .fp-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 1px 6px;
+	border-radius: 5px;
+	background: var(--ground);
+	color: var(--mut);
+	font-size: 11px;
+}
+.fm-site .fp-gcal {
+	color: #4285f4;
+}
+
+/* ---- Product preview (the hero window) -------------------------------- */
+.fm-site .fp-window {
+	overflow: hidden;
+	border-radius: 16px;
+	border: 1px solid var(--line);
+	background: var(--ground);
+	box-shadow: var(--fm-shadow-window);
+}
+.fm-site .fp-window-bar {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-window-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--line);
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(1) {
+	background: #ff5f57;
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(2) {
+	background: #febc2e;
+}
+.fm-site .fp-window-bar:hover .fp-window-dot:nth-child(3) {
+	background: #28c840;
+}
+/* A click on a dot shakes the window. The stage shakes, not the window, so
+   the scroll animation of the window stays. */
+.fm-site .fp-preview-stage:has(.fp-window[data-shake]) {
+	animation: fp-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes fp-shake {
+	15%,
+	85% {
+		translate: -2px 0;
+	}
+	30%,
+	70% {
+		translate: 5px 0;
+	}
+	45%,
+	55% {
+		translate: -7px 0;
+	}
+}
+.fm-site .fp-window-url {
+	flex: 1;
+	margin-right: 44px;
+	text-align: center;
+	font-size: 12.5px;
+	color: var(--mut);
+}
+.fm-site .fp-window-body {
+	display: flex;
+	gap: 10px;
+	padding: 10px;
+}
+.fm-site .fp-sidebar {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+	width: 56px;
+	padding: 12px 0;
+	border-radius: 12px;
+	background: var(--bg);
+}
+.fm-site .fp-sidebar-org {
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	margin-bottom: 8px;
+	border-radius: 7px;
+	background: var(--acc);
+	color: var(--on-acc);
+	font-size: 12px;
+	font-weight: 600;
+}
+.fm-site .fp-sidebar-icon {
+	display: grid;
+	place-items: center;
+	width: 38px;
+	height: 38px;
+	border-radius: 9px;
+	color: var(--mut);
+}
+.fm-site .fp-sidebar-icon[data-active] {
+	background: var(--ground);
+	color: var(--fg);
+}
+.fm-site .fp-sidebar-rule {
+	width: 100%;
+	height: 1px;
+	margin: 4px 0 6px;
+	background: var(--line);
+}
+.fm-site .fp-sidebar-avatar {
+	display: block;
+	width: 30px;
+	height: 30px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle at 35% 35%,
+		oklch(0.6293 0.0218 293),
+		oklch(0.32 0.015 293)
+	);
+}
+.fm-site .fp-page {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	border-radius: 12px;
+	background: var(--bg);
+}
+.fm-site .fp-page-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 22px 24px 18px;
+	text-align: left;
+}
+.fm-site .fp-greeting {
+	margin-top: 8px;
+	font-family: var(--serif);
+	font-size: 32px;
+	line-height: 1.15;
+}
+.fm-site .fp-list-head {
+	display: flex;
+	align-items: center;
+	padding: 16px 24px 8px;
+}
+.fm-site .fp-week {
+	flex: 1 1 260px;
+	min-width: 0;
+	padding: 16px 24px 22px;
+	border-left: 1px solid var(--line);
+}
+.fm-site .fp-week-plot {
+	position: relative;
+	height: 110px;
+	margin-top: 18px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-week-target {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	border-top: 1px dashed var(--faint);
+	opacity: 0.7;
+}
+.fm-site .fp-week-cols {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	align-items: end;
+}
+.fm-site .fp-week-bar {
+	justify-self: center;
+	width: 44%;
+	border-radius: 3px 3px 0 0;
+	background: var(--acc-mid);
+	transition: height 400ms var(--ease-out);
+}
+.fm-site .fp-week-bar[data-today] {
+	background: var(--acc);
+}
+.fm-site .fp-week-days,
+.fm-site .fp-week-hours {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	text-align: center;
+}
+.fm-site .fp-week-days {
+	margin-top: 8px;
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	color: var(--faint);
+}
+.fm-site .fp-week-hours {
+	margin-top: 2px;
+	font-size: 11px;
+	color: var(--mut);
+}
+.fm-site .fp-under {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	color: var(--fg);
+}
+.fm-site .fp-under::after {
+	content: "";
+	width: 10px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--bad);
+}
+.fm-site .fp-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 22px;
+	font-size: 14px;
+}
+
+/* ---- 01 Automation ---------------------------------------------------- */
+/* A tight list centred beside the mock, not spread down its full height. */
+.fm-site .fp-points {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 22px;
+}
+.fm-site .fp-point {
+	display: flex;
+	gap: 14px;
+}
+.fm-site .fp-point-title {
+	font-weight: 600;
+}
+.fm-site .fp-point-body {
+	margin-top: 2px;
+	font-size: 15px;
+	color: var(--mut);
+}
+.fm-site .fp-acc {
+	flex-shrink: 0;
+	color: var(--acc);
+}
+.fm-site .fp-mock-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-mock-title {
+	font-family: var(--serif);
+	font-size: 22px;
+	line-height: 1.1;
+}
+.fm-site .fp-mock-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 20px;
+	border-top: 1px solid var(--line);
+}
+.fm-site .fp-chip-btn[data-active] {
+	background: var(--ground);
+}
+/* "Edit" swaps each time for a stepper. */
+.fm-site .fp-stepper {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	font-size: 13px;
+	animation: fp-arrive 240ms var(--ease-out) both;
+}
+.fm-site .fp-stepper > .fp-play {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	color: var(--mut);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-stepper > .fp-play:hover {
+		background: var(--ground);
+		color: var(--fg);
+	}
+}
+/* "Accept day" lays the accepted card over the list, which keeps the
+   height, so nothing below moves. */
+.fm-site .fp-assemble-body {
+	display: grid;
+}
+.fm-site .fp-assemble-body > * {
+	grid-area: 1 / 1;
+}
+.fm-site .fp-assemble-list {
+	transition:
+		opacity 200ms var(--ease-out),
+		scale 200ms var(--ease-out);
+}
+.fm-site .fp-assemble-body[data-mode="accepted"] > .fp-assemble-list {
+	opacity: 0;
+	scale: 0.98;
+}
+.fm-site .fp-accepted {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 24px;
+	text-align: center;
+	opacity: 0;
+	scale: 0.96;
+	pointer-events: none;
+	/* It grows from the Accept button, the corner that made it. */
+	transform-origin: 85% 100%;
+	transition:
+		opacity 200ms var(--ease-out),
+		scale 200ms var(--ease-out);
+}
+.fm-site .fp-accepted[data-shown] {
+	opacity: 1;
+	scale: 1;
+	transition-duration: 320ms;
+}
+.fm-site .fp-accepted-face {
+	color: var(--acc);
+	scale: 0.7;
+	transition: scale 200ms var(--ease-out);
+}
+.fm-site .fp-accepted[data-shown] .fp-accepted-face {
+	scale: 1;
+	transition-duration: 420ms;
+	transition-delay: 60ms;
+}
+@keyframes fp-face {
+	from {
+		opacity: 0;
+		scale: 0.8;
+	}
+}
+.fm-site .fp-accepted-title {
+	font-size: 26px;
+}
+.fm-site .fp-confetti {
+	position: absolute;
+	top: calc(50% - 40px);
+	left: calc(50% - 3px);
+	width: 6px;
+	height: 10px;
+	border-radius: 2px;
+	background: var(--acc);
+	opacity: 0;
+	animation: fp-confetti 900ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.fm-site .fp-confetti:nth-child(3n) {
+	background: var(--acc-mid);
+}
+.fm-site .fp-confetti:nth-child(3n + 1) {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--warn);
+}
+@keyframes fp-confetti {
+	from {
+		translate: 0 0;
+		rotate: 0deg;
+		opacity: 1;
+	}
+	70% {
+		opacity: 1;
+	}
+	to {
+		rotate: 260deg;
+		opacity: 0;
+	}
+}
+
+/* ---- 02 Timesheet ----------------------------------------------------- */
+.fm-site .fp-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.fm-site .fp-chips .fm-pill {
+	padding: 6px 11px;
+}
+.fm-site .fp-ts {
+	font-size: 13px;
+}
+.fm-site .fp-ts-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 18px 24px;
+}
+.fm-site .fp-ts-views {
+	display: flex;
+	margin-left: auto;
+	padding: 3px;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	font-size: 13px;
+}
+.fm-site .fp-ts-views > * {
+	padding: 4px 12px;
+	color: var(--mut);
+}
+.fm-site .fp-ts-views > [data-active] {
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--fg);
+	box-shadow: 0 0 0 1px var(--line);
+}
+.fm-site .fp-ts-metrics {
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.fm-site .fp-ts-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 16px 24px;
+}
+.fm-site .fp-ts-add {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 7px;
+	background: var(--acc);
+	color: var(--on-acc);
+}
+.fm-site .fp-ts-range {
+	display: flex;
+	align-items: center;
+	height: 32px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.fm-site .fp-ts-range > * {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	padding: 0 10px;
+	color: var(--mut);
+}
+.fm-site .fp-ts-range > .fp-ts-range-label {
+	gap: 7px;
+	padding: 0 12px;
+	border-left: 1px solid var(--line);
+	border-right: 1px solid var(--line);
+	color: var(--fg);
+}
+.fm-site .fp-ts-scroll {
+	overflow-x: auto;
+}
+.fm-site .fp-ts-grid {
+	min-width: 640px;
+}
+.fm-site .fp-ts-row {
+	display: grid;
+	grid-template-columns: minmax(220px, 1fr) repeat(7, 52px) 64px;
+	align-items: center;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-ts-row[data-auto] {
+	color: var(--mut);
+}
+.fm-site .fp-ts-row[data-auto] .fp-project-icon {
+	opacity: 0.6;
+}
+.fm-site .fp-ts-labels {
+	align-items: end;
+	padding-bottom: 8px;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-ts-labels:hover {
+		background: none;
+	}
+}
+.fm-site .fp-ts-day {
+	display: flex;
+	flex-direction: column;
+	text-align: center;
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	color: var(--faint);
+}
+.fm-site .fp-ts-day > span {
+	font-size: 12.5px;
+	letter-spacing: 0;
+	color: var(--fg);
+}
+.fm-site .fp-ts-project {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 9px 18px;
+}
+.fm-site .fp-ts-project-name {
+	overflow: hidden;
+	font-weight: 500;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.fm-site .fp-ts-cell {
+	margin: 0 3px;
+	padding: 6px 0;
+	text-align: center;
+}
+.fm-site .fp-ts-total {
+	padding-right: 18px;
+	text-align: right;
+	color: var(--fg);
+}
+.fm-site .fp-ts-foot {
+	border-bottom: 0;
+	padding: 10px 0;
+}
+.fm-site .fp-ts-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 12px 24px;
+	border-top: 1px solid var(--line);
+}
+/* Day, Week and Month are real views. The minimum height keeps the page
+   below from jumping when the view changes. */
+.fm-site .fp-ts-view {
+	min-height: 420px;
+	border-top: 1px solid var(--line);
+	animation: 260ms var(--ease-out) both;
+}
+/* The new view hints where it came from: a wider view zooms out, a closer
+   one zooms in, and the arrows slide the way they point. */
+.fm-site .fp-ts-view[data-dir="out"] {
+	animation-name: fp-ts-out;
+}
+.fm-site .fp-ts-view[data-dir="in"] {
+	animation-name: fp-ts-in;
+}
+.fm-site .fp-ts-view[data-dir="next"] {
+	animation-name: fp-ts-next;
+}
+.fm-site .fp-ts-view[data-dir="prev"] {
+	animation-name: fp-ts-prev;
+}
+@keyframes fp-ts-out {
+	from {
+		opacity: 0;
+		scale: 1.03;
+	}
+}
+@keyframes fp-ts-in {
+	from {
+		opacity: 0;
+		scale: 0.97;
+	}
+}
+@keyframes fp-ts-next {
+	from {
+		opacity: 0;
+		translate: 24px 0;
+	}
+}
+@keyframes fp-ts-prev {
+	from {
+		opacity: 0;
+		translate: -24px 0;
+	}
+}
+.fm-site .fp-ts-strip {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 6px;
+	padding: 12px 24px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-ts-strip > .fp-play {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 7px 0;
+	border-radius: 8px;
+	color: var(--mut);
+	font-size: 11px;
+	letter-spacing: 0.06em;
+}
+.fm-site .fp-ts-strip > .fp-play > .fm-mono {
+	color: var(--fg);
+	font-size: 13px;
+	letter-spacing: 0;
+}
+.fm-site .fp-ts-strip > [data-active] {
+	background: var(--acc);
+	color: var(--on-acc);
+}
+.fm-site .fp-ts-strip > [data-active] > .fm-mono {
+	color: var(--on-acc);
+}
+.fm-site .fp-ts-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 72px 24px;
+	text-align: center;
+}
+.fm-site .fp-ts-empty > svg {
+	animation: fp-face 400ms var(--ease-out) both;
+}
+.fm-site .fp-ts-month {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 4px;
+	padding: 12px 24px 16px;
+}
+.fm-site .fp-ts-month > .fp-ts-day {
+	padding-bottom: 4px;
+}
+.fm-site .fp-ts-month > .fp-play {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	height: 58px;
+	padding: 6px 8px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	text-align: left;
+	font-size: 12px;
+}
+.fm-site .fp-ts-month > .fp-play > span {
+	position: relative;
+}
+.fm-site .fp-ts-month > .fp-play > .fm-mono {
+	align-self: flex-end;
+	font-size: 12px;
+}
+/* How full the day is, as a fill from the bottom. */
+.fm-site .fp-ts-month > .fp-play > i {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background: color-mix(in oklab, var(--acc) 14%, transparent);
+}
+.fm-site .fp-ts-month > [data-off] {
+	color: var(--faint);
+	background: var(--ground);
+}
+.fm-site .fp-ts-month > [data-today] {
+	border-color: var(--acc);
+	box-shadow: inset 0 0 0 1px var(--acc);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-ts-month > .fp-play:hover {
+		border-color: var(--faint);
+	}
+}
+
+/* ---- 03 Reports ------------------------------------------------------- */
+.fm-site .fp-report-kinds {
+	grid-template-columns: 1fr 1fr;
+	margin-top: 6px;
+	font-size: 14px;
+}
+.fm-site .fp-report-kinds > div {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 14px 16px;
+}
+.fm-site .fp-report-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 18px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-report-month {
+	padding: 4px 9px;
+	border-radius: 6px;
+	background: var(--ground);
+	font-size: 12px;
+	color: var(--mut);
+}
+.fm-site .fp-report-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) 90px;
+	gap: 12px;
+	align-items: center;
+	padding: 12px 18px;
+	border-bottom: 1px solid var(--line);
+}
+.fm-site .fp-report-labels {
+	padding: 10px 18px;
+	font-size: 12.5px;
+	color: var(--mut);
+}
+.fm-site .fp-report-bar {
+	display: flex;
+	height: 6px;
+	overflow: hidden;
+	border-radius: 3px;
+	background: var(--line);
+}
+.fm-site .fp-report-bar > span {
+	height: 100%;
+	background: var(--acc);
+}
+.fm-site .fp-report-bar > span + span {
+	background: var(--acc-mid);
+}
+.fm-site .fp-report-kind {
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--ground);
+	font-size: 11.5px;
+	color: var(--mut);
+}
+.fm-site .fp-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	padding: 12px 18px;
+	font-size: 12px;
+	color: var(--mut);
+}
+.fm-site .fp-legend > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.fm-site .fp-swatch {
+	width: 10px;
+	height: 6px;
+	border-radius: 2px;
+	background: var(--acc);
+}
+
+/* ---- 04 Everything else ----------------------------------------------- */
+.fm-site .fp-features {
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	margin-top: 48px;
+	border-radius: 16px;
+}
+.fm-site .fp-feature {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 28px;
+}
+.fm-site .fp-feature-title {
+	font-family: var(--serif);
+	font-size: 24px;
+}
+.fm-site .fp-feature p {
+	margin: 0;
+	font-size: 15px;
+	color: var(--mut);
+	text-wrap: pretty;
+}
+/* The scene behind each card (`feature-scenes.tsx`). It comes in on hover
+   and goes out the same way when the pointer leaves.
+
+   An entrance is a transition, not a keyframe: a transition reverses from
+   where it is, so a quick hover-out never snaps. The stagger plays only on
+   the way in (the delays are inline); the way out is fast and all at once.
+   The loops (ripple, flow, scroll) pause on the way out, so the scene does
+   not jump back to its first frame. */
+.fm-site .fp-feature {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+}
+.fm-site .fp-feature > :not(.fp-scene) {
+	position: relative;
+	transition: opacity 200ms var(--ease-out);
+}
+.fm-site .fp-scene {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 160ms var(--ease-out);
+	--scene: color-mix(in oklab, var(--acc) 22%, var(--bg));
+	--scene-line: color-mix(in oklab, var(--acc) 35%, transparent);
+}
+.fm-site .fp-scene > * {
+	position: absolute;
+}
+.fm-site .fp-scene * {
+	transition-duration: 160ms;
+	transition-timing-function: var(--ease-out);
+}
+.fm-site .fp-feature:not(:hover) .fp-scene * {
+	transition-delay: 0s !important;
+	animation-play-state: paused;
+}
+@media (hover: hover) {
+	.fm-site .fp-feature:hover .fp-scene {
+		opacity: 1;
+		transition-duration: 240ms;
+	}
+	.fm-site .fp-feature:hover .fp-scene * {
+		transition-duration: 320ms;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.fm-site .fp-scene * {
+		animation: none !important;
+	}
+}
+
+/* Hours: the working days of the month fill in. */
+.fm-site .fp-scene-hours {
+	top: 22px;
+	right: 22px;
+	display: grid;
+	grid-template-columns: repeat(7, 10px);
+	gap: 4px;
+}
+.fm-site .fp-scene-hours > span {
+	height: 10px;
+	border-radius: 3px;
+	background: var(--acc-mid);
+	opacity: 0;
+	scale: 0.5;
+	transition-property: opacity, scale;
+}
+.fm-site .fp-scene-hours > [data-off] {
+	background: var(--line);
+}
+
+/* People: the team lines up. */
+.fm-site .fp-scene-people {
+	top: 22px;
+	right: 22px;
+	display: flex;
+}
+.fm-site .fp-scene-people > span {
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	margin-left: -8px;
+	border: 2px solid var(--bg);
+	border-radius: 50%;
+	background: var(--scene);
+	color: var(--acc);
+	font-size: 10px;
+	font-weight: 600;
+	opacity: 0;
+	translate: 0 8px;
+	transition-property: opacity, translate;
+}
+.fm-site .fp-scene-people > span:nth-child(2n) {
+	background: var(--acc-mid);
+	color: var(--on-acc);
+}
+.fm-site .fp-scene-people > .fp-scene-more {
+	width: auto;
+	padding: 0 8px;
+	border-radius: 999px;
+	background: var(--ground);
+	color: var(--mut);
+}
+
+/* Projects: three project cards swing down out of the top edge. */
+.fm-site .fp-scene-projects {
+	top: -22px;
+	right: 40px;
+	width: 70px;
+	height: 84px;
+}
+.fm-site .fp-scene-projects > span {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: end center;
+	padding-bottom: 10px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	box-shadow: 0 6px 16px rgb(0 0 0 / 0.08);
+	font-size: 22px;
+	transform-origin: 50% -30%;
+	translate: 0 -60px;
+	transition-property: translate, rotate;
+}
+
+/* Reminders: the bell rings out, then a reminder slides in. */
+.fm-site .fp-scene-ripple {
+	top: 41px;
+	left: 41px;
+	width: 120px;
+	height: 120px;
+	margin: -60px 0 0 -60px;
+	border: 1.5px solid var(--scene-line);
+	border-radius: 50%;
+	opacity: 0;
+	animation: fp-scene-ripple 1500ms var(--ease-out) infinite;
+}
+@keyframes fp-scene-ripple {
+	from {
+		scale: 0.2;
+		opacity: 1;
+	}
+	to {
+		scale: 1.6;
+		opacity: 0;
+	}
+}
+.fm-site .fp-scene-toast {
+	top: 18px;
+	right: 18px;
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 8px 12px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	box-shadow: 0 8px 20px rgb(0 0 0 / 0.08);
+	color: var(--acc);
+	font-size: 11.5px;
+	opacity: 0;
+	translate: 24px 0;
+	transition-property: opacity, translate;
+}
+.fm-site .fp-scene-toast > span {
+	display: flex;
+	flex-direction: column;
+	color: var(--mut);
+}
+.fm-site .fp-scene-toast b {
+	color: var(--fg);
+	font-weight: 600;
+}
+
+/* Integrations: entries flow from GitHub, the calendar and Slack. */
+.fm-site .fp-scene-integrations {
+	top: 18px;
+	right: 20px;
+	width: 190px;
+	height: 70px;
+}
+.fm-site .fp-scene-integrations > * {
+	position: absolute;
+}
+.fm-site .fp-scene-integrations > svg {
+	width: 100%;
+	height: 100%;
+	fill: none;
+	stroke: var(--scene-line);
+	stroke-width: 1.5;
+	stroke-dasharray: 4 6;
+	animation: fp-scene-flow 900ms linear infinite;
+}
+@keyframes fp-scene-flow {
+	to {
+		stroke-dashoffset: -20;
+	}
+}
+.fm-site .fp-scene-integrations > span {
+	display: grid;
+	place-items: center;
+	left: 0;
+	width: 22px;
+	height: 22px;
+	border: 1px solid var(--line);
+	border-radius: 50%;
+	background: var(--bg);
+	color: var(--mut);
+	opacity: 0;
+	translate: -8px 0;
+	transition-property: opacity, translate;
+}
+.fm-site .fp-scene-integrations > .fp-scene-hub {
+	right: 0;
+	left: auto;
+	width: 40px;
+	height: 40px;
+	border: 0;
+	background: var(--acc);
+	color: var(--on-acc);
+	translate: 0 0;
+	scale: 0.9;
+	transition-property: opacity, scale;
+}
+
+/* Moving from Harvest: a truck brings the CSV over. */
+.fm-site .fp-scene-harvest,
+.fm-site .fp-scene-reminders {
+	inset: 0;
+}
+.fm-site .fp-scene-harvest > *,
+.fm-site .fp-scene-reminders > * {
+	position: absolute;
+}
+.fm-site .fp-scene-road {
+	/* Under the wheels: 22px + 52px x 216 / 256. */
+	top: 66px;
+	right: 0;
+	left: 40%;
+	height: 2px;
+	mask-image: linear-gradient(to right, transparent, #000 30%);
+	background: repeating-linear-gradient(
+		to right,
+		var(--scene-line) 0 12px,
+		transparent 12px 22px
+	);
+	background-size: 22px 2px;
+	animation: fp-scene-road 400ms linear infinite;
+}
+@keyframes fp-scene-road {
+	to {
+		background-position: -22px 0;
+	}
+}
+.fm-site .fp-scene-truck {
+	top: 22px;
+	right: 28px;
+	display: flex;
+	align-items: flex-end;
+	color: var(--acc);
+	opacity: 0;
+	translate: -160px 0;
+	transition-property: opacity, translate;
+}
+/* The truck rolls in: slower than the rest, as it travels further. */
+.fm-site .fp-feature:hover .fp-scene .fp-scene-truck {
+	transition-duration: 700ms;
+}
+.fm-site .fp-scene-truck > * {
+	animation: fp-scene-bump 300ms ease-in-out infinite;
+}
+/* The label sits on the cargo box of the 52px icon. */
+.fm-site .fp-scene-crate {
+	position: absolute;
+	/* The white of the cargo box: x 32-176, y 72-136 of 256. */
+	top: 14.6px;
+	left: 6.5px;
+	display: grid;
+	place-items: center;
+	width: 29.25px;
+	height: 13px;
+	line-height: 1;
+	/* Centre the capitals, not the line box above them. */
+	text-box: trim-both cap alphabetic;
+	font-family: var(--mono);
+	font-size: 8px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+}
+@keyframes fp-scene-bump {
+	50% {
+		translate: 0 -1.5px;
+	}
+}
+
+/* Workspaces: the switcher steps through three organizations. */
+.fm-site .fp-scene-workspaces {
+	top: 18px;
+	right: 18px;
+	display: flex;
+	gap: 4px;
+	padding: 4px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--bg);
+	font-size: 11.5px;
+	opacity: 0;
+	translate: 0 -6px;
+	transition-property: opacity, translate;
+}
+.fm-site .fp-scene-workspaces > span:not(.fp-scene-pick) {
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+}
+.fm-site .fp-scene-workspaces b {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 5px;
+	background: var(--acc);
+	color: var(--on-acc);
+	font-size: 10px;
+}
+.fm-site .fp-scene-workspaces > span:nth-child(3) b {
+	background: var(--acc-mid);
+}
+.fm-site .fp-scene-workspaces > span:nth-child(4) b {
+	background: var(--fg);
+	color: var(--bg);
+}
+.fm-site .fp-scene-pick {
+	position: absolute;
+	top: 4px;
+	left: 4px;
+	width: 30px;
+	height: 30px;
+	border-radius: 7px;
+	background: var(--ground);
+	animation: fp-scene-pick 2400ms var(--ease-in-out) infinite;
+}
+@keyframes fp-scene-pick {
+	0%,
+	25% {
+		translate: 0 0;
+	}
+	33%,
+	58% {
+		translate: 34px 0;
+	}
+	66%,
+	92% {
+		translate: 68px 0;
+	}
+	100% {
+		translate: 0 0;
+	}
+}
+
+/* Audit log: the events scroll past. */
+.fm-site .fp-scene-audit {
+	top: 12px;
+	right: 20px;
+	height: 84px;
+	overflow: hidden;
+	color: var(--mut);
+	font-size: 11px;
+	line-height: 21px;
+	mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
+}
+.fm-site .fp-scene-audit > div {
+	display: flex;
+	flex-direction: column;
+	text-align: right;
+	animation: fp-scene-scroll 10s linear infinite;
+}
+.fm-site .fp-scene-audit i {
+	color: var(--acc);
+	font-style: normal;
+}
+@keyframes fp-scene-scroll {
+	to {
+		translate: 0 -50%;
+	}
+}
+
+/* The shown state of every entrance above. */
+@media (hover: hover) {
+	.fm-site .fp-feature:hover .fp-scene-hours > span,
+	.fm-site .fp-feature:hover .fp-scene-people > span,
+	.fm-site .fp-feature:hover .fp-scene-toast,
+	.fm-site .fp-feature:hover .fp-scene-integrations > span,
+	.fm-site .fp-feature:hover .fp-scene-truck,
+	.fm-site .fp-feature:hover .fp-scene-workspaces {
+		opacity: 1;
+		translate: 0 0;
+		scale: 1;
+	}
+	.fm-site .fp-feature:hover .fp-scene-projects > span {
+		translate: 0 0;
+	}
+	.fm-site .fp-feature:hover .fp-scene-projects > span:nth-child(1) {
+		rotate: -22deg;
+	}
+	.fm-site .fp-feature:hover .fp-scene-projects > span:nth-child(2) {
+		transition-delay: 50ms;
+	}
+	.fm-site .fp-feature:hover .fp-scene-projects > span:nth-child(3) {
+		rotate: 22deg;
+		transition-delay: 100ms;
+	}
+	.fm-site .fp-feature:hover .fp-scene-toast {
+		transition-delay: 240ms;
+	}
+}
+
+/* ---- 05 Developers (the ink band) ------------------------------------- */
+.fm-site .fp-ink {
+	margin-top: 140px;
+	background: var(--ink);
+	color: var(--ink-fg);
+}
+.fm-site .fp-ink ::selection {
+	background: color-mix(in oklab, var(--ink-acc) 40%, transparent);
+}
+.fm-site .fp-ink-inner {
+	padding-top: 110px;
+	padding-bottom: 110px;
+}
+.fm-site .fp-ink .fm-em {
+	color: var(--ink-acc);
+}
+.fm-site .fp-ink-mut {
+	color: var(--ink-mut);
+}
+.fm-site .fp-ink-acc {
+	color: var(--ink-acc);
+}
+.fm-site .fp-ink-ok {
+	color: var(--ink-ok);
+}
+/* The CLI on the left; the MCP server over the assistant on the right. */
+.fm-site .fp-dev-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+	gap: 16px;
+	margin-top: 56px;
+}
+.fm-site .fp-dev-side {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	min-width: 0;
+}
+.fm-site .fp-dev-side > .fp-ink-card {
+	flex: 1;
+}
+@media (max-width: 960px) {
+	.fm-site .fp-dev-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+.fm-site .fp-ink-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+	padding: 20px;
+	border: 1px solid var(--ink-line);
+	border-radius: 16px;
+}
+.fm-site .fp-ink-card-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.fm-site .fp-ink-card-title .fm-serif {
+	font-size: 24px;
+}
+.fm-site .fp-ink-card p {
+	margin: 0;
+	font-size: 14.5px;
+	color: var(--ink-mut);
+}
+.fm-site .fp-terminal {
+	min-width: 0;
+	overflow: hidden;
+	border: 1px solid var(--ink-line);
+	border-radius: 16px;
+	background: var(--ink-deep);
+}
+.fm-site .fp-terminal-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--ink-line);
+	font-size: 12px;
+	color: var(--ink-mut);
+}
+.fm-site .fp-ink pre {
+	margin: 0;
+	font-family: var(--mono);
+	letter-spacing: -0.03em;
+	color: var(--ink-fg);
+}
+.fm-site .fp-terminal pre {
+	padding: 22px 24px;
+	font-size: 13.5px;
+	line-height: 1.8;
+	white-space: pre;
+	overflow-x: auto;
+}
+.fm-site .fp-ink-snippet {
+	padding: 14px;
+	border-radius: 10px;
+	background: var(--ink-deep);
+	font-size: 12.5px;
+	line-height: 1.7;
+	white-space: pre-wrap;
+}
+.fm-site .fp-bubble {
+	align-self: flex-end;
+	max-width: 85%;
+	padding: 9px 13px;
+	border-radius: 12px 12px 4px 12px;
+	background: color-mix(in srgb, var(--ink-fg) 8%, transparent);
+	font-size: 14px;
+}
+.fm-site .fp-answer {
+	max-width: 90%;
+	font-size: 14px;
+	line-height: 1.55;
+}
+.fm-site .fp-ink-card .fp-ink-note {
+	padding-top: 10px;
+	border-top: 1px solid var(--ink-line);
+	font-size: 12.5px;
+}
+.fm-site .fp-rest {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px 20px;
+	margin-top: 16px;
+	padding: 16px 20px;
+	border: 1px solid var(--ink-line);
+	border-radius: 12px;
+	font-size: 14px;
+	color: var(--ink-mut);
+	text-decoration: none;
+	transition: border-color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-rest:hover {
+		border-color: var(--ink-mut);
+	}
+}
+.fm-site .fp-rest-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-rest:hover .fp-rest-more {
+		color: var(--ink-fg);
+	}
+}
+.fm-site .fp-dev-extras {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	gap: 16px;
+	margin-top: 16px;
+}
+.fm-site .fp-dev-extra {
+	display: flex;
+	gap: 12px;
+	padding: 16px 20px;
+	border: 1px solid var(--ink-line);
+	border-radius: 12px;
+}
+.fm-site .fp-dev-extra > svg {
+	flex: none;
+	margin-top: 2px;
+}
+.fm-site .fp-dev-extra h3 {
+	margin: 0 0 4px;
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--ink-fg);
+}
+.fm-site .fp-dev-extra p {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--ink-mut);
+	text-wrap: pretty;
+}
+.fm-site .fp-rest code {
+	font-family: var(--mono);
+	letter-spacing: -0.03em;
+	font-size: 13px;
+	color: var(--ink-fg);
+	overflow-wrap: anywhere;
+}
+
+/* ---- 06 Self-hosting -------------------------------------------------- */
+.fm-site .fp-license {
+	display: flex;
+	align-items: flex-start;
+	gap: 14px;
+	margin-top: 6px;
+	padding: 18px;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+}
+.fm-site .fp-host-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 4px;
+}
+.fm-site .fp-stats {
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	font-size: 13.5px;
+}
+.fm-site .fp-stats > div {
+	padding: 14px 16px;
+}
+.fm-site .fp-stat-value {
+	margin-top: 2px;
+	font-size: 20px;
+}
+.fm-site .fp-codeblock pre {
+	font-size: 13px;
+	white-space: pre-wrap;
+}
+
+/* ---- Hosted early access ---------------------------------------------- */
+.fm-site .fp-early {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+	gap: 32px;
+	align-items: end;
+	padding: clamp(32px, 5vw, 64px);
+	border-radius: 16px;
+	background: var(--ground);
+}
+.fm-site .fp-early-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 10px;
+}
+.fm-site .fp-early-actions .fm-btn-outline {
+	background: var(--bg);
+}
+.fm-site .fp-bottom {
+	padding-bottom: 120px;
+}
+
+/* ---- Small screens ---------------------------------------------------- */
+@media (max-width: 760px) {
+	.fm-site .fp-hero {
+		padding-top: 64px;
+	}
+	.fm-site .fp-section {
+		padding-top: 96px;
+	}
+	.fm-site .fp-ink {
+		margin-top: 96px;
+	}
+	.fm-site .fp-ink-inner {
+		padding-top: 72px;
+		padding-bottom: 72px;
+	}
+	.fm-site .fp-week {
+		border-left: 0;
+		border-top: 1px solid var(--line);
+	}
+	.fm-site .fp-early-actions {
+		justify-content: flex-start;
+	}
+	.fm-site .fp-bottom {
+		padding-bottom: 72px;
+	}
+}
+
+.fm-site .fp-figure {
+	margin: 0;
+}
+
+/* ---- App screenshots --------------------------------------------------- */
+.fm-site .fp-phones {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+	max-width: 520px;
+	justify-self: center;
+	padding-bottom: 48px;
+}
+.fm-site .fp-phone img {
+	vertical-align: top;
+	width: 100%;
+	height: auto;
+	filter: drop-shadow(0 24px 24px rgb(0 0 0 / 0.18));
+}
+.fm-site .fp-phone-dark,
+:root[data-theme="dark"] .fm-site .fp-phone-light {
+	display: none;
+}
+:root[data-theme="dark"] .fm-site .fp-phone-dark {
+	display: inline;
+}
+.fm-site .fp-phone + .fp-phone {
+	translate: 0 48px;
+}
+
+/* ---- Preview motion --------------------------------------------------- */
+/* The preview leans back and stands up as it scrolls in. Decoration only: a
+   browser without view() timelines shows it flat. A scroll-driven animation
+   ignores the duration override of "Less movement", so the rule checks
+   `data-motion` itself. */
+.fm-site .fp-preview-stage {
+	perspective: 1600px;
+}
+@media (prefers-reduced-motion: no-preference) {
+	@supports ((animation-timeline: view()) and (animation-range: entry)) {
+		:root:not([data-motion="reduce"]) .fm-site .fp-preview-stage .fp-window {
+			transform-origin: 50% 0;
+			animation: fp-stand-up linear both;
+			animation-timeline: view();
+			animation-range: entry 0% cover 45%;
+		}
+	}
+}
+@keyframes fp-stand-up {
+	from {
+		transform: rotateX(16deg) scale(0.94);
+	}
+}
+
+/* ---- The theme preview of "Make it yours" ------------------------------ */
+/* `lib/theme-preview.ts` sets `data-preview` and `--preview-hue` on <html>
+   while the pointer is on the card. The palette is the site's own, with the
+   hue of every tone replaced. */
+:root[data-preview] {
+	--acc: oklch(0.5 0.17 var(--preview-hue));
+	--bg: oklch(0.982 0.008 var(--preview-hue));
+	--ground: oklch(0.9435 0.02 var(--preview-hue));
+	--bg2: oklch(0.9613 0.014 var(--preview-hue));
+	--fg: oklch(0.2178 0.01 var(--preview-hue));
+	--mut: oklch(0.5582 0.022 var(--preview-hue));
+	--faint: oklch(0.7147 0.026 var(--preview-hue));
+}
+:root[data-preview][data-theme="dark"] {
+	--acc: oklch(0.68 0.14 var(--preview-hue));
+	--bg: oklch(0.2127 0.02 var(--preview-hue));
+	--ground: oklch(0.1591 0.014 var(--preview-hue));
+	--bg2: oklch(0.25 0.03 var(--preview-hue));
+	--fg: oklch(0.9322 0.02 var(--preview-hue));
+	--mut: oklch(0.6293 0.026 var(--preview-hue));
+	--faint: oklch(0.5064 0.026 var(--preview-hue));
+}
+:root[data-preview] .fm-site {
+	--ink: oklch(0.185 0.014 var(--preview-hue));
+	--ink-deep: oklch(0.1591 0.012 var(--preview-hue));
+	--ink-acc: oklch(0.68 0.14 var(--preview-hue));
+}
+
+/* The preview grows out of the card's box to the whole page, and shrinks
+   back into the card when the pointer leaves: the same path both ways. The
+   overlay lets the pointer through, so the card keeps its hover. */
+:root[data-bleed]::view-transition {
+	pointer-events: none;
+}
+:root[data-bleed]::view-transition-old(root),
+:root[data-bleed]::view-transition-new(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+:root[data-bleed="out"]::view-transition-new(root) {
+	animation: fp-bleed-out 520ms var(--ease-out);
+}
+:root[data-bleed="in"]::view-transition-old(root) {
+	z-index: 1;
+	animation: fp-bleed-in 360ms var(--ease-out) both;
+}
+@keyframes fp-bleed-out {
+	from {
+		clip-path: inset(
+			var(--bleed-t) var(--bleed-r) var(--bleed-b) var(--bleed-l)
+		);
+	}
+	to {
+		clip-path: inset(0);
+	}
+}
+@keyframes fp-bleed-in {
+	from {
+		clip-path: inset(0);
+	}
+	/* It fades as it shrinks, so nothing is left in the card at the end. */
+	to {
+		opacity: 0;
+		clip-path: inset(
+			var(--bleed-t) var(--bleed-r) var(--bleed-b) var(--bleed-l)
+		);
+	}
+}

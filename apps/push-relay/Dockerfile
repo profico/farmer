@@ -26,6 +26,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
 COPY apps/mobile/package.json apps/mobile/
 COPY apps/push-relay/package.json apps/push-relay/
+COPY apps/site/package.json apps/site/
 COPY packages/api-client/package.json packages/api-client/
 COPY packages/core/package.json packages/core/
 COPY packages/push-crypto/package.json packages/push-crypto/

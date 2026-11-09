@@ -1,15 +1,12 @@
 import { ArrowUpRightIcon, GitBranchIcon } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { loadSiteVisitor, SitePage } from "#/components/site/site-chrome.tsx";
+import { SitePage } from "#/components/site/site-chrome.tsx";
 
 import "#/components/site/about.css";
-import { githubLinks, LICENSE_NAME } from "#/lib/links.ts";
+import { githubLinks, LICENSE_NAME, REPOSITORY } from "#/lib/links.ts";
 
 export const Route = createFileRoute("/about")({
-	// Public, like the front page: it never redirects, and the loader only
-	// tells the header which CTA to draw.
-	loader: loadSiteVisitor,
 	head: () => ({ meta: [{ title: "About · Farmer" }] }),
 	component: About,
 });
@@ -22,11 +19,10 @@ const OFFICES = [
 ];
 
 function About() {
-	const visitor = Route.useLoaderData();
-	const githubUrl = githubLinks(visitor.repository).home;
+	const githubUrl = githubLinks(REPOSITORY).home;
 
 	return (
-		<SitePage visitor={visitor}>
+		<SitePage>
 			<section className="fm-container fm-about-hero">
 				<h1 className="fm-h1">
 					Built by an agency that <em className="fm-em">spends time wisely.</em>
@@ -36,7 +32,7 @@ function About() {
 			<section className="fm-container">
 				<img
 					className="fm-about-photo"
-					src="/about/team.webp"
+					src="/_site/about/team.webp"
 					alt="The Profico team"
 					width={2048}
 					height={1197}
@@ -83,7 +79,7 @@ function About() {
 					<p>
 						Most of a work day is already recorded somewhere: in the calendar,
 						in the Git history. Typing it into a timesheet again is busywork.
-						Farmer fills the timesheet in, and people only correct it.
+						Farmer fills the timesheet in, and people review it.
 					</p>
 				</div>
 			</section>
@@ -103,7 +99,7 @@ function About() {
 			<section className="fm-container fm-about-section fm-about-gallery">
 				<img
 					className="fm-about-photo"
-					src="/about/office-1.webp"
+					src="/_site/about/office-1.webp"
 					alt="The Profico office"
 					loading="lazy"
 					width={1024}
@@ -111,7 +107,7 @@ function About() {
 				/>
 				<img
 					className="fm-about-photo"
-					src="/about/office-2.webp"
+					src="/_site/about/office-2.webp"
 					alt="The Profico office"
 					loading="lazy"
 					width={1024}
