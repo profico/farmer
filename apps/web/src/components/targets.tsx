@@ -57,7 +57,9 @@ export function targetGapTone(period: PeriodTarget, delta: number) {
  *  work + time off through today, never a day booked off later in the
  *  period. On the first working day, with nothing due before today and
  *  nothing logged, it reads "0,00 of the 8,00 due by the end of today", with
- *  no color: "short" before the day starts reads badly. */
+ *  no color: "short" before the day starts reads badly. When some of the
+ *  logged time is overtime, the line ends with how much, so it is not read
+ *  as a surplus. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
@@ -82,6 +84,8 @@ export function TargetGap({ period }: { period: PeriodTarget }) {
 				{formatReportHours(Math.abs(delta))} {delta >= 0 ? "ahead" : "short"}
 			</span>{" "}
 			of the {formatReportHours(goal)} due by the end of today
+			{period.overtimeSoFarSeconds > 0 &&
+				` · ${formatReportHours(period.overtimeSoFarSeconds)} of it overtime`}
 		</span>
 	);
 }

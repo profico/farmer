@@ -54,6 +54,7 @@ const monday: PeriodTarget = {
 	timeOffSeconds: 0,
 	totalSeconds: 0,
 	totalSoFarSeconds: 0,
+	overtimeSoFarSeconds: 0,
 	status: "on_track",
 };
 

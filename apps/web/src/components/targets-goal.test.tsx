@@ -24,6 +24,7 @@ const period = (over: Partial<PeriodTarget>): PeriodTarget => ({
 	timeOffSeconds: 0,
 	totalSeconds: 0,
 	totalSoFarSeconds: 0,
+	overtimeSoFarSeconds: 0,
 	status: "on_track",
 	...over,
 });
@@ -42,6 +43,18 @@ describe("the target gap on a Monday", () => {
 
 	test("an empty Monday says nothing is logged, not short", () => {
 		expect(textOf(period({}))).toBe("0,00 of the 8,00 due by the end of today");
+	});
+
+	test("overtime is named only when there is some", () => {
+		const some = textOf(
+			period({ totalSoFarSeconds: 10 * H, overtimeSoFarSeconds: 2 * H }),
+		);
+		expect(some).toBe(
+			"2,00 ahead of the 8,00 due by the end of today · 2,00 of it overtime",
+		);
+		expect(textOf(period({ totalSoFarSeconds: 10 * H }))).not.toContain(
+			"overtime",
+		);
 	});
 
 	test("an empty month says nothing is logged, not short", () => {
