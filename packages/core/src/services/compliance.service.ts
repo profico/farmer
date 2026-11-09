@@ -342,6 +342,8 @@ export type PeriodTarget = {
 	 *  booking time off ahead of today cannot make someone who is behind
 	 *  today read as on track. */
 	totalSoFarSeconds: number;
+	/** Overtime work through today. `totalSoFarSeconds` already includes it. */
+	overtimeSoFarSeconds: number;
 	status: TrackingStatus | null;
 };
 
@@ -418,6 +420,8 @@ export const complianceService = {
 			weekOffSoFar,
 			monthWork,
 			monthOff,
+			weekOvertime,
+			monthOvertime,
 		] = await Promise.all([
 			holidaysService.holidaySetForRange(ctx, weekFrom, weekTo),
 			ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "worked", {
@@ -439,6 +443,15 @@ export const complianceService = {
 			// row's own total instead, which already stops at today.
 			ledgerByUser(ctx, monthRange, "worked", { userIds }),
 			ledgerByUser(ctx, monthRange, "absence", { userIds }),
+			// Overtime through today, to show how much of the total is overtime.
+			ledgerByUser(ctx, { from: weekFrom, to: today }, "worked", {
+				userIds,
+				overtimeOnly: true,
+			}),
+			ledgerByUser(ctx, { from: monthRange.from, to: today }, "worked", {
+				userIds,
+				overtimeOnly: true,
+			}),
 		]);
 
 		// The week has a yardstick whenever the rule applies to the person —
@@ -486,6 +499,7 @@ export const complianceService = {
 				timeOffSeconds: sumOf(weekOff, ctx.userId),
 				totalSeconds: weekTotal,
 				totalSoFarSeconds: weekTotalSoFar,
+				overtimeSoFarSeconds: sumOf(weekOvertime, ctx.userId),
 				status:
 					weekSoFar == null
 						? null
@@ -511,6 +525,7 @@ export const complianceService = {
 				timeOffSeconds: sumOf(monthOff, ctx.userId),
 				totalSeconds: monthTotal,
 				totalSoFarSeconds: monthTotalSoFar,
+				overtimeSoFarSeconds: sumOf(monthOvertime, ctx.userId),
 				status:
 					me?.targetSeconds == null
 						? null

@@ -86,6 +86,15 @@ export function TargetGap({ period }: { period: PeriodTarget }) {
 	);
 }
 
+/** The overtime in the hours, after a tile's figure. It goes on the figure's
+ *  line, not the caption, because the caption is one truncated line. */
+export function OvertimeOf({ period }: { period: PeriodTarget }) {
+	if (period.overtimeSoFarSeconds <= 0) return null;
+	return (
+		<Of>· incl. {formatReportHours(period.overtimeSoFarSeconds)} overtime</Of>
+	);
+}
+
 function Pill({ status }: { status: TrackingStatus | null }) {
 	if (!status) {
 		return <span className="text-xs text-muted-foreground">No target</span>;
@@ -142,6 +151,7 @@ export function TargetsStrip({
 								{period.targetSeconds != null && (
 									<Of>/ {formatReportHours(period.targetSeconds)}</Of>
 								)}
+								<OvertimeOf period={period} />
 							</>
 						) : (
 							<Skeleton className="h-6 w-28" />

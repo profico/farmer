@@ -85,6 +85,7 @@ const logEntry = async (
 	taskId: string,
 	durationSeconds: number,
 	withProject = true,
+	overtime = false,
 ) => {
 	await db.insert(timeEntry).values({
 		organizationId: ORG,
@@ -94,6 +95,7 @@ const logEntry = async (
 		date,
 		description: "seeded",
 		durationSeconds,
+		overtime,
 	});
 };
 
@@ -524,6 +526,18 @@ describe("my targets", () => {
 		expect(mine.week.status).toBe("behind");
 		expect(mine.month.totalSoFarSeconds).toBe(2 * H);
 		expect(mine.month.status).toBe("behind");
+	});
+
+	test("overtime is shown apart and still counts in the total", async () => {
+		await setFund(176 * H);
+		await logEntry(DILIGENT, "2026-04-16", devTaskId, 8 * H);
+		await logEntry(DILIGENT, "2026-04-16", devTaskId, 2 * H, true, true);
+
+		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
+		expect(mine.week.overtimeSoFarSeconds).toBe(2 * H);
+		expect(mine.week.totalSoFarSeconds).toBe(10 * H);
+		expect(mine.month.overtimeSoFarSeconds).toBe(2 * H);
+		expect(mine.month.totalSoFarSeconds).toBe(10 * H);
 	});
 
 	test("without a fund the month has no target but the week still has its 8h days", async () => {

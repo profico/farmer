@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import type { PeriodTarget } from "@farmer/core/services";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { TargetGap, targetGapTone } from "./targets.tsx";
+import { OvertimeOf, TargetGap, targetGapTone } from "./targets.tsx";
 
 const H = 3600;
 
@@ -24,6 +24,7 @@ const period = (over: Partial<PeriodTarget>): PeriodTarget => ({
 	timeOffSeconds: 0,
 	totalSeconds: 0,
 	totalSoFarSeconds: 0,
+	overtimeSoFarSeconds: 0,
 	status: "on_track",
 	...over,
 });
@@ -42,6 +43,18 @@ describe("the target gap on a Monday", () => {
 
 	test("an empty Monday says nothing is logged, not short", () => {
 		expect(textOf(period({}))).toBe("0,00 of the 8,00 due by the end of today");
+	});
+
+	test("overtime is named only when there is some", () => {
+		const overtimeOf = (value: PeriodTarget) =>
+			renderToStaticMarkup(<OvertimeOf period={value} />)
+				.replace(/<[^>]*>/g, "")
+				.replace(/\s+/g, " ")
+				.trim();
+		expect(overtimeOf(period({ overtimeSoFarSeconds: 2 * H }))).toBe(
+			"· incl. 2,00 overtime",
+		);
+		expect(overtimeOf(period({}))).toBe("");
 	});
 
 	test("an empty month says nothing is logged, not short", () => {

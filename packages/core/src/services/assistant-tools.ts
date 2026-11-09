@@ -1156,6 +1156,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				// Through today only. The verdict is read from this and not from
 				// `totalHours`, so a day booked off next week cannot flatter it.
 				totalSoFarHours: p.totalSoFarSeconds / 3600,
+				// Part of totalSoFarHours, so a lead made of overtime is not
+				// reported as a plain surplus.
+				overtimeSoFarHours: p.overtimeSoFarSeconds / 3600,
 				status: p.status,
 			});
 			return {

@@ -5,6 +5,7 @@ import { StatusPill } from "#/components/status-pill.tsx";
 import {
 	TARGET_STATUS,
 	TARGET_TONE,
+	OvertimeOf,
 	TargetGap,
 } from "#/components/targets.tsx";
 import { Of, StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
@@ -66,6 +67,7 @@ function WeekTile({
 					{week.targetSeconds != null && (
 						<Of>/ {formatReportHours(week.targetSeconds)}</Of>
 					)}
+					<OvertimeOf period={week} />
 				</>
 			}
 			caption={<TargetGap period={week} />}
@@ -97,6 +99,7 @@ function MonthTile({ month }: { month: PeriodTarget }) {
 					{month.targetSeconds != null && (
 						<Of>/ {formatReportHours(month.targetSeconds)}</Of>
 					)}
+					<OvertimeOf period={month} />
 				</>
 			}
 			caption={
