@@ -50,7 +50,12 @@ describe("the target gap on a Monday", () => {
 			period({ totalSoFarSeconds: 10 * H, overtimeSoFarSeconds: 2 * H }),
 		);
 		expect(some).toBe(
-			"2,00 ahead of the 8,00 due by the end of today · 2,00 of it overtime",
+			"2,00 ahead of the 8,00 due by the end of today · incl. 2,00 overtime",
+		);
+		expect(
+			textOf(period({ totalSoFarSeconds: 5 * H, overtimeSoFarSeconds: 2 * H })),
+		).toBe(
+			"3,00 short of the 8,00 due by the end of today · incl. 2,00 overtime",
 		);
 		expect(textOf(period({ totalSoFarSeconds: 10 * H }))).not.toContain(
 			"overtime",
