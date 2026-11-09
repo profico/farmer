@@ -204,7 +204,7 @@ function SignInForm({ server, meta }: { server: string; meta: Meta }) {
 	const flow = useSignInFlow(server);
 	const [showOthers, setShowOthers] = useState(false);
 	return (
-		<Screen topInset={!IOS}>
+		<Screen topInset={!IOS} keyboardInsets>
 			{IOS ? <IosHeader /> : null}
 			<Inset>
 				{IOS ? null : <BackRow />}
