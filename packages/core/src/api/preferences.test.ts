@@ -67,6 +67,7 @@ describe("toApiIntegrationSettings", () => {
 	test("keeps exactly the fields it names, with ISO instants", () => {
 		const row = {
 			googleAutoSyncMeetings: true,
+			googleMeetingFallbackProjectId: "p-1",
 			githubAutoLoadCommits: false,
 			githubSyncCommitsAsWorkTime: false,
 			googleAutoSyncMeetingsSince: new Date("2026-09-01T07:00:00Z"),
@@ -75,6 +76,7 @@ describe("toApiIntegrationSettings", () => {
 		};
 		expect(toApiIntegrationSettings(row)).toStrictEqual({
 			googleAutoSyncMeetings: true,
+			googleMeetingFallbackProjectId: "p-1",
 			githubAutoLoadCommits: false,
 			githubSyncCommitsAsWorkTime: false,
 			googleAutoSyncMeetingsSince: "2026-09-01T07:00:00.000Z",

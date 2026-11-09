@@ -1,0 +1,2 @@
+ALTER TABLE "integration_settings" ADD COLUMN "google_meeting_fallback_project_id" uuid;--> statement-breakpoint
+ALTER TABLE "integration_settings" ADD CONSTRAINT "integration_settings_google_meeting_fallback_project_id_project_id_fk" FOREIGN KEY ("google_meeting_fallback_project_id") REFERENCES "public"."project"("id") ON DELETE set null ON UPDATE no action;

@@ -28,9 +28,16 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { organization, user } from "../db/schema/auth";
-import { task, timeEntry } from "../db/schema/domain";
+import { member, organization, user } from "../db/schema/auth";
 import {
+	client,
+	project,
+	projectMember,
+	task,
+	timeEntry,
+} from "../db/schema/domain";
+import {
+	filingRule,
 	integrationSettings,
 	orgSettings,
 	syncedMeetingTombstone,
@@ -104,6 +111,9 @@ const degenerateEvent = (
 
 let harness: TestDb;
 let devTaskId: string;
+let fallbackProjectId: string;
+let ruleProjectId: string;
+let foreignProjectId: string;
 
 const meetingRows = () =>
 	db.query.timeEntry.findMany({
@@ -161,6 +171,43 @@ beforeAll(async () => {
 		})
 		.returning({ id: task.id });
 	devTaskId = present(dev, "development task").id;
+
+	// For the fallback project group. A plain member, not an owner: an admin
+	// short-circuits `canTrackOn`, which is one of the checks under test.
+	await db.insert(member).values({
+		id: "member-meeting-sync",
+		organizationId: ORG_ID,
+		userId: USER_ID,
+		role: "member",
+		createdAt: new Date(),
+	});
+	const [acme] = await db
+		.insert(client)
+		.values({ organizationId: ORG_ID, name: "Client One" })
+		.returning({ id: client.id });
+	const projectIn = async (name: string, assigned: boolean) => {
+		const [row] = await db
+			.insert(project)
+			.values({
+				organizationId: ORG_ID,
+				clientId: present(acme, "client").id,
+				name,
+			})
+			.returning({ id: project.id });
+		const id = present(row, name).id;
+		if (assigned) {
+			await db.insert(projectMember).values({
+				organizationId: ORG_ID,
+				projectId: id,
+				userId: USER_ID,
+				role: "member",
+			});
+		}
+		return id;
+	};
+	fallbackProjectId = await projectIn("Project A", true);
+	ruleProjectId = await projectIn("Project B", true);
+	foreignProjectId = await projectIn("Project C", false);
 });
 
 afterAll(async () => {
@@ -648,5 +695,97 @@ describe("typing into a synced meeting's week cell", () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.durationSeconds).toBe(2 * 3600);
 		expect(rows[0]?.syncLocked).toBe(true);
+	});
+});
+
+// A meeting that no filing rule matches goes to the person's fallback project.
+// The fallback is a preference, not a promise: like a rule, it is checked again
+// at each pass and dropped silently when it no longer applies.
+describe("the fallback project for a synced meeting", () => {
+	const fresh = (): Ctx => ({ ...ctx });
+
+	const setFallback = async (projectId: string | null) => {
+		await db.delete(integrationSettings);
+		await db.insert(integrationSettings).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			googleMeetingFallbackProjectId: projectId,
+		});
+	};
+
+	const meetingTaskId = async () => {
+		const row = await db.query.task.findFirst({
+			where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
+			columns: { id: true },
+		});
+		return present(row, "meeting task").id;
+	};
+
+	beforeEach(async () => {
+		await db.delete(integrationSettings);
+		await db.delete(filingRule);
+		await db
+			.update(project)
+			.set({ status: "active" })
+			.where(eq(project.organizationId, ORG_ID));
+	});
+
+	test("a meeting with no rule gets the fallback project and the Meeting task", async () => {
+		await setFallback(fallbackProjectId);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Ad hoc call", 1)]));
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+
+		const [row] = await meetingRows();
+		expect(row?.projectId).toBe(fallbackProjectId);
+		expect(row?.taskId).toBe(await meetingTaskId());
+	});
+
+	test("a matching rule wins over the fallback", async () => {
+		await setFallback(fallbackProjectId);
+		await db.insert(filingRule).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: await meetingTaskId(),
+			titleKey: "standup",
+			title: "Standup",
+			projectId: ruleProjectId,
+		});
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+
+		expect((await meetingRows())[0]?.projectId).toBe(ruleProjectId);
+	});
+
+	test("an archived fallback project files nothing", async () => {
+		await setFallback(fallbackProjectId);
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, fallbackProjectId));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Ad hoc call", 1)]));
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.projectId).toBeNull();
+	});
+
+	test("a fallback project the person cannot track on files nothing", async () => {
+		await setFallback(foreignProjectId);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Ad hoc call", 1)]));
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+
+		expect((await meetingRows())[0]?.projectId).toBeNull();
+	});
+
+	test("an existing row is not filed when the fallback is set later", async () => {
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Ad hoc call", 1)]));
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+		await setFallback(fallbackProjectId);
+		await timeEntriesService.syncMeetingsForUser(fresh(), RANGE);
+
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.projectId).toBeNull();
 	});
 });

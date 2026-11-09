@@ -3,10 +3,15 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { integrationSettings } from "../db/schema/settings";
 import type { UpdateIntegrationSettingsInput } from "../schema/integration-settings";
+import { ctxAccess } from "./context";
+import { assertProjectActive } from "./filing-rules.service";
+import { assertProjectInOrg } from "./guards";
 import type { Ctx } from "./types";
 
 export type IntegrationSettings = {
 	googleAutoSyncMeetings: boolean;
+	/** The project for a synced meeting that no filing rule matches. */
+	googleMeetingFallbackProjectId: string | null;
 	githubAutoLoadCommits: boolean;
 	githubSyncCommitsAsWorkTime: boolean;
 	/** When each write-capable automation was switched on — the day it may write
@@ -18,10 +23,30 @@ export type IntegrationSettings = {
 
 const DEFAULTS: IntegrationSettings = {
 	googleAutoSyncMeetings: false,
+	googleMeetingFallbackProjectId: null,
 	githubAutoLoadCommits: false,
 	githubSyncCommitsAsWorkTime: false,
 	googleAutoSyncMeetingsSince: null,
 	githubSyncCommitsAsWorkTimeSince: null,
+};
+
+const fromRow = (
+	row: typeof integrationSettings.$inferSelect,
+): IntegrationSettings => ({
+	googleAutoSyncMeetings: row.googleAutoSyncMeetings,
+	googleMeetingFallbackProjectId: row.googleMeetingFallbackProjectId,
+	githubAutoLoadCommits: row.githubAutoLoadCommits,
+	githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
+	googleAutoSyncMeetingsSince: row.googleAutoSyncMeetingsSince,
+	githubSyncCommitsAsWorkTimeSince: row.githubSyncCommitsAsWorkTimeSince,
+});
+
+/** A fallback project must be one that the sync can use: active, in the org,
+ *  and open to the person. The sync checks it again at each pass. */
+const assertFallbackProject = async (ctx: Ctx, projectId: string) => {
+	await assertProjectInOrg(ctx, projectId);
+	await assertProjectActive(ctx, projectId);
+	(await ctxAccess(ctx)).assertCanTrackOn(projectId);
 };
 
 export const integrationSettingsService = {
@@ -35,13 +60,7 @@ export const integrationSettingsService = {
 			),
 		});
 		if (!row) return { ...DEFAULTS };
-		return {
-			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
-			githubAutoLoadCommits: row.githubAutoLoadCommits,
-			githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
-			googleAutoSyncMeetingsSince: row.googleAutoSyncMeetingsSince,
-			githubSyncCommitsAsWorkTimeSince: row.githubSyncCommitsAsWorkTimeSince,
-		};
+		return fromRow(row);
 	},
 
 	// Partial patch: only the fields present in `input` change; the row is
@@ -56,6 +75,9 @@ export const integrationSettingsService = {
 		ctx: Ctx,
 		input: UpdateIntegrationSettingsInput,
 	): Promise<IntegrationSettings> => {
+		if (input.googleMeetingFallbackProjectId) {
+			await assertFallbackProject(ctx, input.googleMeetingFallbackProjectId);
+		}
 		const current = await integrationSettingsService.get(ctx);
 		const now = new Date();
 
@@ -86,6 +108,7 @@ export const integrationSettingsService = {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				googleAutoSyncMeetings: input.googleAutoSyncMeetings ?? undefined,
+				googleMeetingFallbackProjectId: input.googleMeetingFallbackProjectId,
 				githubAutoLoadCommits: input.githubAutoLoadCommits ?? undefined,
 				githubSyncCommitsAsWorkTime:
 					input.githubSyncCommitsAsWorkTime ?? undefined,
@@ -99,6 +122,7 @@ export const integrationSettingsService = {
 				],
 				set: {
 					googleAutoSyncMeetings: input.googleAutoSyncMeetings,
+					googleMeetingFallbackProjectId: input.googleMeetingFallbackProjectId,
 					githubAutoLoadCommits: input.githubAutoLoadCommits,
 					githubSyncCommitsAsWorkTime: input.githubSyncCommitsAsWorkTime,
 					googleAutoSyncMeetingsSince: googleSince,
@@ -108,12 +132,6 @@ export const integrationSettingsService = {
 			})
 			.returning();
 		if (!row) throw new Error("Failed to save integration settings");
-		return {
-			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
-			githubAutoLoadCommits: row.githubAutoLoadCommits,
-			githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
-			googleAutoSyncMeetingsSince: row.googleAutoSyncMeetingsSince,
-			githubSyncCommitsAsWorkTimeSince: row.githubSyncCommitsAsWorkTimeSince,
-		};
+		return fromRow(row);
 	},
 };

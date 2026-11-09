@@ -18,9 +18,10 @@ import { ctxAccess } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
-/** The next sync files a meeting on the project of a rule. It must not be an
- *  archived project, as the picker in the dialog does not offer one. */
-const assertProjectActive = async (ctx: Ctx, projectId: string) => {
+/** The next sync files a meeting on the project of a rule or on the fallback
+ *  project. It must not be an archived project, as the picker does not offer
+ *  one. */
+export const assertProjectActive = async (ctx: Ctx, projectId: string) => {
 	const live = await db.query.project.findFirst({
 		where: and(
 			eq(project.id, projectId),
@@ -30,9 +31,25 @@ const assertProjectActive = async (ctx: Ctx, projectId: string) => {
 		columns: { id: true },
 	});
 	if (!live) {
-		throw new Error(
-			"That project is archived. Pick another one for this rule.",
-		);
+		throw new Error("That project is archived. Pick another one.");
+	}
+};
+
+/** The checks that apply after the project is known to be active: the person
+ *  may track on it, it is in the org, and the task may go on it. */
+const projectAcceptsTask = async (
+	ctx: Ctx,
+	access: Awaited<ReturnType<typeof ctxAccess>>,
+	projectId: string,
+	taskId: string,
+) => {
+	if (!access.canTrackOn(projectId)) return false;
+	try {
+		await assertProjectInOrg(ctx, projectId);
+		await assertTaskAvailable(ctx, taskId, projectId);
+		return true;
+	} catch {
+		return false;
 	}
 };
 
@@ -416,15 +433,9 @@ export const filingRulesService = {
 			const key = `${projectId}|${fileAs}`;
 			const known = checked.get(key);
 			if (known !== undefined) return known;
-			let ok = liveIds.has(projectId) && access.canTrackOn(projectId);
-			if (ok) {
-				try {
-					await assertProjectInOrg(ctx, projectId);
-					await assertTaskAvailable(ctx, fileAs, projectId);
-				} catch {
-					ok = false;
-				}
-			}
+			const ok =
+				liveIds.has(projectId) &&
+				(await projectAcceptsTask(ctx, access, projectId, fileAs));
 			checked.set(key, ok);
 			return ok;
 		};
@@ -440,5 +451,27 @@ export const filingRulesService = {
 			});
 		}
 		return resolved;
+	},
+
+	/**
+	 * The person's fallback project for a meeting that no rule matches, or null.
+	 * It passes the same checks as the project of a rule, and it is dropped
+	 * silently when one fails, so the meeting lands with no project.
+	 */
+	usableFallback: async (
+		ctx: Ctx,
+		projectId: string | null,
+		taskId: string,
+	): Promise<string | null> => {
+		if (!projectId) return null;
+		const live = await assertProjectActive(ctx, projectId).then(
+			() => true,
+			() => false,
+		);
+		if (!live) return null;
+		const access = await ctxAccess(ctx);
+		return (await projectAcceptsTask(ctx, access, projectId, taskId))
+			? projectId
+			: null;
 	},
 };

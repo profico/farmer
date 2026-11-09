@@ -4,6 +4,8 @@ import { z } from "zod";
 // sends only the switch that changed, and the service leaves the rest as-is.
 export const updateIntegrationSettingsInput = z.object({
 	googleAutoSyncMeetings: z.boolean().optional(),
+	// null clears the fallback project; absent leaves it as it is.
+	googleMeetingFallbackProjectId: z.uuid().nullable().optional(),
 	githubAutoLoadCommits: z.boolean().optional(),
 	githubSyncCommitsAsWorkTime: z.boolean().optional(),
 });

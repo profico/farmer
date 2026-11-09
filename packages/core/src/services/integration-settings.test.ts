@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
+import { client, project, projectMember } from "../db/schema/domain";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { integrationSettingsService } from "./integration-settings.service";
 import type { Ctx } from "./types";
@@ -20,6 +21,10 @@ const ME = "u-is-me";
 const COLLEAGUE = "u-is-colleague";
 
 let harness: TestDb;
+let trackableProjectId: string;
+let unassignedProjectId: string;
+let archivedProjectId: string;
+let otherOrgProjectId: string;
 
 const ctx = (userId: string, organizationId: string = ORG_A): Ctx => ({
 	organizationId,
@@ -28,6 +33,7 @@ const ctx = (userId: string, organizationId: string = ORG_A): Ctx => ({
 
 const ALL_OFF = {
 	googleAutoSyncMeetings: false,
+	googleMeetingFallbackProjectId: null,
 	githubAutoLoadCommits: false,
 	githubSyncCommitsAsWorkTime: false,
 	googleAutoSyncMeetingsSince: null,
@@ -74,6 +80,48 @@ beforeAll(async () => {
 			createdAt: new Date(),
 		},
 	]);
+
+	const clients = await db
+		.insert(client)
+		.values([
+			{ organizationId: ORG_A, name: "Client One" },
+			{ organizationId: ORG_B, name: "Client Two" },
+		])
+		.returning({ id: client.id, organizationId: client.organizationId });
+	const clientIn = (orgId: string) =>
+		present(
+			clients.find((c) => c.organizationId === orgId),
+			"client",
+		).id;
+	const projects = await db
+		.insert(project)
+		.values([
+			{ organizationId: ORG_A, clientId: clientIn(ORG_A), name: "Project A" },
+			{ organizationId: ORG_A, clientId: clientIn(ORG_A), name: "Project B" },
+			{
+				organizationId: ORG_A,
+				clientId: clientIn(ORG_A),
+				name: "Project C",
+				status: "archived",
+			},
+			{ organizationId: ORG_B, clientId: clientIn(ORG_B), name: "Project D" },
+		])
+		.returning({ id: project.id, name: project.name });
+	const idOf = (name: string) =>
+		present(
+			projects.find((p) => p.name === name),
+			name,
+		).id;
+	trackableProjectId = idOf("Project A");
+	unassignedProjectId = idOf("Project B");
+	archivedProjectId = idOf("Project C");
+	otherOrgProjectId = idOf("Project D");
+	await db.insert(projectMember).values({
+		organizationId: ORG_A,
+		projectId: trackableProjectId,
+		userId: ME,
+		role: "member",
+	});
 });
 
 afterAll(async () => {
@@ -164,5 +212,47 @@ describe("update", () => {
 		expect(inA.googleAutoSyncMeetings).toBe(true);
 		const inB = await integrationSettingsService.get(ctx(ME, ORG_B));
 		expect(inB).toEqual({ ...ALL_OFF, githubAutoLoadCommits: true });
+	});
+});
+
+describe("the fallback project", () => {
+	const setFallback = (projectId: string | null) =>
+		integrationSettingsService.update(
+			{ organizationId: ORG_A, userId: ME },
+			{ googleMeetingFallbackProjectId: projectId },
+		);
+
+	test("saves a project the person can track on, and null clears it", async () => {
+		const saved = await setFallback(trackableProjectId);
+		expect(saved.googleMeetingFallbackProjectId).toBe(trackableProjectId);
+
+		// A patch that leaves the field out keeps it.
+		const other = await integrationSettingsService.update(ctx(ME), {
+			githubAutoLoadCommits: false,
+		});
+		expect(other.googleMeetingFallbackProjectId).toBe(trackableProjectId);
+
+		const cleared = await setFallback(null);
+		expect(cleared.googleMeetingFallbackProjectId).toBeNull();
+	});
+
+	test("refuses a project in another org", async () => {
+		await expect(setFallback(otherOrgProjectId)).rejects.toThrow(
+			"Project not found",
+		);
+		expect(
+			(await integrationSettingsService.get(ctx(ME)))
+				.googleMeetingFallbackProjectId,
+		).toBeNull();
+	});
+
+	test("refuses a project the person cannot track on", async () => {
+		await expect(setFallback(unassignedProjectId)).rejects.toThrow(
+			"You are not assigned to this project",
+		);
+	});
+
+	test("refuses an archived project", async () => {
+		await expect(setFallback(archivedProjectId)).rejects.toThrow("archived");
 	});
 });

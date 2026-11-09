@@ -3282,6 +3282,8 @@ export interface components {
                 googleAutoSyncMeetingsSince: string | null;
                 /** @description When the commit sync went on: the first day it may write to. */
                 githubSyncCommitsAsWorkTimeSince: string | null;
+                /** @description The project for a synced meeting that no filing rule matches. */
+                googleMeetingFallbackProjectId: string | null;
             };
         };
         IntegrationSettings: {
@@ -3292,6 +3294,8 @@ export interface components {
             googleAutoSyncMeetingsSince: string | null;
             /** @description When the commit sync went on: the first day it may write to. */
             githubSyncCommitsAsWorkTimeSince: string | null;
+            /** @description The project for a synced meeting that no filing rule matches. */
+            googleMeetingFallbackProjectId: string | null;
             /** @description A sync went on and its first pass finished during the save. False when it continues on the server. */
             synced: boolean;
         };
@@ -4376,6 +4380,7 @@ export interface components {
         };
         IntegrationSettingsPatch: {
             googleAutoSyncMeetings?: boolean;
+            googleMeetingFallbackProjectId?: string | null;
             githubAutoLoadCommits?: boolean;
             githubSyncCommitsAsWorkTime?: boolean;
         };

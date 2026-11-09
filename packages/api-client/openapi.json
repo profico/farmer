@@ -14741,6 +14741,18 @@
 									}
 								],
 								"description": "When the commit sync went on: the first day it may write to."
+							},
+							"googleMeetingFallbackProjectId": {
+								"anyOf": [
+									{
+										"type": "string",
+										"description": "A UUID."
+									},
+									{
+										"type": "null"
+									}
+								],
+								"description": "The project for a synced meeting that no filing rule matches."
 							}
 						},
 						"required": [
@@ -14748,7 +14760,8 @@
 							"githubAutoLoadCommits",
 							"githubSyncCommitsAsWorkTime",
 							"googleAutoSyncMeetingsSince",
-							"githubSyncCommitsAsWorkTimeSince"
+							"githubSyncCommitsAsWorkTimeSince",
+							"googleMeetingFallbackProjectId"
 						]
 					}
 				},
@@ -14794,6 +14807,18 @@
 						],
 						"description": "When the commit sync went on: the first day it may write to."
 					},
+					"googleMeetingFallbackProjectId": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "A UUID."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The project for a synced meeting that no filing rule matches."
+					},
 					"synced": {
 						"type": "boolean",
 						"description": "A sync went on and its first pass finished during the save. False when it continues on the server."
@@ -14805,6 +14830,7 @@
 					"githubSyncCommitsAsWorkTime",
 					"googleAutoSyncMeetingsSince",
 					"githubSyncCommitsAsWorkTimeSince",
+					"googleMeetingFallbackProjectId",
 					"synced"
 				]
 			},
@@ -19749,6 +19775,18 @@
 				"properties": {
 					"googleAutoSyncMeetings": {
 						"type": "boolean"
+					},
+					"googleMeetingFallbackProjectId": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid",
+								"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+							},
+							{
+								"type": "null"
+							}
+						]
 					},
 					"githubAutoLoadCommits": {
 						"type": "boolean"
