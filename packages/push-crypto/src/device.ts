@@ -262,7 +262,6 @@ export const openSealed = (
 	}
 };
 
-/** `openSealed`, then UTF-8 to a string. */
 export const openSealedText = (
 	privateKey: Uint8Array,
 	sealed: string,

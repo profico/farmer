@@ -21,7 +21,6 @@
  * Hermes, as it imports `./device`. The server makes the id.
  */
 
-/** The relay's kinds of push. */
 export const PUSH_KINDS = ["alert", "data", "liveactivity"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 
