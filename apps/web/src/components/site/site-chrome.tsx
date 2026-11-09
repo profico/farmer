@@ -263,70 +263,6 @@ function useHeaderSprings(ref: RefObject<HTMLElement | null>) {
 	}, [ref]);
 }
 
-/**
- * Runs the `.fm-em` sheen (site.css) inside `ref`: one pass as each phrase
- * first comes into view, and one on each hover. `data-sheen` is the whole
- * state — set to start a pass, cleared on `animationend` — so a hover during
- * a pass lets that pass finish rather than restarting it mid-sweep.
- */
-export function useEmSheen(ref: RefObject<HTMLElement | null>) {
-	useEffect(() => {
-		const root = ref.current;
-		if (!root) return;
-		const play = (el: Element, why: "view" | "hover") => {
-			if (!(el instanceof HTMLElement) || el.dataset.sheen) return;
-			el.dataset.sheen = why;
-		};
-		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					if (!entry.isIntersecting) continue;
-					play(entry.target, "view");
-					observer.unobserve(entry.target);
-				}
-			},
-			{ rootMargin: "0px 0px -15% 0px" },
-		);
-		// Each phrase plays its view pass one time, also after a re-render.
-		const seen = new WeakSet<Element>();
-		const watch = (node: Node) => {
-			if (!(node instanceof Element)) return;
-			const found = [...node.querySelectorAll(".fm-em")];
-			if (node.matches(".fm-em")) found.push(node);
-			for (const el of found) {
-				if (seen.has(el)) continue;
-				seen.add(el);
-				observer.observe(el);
-			}
-		};
-		watch(root);
-		// A phrase that renders after mount (a lazy section, a new route in
-		// the same page shell) is watched too.
-		const added = new MutationObserver((records) => {
-			for (const record of records) record.addedNodes.forEach(watch);
-		});
-		added.observe(root, { childList: true, subtree: true });
-		const onOver = (event: PointerEvent) => {
-			if (!(event.target instanceof Element)) return;
-			const em = event.target.closest(".fm-em");
-			if (em) play(em, "hover");
-		};
-		const onEnd = (event: AnimationEvent) => {
-			if (event.animationName !== "fm-sheen") return;
-			if (event.target instanceof HTMLElement)
-				delete event.target.dataset.sheen;
-		};
-		root.addEventListener("pointerover", onOver);
-		root.addEventListener("animationend", onEnd);
-		return () => {
-			observer.disconnect();
-			added.disconnect();
-			root.removeEventListener("pointerover", onOver);
-			root.removeEventListener("animationend", onEnd);
-		};
-	}, [ref]);
-}
-
 export function SiteHeader({ visitor }: { visitor: SiteVisitor }) {
 	const { home } = githubLinks(visitor.repository);
 	const headerRef = useRef<HTMLElement>(null);
@@ -406,10 +342,8 @@ export function SitePage({
 	visitor: SiteVisitor;
 	children: ReactNode;
 }) {
-	const pageRef = useRef<HTMLDivElement>(null);
-	useEmSheen(pageRef);
 	return (
-		<div ref={pageRef} className="fm-site fm-page">
+		<div className="fm-site fm-page">
 			<SiteHeader visitor={visitor} />
 			<main className="fm-page-main">{children}</main>
 			<SiteFooter visitor={visitor} />
