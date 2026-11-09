@@ -73,6 +73,8 @@ export const toApiFilingRule = (row: {
 /** The caller's switches on the Integrations page. */
 export type ApiIntegrationSettings = {
 	googleAutoSyncMeetings: boolean;
+	/** The project for a synced meeting that no filing rule matches. */
+	googleMeetingFallbackProjectId: string | null;
 	githubAutoLoadCommits: boolean;
 	githubSyncCommitsAsWorkTime: boolean;
 	/** When the meeting sync was switched on: the first day it may write to. */
@@ -83,12 +85,14 @@ export type ApiIntegrationSettings = {
 
 export const toApiIntegrationSettings = (row: {
 	googleAutoSyncMeetings: boolean;
+	googleMeetingFallbackProjectId: string | null;
 	githubAutoLoadCommits: boolean;
 	githubSyncCommitsAsWorkTime: boolean;
 	googleAutoSyncMeetingsSince: Date | null;
 	githubSyncCommitsAsWorkTimeSince: Date | null;
 }): ApiIntegrationSettings => ({
 	googleAutoSyncMeetings: row.googleAutoSyncMeetings,
+	googleMeetingFallbackProjectId: row.googleMeetingFallbackProjectId,
 	githubAutoLoadCommits: row.githubAutoLoadCommits,
 	githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
 	googleAutoSyncMeetingsSince:
