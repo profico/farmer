@@ -1623,6 +1623,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgSlug}/assistant/threads/{id}/messages/{messageId}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a write
+         * @description Undoes the write of a `tool` row with `undoable`. Refused when the entry changed since. Returns the row.
+         */
+        post: operations["undoAssistantWrite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/assistant/threads/{id}/rewind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take back the last question
+         * @description Removes the last question and the rows after it, then returns the question text. Send it again, edited or not, as a new message. Refused while a card waits, and after a write that was not undone.
+         */
+        post: operations["rewindAssistantThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgSlug}/projects/{id}": {
         parameters: {
             query?: never;
@@ -3782,8 +3822,16 @@ export interface components {
                 note: string | null;
                 selectable: boolean;
             } | null;
+            /** @description A `tool` row whose write can still be undone: `POST …/messages/{messageId}/undo`. */
+            undoable: boolean;
+            /** @description The person undid this write. */
+            undone: boolean;
             /** @description An instant, ISO 8601 in UTC. */
             createdAt: string;
+        };
+        AssistantRewind: {
+            /** @description The text of the removed question, to send again. */
+            content: string;
         };
         AssistantThreadDetail: {
             thread: components["schemas"]["AssistantThread"];
@@ -10268,6 +10316,112 @@ export interface operations {
             };
             /** @description The input is not valid. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    undoAssistantWrite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+                /** @description The row's id. */
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantMessage"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rewindAssistantThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantRewind"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -73,6 +73,8 @@ describe("toApiAssistantMessage", () => {
 		approvalDecision: null,
 		approvalSummary: null,
 		approvalPreview: null,
+		undo: null,
+		undoneAt: null,
 		model: "openai/gpt-4o-mini",
 		promptTokens: 120,
 		completionTokens: 30,
@@ -108,6 +110,8 @@ describe("toApiAssistantMessage", () => {
 				note: null,
 				selectable: true,
 			},
+			undoable: false,
+			undone: false,
 			createdAt: "2026-10-06T08:00:00.000Z",
 		});
 	});

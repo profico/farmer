@@ -1,7 +1,13 @@
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -22,6 +28,10 @@ import {
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
+import {
+	LastQuestionActions,
+	StoredWriteTrace,
+} from "#/components/assistant/stored-turn.tsx";
 import { MenuPath } from "#/components/menu-path.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
@@ -246,6 +256,21 @@ function AssistantPage() {
 	})();
 	const pending = stream.pending ?? storedPending;
 
+	// Edit and Retry belong to the last question, and only when nothing runs
+	// and no write of that turn still stands. The server checks again.
+	const lastUserIndex = messages.map((m) => m.role).lastIndexOf("user");
+	const editBlock = (() => {
+		if (stream.isStreaming) return "Wait for the answer to finish.";
+		if (pending) return "Answer the card first.";
+		const standing = messages
+			.slice(lastUserIndex)
+			.some((m) => m.undo && !m.undoneAt);
+		return standing
+			? "This answer changed your data. Undo the change first, then edit."
+			: null;
+	})();
+	const [editing, setEditing] = useState(false);
+
 	// Which transcript is on screen — the thread that has actually loaded, not
 	// the one the URL is pointing at. They differ for as long as a click takes to
 	// answer, and everything below keys off the former: the swap animates once,
@@ -407,13 +432,55 @@ function AssistantPage() {
 									</div>
 								)}
 
-								{messages.map((message) => {
+								{messages.map((message, index) => {
 									if (message.role === "user") {
+										const isLast = index === lastUserIndex && conversationId;
 										return (
-											<UserMessage key={message.id} text={message.content} />
+											<div key={message.id} className="flex flex-col gap-1">
+												{!(isLast && editing) && (
+													<UserMessage text={message.content} />
+												)}
+												{isLast && (
+													<LastQuestionActions
+														conversationId={conversationId}
+														text={message.content}
+														reason={editBlock}
+														onSend={send}
+														editing={editing}
+														onEditingChange={setEditing}
+													/>
+												)}
+											</div>
 										);
 									}
-									if (message.role === "tool") return null;
+									if (message.role === "tool") {
+										if (
+											!conversationId ||
+											(!message.undo && !message.undoneAt)
+										) {
+											return null;
+										}
+										const call = messages
+											.slice(0, index)
+											.reverse()
+											.flatMap((m) => m.toolCalls ?? [])
+											.find((c) => c.id === message.toolCallId);
+										if (!call) return null;
+										return (
+											<StoredWriteTrace
+												key={message.id}
+												conversationId={conversationId}
+												messageId={message.id}
+												trace={{
+													toolCallId: call.id,
+													name: call.name,
+													arguments: call.arguments,
+												}}
+												done={Boolean(message.undoneAt)}
+												locked={stream.isStreaming || Boolean(pending)}
+											/>
+										);
+									}
 									// An assistant row with no text is a pure tool turn; its trace
 									// is rendered live above and its persisted form has nothing to
 									// show, so it stays out of the transcript.

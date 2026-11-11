@@ -14,6 +14,13 @@ export type ToolTrace = {
 	ok: boolean | null;
 	/** The raw JSON that the model sent. */
 	arguments: string;
+	/** Only on a stored write that has an inverse. */
+	undo?: {
+		done: boolean;
+		busy: boolean;
+		disabled: boolean;
+		onUndo: () => void;
+	};
 };
 
 export type ApprovalPreview = {
@@ -210,11 +217,12 @@ export const visiblePending = (
 };
 
 /** The rows of a stored thread that the transcript draws: the person's
- *  messages and the assistant's text. A tool row and a pure tool turn are
- *  not drawn. */
+ *  messages, the assistant's text, and the tool row of a write that can be
+ *  undone or was undone. Other tool rows and a pure tool turn are not drawn. */
 export const visibleMessages = (messages: AssistantMessage[]) =>
 	messages.filter(
 		(message) =>
 			message.role === "user" ||
+			(message.role === "tool" && (message.undoable || message.undone)) ||
 			(message.role === "assistant" && message.content.trim() !== ""),
 	);

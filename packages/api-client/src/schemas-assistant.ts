@@ -88,10 +88,20 @@ export const assistantMessageSchema = z.object({
 			selectable: z.boolean(),
 		})
 		.nullable(),
+	/** A `tool` row whose write can still be undone. */
+	undoable: z.boolean(),
+	/** The person undid this write. */
+	undone: z.boolean(),
 	/** An instant, ISO 8601 in UTC. */
 	createdAt: z.string(),
 });
 export type AssistantMessage = z.output<typeof assistantMessageSchema>;
+
+export const assistantRewindSchema = z.object({
+	/** The text of the removed question, to send again. */
+	content: z.string(),
+});
+export type AssistantRewind = z.output<typeof assistantRewindSchema>;
 
 export const assistantThreadDetailSchema = z.object({
 	thread: assistantThreadSchema,
@@ -173,6 +183,7 @@ export type AssistantContractChecks = [
 	Expect<Parses<Schemas["AssistantModel"], typeof assistantModelSchema>>,
 	Expect<Parses<Schemas["AssistantThread"], typeof assistantThreadSchema>>,
 	Expect<Parses<Schemas["AssistantMessage"], typeof assistantMessageSchema>>,
+	Expect<Parses<Schemas["AssistantRewind"], typeof assistantRewindSchema>>,
 	Expect<
 		Parses<Schemas["AssistantThreadDetail"], typeof assistantThreadDetailSchema>
 	>,

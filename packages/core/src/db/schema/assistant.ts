@@ -107,6 +107,40 @@ export type AssistantToolCall = {
 	arguments: string;
 };
 
+/** The fields of a time entry that `update` writes, as they were. */
+export type UndoEntryFields = {
+	projectId: string | null;
+	taskId: string;
+	date: string;
+	description: string;
+	durationSeconds: number;
+	overtime: boolean;
+	fillsDay: boolean;
+};
+
+/** The exact inverse of one inline write. `updatedAt` is the entry's value
+ *  right after the write (ISO): the undo runs only if it is still that. */
+export type AssistantUndo =
+	| { kind: "delete_entry"; entryId: string; updatedAt: string }
+	| {
+			kind: "restore_entry";
+			entryId: string;
+			updatedAt: string;
+			before: UndoEntryFields;
+	  }
+	| {
+			kind: "restore_description";
+			entryId: string;
+			updatedAt: string;
+			description: string;
+	  }
+	| {
+			kind: "restore_overtime";
+			entryId: string;
+			updatedAt: string;
+			overtime: boolean;
+	  };
+
 export const assistantMessage = pgTable(
 	"assistant_message",
 	{
@@ -156,6 +190,9 @@ export const assistantMessage = pgTable(
 			 *  first rendered did, rather than the way today's code would. */
 			selectable?: boolean;
 		}>(),
+		/** Set on a `tool` row of a write that can be undone. */
+		undo: jsonb("undo").$type<AssistantUndo>(),
+		undoneAt: ts("undone_at"),
 		model: text("model"),
 		promptTokens: integer("prompt_tokens"),
 		completionTokens: integer("completion_tokens"),

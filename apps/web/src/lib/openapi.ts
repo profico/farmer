@@ -5,6 +5,7 @@ import {
 	type ApiAssistantEvent,
 	type ApiAssistantMessage,
 	type ApiAssistantModel,
+	type ApiAssistantRewind,
 	type ApiAssistantSettings,
 	type ApiAssistantThread,
 	type ApiAssistantThreadDetail,
@@ -1550,7 +1551,24 @@ const apiAssistantMessage = named(
 					selectable: z.boolean(),
 				})
 				.nullable(),
+			undoable: z
+				.boolean()
+				.describe(
+					"A `tool` row whose write can still be undone: `POST …/messages/{messageId}/undo`.",
+				),
+			undone: z.boolean().describe("The person undid this write."),
 			createdAt: iso,
+		}),
+	),
+);
+
+const apiAssistantRewind = named(
+	"AssistantRewind",
+	mirror<ApiAssistantRewind>()(
+		z.object({
+			content: z
+				.string()
+				.describe("The text of the removed question, to send again."),
 		}),
 	),
 );
@@ -3514,6 +3532,26 @@ export const OPERATIONS: Operation[] = [
 		body: assistantResolveInput,
 		response: apiAssistantEvent,
 		stream: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/messages/{messageId}/undo",
+		operationId: "undoAssistantWrite",
+		summary: "Undo a write",
+		description:
+			"Undoes the write of a `tool` row with `undoable`. Refused when the entry changed since. Returns the row.",
+		tag: "Assistant",
+		response: apiAssistantMessage,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/rewind",
+		operationId: "rewindAssistantThread",
+		summary: "Take back the last question",
+		description:
+			"Removes the last question and the rows after it, then returns the question text. Send it again, edited or not, as a new message. Refused while a card waits, and after a write that was not undone.",
+		tag: "Assistant",
+		response: apiAssistantRewind,
 	},
 	// The PM, team lead and People screens.
 	{

@@ -20,6 +20,7 @@ import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
 import { ContextNote } from "./context-note";
 import { useRun, useRunActions } from "./runs";
+import { LastQuestionActions, StoredWrite } from "./stored-turn";
 import { ToolTraceList } from "./tool-trace";
 import { visibleMessages, visiblePending } from "./turn";
 
@@ -110,6 +111,14 @@ export function Chat({ id: routeId }: { id: string | null }) {
 		run.sentMessageId !== null &&
 		messages.some((message) => message.id === run.sentMessageId);
 	const busy = run.isStreaming;
+	const lastUserIndex = rows.map((row) => row.role).lastIndexOf("user");
+	const editBlock = busy
+		? "Wait for the answer to finish."
+		: pending
+			? "Answer the card first."
+			: rows.slice(lastUserIndex).some((row) => row.undoable)
+				? "This answer changed your data. Undo the change first, then edit."
+				: null;
 
 	const send = async (text: string) => {
 		pinned.current = true;
@@ -249,17 +258,41 @@ export function Chat({ id: routeId }: { id: string | null }) {
 							</View>
 						) : null}
 
-						{rows.map((message) =>
-							message.role === "user" ? (
-								<UserMessage key={message.id} text={message.content} />
-							) : (
+						{rows.map((message, index) => {
+							if (message.role === "user") {
+								return (
+									<View key={message.id} style={{ gap: SPACE.xs }}>
+										<UserMessage text={message.content} />
+										{index === lastUserIndex && id !== null ? (
+											<LastQuestionActions
+												threadId={id}
+												text={message.content}
+												reason={editBlock}
+												onSend={send}
+											/>
+										) : null}
+									</View>
+								);
+							}
+							if (message.role === "tool") {
+								return id === null ? null : (
+									<StoredWrite
+										key={message.id}
+										threadId={id}
+										message={message}
+										messages={messages}
+										locked={busy || pending !== null}
+									/>
+								);
+							}
+							return (
 								<Answer
 									key={message.id}
 									text={message.content}
 									onFollowUp={followUp}
 								/>
-							),
-						)}
+							);
+						})}
 
 						{run.sentMessage !== null && !sentStored ? (
 							<UserMessage text={run.sentMessage} />

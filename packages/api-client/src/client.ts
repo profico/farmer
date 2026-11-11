@@ -106,6 +106,8 @@ import {
 import {
 	assistantModelSchema,
 	assistantSettingsSchema,
+	assistantMessageSchema,
+	assistantRewindSchema,
 	assistantThreadDetailSchema,
 	assistantThreadSchema,
 } from "./schemas-assistant";
@@ -1527,6 +1529,27 @@ export class FarmerClient {
 			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/approvals`),
 			body,
 			signal,
+		);
+	}
+
+	/** Undo a write. */
+	undoAssistantWrite(slug: string, id: string, messageId: string) {
+		return this.#request(
+			"POST",
+			orgPath(
+				slug,
+				`/assistant/threads/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/undo`,
+			),
+			assistantMessageSchema,
+		);
+	}
+
+	/** Take back the last question. */
+	rewindAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/rewind`),
+			assistantRewindSchema,
 		);
 	}
 

@@ -134,3 +134,26 @@ export const useUpdateAssistantSettings = () =>
 
 export const useDisconnectAssistant = () =>
 	useSettingsChange<void>((w) => w.client.disconnectAssistant(w.slug));
+
+/** Undo one write from its trace row. A write can change anything the
+ *  workspace shows, so the whole workspace is stale after it. */
+export const useUndoWrite = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, messageId }: { id: string; messageId: string }) =>
+			w.client.undoAssistantWrite(w.slug, id, messageId),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: scope(w) }),
+	});
+};
+
+/** Take back the last question. Answers with its text, to send again. */
+export const useRewindThread = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => w.client.rewindAssistantThread(w.slug, id),
+		onSuccess: (_, id) =>
+			queryClient.invalidateQueries({ queryKey: threadKey(w, id) }),
+	});
+};

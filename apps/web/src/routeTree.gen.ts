@@ -190,6 +190,7 @@ import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRouteImport } fr
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/index'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdRewindRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
 import { Route as ApiV1OrgsOrgSlugProjectsIdMembersIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/members/index'
 import { Route as ApiV1OrgsOrgSlugProjectsIdMembersUserIdRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
 import { Route as ApiV1OrgsOrgSlugProjectsIdRepositoriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/repositories/index'
@@ -202,6 +203,7 @@ import { Route as ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRouteImport } from '
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/index'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesRefreshRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/refresh'
+import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -1232,6 +1234,12 @@ const ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute =
     path: '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute =
+  ApiV1OrgsOrgSlugAssistantThreadsIdRewindRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind',
+    path: '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute =
   ApiV1OrgsOrgSlugProjectsIdMembersIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/projects/$id/members/',
@@ -1308,6 +1316,12 @@ const ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesRefreshRoute =
       getParentRoute: () => rootRouteImport,
     } as any,
   )
+const ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute =
+  ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRouteImport.update({
+    id: '/$messageId/undo',
+    path: '/$messageId/undo',
+    getParentRoute: () => ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -1489,7 +1503,8 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
-  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind': typeof ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute
   '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId': typeof ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsCommitIdRoute
@@ -1503,6 +1518,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits/': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests/': typeof ApiV1OrgsOrgSlugTimeEntriesIdPullRequestsIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesIndexRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1682,7 +1698,8 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/workspace-integrations/github': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
-  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind': typeof ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute
   '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId': typeof ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsCommitIdRoute
@@ -1696,6 +1713,7 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests': typeof ApiV1OrgsOrgSlugTimeEntriesIdPullRequestsIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesIndexRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1878,7 +1896,8 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
-  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind': typeof ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute
   '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId': typeof ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsCommitIdRoute
@@ -1892,6 +1911,7 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/time-entries/$id/commits/': typeof ApiV1OrgsOrgSlugTimeEntriesIdCommitsIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests/': typeof ApiV1OrgsOrgSlugTimeEntriesIdPullRequestsIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesIndexRoute
+  '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -2076,6 +2096,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
     | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId'
@@ -2089,6 +2110,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits/'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -2269,6 +2291,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
     | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId'
@@ -2282,6 +2305,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
   id:
     | '__root__'
     | '/'
@@ -2464,6 +2488,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
     | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/projects/$id/repositories/$repositoryId'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits/$commitId'
@@ -2477,6 +2502,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/$id/commits/'
     | '/api/v1/orgs/$orgSlug/time-entries/$id/pull-requests/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/'
+    | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -2609,7 +2635,8 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
-  ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren
+  ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute
   ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute: typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute: typeof ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute
   ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute: typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute
@@ -3890,6 +3917,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind': {
+      id: '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
+      path: '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
+      fullPath: '/api/v1/orgs/$orgSlug/assistant/threads/$id/rewind'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdRewindRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/projects/$id/members/': {
       id: '/api/v1/orgs/$orgSlug/projects/$id/members/'
       path: '/api/v1/orgs/$orgSlug/projects/$id/members'
@@ -3973,6 +4007,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/orgs/$orgSlug/workspace-integrations/github/repositories/refresh'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubRepositoriesRefreshRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo': {
+      id: '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
+      path: '/$messageId/undo'
+      fullPath: '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages/$messageId/undo'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRouteImport
+      parentRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
     }
   }
 }
@@ -4149,6 +4190,21 @@ const ApiV1OrgsOrgSlugTimeEntriesIdRouteWithChildren =
     ApiV1OrgsOrgSlugTimeEntriesIdRouteChildren,
   )
 
+interface ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteChildren {
+  ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute
+}
+
+const ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteChildren: ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteChildren =
+  {
+    ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute:
+      ApiV1OrgsOrgSlugAssistantThreadsIdMessagesMessageIdUndoRoute,
+  }
+
+const ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren =
+  ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute._addFileChildren(
+    ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
@@ -4322,7 +4378,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute:
     ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute,
   ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute:
-    ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute,
+    ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteWithChildren,
+  ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute:
+    ApiV1OrgsOrgSlugAssistantThreadsIdRewindRoute,
   ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute:
     ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute,
   ApiV1OrgsOrgSlugProjectsIdRepositoriesRepositoryIdRoute:

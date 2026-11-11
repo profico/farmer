@@ -128,6 +128,11 @@ export type ApiAssistantMessage = {
 	/** The sentence the approval card showed. */
 	approvalSummary: string | null;
 	approvalPreview: ApiApprovalPreview | null;
+	/** A `tool` row whose write can still be undone:
+	 *  `POST …/messages/$messageId/undo`. */
+	undoable: boolean;
+	/** The person undid this write. */
+	undone: boolean;
 	createdAt: string;
 };
 
@@ -157,6 +162,8 @@ export const toApiAssistantMessage = (row: {
 		note?: string;
 		selectable?: boolean;
 	} | null;
+	undo: object | null;
+	undoneAt: Date | null;
 	createdAt: Date;
 }): ApiAssistantMessage => ({
 	id: row.id,
@@ -186,8 +193,13 @@ export const toApiAssistantMessage = (row: {
 				selectable: row.approvalPreview.selectable ?? false,
 			}
 		: null,
+	undoable: row.undo !== null && row.undoneAt === null,
+	undone: row.undoneAt !== null,
 	createdAt: row.createdAt.toISOString(),
 });
+
+/** `POST …/threads/$id/rewind`: the removed question, to send again. */
+export type ApiAssistantRewind = { content: string };
 
 /** `GET /api/v1/orgs/$slug/assistant/threads/$id`. Messages oldest first. */
 export type ApiAssistantThreadDetail = {

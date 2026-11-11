@@ -1,4 +1,5 @@
 import {
+	assistantMessageIdInput,
 	assistantUsageInput,
 	conversationIdInput,
 	createConversationInput,
@@ -117,4 +118,21 @@ export const deleteConversation = createServerFn({ method: "POST" })
 			context.ctx,
 			data.conversationId,
 		);
+	});
+
+export const undoAssistantWrite = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(assistantMessageIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.undo(context.ctx, data);
+	});
+
+/** Removes the last question and the rows after it. Returns the question. */
+export const rewindAssistantThread = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.replaceLastTurn(context.ctx, data);
 	});

@@ -1,6 +1,6 @@
 {
-  "id": "0d3ef796-53e9-4ff8-a0bb-ac71a772bd60",
-  "prevId": "1f03650c-9b1c-4274-8f6a-0ef7bbd92521",
+  "id": "6cd7f929-fdf2-4c42-af1b-fbd9d8c02ecb",
+  "prevId": "0d3ef796-53e9-4ff8-a0bb-ac71a772bd60",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -325,6 +325,18 @@
         "approval_preview": {
           "name": "approval_preview",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "undo": {
+          "name": "undo",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "undone_at": {
+          "name": "undone_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

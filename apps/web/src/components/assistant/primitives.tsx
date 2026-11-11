@@ -10,6 +10,7 @@
 //
 // Sources: LoadingState.tsx, ThinkingState.tsx, ApprovalCard.tsx.
 
+import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	type CSSProperties,
@@ -23,6 +24,7 @@ import { z } from "zod";
 
 import { MARK } from "#/components/farmer-mark.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
@@ -318,12 +320,15 @@ const useTraceNames = (args: DetailArgs[]): TraceNames => {
 export function ToolTraceList({
 	traces,
 	working,
+	open = false,
 }: {
 	traces: ToolTrace[];
 	working: boolean;
+	/** Start expanded when settled, so a stored Undo button is in view. */
+	open?: boolean;
 }) {
 	const [manual, setManual] = useState<boolean | null>(null);
-	const expanded = manual ?? working;
+	const expanded = manual ?? (working || open);
 	// Parsed once per trace rather than once per render of each row: the maps
 	// below are chosen from these, and the rows are drawn from them again.
 	const args = useMemo(
@@ -351,7 +356,7 @@ export function ToolTraceList({
 			<button
 				type="button"
 				aria-expanded={expanded}
-				onClick={() => setManual((current) => !(current ?? working))}
+				onClick={() => setManual((current) => !(current ?? (working || open)))}
 				className="-mx-1.5 flex w-fit items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-(--dur-fast) hover:bg-hover-2"
 			>
 				<svg
@@ -488,6 +493,24 @@ export function ToolTraceList({
 												{detail.text}
 											</span>
 										)}
+										{trace.undo &&
+											(trace.undo.done ? (
+												<span className="ml-auto shrink-0 text-[12.5px] text-ink-3">
+													Undone
+												</span>
+											) : (
+												<Button
+													type="button"
+													variant="ghost"
+													size="xs"
+													className="ml-auto"
+													disabled={trace.undo.disabled || trace.undo.busy}
+													onClick={trace.undo.onUndo}
+												>
+													<ArrowCounterClockwiseIcon />
+													Undo
+												</Button>
+											))}
 									</div>
 								);
 							})}

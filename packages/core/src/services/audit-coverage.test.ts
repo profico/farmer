@@ -208,6 +208,20 @@ const SERVICES = {
 			reads: ["get", "listModels"],
 		},
 	},
+	assistantTurns: {
+		service: {
+			undo: assistantService.undo,
+			replaceLastTurn: assistantService.replaceLastTurn,
+		},
+		coverage: {
+			recorded: {},
+			exempt: {
+				undo: "runs the inverse of a write on the person's own time through timeEntriesService",
+				replaceLastTurn: "deletes the person's own chat rows",
+			},
+			reads: [],
+		},
+	},
 	webhooksService: {
 		service: webhooksService,
 		coverage: {

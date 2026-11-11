@@ -12,6 +12,14 @@ export const ELIDED_RESULT = JSON.stringify({
 	note: "Older result removed to save space. Call the tool again if you need it.",
 });
 
+/** A tool result the person undid. The model must not assume the write stands. */
+export const undoneContent = (content: string) =>
+	JSON.stringify({
+		result: content,
+		undone: true,
+		note: "The person undid this change.",
+	});
+
 /**
  * Replace big tool results of old turns with a stub. Wire copy only.
  * Every tool row and its `tool_call_id` stays: one result per call id.

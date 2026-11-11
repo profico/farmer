@@ -1,10 +1,20 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	sql,
+} from "drizzle-orm";
 import type { PgInsertValue } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { db } from "../db";
 import {
 	type AssistantToolCall,
+	type AssistantUndo,
 	assistantConversation,
 	assistantMessage,
 	assistantSettings,
@@ -42,8 +52,9 @@ import {
 	systemPrompt,
 	toolDefinitions,
 } from "./assistant-tools";
+import { applyUndo } from "./assistant-undo";
 import { recordAssistantUsage } from "./assistant-usage.service";
-import { elideOldToolResults } from "./assistant-wire";
+import { elideOldToolResults, undoneContent } from "./assistant-wire";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
@@ -633,6 +644,9 @@ const MISSING_RESULT =
  */
 const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 	const wire: ChatMessage[] = [];
+	// Wire positions of undone results. Marked after the stubbing, which keeps
+	// every index, so an old undone result keeps its note.
+	const undone = new Set<number>();
 	rows.forEach((row, index) => {
 		// Emitted beside its call, below — never where it happens to sit.
 		if (row.role === "tool") return;
@@ -662,9 +676,14 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 				content: answer?.content ?? MISSING_RESULT,
 				tool_call_id: call.id,
 			});
+			if (answer?.undoneAt) undone.add(wire.length - 1);
 		}
 	});
-	return elideOldToolResults(wire);
+	return elideOldToolResults(wire).map((message, i) =>
+		undone.has(i) && message.role === "tool"
+			? { ...message, content: undoneContent(message.content) }
+			: message,
+	);
 };
 
 const loadHistory = async (conversationId: string, client: DbClient = db) =>
@@ -844,7 +863,10 @@ const stringifyResult = (value: Serializable | void) => {
 /** Runs one tool and returns what the model should be told, including on
  *  failure — a thrown `AccessError` is information the model can act on
  *  ("you aren't assigned to that project"), not a reason to end the turn. */
-const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
+const executeTool = async (
+	ctx: Ctx,
+	call: AssistantToolCall,
+): Promise<{ ok: boolean; content: string; undo?: AssistantUndo | null }> => {
 	const tool = findTool(call.name);
 	if (!tool) {
 		return { ok: false, content: `Unknown tool "${call.name}".` };
@@ -875,10 +897,14 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 		return { ok: false, content: "The arguments were not valid JSON." };
 	}
 	try {
-		const text = stringifyResult(await tool.run(ctx, args));
+		// Before the write: the inverse needs the state the write replaces.
+		const capture = await tool.undo?.(ctx, args).catch(() => null);
+		const value = await tool.run(ctx, args);
+		const text = stringifyResult(value);
 		return {
 			ok: true,
 			content: taintsTurn(call.name) ? `${text}\n${UNTRUSTED_NOTE}` : text,
+			undo: capture?.(value) ?? null,
 		};
 	} catch (error) {
 		// The content goes to the model provider, so only a message written for
@@ -1429,7 +1455,7 @@ const executeClaimed = async (
 	});
 	await db
 		.update(assistantMessage)
-		.set({ content: result.content })
+		.set({ content: result.content, undo: result.undo ?? null })
 		.where(eq(assistantMessage.id, rowId));
 	onEvent({
 		type: "tool_result",
@@ -2080,4 +2106,121 @@ const runTurn = async (
 	await closeOutOfSteps(ctx, run);
 };
 
-export const assistantService = { settings, conversations, run };
+/**
+ * Undo one inline write from its trace row.
+ *
+ * `undone_at` is the claim, as the tool row is for a call: two tabs race on
+ * one UPDATE and the second finds it set. The inverse runs through the same
+ * services as the caller, never through the model. If it is refused, the
+ * claim is released.
+ */
+const undo = async (
+	ctx: Ctx,
+	input: { conversationId: string; messageId: string },
+): Promise<{ ok: true }> => {
+	await requireConversation(ctx, input.conversationId);
+	const where = and(
+		eq(assistantMessage.id, input.messageId),
+		eq(assistantMessage.conversationId, input.conversationId),
+		eq(assistantMessage.organizationId, ctx.organizationId),
+		eq(assistantMessage.role, "tool"),
+	);
+	const [claimed] = await db
+		.update(assistantMessage)
+		.set({ undoneAt: new Date() })
+		.where(
+			and(
+				where,
+				isNull(assistantMessage.undoneAt),
+				isNotNull(assistantMessage.undo),
+			),
+		)
+		.returning({ undo: assistantMessage.undo });
+	if (!claimed?.undo) {
+		throw new AssistantError("This change cannot be undone.");
+	}
+	try {
+		await applyUndo(ctx, claimed.undo);
+	} catch (error) {
+		await db.update(assistantMessage).set({ undoneAt: null }).where(where);
+		throw error;
+	}
+	return { ok: true };
+};
+
+const EDIT_AFTER_CHANGE =
+	"This answer changed your data. Undo the change first, then edit.";
+
+/** Results that say the call did not change anything. */
+const NOT_RUN_RESULTS = new Set([
+	DECLINED,
+	NONE_SELECTED,
+	MOVED_ON,
+	NOT_REACHED,
+]);
+
+/** Whether a tool row is a write or a destructive call that ran and stands. */
+const changedData = (row: StoredMessage) => {
+	const kind = row.toolName ? findTool(row.toolName)?.kind : undefined;
+	if (row.role !== "tool" || (kind !== "write" && kind !== "destructive")) {
+		return false;
+	}
+	return (
+		!row.undoneAt &&
+		!NOT_RUN_RESULTS.has(row.content) &&
+		!row.content.startsWith("Error:")
+	);
+};
+
+/**
+ * Drop the last user message and every row after it, so the client can send
+ * the edited or the same text again as a new turn. Returns the removed text.
+ *
+ * Refused while a card is pending or a tool runs, and after a write that
+ * still stands. One transaction under row locks on the thread's messages, as
+ * `claimCalls` takes, so two tabs cannot both replace. Usage rows reference
+ * the conversation, not the messages, so they stay.
+ */
+const replaceLastTurn = async (
+	ctx: Ctx,
+	input: { conversationId: string },
+): Promise<{ content: string }> => {
+	await requireConversation(ctx, input.conversationId);
+	return db.transaction(async (tx) => {
+		const rows = await tx
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.conversationId, input.conversationId))
+			.orderBy(asc(assistantMessage.createdAt))
+			.for("update");
+		const start = rows.map((row) => row.role).lastIndexOf("user");
+		const question = rows[start];
+		if (!question) throw new AssistantError("There is no question to edit.");
+		const turn = rows.slice(start);
+		if (
+			turn.some(
+				(row) =>
+					row.pendingApproval ||
+					(row.role === "tool" && row.content === RESULT_PENDING),
+			)
+		) {
+			throw new AssistantError("The answer is not finished yet.");
+		}
+		if (turn.some(changedData)) throw new AssistantError(EDIT_AFTER_CHANGE);
+		await tx.delete(assistantMessage).where(
+			inArray(
+				assistantMessage.id,
+				turn.map((row) => row.id),
+			),
+		);
+		return { content: question.content };
+	});
+};
+
+export const assistantService = {
+	settings,
+	conversations,
+	run,
+	undo,
+	replaceLastTurn,
+};

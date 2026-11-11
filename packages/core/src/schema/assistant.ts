@@ -69,6 +69,12 @@ export type RenameConversationInput = z.infer<typeof renameConversationInput>;
 export const conversationIdInput = z.object({ conversationId: z.uuid() });
 export type ConversationIdInput = z.infer<typeof conversationIdInput>;
 
+/** One stored message of one of the caller's threads. */
+export const assistantMessageIdInput = z.object({
+	conversationId: z.uuid(),
+	messageId: z.uuid(),
+});
+
 /** What a person types to the assistant. */
 export const assistantMessageText = z.string().trim().min(1).max(10_000);
 

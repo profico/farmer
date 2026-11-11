@@ -56,6 +56,13 @@ export type ToolTrace = {
 	ok: boolean | null;
 	/** The call's raw arguments, as the model sent them. */
 	arguments: string;
+	/** Only on a stored write with an inverse. A live trace has none. */
+	undo?: {
+		done: boolean;
+		busy: boolean;
+		disabled: boolean;
+		onUndo: () => void;
+	};
 };
 
 /** The rows a batch write would touch. Mirrors `ApprovalPreview` in

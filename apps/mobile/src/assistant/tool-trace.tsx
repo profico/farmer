@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
+import { ActionButton } from "../ui/action-button";
 import { Text } from "../ui/components";
 import { Icon } from "../ui/icon";
 import { LoadingIndicator } from "../ui/loading";
@@ -16,13 +17,16 @@ import type { ToolTrace } from "./turn";
 export function ToolTraceList({
 	traces,
 	working,
+	open = false,
 }: {
 	traces: ToolTrace[];
 	working: boolean;
+	/** Start open when settled, so a stored Undo is in view. */
+	open?: boolean;
 }) {
 	const palette = usePalette();
 	const [manual, setManual] = useState<boolean | null>(null);
-	const expanded = manual ?? working;
+	const expanded = manual ?? (working || open);
 	if (traces.length === 0) return null;
 	const done = traces.filter((trace) => trace.ok !== null).length;
 
@@ -31,7 +35,7 @@ export function ToolTraceList({
 			<Pressable
 				accessibilityRole="button"
 				accessibilityState={{ expanded }}
-				onPress={() => setManual((current) => !(current ?? working))}
+				onPress={() => setManual((current) => !(current ?? (working || open)))}
 				hitSlop={8}
 				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
 			>
@@ -104,6 +108,20 @@ export function ToolTraceList({
 											{detail}
 										</Text>
 									</View>
+								) : null}
+								{trace.undo ? (
+									trace.undo.done ? (
+										<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+											Undone
+										</Text>
+									) : (
+										<ActionButton
+											label="Undo"
+											variant="text"
+											disabled={trace.undo.disabled || trace.undo.busy}
+											onPress={trace.undo.onUndo}
+										/>
+									)
 								) : null}
 							</View>
 						);
