@@ -8,6 +8,7 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
@@ -111,11 +112,17 @@ type DialogProps = Omit<ProviderProps, "available" | "children"> & {
 };
 
 function AskDialog({ open, onOpenChange, ...page }: DialogProps) {
+	const inputRef = useRef<HTMLInputElement>(null);
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent>
+			{/* Without it, focus lands on the chip's remove button. */}
+			<DialogContent initialFocus={inputRef}>
 				{/* Mounted only while open, so the field and the chip start fresh. */}
-				<AskForm {...page} close={() => onOpenChange(false)} />
+				<AskForm
+					{...page}
+					inputRef={inputRef}
+					close={() => onOpenChange(false)}
+				/>
 			</DialogContent>
 		</Dialog>
 	);
@@ -126,7 +133,11 @@ function AskForm({
 	timezone,
 	weekStartsOn,
 	close,
-}: Omit<DialogProps, "open" | "onOpenChange"> & { close: () => void }) {
+	inputRef,
+}: Omit<DialogProps, "open" | "onOpenChange"> & {
+	close: () => void;
+	inputRef: React.RefObject<HTMLInputElement | null>;
+}) {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const actions = useAssistantActions();
@@ -184,7 +195,7 @@ function AskForm({
 
 	return (
 		<form
-			className="grid gap-4"
+			className="grid grid-cols-[minmax(0,1fr)] gap-4"
 			onSubmit={(event) => {
 				event.preventDefault();
 				void send();
@@ -211,7 +222,7 @@ function AskForm({
 				</div>
 			)}
 			<Input
-				autoFocus
+				ref={inputRef}
 				aria-label="Your question"
 				placeholder="Ask about your time, or log some"
 				value={text}
