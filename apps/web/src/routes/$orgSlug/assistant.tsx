@@ -1,7 +1,14 @@
+import { editBlockReason } from "@farmer/core/lib/assistant-edit";
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -15,12 +22,20 @@ import {
 	useAssistantRun,
 } from "#/components/assistant/assistant-runs.tsx";
 import { MobileChatBar } from "#/components/assistant/chat-rail.tsx";
+import { ContextMeter } from "#/components/assistant/context-meter.tsx";
 import {
 	ApprovalCard,
 	AssistantLoader,
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
+import { ShareChatButton } from "#/components/assistant/share-chat.tsx";
+import {
+	LastQuestionActions,
+	StoredWriteTrace,
+} from "#/components/assistant/stored-turn.tsx";
+import { useSuggestions } from "#/components/assistant/use-suggestions.ts";
+import { UserMessage } from "#/components/assistant/user-message.tsx";
 import { MenuPath } from "#/components/menu-path.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
@@ -90,12 +105,6 @@ export const Route = createFileRoute("/$orgSlug/assistant")({
 	component: AssistantPage,
 });
 
-const SUGGESTIONS = [
-	"How many hours did I log last week?",
-	"What have I not filed to a project yet this month?",
-	"Which project took most of my time in March?",
-];
-
 /**
  * Lands the transcript at its end, once, as this thread's content mounts.
  *
@@ -116,23 +125,13 @@ function PinToEnd({ pin }: { pin: () => void }) {
 	return null;
 }
 
-/** One thing the user said. Rendered from the transcript, and — for the turn in
- *  flight — from the text the composer just sent. */
-function UserMessage({ text }: { text: string }) {
-	return (
-		<div className="flex justify-end">
-			<div className="max-w-[85%] rounded-card bg-inset px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink">
-				{text}
-			</div>
-		</div>
-	);
-}
-
 function AssistantPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const conversationId = Route.useSearch().c ?? null;
+	const { organization } = Route.useRouteContext();
+	const suggestions = useSuggestions(orgSlug, organization.timezone);
 
 	const { data: settings } = useQuery(assistantSettingsQuery(orgSlug));
 	const { data: thread } = useQuery({
@@ -245,12 +244,31 @@ function AssistantPage() {
 	})();
 	const pending = stream.pending ?? storedPending;
 
+	// Edit and Retry belong to the last question, and only when nothing runs
+	// and no write of that turn still stands. The server checks again.
+	const lastUserIndex = messages.map((m) => m.role).lastIndexOf("user");
+	const editBlock = (() => {
+		if (stream.isStreaming) return "Wait for the answer to finish.";
+		if (pending) return "Answer the card first.";
+		return editBlockReason(
+			messages
+				.slice(lastUserIndex)
+				.filter((m) => m.changed)
+				.map((m) => ({ undoable: Boolean(m.undo) })),
+		);
+	})();
+	const [restore, setRestore] = useState<{ text: string } | null>(null);
+
 	// Which transcript is on screen — the thread that has actually loaded, not
 	// the one the URL is pointing at. They differ for as long as a click takes to
 	// answer, and everything below keys off the former: the swap animates once,
 	// when there is something new to show, and the scroll lands at the end of the
 	// content that is really there.
 	const viewKey = thread?.conversation.id ?? "new";
+	// Edit mode belongs to one thread: another thread reads as not editing.
+	const [editingKey, setEditingKey] = useState<string | null>(null);
+	const editing = editingKey === viewKey;
+	const setEditing = (on: boolean) => setEditingKey(on ? viewKey : null);
 
 	// Follow the transcript's end. Scrolling the container rather than the
 	// document: this screen owns the viewport height, so the document never
@@ -318,8 +336,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant needs to be connected again</h1>
 					<p className="lede max-w-[48ch]">
 						The stored OpenRouter key can no longer be read. An admin can paste
-						it again under <MenuPath steps={["Settings", "Integrations"]} />,
-						and the assistant comes back with every conversation intact.
+						it again under <MenuPath steps={["Settings", "AI"]} />, and the
+						assistant comes back with every conversation intact.
 					</p>
 				</div>
 			</PageFull>
@@ -334,8 +352,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant isn't connected</h1>
 					<p className="lede max-w-[48ch]">
 						An admin can connect this workspace's OpenRouter account under
-						<MenuPath steps={["Settings", "Integrations"]} />. Until then
-						there's nothing to ask.
+						<MenuPath steps={["Settings", "AI"]} />. Until then there's nothing
+						to ask.
 					</p>
 				</div>
 			</PageFull>
@@ -354,6 +372,14 @@ function AssistantPage() {
 					    the Browse/Chat switch both live in the sidebar, which doesn't
 					    exist at this width. */}
 					<MobileChatBar orgSlug={orgSlug} />
+					{conversationId && (
+						<div className="absolute top-3 right-4 z-10 hidden md:block">
+							<ShareChatButton
+								orgSlug={orgSlug}
+								conversationId={conversationId}
+							/>
+						</div>
+					)}
 
 					{/* The transcript scrolls; the composer below it does not. The
 					    ordering is the whole layout: history moves upward under the
@@ -392,7 +418,7 @@ function AssistantPage() {
 											I'd write is shown to you first.
 										</p>
 										<div className="mt-2 flex flex-col items-start gap-1.5">
-											{SUGGESTIONS.map((suggestion) => (
+											{suggestions.map((suggestion) => (
 												<button
 													key={suggestion}
 													type="button"
@@ -406,13 +432,56 @@ function AssistantPage() {
 									</div>
 								)}
 
-								{messages.map((message) => {
+								{messages.map((message, index) => {
 									if (message.role === "user") {
+										const isLast = index === lastUserIndex && conversationId;
 										return (
-											<UserMessage key={message.id} text={message.content} />
+											<div key={message.id} className="flex flex-col gap-1">
+												{!(isLast && editing) && (
+													<UserMessage text={message.content} />
+												)}
+												{isLast && (
+													<LastQuestionActions
+														conversationId={conversationId}
+														text={message.content}
+														reason={editBlock}
+														onSend={send}
+														onRestore={(text) => setRestore({ text })}
+														editing={editing}
+														onEditingChange={setEditing}
+													/>
+												)}
+											</div>
 										);
 									}
-									if (message.role === "tool") return null;
+									if (message.role === "tool") {
+										if (
+											!conversationId ||
+											(!message.undo && !message.undoneAt)
+										) {
+											return null;
+										}
+										const call = messages
+											.slice(0, index)
+											.reverse()
+											.flatMap((m) => m.toolCalls ?? [])
+											.find((c) => c.id === message.toolCallId);
+										if (!call) return null;
+										return (
+											<StoredWriteTrace
+												key={message.id}
+												conversationId={conversationId}
+												messageId={message.id}
+												trace={{
+													toolCallId: call.id,
+													name: call.name,
+													arguments: call.arguments,
+												}}
+												done={Boolean(message.undoneAt)}
+												locked={stream.isStreaming || Boolean(pending)}
+											/>
+										);
+									}
 									// An assistant row with no text is a pure tool turn; its trace
 									// is rendered live above and its persisted form has nothing to
 									// show, so it stays out of the transcript.
@@ -503,6 +572,11 @@ function AssistantPage() {
 							    past a card as "no" to it (see `abandonPendingCalls`), which
 							    keeps the thread well-formed — but that is a fallback for a
 							    stale tab, not a way anybody should answer. The card is. */}
+							<ContextMeter
+								used={thread?.promptTokens}
+								limit={thread?.contextLength}
+								onNewChat={() => void startChat.mutate()}
+							/>
 							<PromptBar
 								onSend={send}
 								onStop={() => {
@@ -517,6 +591,7 @@ function AssistantPage() {
 								}
 								autoFocus
 								focusKey={conversationId}
+								restore={restore}
 							/>
 						</div>
 					</div>

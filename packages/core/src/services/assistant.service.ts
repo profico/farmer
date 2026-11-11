@@ -1,14 +1,29 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
-import type { PgInsertValue } from "drizzle-orm/pg-core";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	exists,
+	inArray,
+	isNotNull,
+	isNull,
+	or,
+	type SQL,
+	sql,
+} from "drizzle-orm";
+import type { AnyPgColumn, PgInsertValue } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { db } from "../db";
 import {
 	type AssistantToolCall,
+	type AssistantUndo,
 	assistantConversation,
 	assistantMessage,
 	assistantSettings,
 } from "../db/schema/assistant";
+import { user } from "../db/schema/auth";
+import { editBlockReason } from "../lib/assistant-edit";
 import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
 import { loggableError } from "../lib/loggable-error";
@@ -24,6 +39,7 @@ import {
 	streamChatCompletion,
 	verifyKey,
 } from "../lib/openrouter-client";
+import { plainText } from "../lib/plain-text";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import { dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
@@ -31,6 +47,7 @@ import type {
 	CreateConversationInput,
 	RenameConversationInput,
 	RunAssistantInput,
+	SearchConversationsInput,
 	SetAssistantSettingsInput,
 	UpdateAssistantSettingsInput,
 } from "../schema";
@@ -42,6 +59,9 @@ import {
 	systemPrompt,
 	toolDefinitions,
 } from "./assistant-tools";
+import { applyUndo } from "./assistant-undo";
+import { recordAssistantUsage } from "./assistant-usage.service";
+import { elideOldToolResults, undoneContent } from "./assistant-wire";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
@@ -126,6 +146,7 @@ export const chatModel = (): ChatModelPort => portOverride ?? realPort;
 /** Test-only: substitute a scripted model. Pass null to restore. */
 export const setChatModelForTests = (port: ChatModelPort | null): void => {
 	portOverride = port;
+	catalogues.clear();
 };
 
 // ── events ───────────────────────────────────────────────────────────────────
@@ -481,6 +502,63 @@ const requireConversation = async (ctx: Ctx, conversationId: string) => {
 	return row;
 };
 
+const MODEL_CATALOGUE_TTL_MS = 60 * 60 * 1000;
+const MODEL_CATALOGUE_FAILURE_TTL_MS = 60 * 1000;
+// One catalogue per organization: the key, and so the model list, is its own.
+const catalogues = new Map<
+	string,
+	{ at: number; lengths: Map<string, number | null> }
+>();
+// One lookup in flight per organization, so concurrent cold reads make one call.
+const catalogueLoads = new Map<
+	string,
+	Promise<Map<string, number | null> | null>
+>();
+
+/** The context size of a model, for the meter. Any member may see it, so it
+ *  skips the admin gate of `listModels`. A failed lookup gives null, and is
+ *  kept for a minute so a broken key is not retried on every read. */
+const contextLengthOf = async (
+	ctx: Ctx,
+	modelId: string,
+): Promise<number | null> => {
+	// A switched-off feature makes no outbound calls.
+	if (!isAssistantEnabled()) return null;
+	const cached = catalogues.get(ctx.organizationId);
+	if (cached && Date.now() - cached.at <= MODEL_CATALOGUE_TTL_MS) {
+		return cached.lengths.get(modelId) ?? null;
+	}
+	let load = catalogueLoads.get(ctx.organizationId);
+	if (!load) {
+		load = loadCatalogue(ctx).finally(() =>
+			catalogueLoads.delete(ctx.organizationId),
+		);
+		catalogueLoads.set(ctx.organizationId, load);
+	}
+	return (await load)?.get(modelId) ?? null;
+};
+
+const loadCatalogue = async (
+	ctx: Ctx,
+): Promise<Map<string, number | null> | null> => {
+	try {
+		const row = await loadSettings(ctx);
+		if (!row?.apiKey) return null;
+		const models = await chatModel().listModels(row.apiKey);
+		const lengths = new Map(models.map((m) => [m.id, m.contextLength]));
+		catalogues.set(ctx.organizationId, { at: Date.now(), lengths });
+		return lengths;
+	} catch (error) {
+		console.error("[assistant] model catalogue failed", loggableError(error));
+		// Fresh enough to skip a retry for the failure TTL, empty so it gives null.
+		catalogues.set(ctx.organizationId, {
+			at: Date.now() - MODEL_CATALOGUE_TTL_MS + MODEL_CATALOGUE_FAILURE_TTL_MS,
+			lengths: new Map(),
+		});
+		return null;
+	}
+};
+
 const conversations = {
 	list: async (ctx: Ctx) =>
 		db
@@ -489,6 +567,7 @@ const conversations = {
 				title: assistantConversation.title,
 				model: assistantConversation.model,
 				updatedAt: assistantConversation.updatedAt,
+				sharedAt: assistantConversation.sharedAt,
 			})
 			.from(assistantConversation)
 			.where(
@@ -524,7 +603,20 @@ const conversations = {
 			where: eq(assistantMessage.conversationId, conversation.id),
 			orderBy: asc(assistantMessage.createdAt),
 		});
-		return { conversation, messages };
+		const promptTokens =
+			messages
+				.filter((row) => row.role === "assistant" && row.promptTokens)
+				.at(-1)?.promptTokens ?? null;
+		const contextLength =
+			promptTokens === null
+				? null
+				: await contextLengthOf(ctx, conversation.model);
+		return {
+			conversation,
+			messages: messages.map((row) => ({ ...row, changed: changedData(row) })),
+			promptTokens,
+			contextLength,
+		};
 	},
 
 	rename: async (ctx: Ctx, input: RenameConversationInput) => {
@@ -544,6 +636,206 @@ const conversations = {
 			.where(conversationWhere(ctx, conversationId));
 		return { ok: true };
 	},
+};
+
+// ── search ───────────────────────────────────────────────────────────────────
+
+const SNIPPET_CHARS = 120;
+const SEARCH_LIMIT = 30;
+
+/** Case-insensitive substring match with the LIKE wildcards taken literally.
+ *  Escaped against a backslash and declared with ESCAPE, as `notePredicate` in
+ *  `ledger.ts` does. */
+const containsTerm = (column: AnyPgColumn, term: string): SQL => {
+	const escaped = term.replace(/[\\%_]/g, (match) => `\\${match}`);
+	return sql`${column} ilike ${`%${escaped}%`} escape '\\'`;
+};
+
+/** Raw characters kept on each side of the match. More than a snippet, because
+ *  `plainText` removes markup afterwards. */
+const WINDOW_CHARS = 400;
+
+/** A slice of the column around the first match, so a long message is not
+ *  loaded whole. A match with no literal position (case folding) starts at 1. */
+const windowAround = (column: AnyPgColumn, term: string): SQL<string> =>
+	sql<string>`substring(${column} from greatest(1, position(lower(${term}::text) in lower(${column})) - ${sql.raw(String(WINDOW_CHARS))}) for ${sql.raw(String(term.length + 2 * WINDOW_CHARS))})`;
+
+/** About `SNIPPET_CHARS` of plain text around the first match. A match that
+ *  only sat in removed markup falls back to the start of the text. */
+const snippetAround = (content: string, term: string): string => {
+	const text = plainText(content);
+	const hit = Math.max(0, text.toLowerCase().indexOf(term.toLowerCase()));
+	const start = Math.max(
+		0,
+		hit - Math.floor((SNIPPET_CHARS - term.length) / 2),
+	);
+	const piece = text.slice(start, start + SNIPPET_CHARS);
+	return `${start > 0 ? "…" : ""}${piece}${start + SNIPPET_CHARS < text.length ? "…" : ""}`;
+};
+
+/** Messages a person typed or read: not the tool rows. */
+const readableMessage = inArray(assistantMessage.role, ["user", "assistant"]);
+
+const search = async (ctx: Ctx, input: SearchConversationsInput) => {
+	const term = input.q;
+	const matchingMessage = and(
+		eq(assistantMessage.conversationId, assistantConversation.id),
+		readableMessage,
+		containsTerm(assistantMessage.content, term),
+	);
+	const rows = await db
+		.select({
+			id: assistantConversation.id,
+			title: assistantConversation.title,
+			updatedAt: assistantConversation.updatedAt,
+		})
+		.from(assistantConversation)
+		.where(
+			and(
+				eq(assistantConversation.organizationId, ctx.organizationId),
+				eq(assistantConversation.userId, ctx.userId),
+				or(
+					containsTerm(assistantConversation.title, term),
+					exists(
+						db
+							.select({ one: sql`1` })
+							.from(assistantMessage)
+							.where(matchingMessage),
+					),
+				),
+			),
+		)
+		.orderBy(desc(assistantConversation.updatedAt))
+		.limit(SEARCH_LIMIT);
+	if (rows.length === 0) return [];
+	// One row per conversation: the earliest match.
+	const hits = await db
+		.selectDistinctOn([assistantMessage.conversationId], {
+			conversationId: assistantMessage.conversationId,
+			content: windowAround(assistantMessage.content, term),
+		})
+		.from(assistantMessage)
+		.where(
+			and(
+				inArray(
+					assistantMessage.conversationId,
+					rows.map((row) => row.id),
+				),
+				readableMessage,
+				containsTerm(assistantMessage.content, term),
+			),
+		)
+		.orderBy(assistantMessage.conversationId, asc(assistantMessage.createdAt));
+	const first = new Map(hits.map((hit) => [hit.conversationId, hit.content]));
+	return rows.map((row) => {
+		const content = first.get(row.id);
+		return {
+			...row,
+			snippet: content === undefined ? null : snippetAround(content, term),
+		};
+	});
+};
+
+// ── sharing ──────────────────────────────────────────────────────────────────
+
+const conversationTarget = (row: { id: string; title: string }) => ({
+	type: "assistant_conversation",
+	id: row.id,
+	label: row.title,
+});
+
+/** Share one of the caller's chats with the organization. */
+const share = async (ctx: Ctx, conversationId: string) => {
+	const row = await requireConversation(ctx, conversationId);
+	if (row.sharedAt) return { sharedAt: row.sharedAt };
+	const sharedAt = new Date();
+	await db
+		.update(assistantConversation)
+		.set({ sharedAt, sharedBy: ctx.userId })
+		.where(conversationWhere(ctx, conversationId));
+	await recordAudit(ctx, {
+		kind: "assistant_chat.shared",
+		target: conversationTarget(row),
+		subjectUserId: row.userId,
+	});
+	return { sharedAt };
+};
+
+/** Stop sharing. The owner may, and so may an Admin for any chat in the org,
+ *  so that leaked data can be pulled back. */
+const unshare = async (ctx: Ctx, conversationId: string) => {
+	const access = await ctxAccess(ctx);
+	const row = await db.query.assistantConversation.findFirst({
+		where: and(
+			eq(assistantConversation.id, conversationId),
+			eq(assistantConversation.organizationId, ctx.organizationId),
+			isNotNull(assistantConversation.sharedAt),
+		),
+	});
+	if (!row || (row.userId !== ctx.userId && !access.isAdmin)) {
+		throw new AssistantError("Conversation not found");
+	}
+	await db
+		.update(assistantConversation)
+		.set({ sharedAt: null, sharedBy: null })
+		.where(eq(assistantConversation.id, row.id));
+	await recordAudit(ctx, {
+		kind: "assistant_chat.unshared",
+		target: conversationTarget(row),
+		subjectUserId: row.userId,
+	});
+	return { sharedAt: null };
+};
+
+/** A stored row as a reader sees it: nothing waits for an answer, nothing
+ *  can be undone, and nothing the owner's tools read comes along. */
+const readOnlyRow = (row: StoredMessage): StoredMessage => ({
+	...row,
+	toolCalls: null,
+	approvalPreview: null,
+	approvalSummary: null,
+	pendingApproval: false,
+	undo: null,
+});
+
+/** Read one shared chat. Any member of the org may. A chat that is not shared,
+ *  or is in another org, is not found. */
+const getShared = async (ctx: Ctx, conversationId: string) => {
+	await ctxAccess(ctx);
+	if (!isAssistantEnabled()) throw new AssistantDisabledError();
+	const conversation = await db.query.assistantConversation.findFirst({
+		where: and(
+			eq(assistantConversation.id, conversationId),
+			eq(assistantConversation.organizationId, ctx.organizationId),
+			isNotNull(assistantConversation.sharedAt),
+		),
+	});
+	if (!conversation?.sharedAt)
+		throw new AssistantError("Conversation not found");
+	const [messages, [sharer]] = await Promise.all([
+		db.query.assistantMessage.findMany({
+			where: and(
+				eq(assistantMessage.conversationId, conversation.id),
+				readableMessage,
+			),
+			orderBy: asc(assistantMessage.createdAt),
+		}),
+		conversation.sharedBy
+			? db
+					.select({ name: user.name, image: user.image })
+					.from(user)
+					.where(eq(user.id, conversation.sharedBy))
+			: [],
+	]);
+	return {
+		conversation,
+		messages: messages.map(readOnlyRow),
+		sharedAt: conversation.sharedAt,
+		sharedBy: {
+			name: sharer?.name ?? "A colleague",
+			image: sharer?.image ?? null,
+		},
+	};
 };
 
 // ── the loop ─────────────────────────────────────────────────────────────────
@@ -596,6 +888,9 @@ const MISSING_RESULT =
  */
 const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 	const wire: ChatMessage[] = [];
+	// Wire positions of undone results. Marked after the stubbing, which keeps
+	// every index, so an old undone result keeps its note.
+	const undone = new Set<number>();
 	rows.forEach((row, index) => {
 		// Emitted beside its call, below — never where it happens to sit.
 		if (row.role === "tool") return;
@@ -625,9 +920,14 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 				content: answer?.content ?? MISSING_RESULT,
 				tool_call_id: call.id,
 			});
+			if (answer?.undoneAt) undone.add(wire.length - 1);
 		}
 	});
-	return wire;
+	return elideOldToolResults(wire).map((message, i) =>
+		undone.has(i) && message.role === "tool"
+			? { ...message, content: undoneContent(message.content) }
+			: message,
+	);
 };
 
 const loadHistory = async (conversationId: string, client: DbClient = db) =>
@@ -684,6 +984,36 @@ const insertMessage = async (
 	return row;
 };
 
+/** Share-lock the question row. False when it is gone or was never known. */
+const holdQuestion = async (
+	tx: Pick<typeof db, "select">,
+	questionRowId: string | null,
+): Promise<boolean> => {
+	if (!questionRowId) return false;
+	const [question] = await tx
+		.select({ id: assistantMessage.id })
+		.from(assistantMessage)
+		.where(eq(assistantMessage.id, questionRowId))
+		.for("share");
+	return Boolean(question);
+};
+
+/**
+ * Store an assistant row, unless its question was removed meanwhile.
+ * `replaceLastTurn` can delete the question while the model still writes.
+ * A share lock on the question row makes the check and the insert one step.
+ */
+const insertAnswer = async (
+	ctx: Ctx,
+	conversationId: string,
+	questionRowId: string | null,
+	values: Parameters<typeof insertMessage>[2],
+) =>
+	db.transaction(async (tx) => {
+		if (!(await holdQuestion(tx, questionRowId))) return null;
+		return insertMessage(ctx, conversationId, values, { client: tx });
+	});
+
 /**
  * Take the right to answer one tool call — or a run of them — by writing their
  * answers.
@@ -716,6 +1046,12 @@ const claimCalls = async (
 		const history = await loadHistory(conversationId, tx);
 		const assistant = history.find((row) => row.id === assistantId);
 		if (!assistant) return null;
+		// A rewind may have removed the turn's question: write no tool rows for it.
+		const question = history
+			.slice(0, history.indexOf(assistant))
+			.filter((row) => row.role === "user")
+			.at(-1);
+		if (!(await holdQuestion(tx, question?.id ?? null))) return null;
 		// The batch must be exactly the LEADING run of what is still unanswered.
 		// One call is the old rule ("only the first") spelled for a list; several
 		// is a run of reads taken together, and either way a second tab asking for
@@ -807,7 +1143,10 @@ const stringifyResult = (value: Serializable | void) => {
 /** Runs one tool and returns what the model should be told, including on
  *  failure — a thrown `AccessError` is information the model can act on
  *  ("you aren't assigned to that project"), not a reason to end the turn. */
-const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
+const executeTool = async (
+	ctx: Ctx,
+	call: AssistantToolCall,
+): Promise<{ ok: boolean; content: string; undo?: AssistantUndo | null }> => {
 	const tool = findTool(call.name);
 	if (!tool) {
 		return { ok: false, content: `Unknown tool "${call.name}".` };
@@ -838,10 +1177,14 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 		return { ok: false, content: "The arguments were not valid JSON." };
 	}
 	try {
-		const text = stringifyResult(await tool.run(ctx, args));
+		// Before the write: the inverse needs the state the write replaces.
+		const capture = await tool.undo?.(ctx, args).catch(() => null);
+		const value = await tool.run(ctx, args);
+		const text = stringifyResult(value);
 		return {
 			ok: true,
 			content: taintsTurn(call.name) ? `${text}\n${UNTRUSTED_NOTE}` : text,
+			undo: capture?.(value) ?? null,
 		};
 	} catch (error) {
 		// The content goes to the model provider, so only a message written for
@@ -1101,6 +1444,8 @@ const generate = async (
 		onDelta?: (text: string) => void;
 		/** Allow one retry (see `fallbackModel`). Defaults to true. */
 		retry?: boolean;
+		/** What the ledger files the call under. Defaults to `turn`. */
+		kind?: "turn" | "title";
 	},
 ): Promise<ChatTurn> => {
 	let retryReason: string | null = null;
@@ -1147,6 +1492,16 @@ const generate = async (
 				outputText: turn.content,
 				error: null,
 			});
+			await recordAssistantUsage(ctx, {
+				conversationId: trace.conversationId,
+				model,
+				servedModel: turn.servedModel ?? null,
+				kind: opts.kind ?? "turn",
+				attempt,
+				promptTokens: turn.promptTokens,
+				completionTokens: turn.completionTokens,
+				costUsd: turn.costUsd,
+			});
 			return turn;
 		} catch (error) {
 			// A cut stream still billed for what it sent, so its tokens, cost and
@@ -1175,6 +1530,16 @@ const generate = async (
 				outputText: partial?.content ?? "",
 				error: error instanceof Error ? error.message : String(error),
 			});
+			await recordAssistantUsage(ctx, {
+				conversationId: trace.conversationId,
+				model,
+				servedModel: partial?.servedModel ?? null,
+				kind: opts.kind ?? "turn",
+				attempt,
+				promptTokens: partial?.promptTokens ?? null,
+				completionTokens: partial?.completionTokens ?? null,
+				costUsd: partial?.costUsd ?? null,
+			});
 			if (nextRetryReason === null) throw error;
 			retryReason = nextRetryReason;
 		}
@@ -1193,6 +1558,7 @@ const generateTitle = async (
 		// call on the same question, which is why it is on the same trace.
 		const turn = await generate(ctx, trace, null, {
 			retry: false,
+			kind: "title",
 			apiKey,
 			// The turn's own signal: a reader who has left does not need their
 			// thread named, and this is billed like any other completion.
@@ -1369,7 +1735,7 @@ const executeClaimed = async (
 	});
 	await db
 		.update(assistantMessage)
-		.set({ content: result.content })
+		.set({ content: result.content, undo: result.undo ?? null })
 		.where(eq(assistantMessage.id, rowId));
 	onEvent({
 		type: "tool_result",
@@ -1608,9 +1974,10 @@ const keepPartial = async (
 	ctx: Ctx,
 	conversation: { id: string; model: string },
 	turn: ChatTurn,
+	questionRowId: string | null,
 ): Promise<void> => {
 	if (!turn.content.trim()) return;
-	await insertMessage(ctx, conversation.id, {
+	const row = await insertAnswer(ctx, conversation.id, questionRowId, {
 		role: "assistant",
 		content: turn.content,
 		toolCalls: null,
@@ -1619,7 +1986,7 @@ const keepPartial = async (
 		completionTokens: turn.completionTokens,
 		pendingApproval: false,
 	});
-	await touchConversation(conversation.id);
+	if (row) await touchConversation(conversation.id);
 };
 
 /** Bump the thread so the rail orders by real activity, not by creation. */
@@ -1643,6 +2010,8 @@ type TurnRun = {
 	tools: ChatTool[];
 	signal: AbortSignal | undefined;
 	onEvent: EmitEvent;
+	/** The question row this turn answers, fixed when the turn starts. */
+	questionRowId: string | null;
 };
 
 const recordUserMessage = async (
@@ -1650,7 +2019,7 @@ const recordUserMessage = async (
 	conversation: Conversation,
 	message: string,
 	onEvent: EmitEvent,
-): Promise<void> => {
+): Promise<string> => {
 	// Before the message, never after: see `abandonPendingCalls`.
 	await abandonPendingCalls(ctx, conversation.id);
 	const row = await insertMessage(ctx, conversation.id, {
@@ -1670,6 +2039,25 @@ const recordUserMessage = async (
 			.where(eq(assistantConversation.id, conversation.id));
 		onEvent({ type: "title", title });
 	}
+	return row.id;
+};
+
+/** The last user row of a thread: the question a resumed turn answers. */
+const lastQuestionId = async (
+	conversationId: string,
+): Promise<string | null> => {
+	const [row] = await db
+		.select({ id: assistantMessage.id })
+		.from(assistantMessage)
+		.where(
+			and(
+				eq(assistantMessage.conversationId, conversationId),
+				eq(assistantMessage.role, "user"),
+			),
+		)
+		.orderBy(desc(assistantMessage.createdAt))
+		.limit(1);
+	return row?.id ?? null;
 };
 
 /**
@@ -1806,8 +2194,9 @@ const reportCut = async (
 	error: OpenRouterStreamCutError,
 	signal: AbortSignal | undefined,
 	onEvent: EmitEvent,
+	questionRowId: string | null,
 ): Promise<void> => {
-	await keepPartial(ctx, conversation, error.partial);
+	await keepPartial(ctx, conversation, error.partial, questionRowId);
 	if (!signal?.aborted)
 		onEvent({
 			type: "error",
@@ -1824,7 +2213,7 @@ const runStep = async (
 	run: TurnRun,
 	step: number,
 ): Promise<"continue" | "ended"> => {
-	const { conversation, signal, onEvent } = run;
+	const { conversation, signal, onEvent, questionRowId: question } = run;
 	const history = await loadHistory(conversation.id);
 	if (await resurfaceSuspended(ctx, history, onEvent)) return "ended";
 
@@ -1842,7 +2231,7 @@ const runStep = async (
 		});
 	} catch (error) {
 		if (error instanceof OpenRouterStreamCutError) {
-			await reportCut(ctx, conversation, error, signal, onEvent);
+			await reportCut(ctx, conversation, error, signal, onEvent, question);
 			return "ended";
 		}
 		if (error instanceof OpenRouterError) {
@@ -1862,7 +2251,7 @@ const runStep = async (
 	// An empty partial stores nothing and reports nothing: stopping a turn
 	// before it said anything is not a failure to explain.
 	if (signal?.aborted) {
-		await keepPartial(ctx, conversation, turn);
+		await keepPartial(ctx, conversation, turn, question);
 		return "ended";
 	}
 
@@ -1880,7 +2269,7 @@ const runStep = async (
 		return "ended";
 	}
 
-	const assistantRow = await insertMessage(ctx, conversation.id, {
+	const assistantRow = await insertAnswer(ctx, conversation.id, question, {
 		role: "assistant",
 		content: turn.content,
 		toolCalls: turn.toolCalls.length ? turn.toolCalls : null,
@@ -1890,6 +2279,8 @@ const runStep = async (
 		// Decided below, once we know whether any call needs consent.
 		pendingApproval: false,
 	});
+	// The question was removed while the model wrote: drop the answer.
+	if (!assistantRow) return "ended";
 	await touchConversation(conversation.id);
 
 	if (turn.toolCalls.length === 0) {
@@ -1919,16 +2310,17 @@ const runStep = async (
  * already in the thread. Not billed on a turn nobody is waiting for.
  */
 const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
-	const { conversation, signal, onEvent } = run;
+	const { conversation, signal, onEvent, questionRowId: question } = run;
 	if (signal?.aborted) return;
 
 	let closing: ChatTurn | null = null;
+	const history = await loadHistory(conversation.id);
 	try {
 		closing = await generate(ctx, run.trace, null, {
 			apiKey: run.config.apiKey,
 			messages: [
 				{ role: "system", content: run.system },
-				...toWireMessages(await loadHistory(conversation.id)),
+				...toWireMessages(history),
 				{ role: "user", content: OUT_OF_STEPS },
 			],
 			signal,
@@ -1942,7 +2334,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 		if (error instanceof OpenRouterStreamCutError) {
 			// A cut closing answer is a failure of its own: the person is told
 			// the connection closed, not that the model kept working.
-			await reportCut(ctx, conversation, error, signal, onEvent);
+			await reportCut(ctx, conversation, error, signal, onEvent, question);
 			return;
 		}
 	}
@@ -1951,7 +2343,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 	// model about its own ceiling, and a later turn re-reading it as something
 	// the person said would be a lie about the conversation.
 	if (closing?.content.trim()) {
-		await insertMessage(ctx, conversation.id, {
+		const row = await insertAnswer(ctx, conversation.id, question, {
 			role: "assistant",
 			content: closing.content,
 			model: conversation.model,
@@ -1959,7 +2351,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 			completionTokens: closing.completionTokens,
 			pendingApproval: false,
 		});
-		await touchConversation(conversation.id);
+		if (row) await touchConversation(conversation.id);
 		onEvent({ type: "done" });
 		return;
 	}
@@ -1991,8 +2383,9 @@ const runTurn = async (
 		generationId: null,
 	};
 
-	if (input.message)
-		await recordUserMessage(ctx, conversation, input.message, onEvent);
+	const questionRowId = input.message
+		? await recordUserMessage(ctx, conversation, input.message, onEvent)
+		: await lastQuestionId(conversation.id);
 	if (
 		input.resolve &&
 		(await resumeApproval(ctx, trace, conversation, input.resolve, onEvent))
@@ -2012,6 +2405,7 @@ const runTurn = async (
 		tools,
 		signal,
 		onEvent,
+		questionRowId,
 	};
 
 	for (let step = 0; step < MAX_STEPS; step += 1) {
@@ -2020,4 +2414,150 @@ const runTurn = async (
 	await closeOutOfSteps(ctx, run);
 };
 
-export const assistantService = { settings, conversations, run };
+/**
+ * Undo one inline write from its trace row.
+ *
+ * `undone_at` is the claim, as the tool row is for a call: two tabs race on
+ * one UPDATE and the second finds it set. The inverse runs through the same
+ * services as the caller, never through the model. If it is refused, the
+ * claim is released.
+ */
+const undo = async (
+	ctx: Ctx,
+	input: { conversationId: string; messageId: string },
+) => {
+	await requireConversation(ctx, input.conversationId);
+	const where = and(
+		eq(assistantMessage.id, input.messageId),
+		eq(assistantMessage.conversationId, input.conversationId),
+		eq(assistantMessage.organizationId, ctx.organizationId),
+		eq(assistantMessage.role, "tool"),
+	);
+	const [claimed] = await db
+		.update(assistantMessage)
+		.set({ undoneAt: new Date() })
+		.where(
+			and(
+				where,
+				isNull(assistantMessage.undoneAt),
+				isNotNull(assistantMessage.undo),
+			),
+		)
+		.returning({ undo: assistantMessage.undo });
+	if (!claimed?.undo) {
+		throw new AssistantError("This change cannot be undone.");
+	}
+	try {
+		await applyUndo(ctx, claimed.undo);
+	} catch (error) {
+		await db.update(assistantMessage).set({ undoneAt: null }).where(where);
+		throw error;
+	}
+	// The row the claim changed, read with the same predicate as the claim.
+	const row = await db.query.assistantMessage.findFirst({ where });
+	if (!row) throw new AssistantError("Message not found");
+	return { ok: true as const, message: { ...row, changed: changedData(row) } };
+};
+
+/** Results that say the call did not change anything. */
+const NOT_RUN_RESULTS = new Set([
+	DECLINED,
+	NONE_SELECTED,
+	MOVED_ON,
+	NOT_REACHED,
+]);
+
+/** The failures `executeTool` returns before it runs the tool. */
+const REFUSED_BEFORE_RUN = [
+	/^Unknown tool "/,
+	/^".*" is not available to this user\.$/,
+	/^The arguments were not (a JSON object|valid JSON)\.$/,
+];
+
+/** Whether a tool row is a write or a destructive call that ran and stands. */
+const changedData = (row: StoredMessage) => {
+	const kind = row.toolName ? findTool(row.toolName)?.kind : undefined;
+	if (row.role !== "tool" || (kind !== "write" && kind !== "destructive")) {
+		return false;
+	}
+	return (
+		!row.undoneAt &&
+		!NOT_RUN_RESULTS.has(row.content) &&
+		!row.content.startsWith("Error:") &&
+		!REFUSED_BEFORE_RUN.some((pattern) => pattern.test(row.content))
+	);
+};
+
+/**
+ * Drop the last user message and every row after it, so the client can send
+ * the edited or the same text again as a new turn. Returns the removed text.
+ *
+ * Refused while a card is pending or a tool runs, and after a write that
+ * still stands. One transaction under row locks on the thread's messages, as
+ * `claimCalls` takes, so two tabs cannot both replace. Usage rows reference
+ * the conversation, not the messages, so they stay.
+ */
+const replaceLastTurn = async (
+	ctx: Ctx,
+	input: { conversationId: string },
+): Promise<{ content: string }> => {
+	await requireConversation(ctx, input.conversationId);
+	return db.transaction(async (tx) => {
+		// Lock the question alone first: this waits for an answer insert that
+		// holds it, and the next statement then sees that answer.
+		await tx
+			.select({ id: assistantMessage.id })
+			.from(assistantMessage)
+			.where(
+				and(
+					eq(assistantMessage.conversationId, input.conversationId),
+					eq(assistantMessage.role, "user"),
+				),
+			)
+			.orderBy(desc(assistantMessage.createdAt))
+			.limit(1)
+			.for("update");
+		const rows = await tx
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.conversationId, input.conversationId))
+			.orderBy(asc(assistantMessage.createdAt))
+			.for("update");
+		const start = rows.map((row) => row.role).lastIndexOf("user");
+		const question = rows[start];
+		if (!question) throw new AssistantError("There is no question to edit.");
+		const turn = rows.slice(start);
+		if (
+			turn.some(
+				(row) =>
+					row.pendingApproval ||
+					(row.role === "tool" && row.content === RESULT_PENDING),
+			)
+		) {
+			throw new AssistantError("The answer is not finished yet.");
+		}
+		const blocked = editBlockReason(
+			turn.filter(changedData).map((row) => ({ undoable: row.undo !== null })),
+		);
+		if (blocked) throw new AssistantError(blocked);
+		await tx.delete(assistantMessage).where(
+			inArray(
+				assistantMessage.id,
+				turn.map((row) => row.id),
+			),
+		);
+		return { content: question.content };
+	});
+};
+
+export const assistantService = {
+	settings,
+	conversations,
+	run,
+	undo,
+	replaceLastTurn,
+	search,
+	share,
+	unshare,
+	getShared,
+};

@@ -12,6 +12,7 @@ import {
 	PuzzlePieceIcon,
 	ShieldCheckIcon,
 	SignInIcon,
+	SparkleIcon,
 	TagIcon,
 	ToggleRightIcon,
 	UploadSimpleIcon,
@@ -156,7 +157,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		},
 		group: "workspace",
 		description:
-			"What the workspace is connected to: GitHub accounts for repositories, Slack for reminders, and the assistant's model provider.",
+			"What the workspace is connected to: GitHub accounts for repositories and Slack for reminders.",
+		show: (audience) => audience.isAdmin,
+	},
+	{
+		item: {
+			label: "AI",
+			to: "/$orgSlug/settings/ai",
+			icon: SparkleIcon,
+		},
+		group: "workspace",
+		description:
+			"The assistant's key, model and house rules, and what its answers cost.",
 		show: (audience) => audience.isAdmin,
 	},
 	{

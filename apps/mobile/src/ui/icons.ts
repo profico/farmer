@@ -40,6 +40,8 @@ export const ICONS = {
 	holiday: { md: "beach-access", sf: "beach.umbrella" },
 	absence: { md: "event-busy", sf: "calendar.badge.minus" },
 	rewind: { md: "history", sf: "clock.arrow.circlepath" },
+	undo: { md: "undo", sf: "arrow.uturn.backward" },
+	retry: { md: "refresh", sf: "arrow.clockwise" },
 	people: { md: "people-outline", sf: "person.2" },
 	team: { md: "group", sf: "person.3" },
 	client: { md: "business", sf: "building.2" },

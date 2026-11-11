@@ -32,6 +32,7 @@ export type OrgRoutePath =
 	| "/$orgSlug/reports"
 	| "/$orgSlug/audit-log"
 	| "/$orgSlug/settings"
+	| "/$orgSlug/settings/ai"
 	| "/$orgSlug/settings/clients"
 	| "/$orgSlug/settings/my-schedule"
 	| "/$orgSlug/settings/recurring-blocks"

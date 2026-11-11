@@ -71,6 +71,14 @@ export const AUDIT_KINDS = {
 		category: "change",
 		sentence: "changed the assistant settings",
 	},
+	"assistant_chat.shared": {
+		category: "change",
+		sentence: "shared the assistant chat {target}",
+	},
+	"assistant_chat.unshared": {
+		category: "change",
+		sentence: "stopped sharing the assistant chat {target}",
+	},
 	"audit_log.retention_changed": {
 		category: "change",
 		sentence: "changed how long the audit log is kept",

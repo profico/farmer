@@ -9,7 +9,13 @@ import { useToday } from "#/hooks/use-today.ts";
 import { dateSearch } from "#/lib/time-search.ts";
 
 import { AnswerChart, ChartPlaceholder } from "./answer-chart.tsx";
-import { type Align, parseBlocks, safeHref } from "./answer-parse.ts";
+import { ChartExport, TableExport } from "./answer-export-actions.tsx";
+import {
+	type Align,
+	type Block,
+	parseBlocks,
+	safeHref,
+} from "./answer-parse.ts";
 import { useTypeset } from "./typeset.ts";
 
 // A small markdown reader, so the browser does not get a markdown dependency.
@@ -414,6 +420,15 @@ export function AnswerActions({ text }: { text: string }) {
 	);
 }
 
+/** For each block, the text of the heading above it, if any. Names an export. */
+const headingBefore = (blocks: Block[]) => {
+	let last: string | undefined;
+	return blocks.map((block) => {
+		if (block.kind === "h") last = block.text;
+		return last;
+	});
+};
+
 export function Answer({
 	text,
 	onFollowUp,
@@ -441,9 +456,11 @@ export function Answer({
 	const blockIn = reveal
 		? { animation: "fade-up var(--dur-slow) var(--ease-out) both" }
 		: undefined;
+	const blocks = parseBlocks(text, streaming);
+	const headings = headingBefore(blocks);
 	return (
 		<div className="flex flex-col gap-2.5 text-[13.5px] leading-relaxed text-ink">
-			{parseBlocks(text, streaming).map((block, index) => {
+			{blocks.map((block, index) => {
 				const key = `${block.kind}-${index}`;
 				if (block.kind === "code") {
 					return (
@@ -458,12 +475,19 @@ export function Answer({
 				}
 				if (block.kind === "table") {
 					return (
-						<div key={key} style={blockIn}>
+						<div key={key} style={blockIn} className="group/export">
 							<AnswerTable
 								head={block.head}
 								rows={block.rows}
 								align={block.align}
 							/>
+							{!streaming && (
+								<TableExport
+									head={block.head}
+									rows={block.rows}
+									title={headings[index]}
+								/>
+							)}
 						</div>
 					);
 				}
@@ -479,7 +503,7 @@ export function Answer({
 					// block's position and does not change when the fence closes — that
 					// is what makes this a swap rather than a remount (see `Block` in `answer-parse.ts`).
 					return (
-						<div key={key} className="answer-wide" style={blockIn}>
+						<div key={key} className="answer-wide group/export" style={blockIn}>
 							<FadeSwap activeKey={block.spec ? "chart" : "loading"}>
 								{block.spec ? (
 									<AnswerChart spec={block.spec} />
@@ -487,6 +511,7 @@ export function Answer({
 									<ChartPlaceholder outline={block.outline} />
 								)}
 							</FadeSwap>
+							{!streaming && block.spec && <ChartExport spec={block.spec} />}
 						</div>
 					);
 				}

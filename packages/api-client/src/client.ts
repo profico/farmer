@@ -106,6 +106,11 @@ import {
 import {
 	assistantModelSchema,
 	assistantSettingsSchema,
+	assistantMessageSchema,
+	assistantRewindSchema,
+	assistantSearchHitSchema,
+	assistantSharedThreadSchema,
+	assistantShareSchema,
 	assistantThreadDetailSchema,
 	assistantThreadSchema,
 } from "./schemas-assistant";
@@ -1464,6 +1469,45 @@ export class FarmerClient {
 		);
 	}
 
+	/** Search your threads. */
+	searchAssistantThreads(
+		slug: string,
+		query: QueryOf<"searchAssistantThreads">,
+	) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/assistant/threads/search${search(query)}`),
+			assistantSearchHitSchema.array(),
+		);
+	}
+
+	/** Share a thread with the organization. */
+	shareAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/share`),
+			assistantShareSchema,
+		);
+	}
+
+	/** Stop sharing a thread. */
+	unshareAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/share`),
+			assistantShareSchema,
+		);
+	}
+
+	/** Read a shared thread. */
+	getSharedAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/assistant/shared-threads/${encodeURIComponent(id)}`),
+			assistantSharedThreadSchema,
+		);
+	}
+
 	/** Start a thread. */
 	createAssistantThread(slug: string, body: NewAssistantThread) {
 		return this.#request(
@@ -1527,6 +1571,27 @@ export class FarmerClient {
 			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/approvals`),
 			body,
 			signal,
+		);
+	}
+
+	/** Undo a write. */
+	undoAssistantWrite(slug: string, id: string, messageId: string) {
+		return this.#request(
+			"POST",
+			orgPath(
+				slug,
+				`/assistant/threads/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/undo`,
+			),
+			assistantMessageSchema,
+		);
+	}
+
+	/** Take back the last question. */
+	rewindAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/rewind`),
+			assistantRewindSchema,
 		);
 	}
 

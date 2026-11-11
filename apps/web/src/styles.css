@@ -2521,14 +2521,79 @@ html {
     animation: shimmer-text 1.4s linear infinite;
   }
 
-  /* The pixel-grid loader's cell: a brief lift out of its resting dimness. */
-  @keyframes pixel-on {
-    0%,
-    100% {
-      opacity: 0.15;
+  /* The assistant loader: the Farmer wheat. The stalk draws, the grains grow
+     out of it, then they drop. --i staggers the grains from base to tip. */
+  .sprout {
+    overflow: visible;
+  }
+  .sprout-stalk {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 4;
+    stroke-linecap: round;
+    animation: sprout-draw 2600ms cubic-bezier(0.3, 0, 0.2, 1) infinite both;
+  }
+  .sprout-grain {
+    fill: var(--ink);
+    transform-box: fill-box;
+    animation: sprout-grain 2600ms infinite both;
+    animation-delay: calc(var(--i) * 150ms + 150ms);
+  }
+  /* Each grain grows from the point where it touches the stalk. */
+  .sprout-v {
+    transform-origin: 50% 0;
+  }
+  .sprout-h {
+    transform-origin: 100% 50%;
+  }
+  .sprout-leaf {
+    transform-origin: 100% 0;
+  }
+  @keyframes sprout-draw {
+    0% {
+      stroke-dashoffset: 1;
     }
-    35% {
-      opacity: 0.85;
+    15%,
+    78% {
+      stroke-dashoffset: 0;
+      opacity: 1;
+    }
+    92%,
+    100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
+  @keyframes sprout-grain {
+    0% {
+      scale: 0;
+      opacity: 1;
+      translate: 0 0;
+      rotate: 0deg;
+    }
+    9% {
+      scale: 1.22;
+    }
+    14% {
+      scale: 0.92;
+    }
+    18%,
+    62% {
+      scale: 1;
+      translate: 0 0;
+      rotate: 0deg;
+      opacity: 1;
+    }
+    76% {
+      translate: 0 12px;
+      rotate: 25deg;
+      opacity: 0;
+      animation-timing-function: steps(1);
+    }
+    77%,
+    100% {
+      scale: 0;
+      opacity: 0;
     }
   }
 
@@ -2580,9 +2645,8 @@ html {
       transition: none;
     }
     /* The assistant's entrances and the loader's shimmer are narration: with
-       reduced motion the content simply arrives. The loader grid stops at its
-       dim resting state, which still reads as "working" because the elapsed
-       timer beside it keeps counting. */
+       reduced motion the content simply arrives. The sprout loader shows the
+       full grown wheat, and the elapsed timer beside it keeps counting. */
     .assistant-motion,
     .assistant-motion * {
       animation: none !important;

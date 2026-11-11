@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,6 +22,7 @@ export function Composer({
 	keyboardOpen,
 	placeholder,
 	autoFocus = false,
+	restore = null,
 }: {
 	/** True when the message reached the server. */
 	onSend: (text: string) => Promise<boolean>;
@@ -34,6 +35,9 @@ export function Composer({
 	placeholder: string;
 	/** Open the keyboard at once, for a new chat. */
 	autoFocus?: boolean;
+	/** A text to put back, as after a send that never landed. A new object
+	 *  each time. */
+	restore?: { text: string } | null;
 }) {
 	const palette = usePalette();
 	const insets = useSafeAreaInsets();
@@ -41,15 +45,26 @@ export function Composer({
 	const input = useRef<TextInput>(null);
 	const canSend = text.trim() !== "" && !streaming && !locked;
 
+	const giveBack = (message: string) => {
+		// Text typed meanwhile stays; the failed text goes below it.
+		setText((current) =>
+			current === "" || current === message
+				? message
+				: `${current}\n\n${message}`,
+		);
+		input.current?.focus();
+	};
+	// A new `restore` object is the only trigger, so `giveBack` stays out of the deps.
+	useEffect(() => {
+		if (restore) giveBack(restore.text);
+		// oxlint-disable-next-line react-hooks/exhaustive-deps -- see above
+	}, [restore]);
+
 	const send = async () => {
 		const message = text.trim();
 		if (!message || streaming || locked) return;
 		setText("");
-		const landed = await onSend(message);
-		if (!landed) {
-			setText((current) => (current === "" ? message : current));
-			input.current?.focus();
-		}
+		if (!(await onSend(message))) giveBack(message);
 	};
 
 	return (

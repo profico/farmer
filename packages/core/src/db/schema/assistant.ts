@@ -4,6 +4,7 @@ import {
 	index,
 	integer,
 	jsonb,
+	numeric,
 	pgTable,
 	text,
 	timestamp,
@@ -69,10 +70,10 @@ export const assistantSettings = pgTable(
 	(t) => [unique("assistant_settings_org_unq").on(t.organizationId)],
 );
 
-// A conversation belongs to ONE person in ONE org. There is deliberately no
-// sharing: the assistant answers through the caller's own Ctx, so two people
-// asking the same question can legitimately get different answers, and a shared
-// thread would show a Member the PM's view of it.
+// A conversation belongs to ONE person in ONE org. Only the owner can write to
+// it. The owner may share it read-only with the org (`sharedAt`): anyone in the
+// org can read it. Tool results in it were read with the owner's access, so the
+// share dialog warns about that.
 export const assistantConversation = pgTable(
 	"assistant_conversation",
 	{
@@ -85,6 +86,12 @@ export const assistantConversation = pgTable(
 		title: text("title").notNull().default("New chat"),
 		/** Pinned at creation from `assistantSettings.defaultModel`. */
 		model: text("model").notNull(),
+		/** When the owner shared the chat with the org. Null: not shared. */
+		sharedAt: ts("shared_at"),
+		/** Who shared it. Set and cleared with `sharedAt`. */
+		sharedBy: text("shared_by").references(() => user.id, {
+			onDelete: "set null",
+		}),
 		...stamps,
 	},
 	(t) => [
@@ -105,6 +112,40 @@ export type AssistantToolCall = {
 	 *  a write that fails at the database. */
 	arguments: string;
 };
+
+/** The fields of a time entry that `update` writes, as they were. */
+export type UndoEntryFields = {
+	projectId: string | null;
+	taskId: string;
+	date: string;
+	description: string;
+	durationSeconds: number;
+	overtime: boolean;
+	fillsDay: boolean;
+};
+
+/** The exact inverse of one inline write. `updatedAt` is the entry's value
+ *  right after the write (ISO): the undo runs only if it is still that. */
+export type AssistantUndo =
+	| { kind: "delete_entry"; entryId: string; updatedAt: string }
+	| {
+			kind: "restore_entry";
+			entryId: string;
+			updatedAt: string;
+			before: UndoEntryFields;
+	  }
+	| {
+			kind: "restore_description";
+			entryId: string;
+			updatedAt: string;
+			description: string;
+	  }
+	| {
+			kind: "restore_overtime";
+			entryId: string;
+			updatedAt: string;
+			overtime: boolean;
+	  };
 
 export const assistantMessage = pgTable(
 	"assistant_message",
@@ -155,6 +196,9 @@ export const assistantMessage = pgTable(
 			 *  first rendered did, rather than the way today's code would. */
 			selectable?: boolean;
 		}>(),
+		/** Set on a `tool` row of a write that can be undone. */
+		undo: jsonb("undo").$type<AssistantUndo>(),
+		undoneAt: ts("undone_at"),
 		model: text("model"),
 		promptTokens: integer("prompt_tokens"),
 		completionTokens: integer("completion_tokens"),
@@ -163,6 +207,40 @@ export const assistantMessage = pgTable(
 	(t) => [
 		index("assistant_message_conversation_idx").on(
 			t.conversationId,
+			t.createdAt,
+		),
+	],
+);
+
+// One row per billed model call, written beside each `AiGeneration`. The cost
+// is null when the call has no usage row (a stalled attempt): unknown, not zero.
+// `userId` has no foreign key and `conversationId` is set null, so a removed
+// person or a deleted thread keeps its cost.
+export const assistantUsage = pgTable(
+	"assistant_usage",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id").notNull(),
+		conversationId: uuid("conversation_id").references(
+			() => assistantConversation.id,
+			{ onDelete: "set null" },
+		),
+		/** The model id the call asked for. */
+		model: text("model").notNull(),
+		servedModel: text("served_model"),
+		kind: text("kind").notNull().$type<"turn" | "title">(),
+		attempt: integer("attempt").notNull(),
+		promptTokens: integer("prompt_tokens"),
+		completionTokens: integer("completion_tokens"),
+		costUsd: numeric("cost_usd", { precision: 14, scale: 8, mode: "number" }),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		index("assistant_usage_org_created_idx").on(t.organizationId, t.createdAt),
+		index("assistant_usage_org_user_created_idx").on(
+			t.organizationId,
+			t.userId,
 			t.createdAt,
 		),
 	],

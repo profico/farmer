@@ -18,9 +18,14 @@ import { SPACE } from "../ui/type";
 import { Answer } from "./answer";
 import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
+import { ContextNote } from "./context-note";
+import { editBlockReason } from "./edit-block";
 import { useRun, useRunActions } from "./runs";
+import { useChatHeaderActions } from "./share";
+import { LastQuestionActions, StoredWrite } from "./stored-turn";
 import { ToolTraceList } from "./tool-trace";
 import { visibleMessages, visiblePending } from "./turn";
+import { UserMessage } from "./user-message";
 
 const SUGGESTIONS = [
 	"How many hours did I log last week?",
@@ -30,26 +35,6 @@ const SUGGESTIONS = [
 
 /** Closer to the end than this, the transcript follows a new answer. */
 const PIN_DISTANCE = 96;
-
-/** One thing the person said. */
-function UserMessage({ text }: { text: string }) {
-	const palette = usePalette();
-	return (
-		<View style={{ alignItems: "flex-end" }}>
-			<View
-				style={{
-					maxWidth: "85%",
-					borderRadius: 20,
-					paddingHorizontal: SPACE.l,
-					paddingVertical: SPACE.m,
-					backgroundColor: palette.secondaryContainer,
-				}}
-			>
-				<Text color={palette.onSecondaryContainer}>{text}</Text>
-			</View>
-		</View>
-	);
-}
 
 /** True while the keyboard is open, to drop the bottom inset under it. */
 const useKeyboardOpen = () => {
@@ -89,6 +74,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 	const [startedId, setStartedId] = useState<string | null>(null);
 	const id = routeId ?? startedId;
 	const thread = useAssistantThread(id);
+	const headerActions = useChatHeaderActions(thread.data?.thread);
 	const runId = id ?? draftId ?? "";
 	const run = useRun(runId);
 	const actions = useRunActions();
@@ -109,6 +95,13 @@ export function Chat({ id: routeId }: { id: string | null }) {
 		run.sentMessageId !== null &&
 		messages.some((message) => message.id === run.sentMessageId);
 	const busy = run.isStreaming;
+	const lastUserIndex = rows.map((row) => row.role).lastIndexOf("user");
+	const editBlock = busy
+		? "Wait for the answer to finish."
+		: pending
+			? "Answer the card first."
+			: editBlockReason(messages);
+	const [restore, setRestore] = useState<{ text: string } | null>(null);
 
 	const send = async (text: string) => {
 		pinned.current = true;
@@ -153,15 +146,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 			{/* The history is one tap away, so Back leaves the assistant at once.
 			    `dismissTo` goes back to the list when it is under this chat,
 			    and replaces the chat with it when it is not. */}
-			<HeaderActions
-				actions={[
-					{
-						icon: "chats",
-						label: "Chat history",
-						onPress: () => router.dismissTo("/assistant"),
-					},
-				]}
-			/>
+			<HeaderActions actions={headerActions} />
 			<View
 				ref={frame}
 				style={{ flex: 1 }}
@@ -248,17 +233,42 @@ export function Chat({ id: routeId }: { id: string | null }) {
 							</View>
 						) : null}
 
-						{rows.map((message) =>
-							message.role === "user" ? (
-								<UserMessage key={message.id} text={message.content} />
-							) : (
+						{rows.map((message, index) => {
+							if (message.role === "user") {
+								return (
+									<View key={message.id} style={{ gap: SPACE.xs }}>
+										<UserMessage text={message.content} />
+										{index === lastUserIndex && id !== null ? (
+											<LastQuestionActions
+												threadId={id}
+												text={message.content}
+												reason={editBlock}
+												onSend={send}
+												onRestore={(text) => setRestore({ text })}
+											/>
+										) : null}
+									</View>
+								);
+							}
+							if (message.role === "tool") {
+								return id === null ? null : (
+									<StoredWrite
+										key={message.id}
+										threadId={id}
+										message={message}
+										messages={messages}
+										locked={busy || pending !== null}
+									/>
+								);
+							}
+							return (
 								<Answer
 									key={message.id}
 									text={message.content}
 									onFollowUp={followUp}
 								/>
-							),
-						)}
+							);
+						})}
 
 						{run.sentMessage !== null && !sentStored ? (
 							<UserMessage text={run.sentMessage} />
@@ -304,6 +314,11 @@ export function Chat({ id: routeId }: { id: string | null }) {
 						{run.error ? <ErrorBanner message={run.error} /> : null}
 						{draftError ? <ErrorBanner message={draftError} /> : null}
 					</ScrollView>
+					<ContextNote
+						used={thread.data?.promptTokens}
+						limit={thread.data?.contextLength}
+						onNewChat={() => router.replace("/assistant/new")}
+					/>
 					<Composer
 						onSend={send}
 						onStop={() => runId !== "" && actions.stop(runId)}
@@ -312,6 +327,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 						keyboardOpen={keyboardOpen}
 						placeholder="Ask about your time"
 						autoFocus={id === null}
+						restore={restore}
 					/>
 				</KeyboardAvoidingView>
 			</View>

@@ -50,7 +50,7 @@ export type UpdateAssistantSettingsInput = z.infer<
 >;
 
 // Deliberately carries no `model`. Choosing one is an admin decision made once,
-// in Settings → Integrations, and a conversation pins whatever the org default
+// in Settings → AI, and a conversation pins whatever the org default
 // was when it started. An optional field here that nothing sends would be a
 // caller-supplied override of that decision sitting unused until somebody found
 // it — which is the same shape as every other input that quietly became a hole.
@@ -68,6 +68,12 @@ export type RenameConversationInput = z.infer<typeof renameConversationInput>;
 
 export const conversationIdInput = z.object({ conversationId: z.uuid() });
 export type ConversationIdInput = z.infer<typeof conversationIdInput>;
+
+/** One stored message of one of the caller's threads. */
+export const assistantMessageIdInput = z.object({
+	conversationId: z.uuid(),
+	messageId: z.uuid(),
+});
 
 /** What a person types to the assistant. */
 export const assistantMessageText = z.string().trim().min(1).max(10_000);
@@ -105,3 +111,11 @@ export const runAssistantInput = z
 		path: ["message"],
 	});
 export type RunAssistantInput = z.infer<typeof runAssistantInput>;
+
+export const MIN_SEARCH_CHARS = 2;
+export const MAX_SEARCH_CHARS = 100;
+
+export const searchConversationsInput = z.object({
+	q: z.string().trim().min(MIN_SEARCH_CHARS).max(MAX_SEARCH_CHARS),
+});
+export type SearchConversationsInput = z.infer<typeof searchConversationsInput>;

@@ -134,3 +134,64 @@ export const useUpdateAssistantSettings = () =>
 
 export const useDisconnectAssistant = () =>
 	useSettingsChange<void>((w) => w.client.disconnectAssistant(w.slug));
+
+/** Undo one write from its trace row. A write can change anything the
+ *  workspace shows, so the whole workspace is stale after it. */
+export const useUndoWrite = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, messageId }: { id: string; messageId: string }) =>
+			w.client.undoAssistantWrite(w.slug, id, messageId),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: scope(w) }),
+	});
+};
+
+/** Take back the last question. Answers with its text, to send again. */
+export const useRewindThread = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => w.client.rewindAssistantThread(w.slug, id),
+		onSuccess: (_, id) =>
+			queryClient.invalidateQueries({ queryKey: threadKey(w, id) }),
+	});
+};
+
+/** The person's threads whose title or text match `q`. Off below two
+ *  characters, as the server refuses them. */
+export const useSearchThreads = (q: string) => {
+	const w = useWorkspace();
+	return useQuery({
+		queryKey: [...assistantKey(w), "search", q],
+		queryFn: () => w.client.searchAssistantThreads(w.slug, { q }),
+		enabled: q.length >= 2,
+	});
+};
+
+/** One thread that its owner shared. Read only. */
+export const useSharedThread = (id: string) => {
+	const w = useWorkspace();
+	return useQuery({
+		queryKey: [...assistantKey(w), "shared", id],
+		queryFn: () => w.client.getSharedAssistantThread(w.slug, id),
+		retry: false,
+	});
+};
+
+/** Share a thread with the workspace, or stop sharing it. */
+export const useSetThreadShared = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, shared }: { id: string; shared: boolean }) =>
+			shared
+				? w.client.shareAssistantThread(w.slug, id)
+				: w.client.unshareAssistantThread(w.slug, id),
+		onSuccess: (_, { id }) =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: threadsKey(w) }),
+				queryClient.invalidateQueries({ queryKey: threadKey(w, id) }),
+			]),
+	});
+};

@@ -4,6 +4,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppSidebar } from "#/components/app-sidebar.tsx";
+import { AskAssistantProvider } from "#/components/assistant/ask-assistant.tsx";
 import { AssistantRunsProvider } from "#/components/assistant/assistant-runs.tsx";
 import { Field } from "#/components/field.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
@@ -182,39 +183,46 @@ function OrgLayout() {
 		// renders the one it has open, and a turn carries on while you go and look
 		// at something else.
 		<AssistantRunsProvider orgSlug={organization.slug}>
-			{/* Outside the frame on purpose: SidebarProvider's element IS
+			<AskAssistantProvider
+				orgSlug={organization.slug}
+				timezone={organization.timezone}
+				weekStartsOn={organization.weekStartsOn}
+				available={assistantAvailable}
+			>
+				{/* Outside the frame on purpose: SidebarProvider's element IS
 			    `.app-frame`, so anything inside it is a flex child of the two
 			    islands. The field is a fixed sibling painted behind them. */}
-			<Field timezone={organization.timezone} />
-			<SidebarProvider>
-				<AppSidebar
-					orgSlug={organization.slug}
-					organizationName={organization.name}
-					organizationLogo={organization.logo}
-					isAdmin={isAdmin}
-					isPlatformAdmin={isPlatformAdmin}
-					userName={session.user.name}
-					userEmail={session.user.email}
-					userImage={session.user.image ?? null}
-					singleOrg={singleOrg}
-					assistantAvailable={assistantAvailable}
-					timezone={organization.timezone}
-					impersonating={impersonating}
-				/>
-				<SidebarInset>
-					<Outlet />
-				</SidebarInset>
-				<MobileTabBar
-					orgSlug={organization.slug}
-					isAdmin={isAdmin}
-					isPlatformAdmin={isPlatformAdmin}
-					userName={session.user.name}
-					userEmail={session.user.email}
-					userImage={session.user.image ?? null}
-					assistantAvailable={assistantAvailable}
-					timezone={organization.timezone}
-				/>
-			</SidebarProvider>
+				<Field timezone={organization.timezone} />
+				<SidebarProvider>
+					<AppSidebar
+						orgSlug={organization.slug}
+						organizationName={organization.name}
+						organizationLogo={organization.logo}
+						isAdmin={isAdmin}
+						isPlatformAdmin={isPlatformAdmin}
+						userName={session.user.name}
+						userEmail={session.user.email}
+						userImage={session.user.image ?? null}
+						singleOrg={singleOrg}
+						assistantAvailable={assistantAvailable}
+						timezone={organization.timezone}
+						impersonating={impersonating}
+					/>
+					<SidebarInset>
+						<Outlet />
+					</SidebarInset>
+					<MobileTabBar
+						orgSlug={organization.slug}
+						isAdmin={isAdmin}
+						isPlatformAdmin={isPlatformAdmin}
+						userName={session.user.name}
+						userEmail={session.user.email}
+						userImage={session.user.image ?? null}
+						assistantAvailable={assistantAvailable}
+						timezone={organization.timezone}
+					/>
+				</SidebarProvider>
+			</AskAssistantProvider>
 		</AssistantRunsProvider>
 	);
 }

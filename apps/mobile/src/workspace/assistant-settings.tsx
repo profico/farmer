@@ -40,7 +40,7 @@ const connectedOn = (iso: string | null) =>
 		: "-";
 
 /** The model of a first connection, as the web's connect form sends it
- *  (`settings/workspace-integrations.tsx`). The admin changes it after the
+ *  (`settings/ai.tsx`). The admin changes it after the
  *  connection, because the server lists the models only with a key. */
 const FIRST_MODEL = "openai/gpt-4o-mini";
 
@@ -155,7 +155,7 @@ function HouseRules({ settings }: { settings: AssistantSettings }) {
 
 /**
  * The assistant's settings for the workspace, as the web shows them in the
- * workspace integrations. An admin connects the OpenRouter key
+ * AI settings page. An admin connects the OpenRouter key
  * (write-only), chooses the model, pauses the assistant, writes house rules
  * and disconnects it. A member does not see them, as on the web.
  */

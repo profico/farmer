@@ -91,6 +91,13 @@ import {
 	yearReportInput,
 } from "../schema";
 import type { Access } from "./access.service";
+import {
+	type UndoCapturer,
+	undoCreateEntry,
+	undoDescription,
+	undoOvertime,
+	undoUpdateEntry,
+} from "./assistant-undo";
 import { clientsService } from "./clients.service";
 import { complianceService, type PeriodTarget } from "./compliance.service";
 import {
@@ -289,6 +296,13 @@ export type AssistantTool = {
 	 * approval card (`taintsTurn` in assistant.service.ts).
 	 */
 	readsThirdPartyText?: boolean;
+	/**
+	 * Captures the exact inverse of this inline `write`, so the person can undo
+	 * it from the chat. Set it only where the inverse is exact and cheap.
+	 * Best-effort: it runs before the write, and a failure costs the undo, never
+	 * the write.
+	 */
+	undo?: UndoCapturer;
 	/** Runs the tool. The result is stringified for the model and never
 	 *  inspected by the loop, so `Serializable | void` is the whole contract:
 	 *  domain rows with their Dates intact, or nothing at all. */
@@ -1311,6 +1325,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Log a new time entry for the current user. Durations are in seconds and must be a multiple of 900 (15 minutes). Needs a taskId; needs a projectId unless it is an absence.",
 		schema: createTimeEntryToolInput,
+		undo: undoCreateEntry,
 		summarize: (_ctx, args) =>
 			`Log ${hours(args.durationSeconds)} on ${args.date}${
 				args.description ? ` — ${String(args.description).slice(0, 80)}` : ""
@@ -1324,6 +1339,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Change an existing time entry of the current user. Send every field, not just the changed one. To change only the note, use update_entry_description.",
 		schema: updateTimeEntryToolInput,
+		undo: undoUpdateEntry,
 		summarize: (_ctx, args) =>
 			`Change an entry on ${args.date} to ${hours(args.durationSeconds)}`,
 		run: async (ctx, args) =>
@@ -1335,6 +1351,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Change only the description of one of the current user's entries, leaving its hours, task and project alone.",
 		schema: updateTimeEntryDescriptionInput,
+		undo: undoDescription,
 		run: async (ctx, args) =>
 			timeEntriesService.updateDescription(
 				ctx,
@@ -1347,6 +1364,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Flag one of the current user's entries as overtime, or clear the flag. Overtime is never inferred — somebody has to say so.",
 		schema: setTimeEntryOvertimeInput,
+		undo: undoOvertime,
 		run: async (ctx, args) =>
 			timeEntriesService.setOvertime(
 				ctx,

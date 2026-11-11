@@ -1,7 +1,10 @@
 import {
+	assistantMessageIdInput,
+	assistantUsageInput,
 	conversationIdInput,
 	createConversationInput,
 	renameConversationInput,
+	searchConversationsInput,
 	setAssistantSettingsInput,
 	updateAssistantSettingsInput,
 } from "@farmer/core/schema";
@@ -68,6 +71,14 @@ export const listAssistantModels = createServerFn({ method: "GET" })
 		return assistantService.settings.listModels(context.ctx);
 	});
 
+export const getAssistantUsage = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(assistantUsageInput)
+	.handler(async ({ data, context }) => {
+		const { assistantUsageService } = await import("@farmer/core/services");
+		return assistantUsageService.summary(context.ctx, data);
+	});
+
 export const listConversations = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
@@ -108,4 +119,54 @@ export const deleteConversation = createServerFn({ method: "POST" })
 			context.ctx,
 			data.conversationId,
 		);
+	});
+
+export const undoAssistantWrite = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(assistantMessageIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.undo(context.ctx, data);
+	});
+
+/** Removes the last question and the rows after it. Returns the question. */
+export const rewindAssistantThread = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.replaceLastTurn(context.ctx, data);
+	});
+
+export const searchConversations = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(searchConversationsInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.search(context.ctx, data);
+	});
+
+export const shareConversation = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.share(context.ctx, data.conversationId);
+	});
+
+export const unshareConversation = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.unshare(context.ctx, data.conversationId);
+	});
+
+/** A chat that its owner shared with the organization. Read only. */
+export const getSharedConversation = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.getShared(context.ctx, data.conversationId);
 	});

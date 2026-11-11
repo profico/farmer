@@ -3,6 +3,7 @@ import {
 	ChatsIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	ShareNetworkIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,12 @@ import { queryKeys } from "#/queries/keys.ts";
 import { deleteConversation, renameConversation } from "#/server/assistant.ts";
 
 import { useAssistantRunning } from "./assistant-runs.tsx";
+import {
+	ChatSearchBox,
+	ChatSearchResults,
+	useChatSearch,
+} from "./chat-search.tsx";
+import { ShareChatButton } from "./share-chat.tsx";
 
 /**
  * The conversation list, and its two frames: the shell's section panel on
@@ -59,6 +66,30 @@ export function ConversationList({
 }: {
 	orgSlug: string;
 	/** Called when a row is followed — the sheet closes on it; the sidebar has nothing to close. */
+	onNavigate?: () => void;
+}) {
+	const { input, setInput, query } = useChatSearch();
+	return (
+		<div className="flex flex-col">
+			<ChatSearchBox value={input} onValueChange={setInput} />
+			{input.trim() === "" ? (
+				<ConversationRows orgSlug={orgSlug} onNavigate={onNavigate} />
+			) : (
+				<ChatSearchResults
+					orgSlug={orgSlug}
+					query={query}
+					onNavigate={onNavigate}
+				/>
+			)}
+		</div>
+	);
+}
+
+function ConversationRows({
+	orgSlug,
+	onNavigate,
+}: {
+	orgSlug: string;
 	onNavigate?: () => void;
 }) {
 	const queryClient = useQueryClient();
@@ -263,6 +294,16 @@ export function ConversationList({
 									{running.includes(conversation.id) && (
 										<span className="sr-only">, working on an answer</span>
 									)}
+									{conversation.sharedAt && (
+										<>
+											<ShareNetworkIcon
+												weight="regular"
+												className="ml-1.5 inline size-3 text-faint"
+												aria-hidden
+											/>
+											<span className="sr-only">, shared</span>
+										</>
+									)}
 								</Link>
 							)}
 							{editingId !== conversation.id && (
@@ -360,15 +401,22 @@ export function MobileChatBar({ orgSlug }: { orgSlug: string }) {
 			    navigates to the screen you are already looking at. The sheet's own
 			    "New chat" row is the other, always-present way. */}
 			{openId && (
-				<Link
-					to="/$orgSlug/assistant"
-					params={{ orgSlug }}
-					search={{}}
-					aria-label="New chat"
-					className="flex size-11 shrink-0 items-center justify-center rounded-2xl text-ink-2 transition-colors duration-(--dur-fast) active:bg-hover"
-				>
-					<PlusIcon weight="regular" className="size-4" />
-				</Link>
+				<>
+					<ShareChatButton
+						orgSlug={orgSlug}
+						conversationId={openId}
+						className="flex size-11 shrink-0 items-center justify-center rounded-2xl text-ink-2 transition-colors duration-(--dur-fast) active:bg-hover"
+					/>
+					<Link
+						to="/$orgSlug/assistant"
+						params={{ orgSlug }}
+						search={{}}
+						aria-label="New chat"
+						className="flex size-11 shrink-0 items-center justify-center rounded-2xl text-ink-2 transition-colors duration-(--dur-fast) active:bg-hover"
+					>
+						<PlusIcon weight="regular" className="size-4" />
+					</Link>
+				</>
 			)}
 
 			<Drawer open={open} onOpenChange={setOpen}>
