@@ -2,16 +2,7 @@ import type { WeekStartsOn } from "@farmer/core/lib/time";
 import { XIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-	createContext,
-	useCallback,
-	useContext,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { useAssistantActions } from "#/components/assistant/assistant-runs.tsx";
@@ -34,16 +25,9 @@ import { queryKeys } from "#/queries/keys.ts";
 import { projectQuery } from "#/queries/projects.ts";
 import { createConversation } from "#/server/assistant.ts";
 
-// Ask the assistant from any page. The shortcut and the "Ask about this" button
-// open one small dialog. Send starts a new chat in the run store of the layout,
-// so the answer keeps streaming after the dialog closes.
-
-type AskContextValue = { open: () => void };
-
-const AskContext = createContext<AskContextValue | null>(null);
-
-/** Opens the ask dialog. Null when the assistant is not available. */
-export const useAskAssistant = () => useContext(AskContext);
+// Ask the assistant from any page. The shortcut opens one small dialog. Send
+// starts a new chat in the run store of the layout, so the answer keeps
+// streaming after the dialog closes.
 
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -81,8 +65,6 @@ export function AskAssistantProvider({
 	...page
 }: ProviderProps) {
 	const [isOpen, setOpen] = useState(false);
-	const open = useCallback(() => setOpen(true), []);
-	const value = useMemo(() => ({ open }), [open]);
 
 	useEffect(() => {
 		if (!available) return;
@@ -99,10 +81,10 @@ export function AskAssistantProvider({
 
 	if (!available) return children;
 	return (
-		<AskContext.Provider value={value}>
+		<>
 			{children}
 			<AskDialog open={isOpen} onOpenChange={setOpen} {...page} />
-		</AskContext.Provider>
+		</>
 	);
 }
 
