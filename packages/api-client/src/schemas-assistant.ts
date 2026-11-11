@@ -109,6 +109,8 @@ export const assistantMessageSchema = z.object({
 	undoable: z.boolean(),
 	/** The person undid this write. */
 	undone: z.boolean(),
+	/** A `tool` row whose write ran and still stands. */
+	changed: z.boolean(),
 	/** An instant, ISO 8601 in UTC. */
 	createdAt: z.string(),
 });

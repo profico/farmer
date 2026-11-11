@@ -1,3 +1,4 @@
+import { editBlockReason } from "@farmer/core/lib/assistant-edit";
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
@@ -249,14 +250,15 @@ function AssistantPage() {
 	const editBlock = (() => {
 		if (stream.isStreaming) return "Wait for the answer to finish.";
 		if (pending) return "Answer the card first.";
-		const standing = messages
-			.slice(lastUserIndex)
-			.some((m) => m.undo && !m.undoneAt);
-		return standing
-			? "This answer changed your data. Undo the change first, then edit."
-			: null;
+		return editBlockReason(
+			messages
+				.slice(lastUserIndex)
+				.filter((m) => m.changed)
+				.map((m) => ({ undoable: Boolean(m.undo) })),
+		);
 	})();
 	const [editing, setEditing] = useState(false);
+	const [restore, setRestore] = useState<{ text: string } | null>(null);
 
 	// Which transcript is on screen — the thread that has actually loaded, not
 	// the one the URL is pointing at. They differ for as long as a click takes to
@@ -441,6 +443,7 @@ function AssistantPage() {
 														text={message.content}
 														reason={editBlock}
 														onSend={send}
+														onRestore={(text) => setRestore({ text })}
 														editing={editing}
 														onEditingChange={setEditing}
 													/>
@@ -585,6 +588,7 @@ function AssistantPage() {
 								}
 								autoFocus
 								focusKey={conversationId}
+								restore={restore}
 							/>
 						</div>
 					</div>

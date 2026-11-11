@@ -114,6 +114,7 @@ describe("toApiAssistantMessage", () => {
 			},
 			undoable: false,
 			undone: false,
+			changed: false,
 			createdAt: "2026-10-06T08:00:00.000Z",
 		});
 	});

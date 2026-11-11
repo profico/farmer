@@ -22,6 +22,7 @@ import {
 	assistantMessage,
 	assistantSettings,
 } from "../db/schema/assistant";
+import { editBlockReason } from "../lib/assistant-edit";
 import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
 import { loggableError } from "../lib/loggable-error";
@@ -578,7 +579,12 @@ const conversations = {
 			promptTokens === null
 				? null
 				: await contextLengthOf(ctx, conversation.model);
-		return { conversation, messages, promptTokens, contextLength };
+		return {
+			conversation,
+			messages: messages.map((row) => ({ ...row, changed: changedData(row) })),
+			promptTokens,
+			contextLength,
+		};
 	},
 
 	rename: async (ctx: Ctx, input: RenameConversationInput) => {
@@ -2337,9 +2343,6 @@ const undo = async (
 	return { ok: true };
 };
 
-const EDIT_AFTER_CHANGE =
-	"This answer changed your data. Undo the change first, then edit.";
-
 /** Results that say the call did not change anything. */
 const NOT_RUN_RESULTS = new Set([
 	DECLINED,
@@ -2395,7 +2398,10 @@ const replaceLastTurn = async (
 		) {
 			throw new AssistantError("The answer is not finished yet.");
 		}
-		if (turn.some(changedData)) throw new AssistantError(EDIT_AFTER_CHANGE);
+		const blocked = editBlockReason(
+			turn.filter(changedData).map((row) => ({ undoable: row.undo !== null })),
+		);
+		if (blocked) throw new AssistantError(blocked);
 		await tx.delete(assistantMessage).where(
 			inArray(
 				assistantMessage.id,

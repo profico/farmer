@@ -19,6 +19,7 @@ import { Answer } from "./answer";
 import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
 import { ContextNote } from "./context-note";
+import { editBlockReason } from "./edit-block";
 import { useRun, useRunActions } from "./runs";
 import { useChatHeaderActions } from "./share";
 import { LastQuestionActions, StoredWrite } from "./stored-turn";
@@ -99,9 +100,8 @@ export function Chat({ id: routeId }: { id: string | null }) {
 		? "Wait for the answer to finish."
 		: pending
 			? "Answer the card first."
-			: rows.slice(lastUserIndex).some((row) => row.undoable)
-				? "This answer changed your data. Undo the change first, then edit."
-				: null;
+			: editBlockReason(messages);
+	const [restore, setRestore] = useState<{ text: string } | null>(null);
 
 	const send = async (text: string) => {
 		pinned.current = true;
@@ -244,6 +244,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 												text={message.content}
 												reason={editBlock}
 												onSend={send}
+												onRestore={(text) => setRestore({ text })}
 											/>
 										) : null}
 									</View>
@@ -326,6 +327,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 						keyboardOpen={keyboardOpen}
 						placeholder="Ask about your time"
 						autoFocus={id === null}
+						restore={restore}
 					/>
 				</KeyboardAvoidingView>
 			</View>

@@ -3905,6 +3905,8 @@ export interface components {
             undoable: boolean;
             /** @description The person undid this write. */
             undone: boolean;
+            /** @description A `tool` row whose write ran and still stands, undoable or not. */
+            changed: boolean;
             /** @description An instant, ISO 8601 in UTC. */
             createdAt: string;
         };

@@ -17560,6 +17560,10 @@
 						"type": "boolean",
 						"description": "The person undid this write."
 					},
+					"changed": {
+						"type": "boolean",
+						"description": "A `tool` row whose write ran and still stands, undoable or not."
+					},
 					"createdAt": {
 						"type": "string",
 						"description": "An instant, ISO 8601 in UTC."
@@ -17578,6 +17582,7 @@
 					"approvalPreview",
 					"undoable",
 					"undone",
+					"changed",
 					"createdAt"
 				]
 			},

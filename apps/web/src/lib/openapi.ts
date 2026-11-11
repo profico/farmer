@@ -1590,6 +1590,11 @@ const apiAssistantMessage = named(
 					"A `tool` row whose write can still be undone: `POST …/messages/{messageId}/undo`.",
 				),
 			undone: z.boolean().describe("The person undid this write."),
+			changed: z
+				.boolean()
+				.describe(
+					"A `tool` row whose write ran and still stands, undoable or not.",
+				),
 			createdAt: iso,
 		}),
 	),

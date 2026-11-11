@@ -320,6 +320,31 @@ describe("replaceLastTurn", () => {
 		expect(removed.content).toBe("log an hour");
 	});
 
+	test("says to ask a new question when a standing write has no inverse", async () => {
+		const chat = await assistantService.conversations.create(mine);
+		await db.insert(assistantMessage).values([
+			{
+				organizationId: ORG,
+				conversationId: chat.id,
+				role: "user",
+				content: "make a project",
+				createdAt: new Date(1000),
+			},
+			{
+				organizationId: ORG,
+				createdAt: new Date(2000),
+				conversationId: chat.id,
+				role: "tool",
+				toolCallId: "p1",
+				toolName: "create_project",
+				content: '{"ok":true}',
+			},
+		]);
+		await expect(
+			assistantService.replaceLastTurn(mine, { conversationId: chat.id }),
+		).rejects.toThrow("Ask a new question instead");
+	});
+
 	test("deletes exactly the last turn and keeps the usage rows", async () => {
 		const chat = await assistantService.conversations.create(mine);
 		await assistantService.conversations.rename(mine, {

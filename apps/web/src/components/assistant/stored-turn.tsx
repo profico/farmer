@@ -104,6 +104,7 @@ export function LastQuestionActions({
 	text,
 	reason,
 	onSend,
+	onRestore,
 	editing,
 	onEditingChange,
 }: {
@@ -112,6 +113,9 @@ export function LastQuestionActions({
 	/** Why the actions are off, or null. */
 	reason: string | null;
 	onSend: (text: string) => Promise<boolean>;
+	/** The question is gone from the thread and the send failed: put the text
+	 *  back in the composer. */
+	onRestore: (text: string) => void;
 	editing: boolean;
 	onEditingChange: (editing: boolean) => void;
 }) {
@@ -124,7 +128,11 @@ export function LastQuestionActions({
 			await queryClient.invalidateQueries({
 				queryKey: conversationQuery(orgSlug, conversationId).queryKey,
 			});
-			if (!(await onSend(next))) throw new Error("The message was not sent");
+			if (await onSend(next)) return;
+			// The rewind removed the question, so this row is about to unmount.
+			onEditingChange(false);
+			onRestore(next);
+			throw new Error("The message was not sent. Your text is in the box.");
 		},
 		onSuccess: () => onEditingChange(false),
 		onError: (error) => toast.error(error.message ?? "Could not send again"),

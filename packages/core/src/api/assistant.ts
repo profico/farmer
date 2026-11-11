@@ -160,6 +160,8 @@ export type ApiAssistantMessage = {
 	undoable: boolean;
 	/** The person undid this write. */
 	undone: boolean;
+	/** A `tool` row whose write ran and still stands, undoable or not. */
+	changed: boolean;
 	createdAt: string;
 };
 
@@ -191,6 +193,8 @@ export const toApiAssistantMessage = (row: {
 	} | null;
 	undo: object | null;
 	undoneAt: Date | null;
+	/** Absent on a read-only view, which offers no edit. */
+	changed?: boolean;
 	createdAt: Date;
 }): ApiAssistantMessage => ({
 	id: row.id,
@@ -222,6 +226,7 @@ export const toApiAssistantMessage = (row: {
 		: null,
 	undoable: row.undo !== null && row.undoneAt === null,
 	undone: row.undoneAt !== null,
+	changed: row.changed ?? false,
 	createdAt: row.createdAt.toISOString(),
 });
 

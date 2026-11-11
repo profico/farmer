@@ -97,6 +97,7 @@ export function PromptBar({
 	placeholder = "Ask about your time, or log some…",
 	autoFocus,
 	focusKey,
+	restore,
 }: {
 	/**
 	 * Sends the draft. Resolving FALSE means the message never reached the
@@ -110,6 +111,9 @@ export function PromptBar({
 	autoFocus?: boolean;
 	/** Focus the input again each time this value changes. */
 	focusKey?: string | null;
+	/** A text to put back, as after a send that never landed. A new object
+	 *  each time. */
+	restore?: { text: string } | null;
 }) {
 	const [draft, setDraft] = useState("");
 	const [dismissed, setDismissed] = useState(false);
@@ -197,6 +201,16 @@ export function PromptBar({
 	};
 
 	const canSend = draft.trim().length > 0 && !busy && !disabled;
+	// Only into a composer the person has not started refilling — their own
+	// second thought outranks the one we are handing back.
+	const giveBack = (text: string) => {
+		setDraft((current) => (current ? current : text));
+		inputRef.current?.focus();
+	};
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- only a new `restore` object may run it, and `giveBack` is rebuilt each render
+	useEffect(() => {
+		if (restore) giveBack(restore.text);
+	}, [restore]);
 	/**
 	 * Clear on send, and put it back if the send never landed.
 	 *
@@ -213,11 +227,7 @@ export function PromptBar({
 		setDraft("");
 		setDismissed(false);
 		void onSend(text).then((delivered) => {
-			if (delivered) return;
-			// Only into a composer the person has not started refilling — their
-			// own second thought outranks the one we are handing back.
-			setDraft((current) => (current ? current : text));
-			inputRef.current?.focus();
+			if (!delivered) giveBack(text);
 		});
 	};
 

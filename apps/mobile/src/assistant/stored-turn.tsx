@@ -67,12 +67,16 @@ export function LastQuestionActions({
 	text,
 	reason,
 	onSend,
+	onRestore,
 }: {
 	threadId: string;
 	text: string;
 	/** Why the actions are off, or null. */
 	reason: string | null;
 	onSend: (text: string) => Promise<boolean>;
+	/** The question is gone from the thread and the send failed: put the text
+	 *  back in the composer. */
+	onRestore: (text: string) => void;
 }) {
 	const palette = usePalette();
 	const rewind = useRewindThread();
@@ -84,11 +88,14 @@ export function LastQuestionActions({
 		setFailure(null);
 		try {
 			await rewind.mutateAsync(threadId);
-			if (!(await onSend(next))) setFailure("The message was not sent.");
-			else setEditing(false);
 		} catch (error) {
 			setFailure(error instanceof Error ? error.message : "Could not send.");
+			return;
 		}
+		setEditing(false);
+		// The rewind removed the question, so this row is about to unmount and
+		// the composer shows the text and the run shows the error.
+		if (!(await onSend(next))) onRestore(next);
 	};
 
 	if (editing) {
