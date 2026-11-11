@@ -17086,11 +17086,39 @@
 							"$ref": "#/components/schemas/AssistantMessage"
 						},
 						"description": "Oldest first."
+					},
+					"promptTokens": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Prompt tokens of the last model call."
+					},
+					"contextLength": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Context size of the thread's model."
 					}
 				},
 				"required": [
 					"thread",
-					"messages"
+					"messages",
+					"promptTokens",
+					"contextLength"
 				]
 			},
 			"AssistantEvent": {

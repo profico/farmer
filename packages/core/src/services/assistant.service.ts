@@ -42,6 +42,7 @@ import {
 	systemPrompt,
 	toolDefinitions,
 } from "./assistant-tools";
+import { elideOldToolResults } from "./assistant-wire";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
@@ -126,6 +127,7 @@ export const chatModel = (): ChatModelPort => portOverride ?? realPort;
 /** Test-only: substitute a scripted model. Pass null to restore. */
 export const setChatModelForTests = (port: ChatModelPort | null): void => {
 	portOverride = port;
+	catalogue = null;
 };
 
 // ── events ───────────────────────────────────────────────────────────────────
@@ -481,6 +483,32 @@ const requireConversation = async (ctx: Ctx, conversationId: string) => {
 	return row;
 };
 
+const MODEL_CATALOGUE_TTL_MS = 60 * 60 * 1000;
+let catalogue: { at: number; lengths: Map<string, number | null> } | null =
+	null;
+
+/** The context size of a model, for the meter. Any member may see it, so it
+ *  skips the admin gate of `listModels`. A failed lookup gives null. */
+const contextLengthOf = async (
+	ctx: Ctx,
+	modelId: string,
+): Promise<number | null> => {
+	try {
+		if (!catalogue || Date.now() - catalogue.at > MODEL_CATALOGUE_TTL_MS) {
+			const row = await loadSettings(ctx);
+			if (!row?.apiKey) return null;
+			const models = await chatModel().listModels(row.apiKey);
+			catalogue = {
+				at: Date.now(),
+				lengths: new Map(models.map((m) => [m.id, m.contextLength])),
+			};
+		}
+		return catalogue.lengths.get(modelId) ?? null;
+	} catch {
+		return null;
+	}
+};
+
 const conversations = {
 	list: async (ctx: Ctx) =>
 		db
@@ -524,7 +552,15 @@ const conversations = {
 			where: eq(assistantMessage.conversationId, conversation.id),
 			orderBy: asc(assistantMessage.createdAt),
 		});
-		return { conversation, messages };
+		const promptTokens =
+			messages
+				.filter((row) => row.role === "assistant" && row.promptTokens)
+				.at(-1)?.promptTokens ?? null;
+		const contextLength =
+			promptTokens === null
+				? null
+				: await contextLengthOf(ctx, conversation.model);
+		return { conversation, messages, promptTokens, contextLength };
 	},
 
 	rename: async (ctx: Ctx, input: RenameConversationInput) => {
@@ -627,7 +663,7 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 			});
 		}
 	});
-	return wire;
+	return elideOldToolResults(wire);
 };
 
 const loadHistory = async (conversationId: string, client: DbClient = db) =>

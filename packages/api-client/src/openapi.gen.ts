@@ -3789,6 +3789,10 @@ export interface components {
             thread: components["schemas"]["AssistantThread"];
             /** @description Oldest first. */
             messages: components["schemas"]["AssistantMessage"][];
+            /** @description Prompt tokens of the last model call. */
+            promptTokens: number | null;
+            /** @description Context size of the thread's model. */
+            contextLength: number | null;
         };
         /** @description One Server-Sent Event: each `data:` line is one of these, as JSON. The turn ends after `done` or `error`. */
         AssistantEvent: {

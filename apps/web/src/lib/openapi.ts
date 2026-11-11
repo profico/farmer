@@ -1561,6 +1561,16 @@ const apiAssistantThreadDetail = named(
 		z.object({
 			thread: apiAssistantThread,
 			messages: z.array(apiAssistantMessage).describe("Oldest first."),
+			promptTokens: z
+				.number()
+				.int()
+				.nullable()
+				.describe("Prompt tokens of the last model call."),
+			contextLength: z
+				.number()
+				.int()
+				.nullable()
+				.describe("Context size of the thread's model."),
 		}),
 	),
 );

@@ -47,11 +47,13 @@ export const Route = createFileRoute(
 				): Promise<ApiAssistantThreadDetail> => {
 					await assertAssistantAvailable();
 					const { assistantService } = await import("@farmer/core/services");
-					const { conversation, messages } =
+					const { conversation, messages, promptTokens, contextLength } =
 						await assistantService.conversations.get(ctx, conversationId);
 					return {
 						thread: toApiAssistantThread(conversation),
 						messages: messages.map(toApiAssistantMessage),
+						promptTokens,
+						contextLength,
 					};
 				},
 			}),

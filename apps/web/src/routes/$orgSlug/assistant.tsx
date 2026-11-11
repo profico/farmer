@@ -15,6 +15,7 @@ import {
 	useAssistantRun,
 } from "#/components/assistant/assistant-runs.tsx";
 import { MobileChatBar } from "#/components/assistant/chat-rail.tsx";
+import { ContextMeter } from "#/components/assistant/context-meter.tsx";
 import {
 	ApprovalCard,
 	AssistantLoader,
@@ -503,6 +504,11 @@ function AssistantPage() {
 							    past a card as "no" to it (see `abandonPendingCalls`), which
 							    keeps the thread well-formed — but that is a fallback for a
 							    stale tab, not a way anybody should answer. The card is. */}
+							<ContextMeter
+								used={thread?.promptTokens}
+								limit={thread?.contextLength}
+								onNewChat={() => void startChat.mutate()}
+							/>
 							<PromptBar
 								onSend={send}
 								onStop={() => {

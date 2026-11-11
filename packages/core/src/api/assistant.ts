@@ -193,6 +193,10 @@ export const toApiAssistantMessage = (row: {
 export type ApiAssistantThreadDetail = {
 	thread: ApiAssistantThread;
 	messages: ApiAssistantMessage[];
+	/** Prompt tokens of the last model call. Null before the first answer. */
+	promptTokens: number | null;
+	/** Context size of the thread's model. Null when unknown. */
+	contextLength: number | null;
 };
 
 /**

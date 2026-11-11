@@ -18,6 +18,7 @@ import { SPACE } from "../ui/type";
 import { Answer } from "./answer";
 import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
+import { ContextNote } from "./context-note";
 import { useRun, useRunActions } from "./runs";
 import { ToolTraceList } from "./tool-trace";
 import { visibleMessages, visiblePending } from "./turn";
@@ -304,6 +305,11 @@ export function Chat({ id: routeId }: { id: string | null }) {
 						{run.error ? <ErrorBanner message={run.error} /> : null}
 						{draftError ? <ErrorBanner message={draftError} /> : null}
 					</ScrollView>
+					<ContextNote
+						used={thread.data?.promptTokens}
+						limit={thread.data?.contextLength}
+						onNewChat={() => router.replace("/assistant/new")}
+					/>
 					<Composer
 						onSend={send}
 						onStop={() => runId !== "" && actions.stop(runId)}
