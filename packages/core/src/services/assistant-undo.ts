@@ -139,6 +139,7 @@ export const applyUndo = async (ctx: Ctx, undo: AssistantUndo) => {
 	}
 	switch (undo.kind) {
 		case "delete_entry":
+			// shortcut: check and delete are not one transaction, and `remove` has no refuse option; evidence added in that small window is not seen.
 			if (await holdsEvidence(undo.entryId)) throw new UndoHasEvidenceError();
 			await timeEntriesService.remove(ctx, undo.entryId);
 			return;

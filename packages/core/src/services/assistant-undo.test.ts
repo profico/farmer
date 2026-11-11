@@ -466,6 +466,32 @@ describe("replaceLastTurn", () => {
 		expect(rows).toHaveLength(0);
 	});
 
+	test("keeps a turn's answer tied to its own question after a rewind", async () => {
+		const chat = await assistantService.conversations.create(mine);
+		await assistantService.conversations.rename(mine, {
+			conversationId: chat.id,
+			title: "t",
+		});
+		onGenerate = async () => {
+			onGenerate = null;
+			await assistantService.replaceLastTurn(mine, {
+				conversationId: chat.id,
+			});
+			// The next question lands while the first turn still writes.
+			await db.insert(assistantMessage).values({
+				organizationId: ORG,
+				conversationId: chat.id,
+				role: "user",
+				content: "second",
+			});
+		};
+		await ask(chat.id, "first", [turn({ content: "Late answer." })]);
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		expect(rows.map((row) => row.content)).toEqual(["second"]);
+	});
+
 	test("is refused for another person's conversation", async () => {
 		const chatId = await loggedThread();
 		await expect(

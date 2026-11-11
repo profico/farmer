@@ -31,7 +31,7 @@ import {
 	test,
 } from "bun:test";
 
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../db";
@@ -1149,6 +1149,34 @@ describe("approval, on the tier that asks for it", () => {
 		);
 		expect(calls).toEqual(["call-del"]);
 		expect(results).toEqual(["call-del"]);
+	});
+
+	test("an answer to a card writes no tool row once its question is gone", async () => {
+		const entry = await seedEntry();
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ toolCalls: [deleteCall(entry.id)] })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete it",
+		});
+		await db
+			.delete(assistantMessage)
+			.where(
+				and(
+					eq(assistantMessage.conversationId, chat.id),
+					eq(assistantMessage.role, "user"),
+				),
+			);
+
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-del", decision: "rejected" },
+		});
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		expect(rows.filter((row) => row.role === "tool")).toHaveLength(0);
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
 	});
 
 	test("the pending action survives a reload — it lives on the row", async () => {

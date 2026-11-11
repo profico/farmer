@@ -961,9 +961,19 @@ const insertMessage = async (
 	return row;
 };
 
-/** The id of the question a turn answers: the last user row of its history. */
-const questionId = (history: StoredMessage[]): string | null =>
-	history.filter((row) => row.role === "user").at(-1)?.id ?? null;
+/** Share-lock the question row. False when it is gone or was never known. */
+const holdQuestion = async (
+	tx: Pick<typeof db, "select">,
+	questionRowId: string | null,
+): Promise<boolean> => {
+	if (!questionRowId) return false;
+	const [question] = await tx
+		.select({ id: assistantMessage.id })
+		.from(assistantMessage)
+		.where(eq(assistantMessage.id, questionRowId))
+		.for("share");
+	return Boolean(question);
+};
 
 /**
  * Store an assistant row, unless its question was removed meanwhile.
@@ -977,14 +987,7 @@ const insertAnswer = async (
 	values: Parameters<typeof insertMessage>[2],
 ) =>
 	db.transaction(async (tx) => {
-		if (questionRowId) {
-			const [question] = await tx
-				.select({ id: assistantMessage.id })
-				.from(assistantMessage)
-				.where(eq(assistantMessage.id, questionRowId))
-				.for("share");
-			if (!question) return null;
-		}
+		if (!(await holdQuestion(tx, questionRowId))) return null;
 		return insertMessage(ctx, conversationId, values, { client: tx });
 	});
 
@@ -1020,6 +1023,12 @@ const claimCalls = async (
 		const history = await loadHistory(conversationId, tx);
 		const assistant = history.find((row) => row.id === assistantId);
 		if (!assistant) return null;
+		// A rewind may have removed the turn's question: write no tool rows for it.
+		const question = history
+			.slice(0, history.indexOf(assistant))
+			.filter((row) => row.role === "user")
+			.at(-1);
+		if (!(await holdQuestion(tx, question?.id ?? null))) return null;
 		// The batch must be exactly the LEADING run of what is still unanswered.
 		// One call is the old rule ("only the first") spelled for a list; several
 		// is a run of reads taken together, and either way a second tab asking for
@@ -1978,6 +1987,8 @@ type TurnRun = {
 	tools: ChatTool[];
 	signal: AbortSignal | undefined;
 	onEvent: EmitEvent;
+	/** The question row this turn answers, fixed when the turn starts. */
+	questionRowId: string | null;
 };
 
 const recordUserMessage = async (
@@ -1985,7 +1996,7 @@ const recordUserMessage = async (
 	conversation: Conversation,
 	message: string,
 	onEvent: EmitEvent,
-): Promise<void> => {
+): Promise<string> => {
 	// Before the message, never after: see `abandonPendingCalls`.
 	await abandonPendingCalls(ctx, conversation.id);
 	const row = await insertMessage(ctx, conversation.id, {
@@ -2005,6 +2016,25 @@ const recordUserMessage = async (
 			.where(eq(assistantConversation.id, conversation.id));
 		onEvent({ type: "title", title });
 	}
+	return row.id;
+};
+
+/** The last user row of a thread: the question a resumed turn answers. */
+const lastQuestionId = async (
+	conversationId: string,
+): Promise<string | null> => {
+	const [row] = await db
+		.select({ id: assistantMessage.id })
+		.from(assistantMessage)
+		.where(
+			and(
+				eq(assistantMessage.conversationId, conversationId),
+				eq(assistantMessage.role, "user"),
+			),
+		)
+		.orderBy(desc(assistantMessage.createdAt))
+		.limit(1);
+	return row?.id ?? null;
 };
 
 /**
@@ -2160,10 +2190,9 @@ const runStep = async (
 	run: TurnRun,
 	step: number,
 ): Promise<"continue" | "ended"> => {
-	const { conversation, signal, onEvent } = run;
+	const { conversation, signal, onEvent, questionRowId: question } = run;
 	const history = await loadHistory(conversation.id);
 	if (await resurfaceSuspended(ctx, history, onEvent)) return "ended";
-	const question = questionId(history);
 
 	let turn: ChatTurn;
 	try {
@@ -2258,12 +2287,11 @@ const runStep = async (
  * already in the thread. Not billed on a turn nobody is waiting for.
  */
 const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
-	const { conversation, signal, onEvent } = run;
+	const { conversation, signal, onEvent, questionRowId: question } = run;
 	if (signal?.aborted) return;
 
 	let closing: ChatTurn | null = null;
 	const history = await loadHistory(conversation.id);
-	const question = questionId(history);
 	try {
 		closing = await generate(ctx, run.trace, null, {
 			apiKey: run.config.apiKey,
@@ -2332,8 +2360,9 @@ const runTurn = async (
 		generationId: null,
 	};
 
-	if (input.message)
-		await recordUserMessage(ctx, conversation, input.message, onEvent);
+	const questionRowId = input.message
+		? await recordUserMessage(ctx, conversation, input.message, onEvent)
+		: await lastQuestionId(conversation.id);
 	if (
 		input.resolve &&
 		(await resumeApproval(ctx, trace, conversation, input.resolve, onEvent))
@@ -2353,6 +2382,7 @@ const runTurn = async (
 		tools,
 		signal,
 		onEvent,
+		questionRowId,
 	};
 
 	for (let step = 0; step < MAX_STEPS; step += 1) {
@@ -2447,6 +2477,20 @@ const replaceLastTurn = async (
 ): Promise<{ content: string }> => {
 	await requireConversation(ctx, input.conversationId);
 	return db.transaction(async (tx) => {
+		// Lock the question alone first: this waits for an answer insert that
+		// holds it, and the next statement then sees that answer.
+		await tx
+			.select({ id: assistantMessage.id })
+			.from(assistantMessage)
+			.where(
+				and(
+					eq(assistantMessage.conversationId, input.conversationId),
+					eq(assistantMessage.role, "user"),
+				),
+			)
+			.orderBy(desc(assistantMessage.createdAt))
+			.limit(1)
+			.for("update");
 		const rows = await tx
 			.select()
 			.from(assistantMessage)
