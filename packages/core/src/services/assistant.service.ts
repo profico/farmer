@@ -1140,13 +1140,15 @@ const stringifyResult = (value: Serializable | void) => {
 	return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n${CUT_SHORT}`;
 };
 
+type ToolResult = { ok: boolean; content: string; undo?: AssistantUndo | null };
+
 /** Runs one tool and returns what the model should be told, including on
  *  failure — a thrown `AccessError` is information the model can act on
  *  ("you aren't assigned to that project"), not a reason to end the turn. */
 const executeTool = async (
 	ctx: Ctx,
 	call: AssistantToolCall,
-): Promise<{ ok: boolean; content: string; undo?: AssistantUndo | null }> => {
+): Promise<ToolResult> => {
 	const tool = findTool(call.name);
 	if (!tool) {
 		return { ok: false, content: `Unknown tool "${call.name}".` };
@@ -1374,6 +1376,8 @@ type TurnTrace = {
 	conversationId: string;
 	model: string;
 	generationId: string | null;
+	/** The reads already run this turn, by name and arguments. See `runOrReuse`. */
+	reads: Map<string, Promise<ToolResult>>;
 };
 
 /** The model for the one retry of a stalled or failed call.
@@ -1644,6 +1648,7 @@ const run = async (
 					conversationId: conversation.id,
 					model: conversation.model,
 					generationId: null,
+					reads: new Map(),
 				},
 				settings.apiKey,
 				input.message,
@@ -1703,12 +1708,53 @@ const suspendOn = async (
 	onEvent({ type: "done" });
 };
 
+type ToolRun = { result: Promise<ToolResult>; repeat: boolean };
+
+/** Reads whose answer moves with the clock, so a repeat must run again. */
+const CLOCK_READS = new Set(["get_timer"]);
+
+/**
+ * Run a call, or give back the result of the same read earlier in this turn.
+ *
+ * A model can ask for the same read twice in one turn, and the person then sees
+ * two identical rows in the trace. A repeat gets the first result and no row.
+ * A write clears the map, because it can change what a read returns.
+ */
+const runOrReuse = (
+	ctx: Ctx,
+	trace: TurnTrace,
+	call: AssistantToolCall,
+): ToolRun => {
+	if (findTool(call.name)?.kind !== "read") {
+		trace.reads.clear();
+		return { result: executeTool(ctx, call), repeat: false };
+	}
+	if (CLOCK_READS.has(call.name)) {
+		return { result: executeTool(ctx, call), repeat: false };
+	}
+	const key = `${call.name}\0${call.arguments}`;
+	const earlier = trace.reads.get(key);
+	if (earlier) return { result: earlier, repeat: true };
+	const result = executeTool(ctx, call);
+	trace.reads.set(key, result);
+	// A failed read may succeed the next time, so the model can retry it.
+	// The caller handles a rejection; this branch only forgets the read.
+	void result.then(
+		(done) => {
+			if (!done.ok) trace.reads.delete(key);
+		},
+		() => trace.reads.delete(key),
+	);
+	return { result, repeat: false };
+};
+
 /** Run one claimed call and record what it returned. */
 const executeClaimed = async (
 	ctx: Ctx,
 	trace: TurnTrace,
 	claimed: { call: AssistantToolCall; rowId: string },
 	toRun: AssistantToolCall,
+	run: ToolRun,
 	onEvent: (event: AssistantEvent) => void,
 ) => {
 	const { call, rowId } = claimed;
@@ -1716,7 +1762,7 @@ const executeClaimed = async (
 	// and the resume after an approval all arrive here — so it is the one place
 	// a span has to be reported from.
 	const startedAt = Date.now();
-	const result = await executeTool(ctx, toRun);
+	const result = await run.result;
 	reportSpan({
 		organizationId: ctx.organizationId,
 		userId: ctx.userId,
@@ -1737,11 +1783,26 @@ const executeClaimed = async (
 		.update(assistantMessage)
 		.set({ content: result.content, undo: result.undo ?? null })
 		.where(eq(assistantMessage.id, rowId));
+	if (run.repeat) return;
 	onEvent({
 		type: "tool_result",
 		toolCallId: call.id,
 		name: call.name,
 		ok: result.ok,
+	});
+};
+
+const announce = (
+	call: AssistantToolCall,
+	run: ToolRun,
+	onEvent: (event: AssistantEvent) => void,
+) => {
+	if (run.repeat) return;
+	onEvent({
+		type: "tool_start",
+		toolCallId: call.id,
+		name: call.name,
+		arguments: call.arguments,
 	});
 };
 
@@ -1765,13 +1826,9 @@ const runClaimed = async (
 	);
 	const first = claimed?.[0];
 	if (!first) return false;
-	onEvent({
-		type: "tool_start",
-		toolCallId: call.id,
-		name: call.name,
-		arguments: call.arguments,
-	});
-	await executeClaimed(ctx, trace, first, toRun, onEvent);
+	const run = runOrReuse(ctx, trace, toRun);
+	announce(call, run, onEvent);
+	await executeClaimed(ctx, trace, first, toRun, run, onEvent);
 	return true;
 };
 
@@ -1806,17 +1863,14 @@ const runClaimedBatch = async (
 	if (!claimed) return false;
 	// Every step announced before any of them runs, so the trace shows the four
 	// spinners the person is actually waiting on rather than one at a time.
-	for (const { call } of claimed) {
-		onEvent({
-			type: "tool_start",
-			toolCallId: call.id,
-			name: call.name,
-			arguments: call.arguments,
-		});
-	}
+	const runs = claimed.map((entry) => ({
+		entry,
+		run: runOrReuse(ctx, trace, entry.call),
+	}));
+	for (const { entry, run } of runs) announce(entry.call, run, onEvent);
 	await Promise.all(
-		claimed.map((entry) =>
-			executeClaimed(ctx, trace, entry, entry.call, onEvent),
+		runs.map(({ entry, run }) =>
+			executeClaimed(ctx, trace, entry, entry.call, run, onEvent),
 		),
 	);
 	return true;
@@ -2381,6 +2435,7 @@ const runTurn = async (
 		// Set by each generation, so the spans its tool calls produce can name
 		// the call that asked for them.
 		generationId: null,
+		reads: new Map(),
 	};
 
 	const questionRowId = input.message

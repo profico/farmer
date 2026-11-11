@@ -2651,6 +2651,79 @@ describe("a step that asks for several reads", () => {
 		]);
 	});
 
+	test("a repeated read answers from the first and shows one step", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const projects = { name: "list_projects", arguments: "{}" };
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-1", ...projects },
+					{ id: "call-2", ...projects },
+				],
+			}),
+			turn({ toolCalls: [{ id: "call-3", ...projects }] }),
+			turn({ content: "One list." }),
+		];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects are there?",
+		});
+
+		expect(stepOrder(events)).toEqual([
+			"start:list_projects",
+			"result:list_projects",
+		]);
+		// The model still gets an answer for each call it made.
+		const answers = (
+			await db
+				.select()
+				.from(assistantMessage)
+				.where(eq(assistantMessage.conversationId, chat.id))
+		).filter((row) => row.role === "tool");
+		expect(answers).toHaveLength(3);
+		expect(new Set(answers.map((row) => row.content)).size).toBe(1);
+	});
+
+	test("a write between two equal reads runs the second read again", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const projects = { name: "list_projects", arguments: "{}" };
+		script = [
+			turn({ toolCalls: [{ id: "call-1", ...projects }] }),
+			turn({
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "create_time_entry",
+						arguments: JSON.stringify({
+							date: "2026-03-04",
+							projectId,
+							taskId: devTaskId,
+							durationSeconds: 3600,
+							description: "between two reads",
+						}),
+					},
+				],
+			}),
+			turn({ toolCalls: [{ id: "call-3", ...projects }] }),
+			turn({ content: "Done." }),
+		];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "log an hour and list the projects",
+		});
+
+		expect(stepOrder(events)).toEqual([
+			"start:list_projects",
+			"result:list_projects",
+			"start:create_time_entry",
+			"result:create_time_entry",
+			"start:list_projects",
+			"result:list_projects",
+		]);
+	});
+
 	test("every step carries its own arguments, so the trace can name it", async () => {
 		const chat = await startChat(ctxFor(WORKER));
 		const range = JSON.stringify({ from: "2026-03-01", to: "2026-03-05" });
