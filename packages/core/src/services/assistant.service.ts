@@ -1140,11 +1140,11 @@ const stringifyResult = (value: Serializable | void) => {
 	return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n${CUT_SHORT}`;
 };
 
+type ToolResult = { ok: boolean; content: string; undo?: AssistantUndo | null };
+
 /** Runs one tool and returns what the model should be told, including on
  *  failure — a thrown `AccessError` is information the model can act on
  *  ("you aren't assigned to that project"), not a reason to end the turn. */
-type ToolResult = { ok: boolean; content: string; undo?: AssistantUndo | null };
-
 const executeTool = async (
 	ctx: Ctx,
 	call: AssistantToolCall,
