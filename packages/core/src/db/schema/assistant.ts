@@ -70,10 +70,10 @@ export const assistantSettings = pgTable(
 	(t) => [unique("assistant_settings_org_unq").on(t.organizationId)],
 );
 
-// A conversation belongs to ONE person in ONE org. There is deliberately no
-// sharing: the assistant answers through the caller's own Ctx, so two people
-// asking the same question can legitimately get different answers, and a shared
-// thread would show a Member the PM's view of it.
+// A conversation belongs to ONE person in ONE org. Only the owner can write to
+// it. The owner may share it read-only with the org (`sharedAt`): anyone in the
+// org can read it. Tool results in it were read with the owner's access, so the
+// share dialog warns about that.
 export const assistantConversation = pgTable(
 	"assistant_conversation",
 	{
@@ -86,6 +86,12 @@ export const assistantConversation = pgTable(
 		title: text("title").notNull().default("New chat"),
 		/** Pinned at creation from `assistantSettings.defaultModel`. */
 		model: text("model").notNull(),
+		/** When the owner shared the chat with the org. Null: not shared. */
+		sharedAt: ts("shared_at"),
+		/** Who shared it. Set and cleared with `sharedAt`. */
+		sharedBy: text("shared_by").references(() => user.id, {
+			onDelete: "set null",
+		}),
 		...stamps,
 	},
 	(t) => [

@@ -4,6 +4,7 @@ import {
 	conversationIdInput,
 	createConversationInput,
 	renameConversationInput,
+	searchConversationsInput,
 	setAssistantSettingsInput,
 	updateAssistantSettingsInput,
 } from "@farmer/core/schema";
@@ -135,4 +136,37 @@ export const rewindAssistantThread = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
 		return assistantService.replaceLastTurn(context.ctx, data);
+	});
+
+export const searchConversations = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(searchConversationsInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.search(context.ctx, data);
+	});
+
+export const shareConversation = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.share(context.ctx, data.conversationId);
+	});
+
+export const unshareConversation = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.unshare(context.ctx, data.conversationId);
+	});
+
+/** A chat that its owner shared with the organization. Read only. */
+export const getSharedConversation = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(conversationIdInput)
+	.handler(async ({ data, context }) => {
+		const { assistantService } = await import("@farmer/core/services");
+		return assistantService.getShared(context.ctx, data.conversationId);
 	});

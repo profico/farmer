@@ -20,9 +20,11 @@ import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
 import { ContextNote } from "./context-note";
 import { useRun, useRunActions } from "./runs";
+import { useChatHeaderActions } from "./share";
 import { LastQuestionActions, StoredWrite } from "./stored-turn";
 import { ToolTraceList } from "./tool-trace";
 import { visibleMessages, visiblePending } from "./turn";
+import { UserMessage } from "./user-message";
 
 const SUGGESTIONS = [
 	"How many hours did I log last week?",
@@ -32,26 +34,6 @@ const SUGGESTIONS = [
 
 /** Closer to the end than this, the transcript follows a new answer. */
 const PIN_DISTANCE = 96;
-
-/** One thing the person said. */
-function UserMessage({ text }: { text: string }) {
-	const palette = usePalette();
-	return (
-		<View style={{ alignItems: "flex-end" }}>
-			<View
-				style={{
-					maxWidth: "85%",
-					borderRadius: 20,
-					paddingHorizontal: SPACE.l,
-					paddingVertical: SPACE.m,
-					backgroundColor: palette.secondaryContainer,
-				}}
-			>
-				<Text color={palette.onSecondaryContainer}>{text}</Text>
-			</View>
-		</View>
-	);
-}
 
 /** True while the keyboard is open, to drop the bottom inset under it. */
 const useKeyboardOpen = () => {
@@ -91,6 +73,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 	const [startedId, setStartedId] = useState<string | null>(null);
 	const id = routeId ?? startedId;
 	const thread = useAssistantThread(id);
+	const headerActions = useChatHeaderActions(thread.data?.thread);
 	const runId = id ?? draftId ?? "";
 	const run = useRun(runId);
 	const actions = useRunActions();
@@ -163,15 +146,7 @@ export function Chat({ id: routeId }: { id: string | null }) {
 			{/* The history is one tap away, so Back leaves the assistant at once.
 			    `dismissTo` goes back to the list when it is under this chat,
 			    and replaces the chat with it when it is not. */}
-			<HeaderActions
-				actions={[
-					{
-						icon: "chats",
-						label: "Chat history",
-						onPress: () => router.dismissTo("/assistant"),
-					},
-				]}
-			/>
+			<HeaderActions actions={headerActions} />
 			<View
 				ref={frame}
 				style={{ flex: 1 }}

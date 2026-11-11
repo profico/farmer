@@ -108,6 +108,9 @@ import {
 	assistantSettingsSchema,
 	assistantMessageSchema,
 	assistantRewindSchema,
+	assistantSearchHitSchema,
+	assistantSharedThreadSchema,
+	assistantShareSchema,
 	assistantThreadDetailSchema,
 	assistantThreadSchema,
 } from "./schemas-assistant";
@@ -1463,6 +1466,45 @@ export class FarmerClient {
 			"GET",
 			orgPath(slug, "/assistant/threads"),
 			assistantThreadSchema.array(),
+		);
+	}
+
+	/** Search your threads. */
+	searchAssistantThreads(
+		slug: string,
+		query: QueryOf<"searchAssistantThreads">,
+	) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/assistant/threads/search${search(query)}`),
+			assistantSearchHitSchema.array(),
+		);
+	}
+
+	/** Share a thread with the organization. */
+	shareAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/share`),
+			assistantShareSchema,
+		);
+	}
+
+	/** Stop sharing a thread. */
+	unshareAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(slug, `/assistant/threads/${encodeURIComponent(id)}/share`),
+			assistantShareSchema,
+		);
+	}
+
+	/** Read a shared thread. */
+	getSharedAssistantThread(slug: string, id: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/assistant/shared-threads/${encodeURIComponent(id)}`),
+			assistantSharedThreadSchema,
 		);
 	}
 

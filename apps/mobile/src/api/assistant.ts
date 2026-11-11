@@ -157,3 +157,41 @@ export const useRewindThread = () => {
 			queryClient.invalidateQueries({ queryKey: threadKey(w, id) }),
 	});
 };
+
+/** The person's threads whose title or text match `q`. Off below two
+ *  characters, as the server refuses them. */
+export const useSearchThreads = (q: string) => {
+	const w = useWorkspace();
+	return useQuery({
+		queryKey: [...assistantKey(w), "search", q],
+		queryFn: () => w.client.searchAssistantThreads(w.slug, { q }),
+		enabled: q.length >= 2,
+	});
+};
+
+/** One thread that its owner shared. Read only. */
+export const useSharedThread = (id: string) => {
+	const w = useWorkspace();
+	return useQuery({
+		queryKey: [...assistantKey(w), "shared", id],
+		queryFn: () => w.client.getSharedAssistantThread(w.slug, id),
+		retry: false,
+	});
+};
+
+/** Share a thread with the workspace, or stop sharing it. */
+export const useSetThreadShared = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ id, shared }: { id: string; shared: boolean }) =>
+			shared
+				? w.client.shareAssistantThread(w.slug, id)
+				: w.client.unshareAssistantThread(w.slug, id),
+		onSuccess: (_, { id }) =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: threadsKey(w) }),
+				queryClient.invalidateQueries({ queryKey: threadKey(w, id) }),
+			]),
+	});
+};

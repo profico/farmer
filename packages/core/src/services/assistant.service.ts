@@ -3,12 +3,15 @@ import {
 	asc,
 	desc,
 	eq,
+	exists,
 	inArray,
 	isNotNull,
 	isNull,
+	or,
+	type SQL,
 	sql,
 } from "drizzle-orm";
-import type { PgInsertValue } from "drizzle-orm/pg-core";
+import type { AnyPgColumn, PgInsertValue } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { db } from "../db";
@@ -41,6 +44,7 @@ import type {
 	CreateConversationInput,
 	RenameConversationInput,
 	RunAssistantInput,
+	SearchConversationsInput,
 	SetAssistantSettingsInput,
 	UpdateAssistantSettingsInput,
 } from "../schema";
@@ -58,6 +62,7 @@ import { elideOldToolResults, undoneContent } from "./assistant-wire";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
+import { membersService } from "./members.service";
 import type { Ctx } from "./types";
 
 export class AssistantError extends UserFacingError {
@@ -529,6 +534,7 @@ const conversations = {
 				title: assistantConversation.title,
 				model: assistantConversation.model,
 				updatedAt: assistantConversation.updatedAt,
+				sharedAt: assistantConversation.sharedAt,
 			})
 			.from(assistantConversation)
 			.where(
@@ -592,6 +598,189 @@ const conversations = {
 			.where(conversationWhere(ctx, conversationId));
 		return { ok: true };
 	},
+};
+
+// ── search ───────────────────────────────────────────────────────────────────
+
+const SNIPPET_CHARS = 120;
+const SEARCH_LIMIT = 30;
+
+/** Case-insensitive substring match with the LIKE wildcards taken literally.
+ *  Escaped against a backslash and declared with ESCAPE, as `notePredicate` in
+ *  `ledger.ts` does. */
+const containsTerm = (column: AnyPgColumn, term: string): SQL => {
+	const escaped = term.replace(/[\\%_]/g, (match) => `\\${match}`);
+	return sql`${column} ilike ${`%${escaped}%`} escape '\\'`;
+};
+
+/** About `SNIPPET_CHARS` of plain text around the first match. */
+const snippetAround = (content: string, term: string): string => {
+	const text = content.replace(/\s+/g, " ").trim();
+	const hit = Math.max(0, text.toLowerCase().indexOf(term.toLowerCase()));
+	const start = Math.max(
+		0,
+		hit - Math.floor((SNIPPET_CHARS - term.length) / 2),
+	);
+	const piece = text.slice(start, start + SNIPPET_CHARS);
+	return `${start > 0 ? "…" : ""}${piece}${start + SNIPPET_CHARS < text.length ? "…" : ""}`;
+};
+
+/** Messages a person typed or read: not the tool rows. */
+const readableMessage = inArray(assistantMessage.role, ["user", "assistant"]);
+
+const search = async (ctx: Ctx, input: SearchConversationsInput) => {
+	const term = input.q;
+	const matchingMessage = and(
+		eq(assistantMessage.conversationId, assistantConversation.id),
+		readableMessage,
+		containsTerm(assistantMessage.content, term),
+	);
+	const rows = await db
+		.select({
+			id: assistantConversation.id,
+			title: assistantConversation.title,
+			updatedAt: assistantConversation.updatedAt,
+		})
+		.from(assistantConversation)
+		.where(
+			and(
+				eq(assistantConversation.organizationId, ctx.organizationId),
+				eq(assistantConversation.userId, ctx.userId),
+				or(
+					containsTerm(assistantConversation.title, term),
+					exists(
+						db
+							.select({ one: sql`1` })
+							.from(assistantMessage)
+							.where(matchingMessage),
+					),
+				),
+			),
+		)
+		.orderBy(desc(assistantConversation.updatedAt))
+		.limit(SEARCH_LIMIT);
+	if (rows.length === 0) return [];
+	const hits = await db
+		.select({
+			conversationId: assistantMessage.conversationId,
+			content: assistantMessage.content,
+		})
+		.from(assistantMessage)
+		.where(
+			and(
+				inArray(
+					assistantMessage.conversationId,
+					rows.map((row) => row.id),
+				),
+				readableMessage,
+				containsTerm(assistantMessage.content, term),
+			),
+		)
+		.orderBy(asc(assistantMessage.createdAt));
+	const first = new Map<string, string>();
+	for (const hit of hits) {
+		if (!first.has(hit.conversationId))
+			first.set(hit.conversationId, hit.content);
+	}
+	return rows.map((row) => {
+		const content = first.get(row.id);
+		return {
+			...row,
+			snippet: content === undefined ? null : snippetAround(content, term),
+		};
+	});
+};
+
+// ── sharing ──────────────────────────────────────────────────────────────────
+
+const conversationTarget = (row: { id: string; title: string }) => ({
+	type: "assistant_conversation",
+	id: row.id,
+	label: row.title,
+});
+
+/** Share one of the caller's chats with the organization. */
+const share = async (ctx: Ctx, conversationId: string) => {
+	const row = await requireConversation(ctx, conversationId);
+	if (row.sharedAt) return { sharedAt: row.sharedAt };
+	const sharedAt = new Date();
+	await db
+		.update(assistantConversation)
+		.set({ sharedAt, sharedBy: ctx.userId })
+		.where(conversationWhere(ctx, conversationId));
+	await recordAudit(ctx, {
+		kind: "assistant_chat.shared",
+		target: conversationTarget(row),
+		subjectUserId: row.userId,
+	});
+	return { sharedAt };
+};
+
+/** Stop sharing. The owner may, and so may an Admin for any chat in the org,
+ *  so that leaked data can be pulled back. */
+const unshare = async (ctx: Ctx, conversationId: string) => {
+	const access = await ctxAccess(ctx);
+	const row = await db.query.assistantConversation.findFirst({
+		where: and(
+			eq(assistantConversation.id, conversationId),
+			eq(assistantConversation.organizationId, ctx.organizationId),
+			isNotNull(assistantConversation.sharedAt),
+		),
+	});
+	if (!row || (row.userId !== ctx.userId && !access.isAdmin)) {
+		throw new AssistantError("Conversation not found");
+	}
+	await db
+		.update(assistantConversation)
+		.set({ sharedAt: null, sharedBy: null })
+		.where(eq(assistantConversation.id, row.id));
+	await recordAudit(ctx, {
+		kind: "assistant_chat.unshared",
+		target: conversationTarget(row),
+		subjectUserId: row.userId,
+	});
+	return { sharedAt: null };
+};
+
+/** A stored row as a reader sees it: nothing waits for an answer and nothing
+ *  can be undone. */
+const readOnlyRow = (row: StoredMessage): StoredMessage => ({
+	...row,
+	pendingApproval: false,
+	undo: null,
+});
+
+/** Read one shared chat. Any member of the org may. A chat that is not shared,
+ *  or is in another org, is not found. */
+const getShared = async (ctx: Ctx, conversationId: string) => {
+	await ctxAccess(ctx);
+	if (!isAssistantEnabled()) throw new AssistantDisabledError();
+	const conversation = await db.query.assistantConversation.findFirst({
+		where: and(
+			eq(assistantConversation.id, conversationId),
+			eq(assistantConversation.organizationId, ctx.organizationId),
+			isNotNull(assistantConversation.sharedAt),
+		),
+	});
+	if (!conversation?.sharedAt)
+		throw new AssistantError("Conversation not found");
+	const [messages, roster] = await Promise.all([
+		db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, conversation.id),
+			orderBy: asc(assistantMessage.createdAt),
+		}),
+		membersService.roster(ctx),
+	]);
+	const sharer = roster.members.find((m) => m.userId === conversation.sharedBy);
+	return {
+		conversation,
+		messages: messages.map(readOnlyRow),
+		sharedAt: conversation.sharedAt,
+		sharedBy: {
+			name: sharer?.user.name ?? "A colleague",
+			image: sharer?.user.image ?? null,
+		},
+	};
 };
 
 // ── the loop ─────────────────────────────────────────────────────────────────
@@ -2223,4 +2412,8 @@ export const assistantService = {
 	run,
 	undo,
 	replaceLastTurn,
+	search,
+	share,
+	unshare,
+	getShared,
 };

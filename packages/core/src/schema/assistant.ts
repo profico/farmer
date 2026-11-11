@@ -111,3 +111,11 @@ export const runAssistantInput = z
 		path: ["message"],
 	});
 export type RunAssistantInput = z.infer<typeof runAssistantInput>;
+
+export const MIN_SEARCH_CHARS = 2;
+export const MAX_SEARCH_CHARS = 100;
+
+export const searchConversationsInput = z.object({
+	q: z.string().trim().min(MIN_SEARCH_CHARS).max(MAX_SEARCH_CHARS),
+});
+export type SearchConversationsInput = z.infer<typeof searchConversationsInput>;

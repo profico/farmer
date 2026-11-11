@@ -6,6 +6,9 @@ import {
 	type ApiAssistantMessage,
 	type ApiAssistantModel,
 	type ApiAssistantRewind,
+	type ApiAssistantSearchHit,
+	type ApiAssistantShare,
+	type ApiAssistantSharedThread,
 	type ApiAssistantSettings,
 	type ApiAssistantThread,
 	type ApiAssistantThreadDetail,
@@ -147,6 +150,7 @@ import {
 	overtimeReportInput,
 	reminderKind,
 	reminderPreviewInput,
+	searchConversationsInput,
 	reminderSettingsInput,
 	renameConversationInput,
 	memberTypeEnum,
@@ -1511,6 +1515,35 @@ const apiAssistantThread = named(
 			title: z.string(),
 			model: z.string(),
 			updatedAt: iso,
+			sharedAt: iso
+				.nullable()
+				.describe("When the owner shared the thread. Null: not shared."),
+		}),
+	),
+);
+
+const apiAssistantSearchHit = named(
+	"AssistantSearchHit",
+	mirror<ApiAssistantSearchHit>()(
+		z.object({
+			id: uuid,
+			title: z.string(),
+			updatedAt: iso,
+			snippet: z
+				.string()
+				.nullable()
+				.describe(
+					"About 120 characters of plain text around the first match. Null when only the title matched.",
+				),
+		}),
+	),
+);
+
+const apiAssistantShare = named(
+	"AssistantShare",
+	mirror<ApiAssistantShare>()(
+		z.object({
+			sharedAt: iso.nullable().describe("Null after the share stopped."),
 		}),
 	),
 );
@@ -1589,6 +1622,21 @@ const apiAssistantThreadDetail = named(
 				.int()
 				.nullable()
 				.describe("Context size of the thread's model."),
+		}),
+	),
+);
+
+const apiAssistantSharedThread = named(
+	"AssistantSharedThread",
+	mirror<ApiAssistantSharedThread>()(
+		z.object({
+			thread: apiAssistantThread,
+			messages: z.array(apiAssistantMessage).describe("Oldest first."),
+			sharedAt: iso,
+			sharedBy: z.object({
+				name: z.string(),
+				image: z.string().nullable(),
+			}),
 		}),
 	),
 );
@@ -3482,6 +3530,47 @@ export const OPERATIONS: Operation[] = [
 		tag: "Assistant",
 		body: createConversationInput,
 		response: apiAssistantThread,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/threads/search",
+		operationId: "searchAssistantThreads",
+		summary: "Search your threads",
+		description:
+			"Matches the title and the text of the questions and answers, not the tool results. `q` has 2 to 100 characters. At most 30 threads, newest first.",
+		tag: "Assistant",
+		query: { schema: searchConversationsInput, optional: false },
+		response: apiAssistantSearchHit,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/share",
+		operationId: "shareAssistantThread",
+		summary: "Share a thread",
+		description:
+			"Anyone in the organization with the link can read the thread. It can show data that the owner can see and the reader cannot. Only the owner may share.",
+		tag: "Assistant",
+		response: apiAssistantShare,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/share",
+		operationId: "unshareAssistantThread",
+		summary: "Stop sharing a thread",
+		description: "The owner may. An Admin may stop any shared thread.",
+		tag: "Assistant",
+		response: apiAssistantShare,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/shared-threads/{id}",
+		operationId: "getSharedAssistantThread",
+		summary: "Read a shared thread",
+		description:
+			"Any member may read a thread that its owner shared. Read only. A thread that is not shared is a 404.",
+		tag: "Assistant",
+		response: apiAssistantSharedThread,
 	},
 	{
 		method: "get",

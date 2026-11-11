@@ -212,14 +212,18 @@ const SERVICES = {
 		service: {
 			undo: assistantService.undo,
 			replaceLastTurn: assistantService.replaceLastTurn,
+			share: assistantService.share,
+			unshare: assistantService.unshare,
+			search: assistantService.search,
+			getShared: assistantService.getShared,
 		},
 		coverage: {
-			recorded: {},
+			recorded: { share: true, unshare: true },
 			exempt: {
 				undo: "runs the inverse of a write on the person's own time through timeEntriesService",
 				replaceLastTurn: "deletes the person's own chat rows",
 			},
-			reads: [],
+			reads: ["search", "getShared"],
 		},
 	},
 	webhooksService: {

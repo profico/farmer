@@ -5,8 +5,10 @@ import {
 	getAssistantSettings,
 	getAssistantUsage,
 	getConversation,
+	getSharedConversation,
 	listAssistantModels,
 	listConversations,
+	searchConversations,
 } from "#/server/assistant.ts";
 
 import { queryKeys } from "./keys.ts";
@@ -43,4 +45,17 @@ export const conversationQuery = (org: string, conversationId: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).assistant, "conversation", conversationId],
 		queryFn: () => getConversation({ data: { conversationId } }),
+	});
+
+export const searchConversationsQuery = (org: string, q: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).assistant, "search", q],
+		queryFn: () => searchConversations({ data: { q } }),
+	});
+
+export const sharedConversationQuery = (org: string, conversationId: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).assistant, "shared", conversationId],
+		queryFn: () => getSharedConversation({ data: { conversationId } }),
+		retry: false,
 	});

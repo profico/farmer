@@ -16,6 +16,11 @@ import {
 import { RenameDialog } from "../../src/assistant/rename-dialog";
 import { useThreadRunning } from "../../src/assistant/runs";
 import {
+	ThreadSearchBox,
+	ThreadSearchResults,
+	useThreadSearch,
+} from "../../src/assistant/thread-search";
+import {
 	ActionButton,
 	EmptyState,
 	ErrorBanner,
@@ -97,6 +102,7 @@ export default function AssistantThreadsScreen() {
 	const palette = usePalette();
 	const plain = usePlainBackground();
 	const threads = useAssistantThreads();
+	const search = useThreadSearch();
 	const ready = useAssistantReady();
 	const rename = useRenameThread();
 	const remove = useDeleteThread();
@@ -137,67 +143,75 @@ export default function AssistantThreadsScreen() {
 				}}
 			/>
 			<AssistantGate>
-				<FlatList
-					data={threads.data ?? []}
-					contentContainerStyle={{ paddingBottom: NEW_CHAT_CLEARANCE }}
-					keyExtractor={(thread) => thread.id}
-					contentInsetAdjustmentBehavior="automatic"
-					refreshControl={
-						<RefreshControl
-							refreshing={pull.refreshing}
-							onRefresh={pull.onRefresh}
-							colors={[String(palette.primary)]}
-							progressBackgroundColor={String(palette.surfaceContainerHigh)}
-							tintColor={palette.primary}
-						/>
-					}
-					ListHeaderComponent={
-						error ? (
-							<View style={{ padding: SPACE.l }}>
-								<ErrorBanner message={error} />
-							</View>
-						) : null
-					}
-					ListEmptyComponent={
-						threads.isPending ? (
-							<View style={{ paddingTop: SPACE.l }}>
-								<Inset>
-									<Skeleton height={56} />
-									<Skeleton height={56} />
-									<Skeleton height={56} />
-								</Inset>
-							</View>
-						) : threads.error ? (
-							<ErrorState
-								error={threads.error}
-								onRetry={() => void threads.refetch()}
+				<ThreadSearchBox search={search} />
+				{search.active ? (
+					<ThreadSearchResults query={search.query} />
+				) : (
+					<FlatList
+						data={threads.data ?? []}
+						contentContainerStyle={{ paddingBottom: NEW_CHAT_CLEARANCE }}
+						keyExtractor={(thread) => thread.id}
+						contentInsetAdjustmentBehavior="automatic"
+						refreshControl={
+							<RefreshControl
+								refreshing={pull.refreshing}
+								onRefresh={pull.onRefresh}
+								colors={[String(palette.primary)]}
+								progressBackgroundColor={String(palette.surfaceContainerHigh)}
+								tintColor={palette.primary}
 							/>
-						) : (
-							<EmptyState
-								icon="assistant"
-								title="No conversations yet"
-								message="Ask about your tracked time, or ask the assistant to log more of it. It shows you every change first."
-								action={
-									<ActionButton label="Start a conversation" onPress={start} />
+						}
+						ListHeaderComponent={
+							error ? (
+								<View style={{ padding: SPACE.l }}>
+									<ErrorBanner message={error} />
+								</View>
+							) : null
+						}
+						ListEmptyComponent={
+							threads.isPending ? (
+								<View style={{ paddingTop: SPACE.l }}>
+									<Inset>
+										<Skeleton height={56} />
+										<Skeleton height={56} />
+										<Skeleton height={56} />
+									</Inset>
+								</View>
+							) : threads.error ? (
+								<ErrorState
+									error={threads.error}
+									onRetry={() => void threads.refetch()}
+								/>
+							) : (
+								<EmptyState
+									icon="assistant"
+									title="No conversations yet"
+									message="Ask about your tracked time, or ask the assistant to log more of it. It shows you every change first."
+									action={
+										<ActionButton
+											label="Start a conversation"
+											onPress={start}
+										/>
+									}
+								/>
+							)
+						}
+						renderItem={({ item }) => (
+							<ThreadRow
+								thread={item}
+								now={now}
+								onOpen={() =>
+									router.push({
+										pathname: "/assistant/[id]",
+										params: { id: item.id },
+									})
 								}
+								onRename={() => setRenaming(item)}
+								onDelete={() => confirmDelete(item)}
 							/>
-						)
-					}
-					renderItem={({ item }) => (
-						<ThreadRow
-							thread={item}
-							now={now}
-							onOpen={() =>
-								router.push({
-									pathname: "/assistant/[id]",
-									params: { id: item.id },
-								})
-							}
-							onRename={() => setRenaming(item)}
-							onDelete={() => confirmDelete(item)}
-						/>
-					)}
-				/>
+						)}
+					/>
+				)}
 			</AssistantGate>
 			{/* No new chat while the gate above says why the assistant
 			    cannot answer. */}

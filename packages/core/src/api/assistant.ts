@@ -78,6 +78,9 @@ export type ApiAssistantThread = {
 	/** The model the thread was pinned to when it started. */
 	model: string;
 	updatedAt: string;
+	/** When the owner shared the thread with the organization. Null: not
+	 *  shared. */
+	sharedAt: string | null;
 };
 
 export const toApiAssistantThread = (row: {
@@ -85,11 +88,35 @@ export const toApiAssistantThread = (row: {
 	title: string;
 	model: string;
 	updatedAt: Date;
+	sharedAt: Date | null;
 }): ApiAssistantThread => ({
 	id: row.id,
 	title: row.title,
 	model: row.model,
 	updatedAt: row.updatedAt.toISOString(),
+	sharedAt: row.sharedAt ? row.sharedAt.toISOString() : null,
+});
+
+/** One hit of `GET …/assistant/threads/search`. */
+export type ApiAssistantSearchHit = {
+	id: string;
+	title: string;
+	updatedAt: string;
+	/** About 120 characters of plain text around the first match in a
+	 *  message. Null when only the title matched. */
+	snippet: string | null;
+};
+
+export const toApiAssistantSearchHit = (row: {
+	id: string;
+	title: string;
+	updatedAt: Date;
+	snippet: string | null;
+}): ApiAssistantSearchHit => ({
+	id: row.id,
+	title: row.title,
+	updatedAt: row.updatedAt.toISOString(),
+	snippet: row.snippet,
 });
 
 export type ApiAssistantToolCall = {
@@ -209,6 +236,24 @@ export type ApiAssistantThreadDetail = {
 	promptTokens: number | null;
 	/** Context size of the thread's model. Null when unknown. */
 	contextLength: number | null;
+};
+
+/** `POST` and `DELETE …/threads/$id/share`. */
+export type ApiAssistantShare = {
+	/** Null after the share stopped. */
+	sharedAt: string | null;
+};
+
+/**
+ * `GET /api/v1/orgs/$slug/assistant/shared-threads/$id`: a chat that its owner
+ * shared with the organization. Read only: no approval waits, nothing can be
+ * undone.
+ */
+export type ApiAssistantSharedThread = {
+	thread: ApiAssistantThread;
+	messages: ApiAssistantMessage[];
+	sharedAt: string;
+	sharedBy: { name: string; image: string | null };
 };
 
 /**

@@ -28,11 +28,13 @@ import {
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
+import { ShareChatButton } from "#/components/assistant/share-chat.tsx";
 import {
 	LastQuestionActions,
 	StoredWriteTrace,
 } from "#/components/assistant/stored-turn.tsx";
 import { useSuggestions } from "#/components/assistant/use-suggestions.ts";
+import { UserMessage } from "#/components/assistant/user-message.tsx";
 import { MenuPath } from "#/components/menu-path.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
@@ -120,18 +122,6 @@ function PinToEnd({ pin }: { pin: () => void }) {
 		pin();
 	}, [pin]);
 	return null;
-}
-
-/** One thing the user said. Rendered from the transcript, and — for the turn in
- *  flight — from the text the composer just sent. */
-function UserMessage({ text }: { text: string }) {
-	return (
-		<div className="flex justify-end">
-			<div className="max-w-[85%] rounded-card bg-inset px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink">
-				{text}
-			</div>
-		</div>
-	);
 }
 
 function AssistantPage() {
@@ -377,6 +367,14 @@ function AssistantPage() {
 					    the Browse/Chat switch both live in the sidebar, which doesn't
 					    exist at this width. */}
 					<MobileChatBar orgSlug={orgSlug} />
+					{conversationId && (
+						<div className="absolute top-3 right-4 z-10 hidden md:block">
+							<ShareChatButton
+								orgSlug={orgSlug}
+								conversationId={conversationId}
+							/>
+						</div>
+					)}
 
 					{/* The transcript scrolls; the composer below it does not. The
 					    ordering is the whole layout: history moves upward under the

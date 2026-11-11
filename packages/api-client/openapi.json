@@ -6560,6 +6560,8 @@
 								"org_settings.updated",
 								"reminder_settings.updated",
 								"assistant_settings.updated",
+								"assistant_chat.shared",
+								"assistant_chat.unshared",
 								"audit_log.retention_changed",
 								"audit_log.exported",
 								"member.invited",
@@ -7402,6 +7404,286 @@
 					},
 					"422": {
 						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/assistant/threads/search": {
+			"get": {
+				"operationId": "searchAssistantThreads",
+				"summary": "Search your threads",
+				"description": "Matches the title and the text of the questions and answers, not the tool results. `q` has 2 to 100 characters. At most 30 threads, newest first.",
+				"tags": [
+					"Assistant"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "q",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"minLength": 2,
+							"maxLength": 100
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AssistantSearchHit"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/assistant/threads/{id}/share": {
+			"post": {
+				"operationId": "shareAssistantThread",
+				"summary": "Share a thread",
+				"description": "Anyone in the organization with the link can read the thread. It can show data that the owner can see and the reader cannot. Only the owner may share.",
+				"tags": [
+					"Assistant"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AssistantShare"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "unshareAssistantThread",
+				"summary": "Stop sharing a thread",
+				"description": "The owner may. An Admin may stop any shared thread.",
+				"tags": [
+					"Assistant"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AssistantShare"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/assistant/shared-threads/{id}": {
+			"get": {
+				"operationId": "getSharedAssistantThread",
+				"summary": "Read a shared thread",
+				"description": "Any member may read a thread that its owner shared. Read only. A thread that is not shared is a 404.",
+				"tags": [
+					"Assistant"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AssistantSharedThread"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -17060,13 +17342,75 @@
 					"updatedAt": {
 						"type": "string",
 						"description": "An instant, ISO 8601 in UTC."
+					},
+					"sharedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "An instant, ISO 8601 in UTC."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "When the owner shared the thread. Null: not shared."
 					}
 				},
 				"required": [
 					"id",
 					"title",
 					"model",
-					"updatedAt"
+					"updatedAt",
+					"sharedAt"
+				]
+			},
+			"AssistantSearchHit": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "A UUID."
+					},
+					"title": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"snippet": {
+						"description": "About 120 characters of plain text around the first match. Null when only the title matched.",
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				},
+				"required": [
+					"id",
+					"title",
+					"updatedAt",
+					"snippet"
+				]
+			},
+			"AssistantShare": {
+				"type": "object",
+				"properties": {
+					"sharedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "An instant, ISO 8601 in UTC."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Null after the share stopped."
+					}
+				},
+				"required": [
+					"sharedAt"
 				]
 			},
 			"AssistantMessage": {
@@ -17294,6 +17638,49 @@
 					"messages",
 					"promptTokens",
 					"contextLength"
+				]
+			},
+			"AssistantSharedThread": {
+				"type": "object",
+				"properties": {
+					"thread": {
+						"$ref": "#/components/schemas/AssistantThread"
+					},
+					"messages": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AssistantMessage"
+						},
+						"description": "Oldest first."
+					},
+					"sharedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"sharedBy": {
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string"
+							},
+							"image": {
+								"type": [
+									"string",
+									"null"
+								]
+							}
+						},
+						"required": [
+							"name",
+							"image"
+						]
+					}
+				},
+				"required": [
+					"thread",
+					"messages",
+					"sharedAt",
+					"sharedBy"
 				]
 			},
 			"AssistantEvent": {
@@ -19970,6 +20357,8 @@
 							"org_settings.updated",
 							"reminder_settings.updated",
 							"assistant_settings.updated",
+							"assistant_chat.shared",
+							"assistant_chat.unshared",
 							"audit_log.retention_changed",
 							"audit_log.exported",
 							"member.invited",

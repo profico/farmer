@@ -21,6 +21,8 @@ const KIND_LABELS = {
 	"org_settings.updated": "Tracking settings changed",
 	"reminder_settings.updated": "Reminder settings changed",
 	"assistant_settings.updated": "Assistant settings changed",
+	"assistant_chat.shared": "Assistant chat shared",
+	"assistant_chat.unshared": "Assistant chat unshared",
 	"audit_log.retention_changed": "Audit log retention changed",
 	"audit_log.exported": "Audit log exported",
 	"member.invited": "Person invited",

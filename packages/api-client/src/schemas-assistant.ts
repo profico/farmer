@@ -48,8 +48,25 @@ export const assistantThreadSchema = z.object({
 	model: z.string(),
 	/** An instant, ISO 8601 in UTC. */
 	updatedAt: z.string(),
+	/** When the owner shared the thread. Null: not shared. */
+	sharedAt: z.string().nullable(),
 });
 export type AssistantThread = z.output<typeof assistantThreadSchema>;
+
+export const assistantSearchHitSchema = z.object({
+	id: z.string(),
+	title: z.string(),
+	updatedAt: z.string(),
+	/** Plain text around the first match. Null when only the title matched. */
+	snippet: z.string().nullable(),
+});
+export type AssistantSearchHit = z.output<typeof assistantSearchHitSchema>;
+
+export const assistantShareSchema = z.object({
+	/** Null after the share stopped. */
+	sharedAt: z.string().nullable(),
+});
+export type AssistantShare = z.output<typeof assistantShareSchema>;
 
 export const assistantMessageSchema = z.object({
 	id: z.string(),
@@ -114,6 +131,18 @@ export const assistantThreadDetailSchema = z.object({
 });
 export type AssistantThreadDetail = z.output<
 	typeof assistantThreadDetailSchema
+>;
+
+export const assistantSharedThreadSchema = z.object({
+	thread: assistantThreadSchema,
+	/** Oldest first. */
+	messages: z.array(assistantMessageSchema),
+	/** An instant, ISO 8601 in UTC. */
+	sharedAt: z.string(),
+	sharedBy: z.object({ name: z.string(), image: z.string().nullable() }),
+});
+export type AssistantSharedThread = z.output<
+	typeof assistantSharedThreadSchema
 >;
 
 /**
@@ -184,6 +213,13 @@ export type AssistantContractChecks = [
 	Expect<Parses<Schemas["AssistantThread"], typeof assistantThreadSchema>>,
 	Expect<Parses<Schemas["AssistantMessage"], typeof assistantMessageSchema>>,
 	Expect<Parses<Schemas["AssistantRewind"], typeof assistantRewindSchema>>,
+	Expect<
+		Parses<Schemas["AssistantSearchHit"], typeof assistantSearchHitSchema>
+	>,
+	Expect<Parses<Schemas["AssistantShare"], typeof assistantShareSchema>>,
+	Expect<
+		Parses<Schemas["AssistantSharedThread"], typeof assistantSharedThreadSchema>
+	>,
 	Expect<
 		Parses<Schemas["AssistantThreadDetail"], typeof assistantThreadDetailSchema>
 	>,

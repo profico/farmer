@@ -1,6 +1,6 @@
 {
-  "id": "6cd7f929-fdf2-4c42-af1b-fbd9d8c02ecb",
-  "prevId": "0d3ef796-53e9-4ff8-a0bb-ac71a772bd60",
+  "id": "f9e67da2-d3fb-43ad-a433-fb0b0dec9174",
+  "prevId": "6cd7f929-fdf2-4c42-af1b-fbd9d8c02ecb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -171,6 +171,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "shared_at": {
+          "name": "shared_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shared_by": {
+          "name": "shared_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -240,6 +252,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "assistant_conversation_shared_by_user_id_fk": {
+          "name": "assistant_conversation_shared_by_user_id_fk",
+          "tableFrom": "assistant_conversation",
+          "tableTo": "user",
+          "columnsFrom": [
+            "shared_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

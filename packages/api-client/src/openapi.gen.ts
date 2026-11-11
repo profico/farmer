@@ -1561,6 +1561,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgSlug}/assistant/threads/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search your threads
+         * @description Matches the title and the text of the questions and answers, not the tool results. `q` has 2 to 100 characters. At most 30 threads, newest first.
+         */
+        get: operations["searchAssistantThreads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/assistant/threads/{id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share a thread
+         * @description Anyone in the organization with the link can read the thread. It can show data that the owner can see and the reader cannot. Only the owner may share.
+         */
+        post: operations["shareAssistantThread"];
+        /**
+         * Stop sharing a thread
+         * @description The owner may. An Admin may stop any shared thread.
+         */
+        delete: operations["unshareAssistantThread"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/assistant/shared-threads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a shared thread
+         * @description Any member may read a thread that its owner shared. Read only. A thread that is not shared is a 404.
+         */
+        get: operations["getSharedAssistantThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgSlug}/assistant/threads/{id}": {
         parameters: {
             query?: never;
@@ -3793,6 +3857,21 @@ export interface components {
             model: string;
             /** @description An instant, ISO 8601 in UTC. */
             updatedAt: string;
+            /** @description When the owner shared the thread. Null: not shared. */
+            sharedAt: string | null;
+        };
+        AssistantSearchHit: {
+            /** @description A UUID. */
+            id: string;
+            title: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            updatedAt: string;
+            /** @description About 120 characters of plain text around the first match. Null when only the title matched. */
+            snippet: string | null;
+        };
+        AssistantShare: {
+            /** @description Null after the share stopped. */
+            sharedAt: string | null;
         };
         AssistantMessage: {
             /** @description A UUID. */
@@ -3841,6 +3920,17 @@ export interface components {
             promptTokens: number | null;
             /** @description Context size of the thread's model. */
             contextLength: number | null;
+        };
+        AssistantSharedThread: {
+            thread: components["schemas"]["AssistantThread"];
+            /** @description Oldest first. */
+            messages: components["schemas"]["AssistantMessage"][];
+            /** @description An instant, ISO 8601 in UTC. */
+            sharedAt: string;
+            sharedBy: {
+                name: string;
+                image: string | null;
+            };
         };
         /** @description One Server-Sent Event: each `data:` line is one of these, as JSON. The turn ends after `done` or `error`. */
         AssistantEvent: {
@@ -4482,7 +4572,7 @@ export interface components {
             /** @enum {string} */
             category?: "change" | "security";
             /** @enum {string} */
-            kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.claim_merged" | "member.role_changed" | "member.archived" | "member.restored" | "member.anonymised" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "slack.pinged" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
+            kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "assistant_chat.shared" | "assistant_chat.unshared" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.claim_merged" | "member.role_changed" | "member.archived" | "member.restored" | "member.anonymised" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "slack.pinged" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
             userId?: string;
             from: string;
             to: string;
@@ -9435,7 +9525,7 @@ export interface operations {
         parameters: {
             query?: {
                 category?: "change" | "security";
-                kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.claim_merged" | "member.role_changed" | "member.archived" | "member.restored" | "member.anonymised" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "slack.pinged" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
+                kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "assistant_chat.shared" | "assistant_chat.unshared" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.claim_merged" | "member.role_changed" | "member.archived" | "member.restored" | "member.anonymised" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "slack.pinged" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
                 userId?: string;
                 from?: string;
                 to?: string;
@@ -10026,6 +10116,205 @@ export interface operations {
             };
             /** @description The input is not valid. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchAssistantThreads: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSearchHit"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    shareAssistantThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantShare"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unshareAssistantThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantShare"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSharedAssistantThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSharedThread"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

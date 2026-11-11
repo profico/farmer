@@ -50,12 +50,14 @@ describe("toApiAssistantThread", () => {
 			model: "openai/gpt-4o-mini",
 			createdAt: AT,
 			updatedAt: AT,
+			sharedAt: AT,
 		};
 		expect(toApiAssistantThread(row)).toStrictEqual({
 			id: "t-1",
 			title: "Hours in August",
 			model: "openai/gpt-4o-mini",
 			updatedAt: "2026-10-06T08:00:00.000Z",
+			sharedAt: "2026-10-06T08:00:00.000Z",
 		});
 	});
 });
