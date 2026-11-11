@@ -39,7 +39,7 @@ import { toolLabel } from "./tool-labels.ts";
 /* ── the sprout loader (LoadingState) ─────────────────────────────────────── */
 
 // The Farmer wheat. The stalk draws, then each grain grows out of it and drops.
-// The first piece of the mark is the tile, so we drop it.
+// The first piece of the mark is the tile. Skip it.
 const [, ...GRAINS] = MARK.split(/(?<=Z)(?=M)/);
 // Step along the stalk for each grain: leaf, then the pairs from base to tip.
 const STEP = [0, 1, 2, 1, 3, 2, 3];

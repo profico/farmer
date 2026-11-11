@@ -106,10 +106,7 @@ function ReportsPage() {
 											<Link
 												to="/$orgSlug/reports"
 												params={{ orgSlug: organization.slug }}
-												// Deliberately drops every other search param: a period
-												// or drill-down belongs to the tab it was set on, and
-												// carrying a client filter into the Absence report would
-												// only ever confuse.
+												// Drops the other search params: they belong to the old tab.
 												search={{ tab: t.id, month: search.month }}
 												aria-current={tab === t.id ? "page" : undefined}
 											/>

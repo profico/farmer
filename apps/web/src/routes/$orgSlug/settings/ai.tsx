@@ -108,19 +108,12 @@ function AiSettingsPage() {
 	);
 }
 
-/**
- * House rules appended to the assistant's system prompt.
- *
- * Its own row rather than a field in the list above because it is a textarea
- * with a dirty state and an explicit save — the switches beside it write on
- * change, which is wrong for prose somebody is still in the middle of typing.
- */
+/** House rules for the system prompt. Explicit save: the switches write on change. */
 function HouseRulesRow({ stored }: { stored: string }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const [draft, setDraft] = useState(stored);
-	// Re-seed when the server's copy changes underneath (another admin, another
-	// tab) — but only when the box is clean, so it can't eat what is being typed.
+	// Re-seed on a server change, but only while the box is clean.
 	const [baseline, setBaseline] = useState(stored);
 	if (stored !== baseline && draft === baseline) {
 		setBaseline(stored);
@@ -131,8 +124,7 @@ function HouseRulesRow({ stored }: { stored: string }) {
 	const save = useMutation({
 		mutationFn: () =>
 			updateAssistantSettings({
-				// Empty box clears the rules: null is "forget them", where undefined
-				// would mean "leave them alone".
+				// null clears the rules; undefined leaves them.
 				data: { systemPrompt: draft.trim() ? draft.trim() : null },
 			}),
 		onSuccess: async () => {
@@ -180,17 +172,9 @@ function HouseRulesRow({ stored }: { stored: string }) {
 type ModelItem = { value: string; label: string };
 
 /**
- * The default-model picker.
- *
- * OpenRouter answers with hundreds of tool-capable models, so this is the same
- * searching Combobox the project and task pickers use rather than a Select
- * nobody can scan. The search covers the model id as well as its name: a
- * provider is spelled one way there ("anthropic/", "google/") and several ways
- * in the names, so the id is what somebody types to see one vendor's list.
- *
- * The stored model is added to the list when the catalogue does not have it —
- * while the catalogue is still loading, and for a model OpenRouter has since
- * retired. The trigger then shows the raw id, which is what is actually saved.
+ * The default-model picker: a searching Combobox, as OpenRouter lists hundreds.
+ * The search covers the model id, so "anthropic/" lists one vendor. A stored
+ * model that the catalogue lacks is added, and the trigger shows its raw id.
  */
 function ModelPicker({
 	models,
@@ -267,9 +251,8 @@ function ModelPicker({
 	);
 }
 
-// Admin-only and mounted only for admins: `assistantModelsQuery` sits behind
-// `orgAdminMiddleware` (it needs the key), so prefetching it in the route loader
-// would 403 for every member. Same shape as SlackSection below.
+// Admin only: `assistantModelsQuery` needs the key, so a loader prefetch would
+// 403 for a member. Same shape as SlackSection below.
 function OpenRouterSection() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -277,9 +260,7 @@ function OpenRouterSection() {
 	const [apiKey, setApiKey] = useState("");
 
 	const configured = settings?.configured ?? false;
-	// A row whose key no longer opens (`BETTER_AUTH_SECRET` changed). Not
-	// configured, so nothing below that needs the key is shown, but the admin is
-	// told why it stopped, and may still disconnect the stored row.
+	// The stored key no longer opens (`BETTER_AUTH_SECRET` changed). The admin may disconnect it.
 	const unreadable = settings?.keyUnreadable ?? false;
 
 	const invalidate = () =>
@@ -287,8 +268,7 @@ function OpenRouterSection() {
 			queryKey: queryKeys(orgSlug).assistant,
 		});
 
-	// Only once a key exists — the catalogue call authenticates with it, so
-	// asking before then is a guaranteed error.
+	// The catalogue call needs the key.
 	const { data: models = [] } = useQuery({
 		...assistantModelsQuery(orgSlug),
 		enabled: configured,
@@ -299,8 +279,7 @@ function OpenRouterSection() {
 			setAssistantSettings({
 				data: {
 					apiKey: apiKey.trim(),
-					// A safe, cheap, tool-capable default so the first question works
-					// before anyone has thought about models. Changeable right below.
+					// A cheap, tool-capable default. The admin may change it below.
 					defaultModel: settings?.defaultModel ?? "openai/gpt-4o-mini",
 				},
 			}),
