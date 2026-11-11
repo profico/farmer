@@ -1,4 +1,8 @@
-import { ChatCircleDotsIcon, InfoIcon } from "@phosphor-icons/react";
+import {
+	ChatCircleDotsIcon,
+	DeviceMobileIcon,
+	InfoIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -6,6 +10,7 @@ import {
 	redirect,
 	useNavigate,
 } from "@tanstack/react-router";
+import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { Answer } from "#/components/assistant/answer.tsx";
@@ -85,6 +90,33 @@ function StopSharing({ orgSlug, id }: { orgSlug: string; id: string }) {
 	);
 }
 
+const isPhone = () => /Android|iPhone|iPad/.test(navigator.userAgent);
+
+/** A link to the app, on a phone only. The server snapshot is false for SSR. */
+function OpenInApp({ orgSlug, id }: { orgSlug: string; id: string }) {
+	const phone = useSyncExternalStore(
+		() => () => {},
+		isPhone,
+		() => false,
+	);
+	if (!phone) return null;
+	const server = encodeURIComponent(window.location.origin);
+	return (
+		<Button
+			variant="outline"
+			nativeButton={false}
+			render={
+				<a
+					href={`farmer://assistant/shared/${id}?org=${encodeURIComponent(orgSlug)}&server=${server}`}
+				>
+					<DeviceMobileIcon />
+					Open in the app
+				</a>
+			}
+		/>
+	);
+}
+
 function SharedChatPage() {
 	const orgSlug = useOrgSlug();
 	const { id } = Route.useParams();
@@ -142,6 +174,7 @@ function SharedChatPage() {
 						Shared by {data.sharedBy.name} on <When date={data.sharedAt} />. It
 						can show data that you cannot normally see.
 					</p>
+					<OpenInApp orgSlug={orgSlug} id={id} />
 					{isAdmin && <StopSharing orgSlug={orgSlug} id={id} />}
 				</div>
 				<h1 className="h2">{data.conversation.title}</h1>

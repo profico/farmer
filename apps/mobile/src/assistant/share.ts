@@ -11,7 +11,7 @@ import { showDialog } from "../ui/dialog";
 const warning = (orgName: string) =>
 	`Anyone in ${orgName} with the link can read this chat. It can show data that you can see and they cannot, for example a team report. Share only what you would show them.`;
 
-/** The web page of a shared chat. The app has no deep link for it yet. */
+/** The web page of a shared chat. The web page links on to the app. */
 export const sharedLink = (origin: string, slug: string, id: string) =>
 	`${origin.replace(/\/+$/, "")}/${slug}/assistant/shared/${id}`;
 

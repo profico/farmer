@@ -521,3 +521,7 @@ account. Change each item in this list to your own value:
 
 Run `rg -n 'com\.profico\.farmer'` to find every place. The store secrets
 for the workflow `mobile-release.yml` are your own too.
+
+## Shared chat link
+
+A shared chat opens in the app through `farmer://assistant/shared/<id>?org=&server=`. The web page shows an "Open in the app" link on a phone. The app compares `org` and `server` with the signed-in workspace and shows a message on a mismatch. A signed-out app drops the link, because the signed-in screens are protected.
