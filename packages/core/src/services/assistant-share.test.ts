@@ -137,6 +137,23 @@ describe("search", () => {
 		).toBeNull();
 	});
 
+	test("a snippet is plain text without fences", async () => {
+		const id = await chat(mine, "Chart", [
+			{
+				role: "assistant",
+				content:
+					'```farmer-chart\n{"value":6.5}\n```\nBusiest day was [[2026-11-11]].\n```farmer-next\nWhat next?',
+			},
+		]);
+		const [inText, inFence] = await Promise.all([
+			assistantService.search(mine, { q: "busiest" }),
+			assistantService.search(mine, { q: "value" }),
+		]);
+		expect(at(inText, 0).id).toBe(id);
+		expect(at(inText, 0).snippet).toBe("Busiest day was 2026-11-11.");
+		expect(at(inFence, 0).snippet).toBe("Busiest day was 2026-11-11.");
+	});
+
 	test("never returns another person's or another org's chat", async () => {
 		await chat(peer, "Secret plan", [{ role: "user", content: "secret" }]);
 		await chat(stranger, "Secret plan", [{ role: "user", content: "secret" }]);

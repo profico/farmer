@@ -38,6 +38,7 @@ import {
 	streamChatCompletion,
 	verifyKey,
 } from "../lib/openrouter-client";
+import { plainText } from "../lib/plain-text";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import { dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
@@ -619,9 +620,10 @@ const containsTerm = (column: AnyPgColumn, term: string): SQL => {
 	return sql`${column} ilike ${`%${escaped}%`} escape '\\'`;
 };
 
-/** About `SNIPPET_CHARS` of plain text around the first match. */
+/** About `SNIPPET_CHARS` of plain text around the first match. A match that
+ *  only sat in removed markup falls back to the start of the text. */
 const snippetAround = (content: string, term: string): string => {
-	const text = content.replace(/\s+/g, " ").trim();
+	const text = plainText(content);
 	const hit = Math.max(0, text.toLowerCase().indexOf(term.toLowerCase()));
 	const start = Math.max(
 		0,
