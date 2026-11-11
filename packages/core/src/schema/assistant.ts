@@ -50,7 +50,7 @@ export type UpdateAssistantSettingsInput = z.infer<
 >;
 
 // Deliberately carries no `model`. Choosing one is an admin decision made once,
-// in Settings → Integrations, and a conversation pins whatever the org default
+// in Settings → AI, and a conversation pins whatever the org default
 // was when it started. An optional field here that nothing sends would be a
 // caller-supplied override of that decision sitting unused until somebody found
 // it — which is the same shape as every other input that quietly became a hole.

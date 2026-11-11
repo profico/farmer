@@ -1,7 +1,9 @@
+import type { AssistantUsageInput } from "@farmer/core/schema";
 import { queryOptions } from "@tanstack/react-query";
 
 import {
 	getAssistantSettings,
+	getAssistantUsage,
 	getConversation,
 	listAssistantModels,
 	listConversations,
@@ -23,6 +25,12 @@ export const assistantModelsQuery = (org: string) =>
 		// ours. Refetching it on every focus of the settings screen is a round trip
 		// to a third party for an answer that was right a minute ago.
 		staleTime: 30 * 60_000,
+	});
+
+export const assistantUsageQuery = (org: string, input: AssistantUsageInput) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).assistant, "usage", input],
+		queryFn: () => getAssistantUsage({ data: input }),
 	});
 
 export const conversationsQuery = (org: string) =>

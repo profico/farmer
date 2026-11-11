@@ -31,7 +31,7 @@ import {
 	test,
 } from "bun:test";
 
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../db";
@@ -39,6 +39,7 @@ import {
 	assistantConversation,
 	assistantMessage,
 	assistantSettings,
+	assistantUsage,
 } from "../db/schema/assistant";
 import { member, organization, user } from "../db/schema/auth";
 import {
@@ -2172,6 +2173,17 @@ describe("a stream that ends without a finish reason", () => {
 		// What the organization was billed for is still counted.
 		expect(reported[0]?.inputTokens).toBe(900);
 		expect(reported[0]?.costUsd).toBe(0.01);
+
+		// The ledger holds one row for each billed attempt.
+		const ledger = await db
+			.select()
+			.from(assistantUsage)
+			.where(eq(assistantUsage.conversationId, chat.id))
+			.orderBy(asc(assistantUsage.attempt));
+		expect(ledger.map((row) => [row.attempt, row.costUsd])).toEqual([
+			[1, 0.01],
+			[2, 0.01],
+		]);
 	});
 
 	test("an error frame is reported with its reason, not shown to the person", async () => {

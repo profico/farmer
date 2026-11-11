@@ -4,6 +4,7 @@ import {
 	index,
 	integer,
 	jsonb,
+	numeric,
 	pgTable,
 	text,
 	timestamp,
@@ -163,6 +164,40 @@ export const assistantMessage = pgTable(
 	(t) => [
 		index("assistant_message_conversation_idx").on(
 			t.conversationId,
+			t.createdAt,
+		),
+	],
+);
+
+// One row per billed model call, written beside each `AiGeneration`. The cost
+// is null when the call has no usage row (a stalled attempt): unknown, not zero.
+// `userId` has no foreign key and `conversationId` is set null, so a removed
+// person or a deleted thread keeps its cost.
+export const assistantUsage = pgTable(
+	"assistant_usage",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id").notNull(),
+		conversationId: uuid("conversation_id").references(
+			() => assistantConversation.id,
+			{ onDelete: "set null" },
+		),
+		/** The model id the call asked for. */
+		model: text("model").notNull(),
+		servedModel: text("served_model"),
+		kind: text("kind").notNull().$type<"turn" | "title">(),
+		attempt: integer("attempt").notNull(),
+		promptTokens: integer("prompt_tokens"),
+		completionTokens: integer("completion_tokens"),
+		costUsd: numeric("cost_usd", { precision: 14, scale: 8, mode: "number" }),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		index("assistant_usage_org_created_idx").on(t.organizationId, t.createdAt),
+		index("assistant_usage_org_user_created_idx").on(
+			t.organizationId,
+			t.userId,
 			t.createdAt,
 		),
 	],

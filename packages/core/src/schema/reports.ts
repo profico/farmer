@@ -80,3 +80,7 @@ export type OvertimeReportInput = z.infer<typeof overtimeReportInput>;
 
 export const absenceReportInput = withRangeLimits(z.object({ ...range }));
 export type AbsenceReportInput = z.infer<typeof absenceReportInput>;
+
+// The AI usage view takes the same period, under the same ceiling.
+export const assistantUsageInput = withRangeLimits(z.object({ ...range }));
+export type AssistantUsageInput = z.infer<typeof assistantUsageInput>;

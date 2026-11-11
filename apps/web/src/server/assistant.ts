@@ -1,4 +1,5 @@
 import {
+	assistantUsageInput,
 	conversationIdInput,
 	createConversationInput,
 	renameConversationInput,
@@ -66,6 +67,14 @@ export const listAssistantModels = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const { assistantService } = await import("@farmer/core/services");
 		return assistantService.settings.listModels(context.ctx);
+	});
+
+export const getAssistantUsage = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(assistantUsageInput)
+	.handler(async ({ data, context }) => {
+		const { assistantUsageService } = await import("@farmer/core/services");
+		return assistantUsageService.summary(context.ctx, data);
 	});
 
 export const listConversations = createServerFn({ method: "GET" })

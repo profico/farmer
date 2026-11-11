@@ -318,8 +318,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant needs to be connected again</h1>
 					<p className="lede max-w-[48ch]">
 						The stored OpenRouter key can no longer be read. An admin can paste
-						it again under <MenuPath steps={["Settings", "Integrations"]} />,
-						and the assistant comes back with every conversation intact.
+						it again under <MenuPath steps={["Settings", "AI"]} />, and the
+						assistant comes back with every conversation intact.
 					</p>
 				</div>
 			</PageFull>
@@ -334,8 +334,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant isn't connected</h1>
 					<p className="lede max-w-[48ch]">
 						An admin can connect this workspace's OpenRouter account under
-						<MenuPath steps={["Settings", "Integrations"]} />. Until then
-						there's nothing to ask.
+						<MenuPath steps={["Settings", "AI"]} />. Until then there's nothing
+						to ask.
 					</p>
 				</div>
 			</PageFull>

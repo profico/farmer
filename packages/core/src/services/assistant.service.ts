@@ -42,6 +42,7 @@ import {
 	systemPrompt,
 	toolDefinitions,
 } from "./assistant-tools";
+import { recordAssistantUsage } from "./assistant-usage.service";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
@@ -1101,6 +1102,8 @@ const generate = async (
 		onDelta?: (text: string) => void;
 		/** Allow one retry (see `fallbackModel`). Defaults to true. */
 		retry?: boolean;
+		/** What the ledger files the call under. Defaults to `turn`. */
+		kind?: "turn" | "title";
 	},
 ): Promise<ChatTurn> => {
 	let retryReason: string | null = null;
@@ -1147,6 +1150,16 @@ const generate = async (
 				outputText: turn.content,
 				error: null,
 			});
+			await recordAssistantUsage(ctx, {
+				conversationId: trace.conversationId,
+				model,
+				servedModel: turn.servedModel ?? null,
+				kind: opts.kind ?? "turn",
+				attempt,
+				promptTokens: turn.promptTokens,
+				completionTokens: turn.completionTokens,
+				costUsd: turn.costUsd,
+			});
 			return turn;
 		} catch (error) {
 			// A cut stream still billed for what it sent, so its tokens, cost and
@@ -1175,6 +1188,16 @@ const generate = async (
 				outputText: partial?.content ?? "",
 				error: error instanceof Error ? error.message : String(error),
 			});
+			await recordAssistantUsage(ctx, {
+				conversationId: trace.conversationId,
+				model,
+				servedModel: partial?.servedModel ?? null,
+				kind: opts.kind ?? "turn",
+				attempt,
+				promptTokens: partial?.promptTokens ?? null,
+				completionTokens: partial?.completionTokens ?? null,
+				costUsd: partial?.costUsd ?? null,
+			});
 			if (nextRetryReason === null) throw error;
 			retryReason = nextRetryReason;
 		}
@@ -1193,6 +1216,7 @@ const generateTitle = async (
 		// call on the same question, which is why it is on the same trace.
 		const turn = await generate(ctx, trace, null, {
 			retry: false,
+			kind: "title",
 			apiKey,
 			// The turn's own signal: a reader who has left does not need their
 			// thread named, and this is billed like any other completion.

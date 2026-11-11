@@ -33,6 +33,7 @@ import { Route as CliInstallDotps1RouteImport } from './routes/cli/install[.]ps1
 import { Route as CliInstallDotshRouteImport } from './routes/cli/install[.]sh'
 import { Route as OrgSlugProjectsIndexRouteImport } from './routes/$orgSlug/projects/index'
 import { Route as OrgSlugSettingsIndexRouteImport } from './routes/$orgSlug/settings/index'
+import { Route as OrgSlugSettingsAiRouteImport } from './routes/$orgSlug/settings/ai'
 import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/settings/clients'
 import { Route as OrgSlugSettingsHolidaysRouteImport } from './routes/$orgSlug/settings/holidays'
 import { Route as OrgSlugSettingsHourFundRouteImport } from './routes/$orgSlug/settings/hour-fund'
@@ -323,6 +324,11 @@ const OrgSlugProjectsIndexRoute = OrgSlugProjectsIndexRouteImport.update({
 const OrgSlugSettingsIndexRoute = OrgSlugSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugSettingsAiRoute = OrgSlugSettingsAiRouteImport.update({
+  id: '/settings/ai',
+  path: '/settings/ai',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
 const OrgSlugSettingsClientsRoute = OrgSlugSettingsClientsRouteImport.update({
@@ -1326,6 +1332,7 @@ export interface FileRoutesByFullPath {
   '/cli/install.sh': typeof CliInstallDotshRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
+  '/$orgSlug/settings/ai': typeof OrgSlugSettingsAiRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -1518,6 +1525,7 @@ export interface FileRoutesByTo {
   '/cli/install.sh': typeof CliInstallDotshRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/cli': typeof CliIndexRoute
+  '/$orgSlug/settings/ai': typeof OrgSlugSettingsAiRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -1713,6 +1721,7 @@ export interface FileRoutesById {
   '/cli/install.sh': typeof CliInstallDotshRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
+  '/$orgSlug/settings/ai': typeof OrgSlugSettingsAiRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -1909,6 +1918,7 @@ export interface FileRouteTypes {
     | '/cli/install.sh'
     | '/$orgSlug/'
     | '/cli/'
+    | '/$orgSlug/settings/ai'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -2101,6 +2111,7 @@ export interface FileRouteTypes {
     | '/cli/install.sh'
     | '/$orgSlug'
     | '/cli'
+    | '/$orgSlug/settings/ai'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -2295,6 +2306,7 @@ export interface FileRouteTypes {
     | '/cli/install.sh'
     | '/$orgSlug/'
     | '/cli/'
+    | '/$orgSlug/settings/ai'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -2777,6 +2789,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/$orgSlug/settings/'
       preLoaderRoute: typeof OrgSlugSettingsIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/ai': {
+      id: '/$orgSlug/settings/ai'
+      path: '/settings/ai'
+      fullPath: '/$orgSlug/settings/ai'
+      preLoaderRoute: typeof OrgSlugSettingsAiRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/settings/clients': {
@@ -3980,6 +3999,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
   OrgSlugRewindRoute: typeof OrgSlugRewindRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
+  OrgSlugSettingsAiRoute: typeof OrgSlugSettingsAiRoute
   OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
   OrgSlugSettingsHolidaysRoute: typeof OrgSlugSettingsHolidaysRoute
   OrgSlugSettingsHourFundRoute: typeof OrgSlugSettingsHourFundRoute
@@ -4015,6 +4035,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugReportsRoute: OrgSlugReportsRoute,
   OrgSlugRewindRoute: OrgSlugRewindRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
+  OrgSlugSettingsAiRoute: OrgSlugSettingsAiRoute,
   OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,
   OrgSlugSettingsHolidaysRoute: OrgSlugSettingsHolidaysRoute,
   OrgSlugSettingsHourFundRoute: OrgSlugSettingsHourFundRoute,
@@ -4324,13 +4345,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

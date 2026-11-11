@@ -8,6 +8,7 @@ export * from "./anonymise.service";
 export * from "./ai-telemetry";
 export * from "./assistant.service";
 export * from "./assistant-tools";
+export * from "./assistant-usage.service";
 export * from "./audit";
 export * from "./clients.service";
 export * from "./compliance.service";
