@@ -1,6 +1,12 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { db } from "../db";
 import type { AssistantUndo } from "../db/schema/assistant";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import type { JsonRecord, Serializable } from "../lib/json";
 import { UserFacingError } from "../lib/user-facing-error";
 import { timeEntriesService } from "./time-entries.service";
@@ -11,6 +17,14 @@ export class UndoStaleError extends UserFacingError {
 	constructor() {
 		super("This entry changed since, so the change cannot be undone.");
 		this.name = "UndoStaleError";
+	}
+}
+
+/** The entry gained commits or reviews, which a delete would cascade away. */
+export class UndoHasEvidenceError extends UserFacingError {
+	constructor() {
+		super("This entry holds commits or reviews, so it cannot be undone.");
+		this.name = "UndoHasEvidenceError";
 	}
 }
 
@@ -51,7 +65,8 @@ export const undoCreateEntry: UndoCapturer = async () => (result) => {
 
 export const undoUpdateEntry: UndoCapturer = async (ctx, args) => {
 	const before = await entryBefore(ctx, args);
-	if (!before) return null;
+	// `update` recomputes the duration of a fill-day entry, so no inverse is exact.
+	if (!before || before.fillsDay) return null;
 	return (result) => {
 		const row = written(result);
 		return (
@@ -98,6 +113,23 @@ export const undoOvertime: UndoCapturer = async (ctx, args) => {
 	};
 };
 
+/** Adding a commit or a review does not touch `updatedAt`, so the staleness
+ *  guard cannot see them. */
+const holdsEvidence = async (entryId: string) => {
+	const [commit] = await db
+		.select({ id: timeEntryGithubCommit.id })
+		.from(timeEntryGithubCommit)
+		.where(eq(timeEntryGithubCommit.timeEntryId, entryId))
+		.limit(1);
+	if (commit) return true;
+	const [activity] = await db
+		.select({ id: timeEntryGithubPrActivity.id })
+		.from(timeEntryGithubPrActivity)
+		.where(eq(timeEntryGithubPrActivity.timeEntryId, entryId))
+		.limit(1);
+	return Boolean(activity);
+};
+
 /** Runs the inverse through the same services as the caller. Refuses when the
  *  entry is not exactly as the write left it. */
 export const applyUndo = async (ctx: Ctx, undo: AssistantUndo) => {
@@ -107,6 +139,7 @@ export const applyUndo = async (ctx: Ctx, undo: AssistantUndo) => {
 	}
 	switch (undo.kind) {
 		case "delete_entry":
+			if (await holdsEvidence(undo.entryId)) throw new UndoHasEvidenceError();
 			await timeEntriesService.remove(ctx, undo.entryId);
 			return;
 		case "restore_entry":

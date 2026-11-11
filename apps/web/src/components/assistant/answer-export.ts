@@ -16,10 +16,11 @@ export const plainCell = (cell: string) =>
 		.replace(/`([^`]+)`/g, "$1")
 		.trim();
 
-const isPlainNumber = (value: string) => /^[-+]?[\d.,]*\d%?$/.test(value);
+const isPlainNumber = (value: string) =>
+	/^[-+]?(?:[$€£]?[\d.,]*\d%?|\d+:\d{2}(?::\d{2})?)$/.test(value);
 
 /** A spreadsheet runs a cell that starts with one of these as a formula. A
- *  plain number, such as `-2.5`, stays as it is. */
+ *  plain number, such as `-2.5`, `-€5` or `-1:30`, stays as it is. */
 const guardFormula = (value: string) =>
 	/^[=+\-@]/.test(value) && !isPlainNumber(value) ? `'${value}` : value;
 

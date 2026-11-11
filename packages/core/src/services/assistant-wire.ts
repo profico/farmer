@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../lib/openrouter-client";
 
 /** Turns (user messages) whose tool results stay whole. Older ones are
- *  stubbed. A fixed count keeps the prompt prefix the same between turns. */
+ *  stubbed. A fixed count bounds the size of the prompt. */
 export const KEEP_TOOL_RESULT_TURNS = 4;
 
 /** A shorter result costs nothing, so it stays. */

@@ -154,6 +154,19 @@ describe("search", () => {
 		expect(at(inFence, 0).snippet).toBe("Busiest day was 2026-11-11.");
 	});
 
+	test("a snippet from a long message sits around the match", async () => {
+		const id = await chat(mine, "Long", [
+			{
+				role: "assistant",
+				content: `${"filler ".repeat(500)}the NEEDLE here${" tail".repeat(500)}`,
+			},
+		]);
+		const [hit] = await assistantService.search(mine, { q: "needle" });
+		expect(present(hit, "hit").id).toBe(id);
+		expect(present(hit, "hit").snippet).toMatch(/^….*the NEEDLE here.*…$/);
+		expect(present(hit, "hit").snippet?.length).toBeLessThan(130);
+	});
+
 	test("never returns another person's or another org's chat", async () => {
 		await chat(peer, "Secret plan", [{ role: "user", content: "secret" }]);
 		await chat(stranger, "Secret plan", [{ role: "user", content: "secret" }]);

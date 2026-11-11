@@ -43,6 +43,13 @@ describe("toCsv", () => {
 		expect(body(csv)).toBe("'=1+1,'+x,'@a,-2.5,'-x,+3\r\n");
 	});
 
+	test("keeps a negative duration and a signed currency amount", () => {
+		const csv = toCsv([
+			["-1:30", "-€5", "-$5", "+0:45", "=1:30", "-€x", "-5:"],
+		]);
+		expect(body(csv)).toBe("-1:30,-€5,-$5,+0:45,'=1:30,'-€x,'-5:\r\n");
+	});
+
 	test("writes plain values for markdown cells", () => {
 		const csv = toCsv([["[[2026-08-03]]", "**5**"]]);
 		expect(body(csv)).toBe("2026-08-03,5\r\n");

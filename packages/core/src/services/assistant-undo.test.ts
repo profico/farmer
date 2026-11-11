@@ -26,6 +26,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import { timeEntryGithubCommit } from "../db/schema/github";
 import type { JsonRecord } from "../lib/json";
 import type { ChatMessage, ChatTurn } from "../lib/openrouter-client";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
@@ -45,6 +46,8 @@ let projectId = "";
 let devTaskId = "";
 let script: ChatTurn[] = [];
 let seen: ChatMessage[][] = [];
+// Runs while the scripted model "generates", to act in the middle of a turn.
+let onGenerate: (() => Promise<void>) | null = null;
 
 const turn = (over: Partial<ChatTurn> = {}): ChatTurn => ({
 	content: "",
@@ -109,6 +112,7 @@ beforeAll(async () => {
 	setChatModelForTests({
 		streamChatCompletion: async (opts) => {
 			seen.push(opts.messages);
+			await onGenerate?.();
 			return present(script.shift(), "scripted turn");
 		},
 		listModels: async () => [],
@@ -184,6 +188,7 @@ afterAll(async () => {
 beforeEach(async () => {
 	script = [];
 	seen = [];
+	onGenerate = null;
 	await db.delete(assistantConversation);
 	await db.delete(assistantSettings);
 	await db.delete(timeEntry);
@@ -284,6 +289,56 @@ describe("undo", () => {
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
 	});
 
+	test("undo of a create is refused once the entry holds a commit", async () => {
+		const chatId = await loggedThread();
+		const entry = at(await db.select().from(timeEntry), 0);
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: entry.id,
+			sha: "abc123",
+			message: "fix",
+			committedAt: new Date(),
+			url: "https://example.com/c/abc123",
+		});
+		const row = await toolRow(chatId);
+		await expect(
+			assistantService.undo(mine, {
+				conversationId: chatId,
+				messageId: row.id,
+			}),
+		).rejects.toThrow("commits or reviews");
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
+		expect((await toolRow(chatId)).undoneAt).toBeNull();
+	});
+
+	test("an update of a fill-day entry offers no undo", async () => {
+		const chatId = await loggedThread();
+		const entry = at(await db.select().from(timeEntry), 0);
+		await db.update(timeEntry).set({ fillsDay: true });
+		await ask(chatId, "change it", [
+			turn({
+				toolCalls: [
+					call("c2", "update_time_entry", {
+						timeEntryId: entry.id,
+						date: "2026-03-04",
+						projectId,
+						taskId: devTaskId,
+						durationSeconds: 7200,
+						description: "changed",
+					}),
+				],
+			}),
+			turn({ content: "Changed." }),
+		]);
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chatId),
+		});
+		const updateRow = present(
+			rows.find((r) => r.toolName === "update_time_entry"),
+			"update row",
+		);
+		expect(updateRow.undo).toBeNull();
+	});
+
 	test("the model is told that a later turn's undone write is gone", async () => {
 		const chatId = await loggedThread();
 		const row = await toolRow(chatId);
@@ -364,6 +419,51 @@ describe("replaceLastTurn", () => {
 		expect(await db.select().from(assistantUsage)).toHaveLength(
 			usageBefore.length,
 		);
+	});
+
+	test("is allowed after a call that was refused before it ran", async () => {
+		const chat = await assistantService.conversations.create(mine);
+		await db.insert(assistantMessage).values([
+			{
+				organizationId: ORG,
+				conversationId: chat.id,
+				role: "user",
+				content: "log it",
+				createdAt: new Date(1000),
+			},
+			{
+				organizationId: ORG,
+				createdAt: new Date(2000),
+				conversationId: chat.id,
+				role: "tool",
+				toolCallId: "p1",
+				toolName: "create_time_entry",
+				content: "The arguments were not valid JSON.",
+			},
+		]);
+		const removed = await assistantService.replaceLastTurn(mine, {
+			conversationId: chat.id,
+		});
+		expect(removed.content).toBe("log it");
+	});
+
+	test("drops the answer of a turn whose question was removed meanwhile", async () => {
+		const chat = await assistantService.conversations.create(mine);
+		await assistantService.conversations.rename(mine, {
+			conversationId: chat.id,
+			title: "t",
+		});
+		onGenerate = async () => {
+			onGenerate = null;
+			await assistantService.replaceLastTurn(mine, {
+				conversationId: chat.id,
+			});
+		};
+		await ask(chat.id, "first", [turn({ content: "Late answer." })]);
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		expect(rows).toHaveLength(0);
 	});
 
 	test("is refused for another person's conversation", async () => {

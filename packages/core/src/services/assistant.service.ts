@@ -22,6 +22,7 @@ import {
 	assistantMessage,
 	assistantSettings,
 } from "../db/schema/assistant";
+import { user } from "../db/schema/auth";
 import { editBlockReason } from "../lib/assistant-edit";
 import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
@@ -64,7 +65,6 @@ import { elideOldToolResults, undoneContent } from "./assistant-wire";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { agentErrorMessage } from "./error-message";
-import { membersService } from "./members.service";
 import type { Ctx } from "./types";
 
 export class AssistantError extends UserFacingError {
@@ -146,7 +146,7 @@ export const chatModel = (): ChatModelPort => portOverride ?? realPort;
 /** Test-only: substitute a scripted model. Pass null to restore. */
 export const setChatModelForTests = (port: ChatModelPort | null): void => {
 	portOverride = port;
-	catalogue = null;
+	catalogues.clear();
 };
 
 // ── events ───────────────────────────────────────────────────────────────────
@@ -503,27 +503,38 @@ const requireConversation = async (ctx: Ctx, conversationId: string) => {
 };
 
 const MODEL_CATALOGUE_TTL_MS = 60 * 60 * 1000;
-let catalogue: { at: number; lengths: Map<string, number | null> } | null =
-	null;
+const MODEL_CATALOGUE_FAILURE_TTL_MS = 60 * 1000;
+// One catalogue per organization: the key, and so the model list, is its own.
+const catalogues = new Map<
+	string,
+	{ at: number; lengths: Map<string, number | null> }
+>();
 
 /** The context size of a model, for the meter. Any member may see it, so it
- *  skips the admin gate of `listModels`. A failed lookup gives null. */
+ *  skips the admin gate of `listModels`. A failed lookup gives null, and is
+ *  kept for a minute so a broken key is not retried on every read. */
 const contextLengthOf = async (
 	ctx: Ctx,
 	modelId: string,
 ): Promise<number | null> => {
+	const cached = catalogues.get(ctx.organizationId);
+	if (cached && Date.now() - cached.at <= MODEL_CATALOGUE_TTL_MS) {
+		return cached.lengths.get(modelId) ?? null;
+	}
 	try {
-		if (!catalogue || Date.now() - catalogue.at > MODEL_CATALOGUE_TTL_MS) {
-			const row = await loadSettings(ctx);
-			if (!row?.apiKey) return null;
-			const models = await chatModel().listModels(row.apiKey);
-			catalogue = {
-				at: Date.now(),
-				lengths: new Map(models.map((m) => [m.id, m.contextLength])),
-			};
-		}
-		return catalogue.lengths.get(modelId) ?? null;
-	} catch {
+		const row = await loadSettings(ctx);
+		if (!row?.apiKey) return null;
+		const models = await chatModel().listModels(row.apiKey);
+		const lengths = new Map(models.map((m) => [m.id, m.contextLength]));
+		catalogues.set(ctx.organizationId, { at: Date.now(), lengths });
+		return lengths.get(modelId) ?? null;
+	} catch (error) {
+		console.error("[assistant] model catalogue failed", loggableError(error));
+		// Fresh enough to skip a retry for the failure TTL, empty so it gives null.
+		catalogues.set(ctx.organizationId, {
+			at: Date.now() - MODEL_CATALOGUE_TTL_MS + MODEL_CATALOGUE_FAILURE_TTL_MS,
+			lengths: new Map(),
+		});
 		return null;
 	}
 };
@@ -620,6 +631,15 @@ const containsTerm = (column: AnyPgColumn, term: string): SQL => {
 	return sql`${column} ilike ${`%${escaped}%`} escape '\\'`;
 };
 
+/** Raw characters kept on each side of the match. More than a snippet, because
+ *  `plainText` removes markup afterwards. */
+const WINDOW_CHARS = 400;
+
+/** A slice of the column around the first match, so a long message is not
+ *  loaded whole. A match with no literal position (case folding) starts at 1. */
+const windowAround = (column: AnyPgColumn, term: string): SQL<string> =>
+	sql<string>`substring(${column} from greatest(1, position(lower(${term}::text) in lower(${column})) - ${sql.raw(String(WINDOW_CHARS))}) for ${sql.raw(String(term.length + 2 * WINDOW_CHARS))})`;
+
 /** About `SNIPPET_CHARS` of plain text around the first match. A match that
  *  only sat in removed markup falls back to the start of the text. */
 const snippetAround = (content: string, term: string): string => {
@@ -671,7 +691,7 @@ const search = async (ctx: Ctx, input: SearchConversationsInput) => {
 	const hits = await db
 		.select({
 			conversationId: assistantMessage.conversationId,
-			content: assistantMessage.content,
+			content: windowAround(assistantMessage.content, term),
 		})
 		.from(assistantMessage)
 		.where(
@@ -772,21 +792,25 @@ const getShared = async (ctx: Ctx, conversationId: string) => {
 	});
 	if (!conversation?.sharedAt)
 		throw new AssistantError("Conversation not found");
-	const [messages, roster] = await Promise.all([
+	const [messages, [sharer]] = await Promise.all([
 		db.query.assistantMessage.findMany({
 			where: eq(assistantMessage.conversationId, conversation.id),
 			orderBy: asc(assistantMessage.createdAt),
 		}),
-		membersService.roster(ctx),
+		conversation.sharedBy
+			? db
+					.select({ name: user.name, image: user.image })
+					.from(user)
+					.where(eq(user.id, conversation.sharedBy))
+			: [],
 	]);
-	const sharer = roster.members.find((m) => m.userId === conversation.sharedBy);
 	return {
 		conversation,
 		messages: messages.map(readOnlyRow),
 		sharedAt: conversation.sharedAt,
 		sharedBy: {
-			name: sharer?.user.name ?? "A colleague",
-			image: sharer?.user.image ?? null,
+			name: sharer?.name ?? "A colleague",
+			image: sharer?.image ?? null,
 		},
 	};
 };
@@ -936,6 +960,33 @@ const insertMessage = async (
 	if (!row) throw new AssistantError("Could not save the message");
 	return row;
 };
+
+/** The id of the question a turn answers: the last user row of its history. */
+const questionId = (history: StoredMessage[]): string | null =>
+	history.filter((row) => row.role === "user").at(-1)?.id ?? null;
+
+/**
+ * Store an assistant row, unless its question was removed meanwhile.
+ * `replaceLastTurn` can delete the question while the model still writes.
+ * A share lock on the question row makes the check and the insert one step.
+ */
+const insertAnswer = async (
+	ctx: Ctx,
+	conversationId: string,
+	questionRowId: string | null,
+	values: Parameters<typeof insertMessage>[2],
+) =>
+	db.transaction(async (tx) => {
+		if (questionRowId) {
+			const [question] = await tx
+				.select({ id: assistantMessage.id })
+				.from(assistantMessage)
+				.where(eq(assistantMessage.id, questionRowId))
+				.for("share");
+			if (!question) return null;
+		}
+		return insertMessage(ctx, conversationId, values, { client: tx });
+	});
 
 /**
  * Take the right to answer one tool call — or a run of them — by writing their
@@ -1891,9 +1942,10 @@ const keepPartial = async (
 	ctx: Ctx,
 	conversation: { id: string; model: string },
 	turn: ChatTurn,
+	questionRowId: string | null,
 ): Promise<void> => {
 	if (!turn.content.trim()) return;
-	await insertMessage(ctx, conversation.id, {
+	const row = await insertAnswer(ctx, conversation.id, questionRowId, {
 		role: "assistant",
 		content: turn.content,
 		toolCalls: null,
@@ -1902,7 +1954,7 @@ const keepPartial = async (
 		completionTokens: turn.completionTokens,
 		pendingApproval: false,
 	});
-	await touchConversation(conversation.id);
+	if (row) await touchConversation(conversation.id);
 };
 
 /** Bump the thread so the rail orders by real activity, not by creation. */
@@ -2089,8 +2141,9 @@ const reportCut = async (
 	error: OpenRouterStreamCutError,
 	signal: AbortSignal | undefined,
 	onEvent: EmitEvent,
+	questionRowId: string | null,
 ): Promise<void> => {
-	await keepPartial(ctx, conversation, error.partial);
+	await keepPartial(ctx, conversation, error.partial, questionRowId);
 	if (!signal?.aborted)
 		onEvent({
 			type: "error",
@@ -2110,6 +2163,7 @@ const runStep = async (
 	const { conversation, signal, onEvent } = run;
 	const history = await loadHistory(conversation.id);
 	if (await resurfaceSuspended(ctx, history, onEvent)) return "ended";
+	const question = questionId(history);
 
 	let turn: ChatTurn;
 	try {
@@ -2125,7 +2179,7 @@ const runStep = async (
 		});
 	} catch (error) {
 		if (error instanceof OpenRouterStreamCutError) {
-			await reportCut(ctx, conversation, error, signal, onEvent);
+			await reportCut(ctx, conversation, error, signal, onEvent, question);
 			return "ended";
 		}
 		if (error instanceof OpenRouterError) {
@@ -2145,7 +2199,7 @@ const runStep = async (
 	// An empty partial stores nothing and reports nothing: stopping a turn
 	// before it said anything is not a failure to explain.
 	if (signal?.aborted) {
-		await keepPartial(ctx, conversation, turn);
+		await keepPartial(ctx, conversation, turn, question);
 		return "ended";
 	}
 
@@ -2163,7 +2217,7 @@ const runStep = async (
 		return "ended";
 	}
 
-	const assistantRow = await insertMessage(ctx, conversation.id, {
+	const assistantRow = await insertAnswer(ctx, conversation.id, question, {
 		role: "assistant",
 		content: turn.content,
 		toolCalls: turn.toolCalls.length ? turn.toolCalls : null,
@@ -2173,6 +2227,8 @@ const runStep = async (
 		// Decided below, once we know whether any call needs consent.
 		pendingApproval: false,
 	});
+	// The question was removed while the model wrote: drop the answer.
+	if (!assistantRow) return "ended";
 	await touchConversation(conversation.id);
 
 	if (turn.toolCalls.length === 0) {
@@ -2206,12 +2262,14 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 	if (signal?.aborted) return;
 
 	let closing: ChatTurn | null = null;
+	const history = await loadHistory(conversation.id);
+	const question = questionId(history);
 	try {
 		closing = await generate(ctx, run.trace, null, {
 			apiKey: run.config.apiKey,
 			messages: [
 				{ role: "system", content: run.system },
-				...toWireMessages(await loadHistory(conversation.id)),
+				...toWireMessages(history),
 				{ role: "user", content: OUT_OF_STEPS },
 			],
 			signal,
@@ -2225,7 +2283,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 		if (error instanceof OpenRouterStreamCutError) {
 			// A cut closing answer is a failure of its own: the person is told
 			// the connection closed, not that the model kept working.
-			await reportCut(ctx, conversation, error, signal, onEvent);
+			await reportCut(ctx, conversation, error, signal, onEvent, question);
 			return;
 		}
 	}
@@ -2234,7 +2292,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 	// model about its own ceiling, and a later turn re-reading it as something
 	// the person said would be a lie about the conversation.
 	if (closing?.content.trim()) {
-		await insertMessage(ctx, conversation.id, {
+		const row = await insertAnswer(ctx, conversation.id, question, {
 			role: "assistant",
 			content: closing.content,
 			model: conversation.model,
@@ -2242,7 +2300,7 @@ const closeOutOfSteps = async (ctx: Ctx, run: TurnRun): Promise<void> => {
 			completionTokens: closing.completionTokens,
 			pendingApproval: false,
 		});
-		await touchConversation(conversation.id);
+		if (row) await touchConversation(conversation.id);
 		onEvent({ type: "done" });
 		return;
 	}
@@ -2353,6 +2411,13 @@ const NOT_RUN_RESULTS = new Set([
 	NOT_REACHED,
 ]);
 
+/** The failures `executeTool` returns before it runs the tool. */
+const REFUSED_BEFORE_RUN = [
+	/^Unknown tool "/,
+	/^".*" is not available to this user\.$/,
+	/^The arguments were not (a JSON object|valid JSON)\.$/,
+];
+
 /** Whether a tool row is a write or a destructive call that ran and stands. */
 const changedData = (row: StoredMessage) => {
 	const kind = row.toolName ? findTool(row.toolName)?.kind : undefined;
@@ -2362,7 +2427,8 @@ const changedData = (row: StoredMessage) => {
 	return (
 		!row.undoneAt &&
 		!NOT_RUN_RESULTS.has(row.content) &&
-		!row.content.startsWith("Error:")
+		!row.content.startsWith("Error:") &&
+		!REFUSED_BEFORE_RUN.some((pattern) => pattern.test(row.content))
 	);
 };
 
