@@ -11,9 +11,17 @@
 // Sources: LoadingState.tsx, ThinkingState.tsx, ApprovalCard.tsx.
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { z } from "zod";
 
+import { MARK } from "#/components/farmer-mark.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
@@ -26,35 +34,42 @@ import { MONTHS, printDayKey } from "./answer.tsx";
 import type { PendingApproval, ToolTrace } from "./assistant-runs.tsx";
 import { toolLabel } from "./tool-labels.ts";
 
-/* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
+/* ── the sprout loader (LoadingState) ─────────────────────────────────────── */
 
-// A chevron wavefront: cell delay grows with the column and with distance from
-// the middle row, so the front reads as driving rightwards. The 650ms cycle is
-// shorter than the sweep across the grid, so two fronts are always in flight.
-const CHEVRON = Array.from({ length: 9 }, (_, i) => {
-	const row = Math.floor(i / 3);
-	const column = i % 3;
-	return (column + Math.abs(row - 1)) * 90;
-});
+// The Farmer wheat. The stalk draws, then each grain grows out of it and drops.
+// The first piece of the mark is the tile, so we drop it.
+const [, ...GRAINS] = MARK.split(/(?<=Z)(?=M)/);
+// Step along the stalk for each grain: leaf, then the pairs from base to tip.
+const STEP = [0, 1, 2, 1, 3, 2, 3];
+// The edge of each grain that touches the stalk.
+const KIND = ["leaf", "v", "v", "h", "v", "h", "h"];
 
-function LoaderGrid() {
+function SproutMark() {
 	return (
-		<span
+		<svg
+			viewBox="0 0 82 82"
+			width={16}
+			height={16}
 			aria-hidden
-			className="grid shrink-0 grid-cols-[repeat(3,4px)] gap-[1.5px]"
+			className="sprout shrink-0"
 		>
-			{CHEVRON.map((delay, index) => (
-				<span
-					// oxlint-disable-next-line react/no-array-index-key -- a fixed 3x3 grid
-					key={index}
-					className="size-[4px] rounded-[1px] bg-ink"
-					style={{
-						opacity: 0.15,
-						animation: `pixel-on 650ms ease-in-out ${delay}ms infinite`,
-					}}
+			<path
+				className="sprout-stalk"
+				d="M32.8 49.4 L77 5.2"
+				pathLength="1"
+				strokeDasharray="1"
+			/>
+			{GRAINS.map((d, n) => (
+				<path
+					// oxlint-disable-next-line react/no-array-index-key -- a fixed list of grains
+					key={n}
+					className={`sprout-grain sprout-${KIND[n]}`}
+					// SAFETY: CSS custom properties are not in `CSSProperties`; only the `.sprout-grain` rule reads `--i`.
+					style={{ "--i": STEP[n] } as CSSProperties}
+					d={d}
 				/>
 			))}
-		</span>
+		</svg>
 	);
 }
 
@@ -92,7 +107,7 @@ export function AssistantLoader({ label = "Thinking" }: { label?: string }) {
 	// be maintained by hand.
 	return (
 		<output className="assistant-motion flex w-fit items-center gap-2.5">
-			<LoaderGrid />
+			<SproutMark />
 			<ShimmerLabel>{label}</ShimmerLabel>
 			<span className="font-mono text-[12px] text-ink-3 tabular-nums">
 				{elapsed}
