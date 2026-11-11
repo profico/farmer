@@ -1710,6 +1710,9 @@ const suspendOn = async (
 
 type ToolRun = { result: Promise<ToolResult>; repeat: boolean };
 
+/** Reads whose answer moves with the clock, so a repeat must run again. */
+const CLOCK_READS = new Set(["get_timer"]);
+
 /**
  * Run a call, or give back the result of the same read earlier in this turn.
  *
@@ -1726,15 +1729,22 @@ const runOrReuse = (
 		trace.reads.clear();
 		return { result: executeTool(ctx, call), repeat: false };
 	}
+	if (CLOCK_READS.has(call.name)) {
+		return { result: executeTool(ctx, call), repeat: false };
+	}
 	const key = `${call.name}\0${call.arguments}`;
 	const earlier = trace.reads.get(key);
 	if (earlier) return { result: earlier, repeat: true };
 	const result = executeTool(ctx, call);
 	trace.reads.set(key, result);
 	// A failed read may succeed the next time, so the model can retry it.
-	void result.then((done) => {
-		if (!done.ok) trace.reads.delete(key);
-	});
+	// The caller handles a rejection; this branch only forgets the read.
+	void result.then(
+		(done) => {
+			if (!done.ok) trace.reads.delete(key);
+		},
+		() => trace.reads.delete(key),
+	);
 	return { result, repeat: false };
 };
 
