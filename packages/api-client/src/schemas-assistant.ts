@@ -97,6 +97,10 @@ export const assistantThreadDetailSchema = z.object({
 	thread: assistantThreadSchema,
 	/** Oldest first. */
 	messages: z.array(assistantMessageSchema),
+	/** Prompt tokens of the last model call. Null before the first answer. */
+	promptTokens: z.number().nullable(),
+	/** Context size of the thread's model. Null when unknown. */
+	contextLength: z.number().nullable(),
 });
 export type AssistantThreadDetail = z.output<
 	typeof assistantThreadDetailSchema
