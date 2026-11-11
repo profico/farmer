@@ -1,3 +1,4 @@
+import { MAX_SEARCH_CHARS } from "@farmer/core/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -70,6 +71,7 @@ export function ChatSearchBox({
 			value={value}
 			onValueChange={onValueChange}
 			placeholder="Search chats"
+			maxLength={MAX_SEARCH_CHARS}
 			className="mb-1 px-1"
 		/>
 	);
@@ -86,7 +88,11 @@ export function ChatSearchResults({
 	onNavigate?: () => void;
 }) {
 	const enabled = query.length >= MIN_CHARS;
-	const { data = [], isPending } = useQuery({
+	const {
+		data = [],
+		isPending,
+		isError,
+	} = useQuery({
 		...searchConversationsQuery(orgSlug, query),
 		enabled,
 	});
@@ -100,6 +106,13 @@ export function ChatSearchResults({
 	if (isPending) {
 		return (
 			<p className="px-2.5 py-1 text-2xs text-muted-foreground">Searching…</p>
+		);
+	}
+	if (isError) {
+		return (
+			<p role="alert" className="px-2.5 py-1 text-2xs text-destructive">
+				Could not search the chats.
+			</p>
 		);
 	}
 	if (data.length === 0) {

@@ -29,14 +29,8 @@ export const Route = createFileRoute(
 				run: async (ctx, input): Promise<ApiAssistantMessage> => {
 					await assertAssistantAvailable();
 					const { assistantService } = await import("@farmer/core/services");
-					await assistantService.undo(ctx, input);
-					const { messages } = await assistantService.conversations.get(
-						ctx,
-						input.conversationId,
-					);
-					const row = messages.find((m) => m.id === input.messageId);
-					if (!row) throw new Error("Message not found");
-					return toApiAssistantMessage(row);
+					const { message } = await assistantService.undo(ctx, input);
+					return toApiAssistantMessage(message);
 				},
 			}),
 		},

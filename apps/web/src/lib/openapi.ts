@@ -3554,7 +3554,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "shareAssistantThread",
 		summary: "Share a thread",
 		description:
-			"Anyone in the organization with the link can read the thread. It can show data that the owner can see and the reader cannot. Only the owner may share.",
+			"Anyone in the organization with the link can read the thread. It can show data that the owner can see and the reader cannot. Only the owner may share. Another person's thread is a 404.",
 		tag: "Assistant",
 		response: apiAssistantShare,
 	},
@@ -3563,7 +3563,8 @@ export const OPERATIONS: Operation[] = [
 		path: "/orgs/{orgSlug}/assistant/threads/{id}/share",
 		operationId: "unshareAssistantThread",
 		summary: "Stop sharing a thread",
-		description: "The owner may. An Admin may stop any shared thread.",
+		description:
+			"The owner may. An Admin may stop any shared thread. Any other caller, and a thread that is not shared, is a 404.",
 		tag: "Assistant",
 		response: apiAssistantShare,
 	},
@@ -3573,7 +3574,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "getSharedAssistantThread",
 		summary: "Read a shared thread",
 		description:
-			"Any member may read a thread that its owner shared. Read only. A thread that is not shared is a 404.",
+			"Any member may read a thread that its owner shared. Read only, and only the questions and the answers: no tool results. A thread that is not shared, or is in another organization, is a 404.",
 		tag: "Assistant",
 		response: apiAssistantSharedThread,
 	},
@@ -3633,7 +3634,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "undoAssistantWrite",
 		summary: "Undo a write",
 		description:
-			"Undoes the write of a `tool` row with `undoable`. Refused when the entry changed since. Returns the row.",
+			"Undoes the write of a `tool` row with `undoable`. 422 when the write cannot be undone, such as when the entry changed since. Returns the row.",
 		tag: "Assistant",
 		response: apiAssistantMessage,
 	},
@@ -3643,7 +3644,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "rewindAssistantThread",
 		summary: "Take back the last question",
 		description:
-			"Removes the last question and the rows after it, then returns the question text. Send it again, edited or not, as a new message. Refused while a card waits, and after a write that was not undone.",
+			"Removes the last question and the rows after it, then returns the question text. Send it again, edited or not, as a new message. 422 while a card waits, and after a write that was not undone.",
 		tag: "Assistant",
 		response: apiAssistantRewind,
 	},

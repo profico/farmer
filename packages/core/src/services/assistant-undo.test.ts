@@ -206,10 +206,13 @@ describe("undo", () => {
 		const row = await toolRow(chatId);
 		expect(row.undo?.kind).toBe("delete_entry");
 
-		await assistantService.undo(mine, {
+		const result = await assistantService.undo(mine, {
 			conversationId: chatId,
 			messageId: row.id,
 		});
+		expect(result.message.id).toBe(row.id);
+		expect(result.message.changed).toBe(false);
+		expect(result.message.undoneAt).not.toBeNull();
 		expect(await db.select().from(timeEntry)).toHaveLength(0);
 		expect((await toolRow(chatId)).undoneAt).not.toBeNull();
 

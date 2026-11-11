@@ -23,7 +23,8 @@ const saveBlob = (blob: Blob, name: string) => {
 	link.href = url;
 	link.download = name;
 	link.click();
-	URL.revokeObjectURL(url);
+	// Revoked late: some browsers read the URL after the click returns.
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 const saveCsv = (rows: string[][], name: string) =>

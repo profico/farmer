@@ -46,7 +46,12 @@ export function Composer({
 	const canSend = text.trim() !== "" && !streaming && !locked;
 
 	const giveBack = (message: string) => {
-		setText((current) => (current === "" ? message : current));
+		// Text typed meanwhile stays; the failed text goes below it.
+		setText((current) =>
+			current === "" || current === message
+				? message
+				: `${current}\n\n${message}`,
+		);
 		input.current?.focus();
 	};
 	// A new `restore` object is the only trigger, so `giveBack` stays out of the deps.

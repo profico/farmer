@@ -257,7 +257,6 @@ function AssistantPage() {
 				.map((m) => ({ undoable: Boolean(m.undo) })),
 		);
 	})();
-	const [editing, setEditing] = useState(false);
 	const [restore, setRestore] = useState<{ text: string } | null>(null);
 
 	// Which transcript is on screen — the thread that has actually loaded, not
@@ -266,6 +265,10 @@ function AssistantPage() {
 	// when there is something new to show, and the scroll lands at the end of the
 	// content that is really there.
 	const viewKey = thread?.conversation.id ?? "new";
+	// Edit mode belongs to one thread: another thread reads as not editing.
+	const [editingKey, setEditingKey] = useState<string | null>(null);
+	const editing = editingKey === viewKey;
+	const setEditing = (on: boolean) => setEditingKey(on ? viewKey : null);
 
 	// Follow the transcript's end. Scrolling the container rather than the
 	// document: this screen owns the viewport height, so the document never

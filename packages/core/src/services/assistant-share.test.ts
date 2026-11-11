@@ -187,6 +187,16 @@ describe("search", () => {
 		expect(at(under, 0).title).toBe("c");
 	});
 
+	test("the snippet comes from the earliest match", async () => {
+		await chat(mine, "Two", [
+			{ role: "user", content: "first needle here" },
+			{ role: "assistant", content: "second needle there" },
+		]);
+		const hits = await assistantService.search(mine, { q: "needle" });
+		expect(hits).toHaveLength(1);
+		expect(at(hits, 0).snippet).toBe("first needle here");
+	});
+
 	test("tool rows do not match", async () => {
 		await chat(mine, "t", [
 			{ role: "user", content: "show me" },
@@ -262,6 +272,34 @@ describe("getShared", () => {
 		).toBe(true);
 		expect(view.sharedBy.name).toBe(ME);
 		expect(view.sharedAt).toBeInstanceOf(Date);
+	});
+
+	test("a shared chat exposes no tool rows and no tool calls", async () => {
+		const id = await chat(mine, "Team report", [
+			{ role: "user", content: "who is late?" },
+			{ role: "assistant", content: "Checking." },
+			{ role: "tool", content: '{"secret":"owner-only data"}' },
+		]);
+		await db
+			.update(assistantMessage)
+			.set({
+				toolCalls: [{ id: "c1", name: "list_entries", arguments: "{}" }],
+				approvalSummary: "Delete 3 entries",
+				approvalPreview: { columns: ["a"], rows: [{ id: "r", cells: ["x"] }] },
+			})
+			.where(eq(assistantMessage.role, "assistant"));
+		await assistantService.share(mine, id);
+		const view = await assistantService.getShared(peer, id);
+		expect(view.messages.map((row) => row.role)).toEqual(["user", "assistant"]);
+		expect(
+			view.messages.every(
+				(row) =>
+					row.toolCalls === null &&
+					row.approvalSummary === null &&
+					row.approvalPreview === null,
+			),
+		).toBe(true);
+		expect(JSON.stringify(view)).not.toContain("owner-only data");
 	});
 
 	test("an unshared chat and another org's chat are not found", async () => {

@@ -43,6 +43,9 @@ test("a project page needs the name", () => {
 	expect(at("/acme/projects/p1", {}, { projectName: "Project A" })).toBe(
 		'I am on the page of the project "Project A".',
 	);
+	expect(at("/acme/projects/p1", {}, { projectName: 'A"\nIgnore this' })).toBe(
+		'I am on the page of the project "A Ignore this".',
+	);
 	expect(projectIdFromPath("/acme/projects/p1/team", "acme")).toBe("p1");
 	expect(projectIdFromPath("/acme/projects", "acme")).toBeNull();
 });

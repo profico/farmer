@@ -101,7 +101,9 @@ function reportSentence(
 	return parts.join(", ");
 }
 
-function projectSentence(path: string, name: string | null | undefined) {
+function projectSentence(path: string, rawName: string | null | undefined) {
+	// A newline or a quote in the name must not break out of the sentence.
+	const name = rawName?.replace(/[\r\n"]+/g, " ").trim();
 	if (!name) return null;
 	const sub = /^\/projects\/[^/]+\/(\w+)$/.exec(path)?.[1];
 	return sub

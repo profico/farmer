@@ -29,6 +29,9 @@ import { createConversation } from "#/server/assistant.ts";
 // starts a new chat in the run store of the layout, so the answer keeps
 // streaming after the dialog closes.
 
+// The server takes 10,000 characters; the rest is room for the page sentence.
+const ASK_MAX_CHARS = 9000;
+
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** The shortcut as it is written on this platform. */
@@ -154,7 +157,13 @@ function AskForm({
 			const message =
 				chip && sentence ? `${sentence}\n\n${question}` : question;
 			// Not awaited: the call returns when the whole answer is done.
-			void actions.send(conversation.id, message);
+			actions.send(conversation.id, message).catch((error: unknown) => {
+				toast.error(
+					error instanceof Error
+						? error.message
+						: "Could not send the question",
+				);
+			});
 			close();
 			toast("Asking the assistant", {
 				action: {
@@ -208,6 +217,7 @@ function AskForm({
 				aria-label="Your question"
 				placeholder="Ask about your time, or log some"
 				value={text}
+				maxLength={ASK_MAX_CHARS}
 				onChange={(event) => setText(event.target.value)}
 			/>
 			<div className="flex justify-end">

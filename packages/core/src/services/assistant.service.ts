@@ -509,6 +509,11 @@ const catalogues = new Map<
 	string,
 	{ at: number; lengths: Map<string, number | null> }
 >();
+// One lookup in flight per organization, so concurrent cold reads make one call.
+const catalogueLoads = new Map<
+	string,
+	Promise<Map<string, number | null> | null>
+>();
 
 /** The context size of a model, for the meter. Any member may see it, so it
  *  skips the admin gate of `listModels`. A failed lookup gives null, and is
@@ -517,17 +522,32 @@ const contextLengthOf = async (
 	ctx: Ctx,
 	modelId: string,
 ): Promise<number | null> => {
+	// A switched-off feature makes no outbound calls.
+	if (!isAssistantEnabled()) return null;
 	const cached = catalogues.get(ctx.organizationId);
 	if (cached && Date.now() - cached.at <= MODEL_CATALOGUE_TTL_MS) {
 		return cached.lengths.get(modelId) ?? null;
 	}
+	let load = catalogueLoads.get(ctx.organizationId);
+	if (!load) {
+		load = loadCatalogue(ctx).finally(() =>
+			catalogueLoads.delete(ctx.organizationId),
+		);
+		catalogueLoads.set(ctx.organizationId, load);
+	}
+	return (await load)?.get(modelId) ?? null;
+};
+
+const loadCatalogue = async (
+	ctx: Ctx,
+): Promise<Map<string, number | null> | null> => {
 	try {
 		const row = await loadSettings(ctx);
 		if (!row?.apiKey) return null;
 		const models = await chatModel().listModels(row.apiKey);
 		const lengths = new Map(models.map((m) => [m.id, m.contextLength]));
 		catalogues.set(ctx.organizationId, { at: Date.now(), lengths });
-		return lengths.get(modelId) ?? null;
+		return lengths;
 	} catch (error) {
 		console.error("[assistant] model catalogue failed", loggableError(error));
 		// Fresh enough to skip a retry for the failure TTL, empty so it gives null.
@@ -688,8 +708,9 @@ const search = async (ctx: Ctx, input: SearchConversationsInput) => {
 		.orderBy(desc(assistantConversation.updatedAt))
 		.limit(SEARCH_LIMIT);
 	if (rows.length === 0) return [];
+	// One row per conversation: the earliest match.
 	const hits = await db
-		.select({
+		.selectDistinctOn([assistantMessage.conversationId], {
 			conversationId: assistantMessage.conversationId,
 			content: windowAround(assistantMessage.content, term),
 		})
@@ -704,12 +725,8 @@ const search = async (ctx: Ctx, input: SearchConversationsInput) => {
 				containsTerm(assistantMessage.content, term),
 			),
 		)
-		.orderBy(asc(assistantMessage.createdAt));
-	const first = new Map<string, string>();
-	for (const hit of hits) {
-		if (!first.has(hit.conversationId))
-			first.set(hit.conversationId, hit.content);
-	}
+		.orderBy(assistantMessage.conversationId, asc(assistantMessage.createdAt));
+	const first = new Map(hits.map((hit) => [hit.conversationId, hit.content]));
 	return rows.map((row) => {
 		const content = first.get(row.id);
 		return {
@@ -770,10 +787,13 @@ const unshare = async (ctx: Ctx, conversationId: string) => {
 	return { sharedAt: null };
 };
 
-/** A stored row as a reader sees it: nothing waits for an answer and nothing
- *  can be undone. */
+/** A stored row as a reader sees it: nothing waits for an answer, nothing
+ *  can be undone, and nothing the owner's tools read comes along. */
 const readOnlyRow = (row: StoredMessage): StoredMessage => ({
 	...row,
+	toolCalls: null,
+	approvalPreview: null,
+	approvalSummary: null,
 	pendingApproval: false,
 	undo: null,
 });
@@ -794,7 +814,10 @@ const getShared = async (ctx: Ctx, conversationId: string) => {
 		throw new AssistantError("Conversation not found");
 	const [messages, [sharer]] = await Promise.all([
 		db.query.assistantMessage.findMany({
-			where: eq(assistantMessage.conversationId, conversation.id),
+			where: and(
+				eq(assistantMessage.conversationId, conversation.id),
+				readableMessage,
+			),
 			orderBy: asc(assistantMessage.createdAt),
 		}),
 		conversation.sharedBy
@@ -2402,7 +2425,7 @@ const runTurn = async (
 const undo = async (
 	ctx: Ctx,
 	input: { conversationId: string; messageId: string },
-): Promise<{ ok: true }> => {
+) => {
 	await requireConversation(ctx, input.conversationId);
 	const where = and(
 		eq(assistantMessage.id, input.messageId),
@@ -2430,7 +2453,10 @@ const undo = async (
 		await db.update(assistantMessage).set({ undoneAt: null }).where(where);
 		throw error;
 	}
-	return { ok: true };
+	// The row the claim changed, read with the same predicate as the claim.
+	const row = await db.query.assistantMessage.findFirst({ where });
+	if (!row) throw new AssistantError("Message not found");
+	return { ok: true as const, message: { ...row, changed: changedData(row) } };
 };
 
 /** Results that say the call did not change anything. */
