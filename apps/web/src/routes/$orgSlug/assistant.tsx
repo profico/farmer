@@ -22,6 +22,7 @@ import {
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
+import { useSuggestions } from "#/components/assistant/use-suggestions.ts";
 import { MenuPath } from "#/components/menu-path.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
@@ -91,12 +92,6 @@ export const Route = createFileRoute("/$orgSlug/assistant")({
 	component: AssistantPage,
 });
 
-const SUGGESTIONS = [
-	"How many hours did I log last week?",
-	"What have I not filed to a project yet this month?",
-	"Which project took most of my time in March?",
-];
-
 /**
  * Lands the transcript at its end, once, as this thread's content mounts.
  *
@@ -134,6 +129,8 @@ function AssistantPage() {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const conversationId = Route.useSearch().c ?? null;
+	const { organization } = Route.useRouteContext();
+	const suggestions = useSuggestions(orgSlug, organization.timezone);
 
 	const { data: settings } = useQuery(assistantSettingsQuery(orgSlug));
 	const { data: thread } = useQuery({
@@ -393,7 +390,7 @@ function AssistantPage() {
 											I'd write is shown to you first.
 										</p>
 										<div className="mt-2 flex flex-col items-start gap-1.5">
-											{SUGGESTIONS.map((suggestion) => (
+											{suggestions.map((suggestion) => (
 												<button
 													key={suggestion}
 													type="button"
