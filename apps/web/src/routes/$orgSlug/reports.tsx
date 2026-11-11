@@ -1,7 +1,9 @@
 import { parseMonthKey } from "@farmer/core/lib/report-period";
+import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Suspense, useDeferredValue } from "react";
 
+import { useAskAssistant } from "#/components/assistant/ask-assistant.tsx";
 import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
 import { ComplianceTab } from "#/components/reports/compliance-tab.tsx";
 import { OvertimeTab } from "#/components/reports/overtime-tab.tsx";
@@ -12,6 +14,7 @@ import {
 	TabPending,
 } from "#/components/reports/shared.tsx";
 import { TimeTab } from "#/components/reports/time-tab.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import {
@@ -49,6 +52,7 @@ const TAB_ORDER = TABS.map((tab) => tab.id);
 function ReportsPage() {
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
+	const ask = useAskAssistant();
 
 	// Live, so "this month" follows a tab left open past midnight. Deferred, so a
 	// new month loads its reports in the background while the old ones stay on
@@ -85,29 +89,37 @@ function ReportsPage() {
 				// the title — a screen that already has two rows of controls below
 				// the title had no room for a third.
 				action={
-					<div className="overflow-x-auto">
-						<SegmentedControl>
-							{visibleTabs.map((t) => (
-								<SegmentedControlItem
-									key={t.id}
-									active={tab === t.id}
-									render={
-										<Link
-											to="/$orgSlug/reports"
-											params={{ orgSlug: organization.slug }}
-											// Deliberately drops every other search param: a period
-											// or drill-down belongs to the tab it was set on, and
-											// carrying a client filter into the Absence report would
-											// only ever confuse.
-											search={{ tab: t.id, month: search.month }}
-											aria-current={tab === t.id ? "page" : undefined}
-										/>
-									}
-								>
-									{t.label}
-								</SegmentedControlItem>
-							))}
-						</SegmentedControl>
+					<div className="flex items-center gap-2">
+						{ask && (
+							<Button variant="outline" size="sm" onClick={ask.open}>
+								<ChatCircleDotsIcon />
+								Ask about this
+							</Button>
+						)}
+						<div className="overflow-x-auto">
+							<SegmentedControl>
+								{visibleTabs.map((t) => (
+									<SegmentedControlItem
+										key={t.id}
+										active={tab === t.id}
+										render={
+											<Link
+												to="/$orgSlug/reports"
+												params={{ orgSlug: organization.slug }}
+												// Deliberately drops every other search param: a period
+												// or drill-down belongs to the tab it was set on, and
+												// carrying a client filter into the Absence report would
+												// only ever confuse.
+												search={{ tab: t.id, month: search.month }}
+												aria-current={tab === t.id ? "page" : undefined}
+											/>
+										}
+									>
+										{t.label}
+									</SegmentedControlItem>
+								))}
+							</SegmentedControl>
+						</div>
 					</div>
 				}
 			/>

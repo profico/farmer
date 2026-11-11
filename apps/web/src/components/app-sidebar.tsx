@@ -24,6 +24,7 @@ import type { Survey } from "posthog-js";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AskShortcutHint } from "#/components/assistant/ask-assistant.tsx";
 import { ConversationList } from "#/components/assistant/chat-rail.tsx";
 import { ContributorsCard } from "#/components/contributors-card.tsx";
 import {
@@ -336,6 +337,7 @@ export function AppSidebar({
 								<span className="min-w-0 flex-1 truncate text-base">
 									{item.label}
 								</span>
+								{item.to === ASSISTANT_ITEM.to && <AskShortcutHint />}
 								{badge !== undefined && badge > 0 && (
 									<Badge
 										variant="secondary"
