@@ -55,12 +55,12 @@ Dev is `vite dev`, which never loads `server.ts`. **Production is a Bun-native h
 
 ## The API pipeline
 
-Every `api/v1` route runs one pipeline, `server/api-route.ts` (`apiRoute` for `api/v1/orgs/$orgSlug/*`, `userApiRoute` for `me` and `session`). Read `docs/domains/rest-api.md` before you change it. The rules:
+A route built with `apiRoute` (`api/v1/orgs/$orgSlug/*`) or `userApiRoute` (`me`, `session`) runs one pipeline, `server/api-route.ts`. Some `api/v1` routes do not use it (for example `meta`, `openapi[.]json`, `me/devices` and the assistant's `messages` and `approvals`), so they get none of these guards. Read `docs/domains/rest-api.md` before you change it. The rules:
 
 - The order is fixed: `CLI_ENABLED`, the per-address limit before any read, the `x-farmer-cli-version` check (426), the credential, the per-user and write limits, the Zod parse, the service call.
 - Every exit runs through one `finish`, which sends one `api_request` event with the route TEMPLATE, never the slug or the row id.
 - **Never add CORS headers to `api/v1`.** A write takes the session cookie only with `x-farmer-session: 1` and a same-origin proof (`cookieUser`, `provesSameOrigin`). A request that sent `Authorization` never falls back to the cookie.
-- Errors map by class: `ZodError` and `DayCapacityError` are 422, `AccessError` 403. The message of a bare `Error` goes to the terminal. **Throw a subclass for anything that is not a sentence for the person.** `lib/github-client.ts` throws bare `Error`s with URLs, and is safe only because no route reaches it.
+- Errors map by class: `ZodError` and `DayCapacityError` are 422, `AccessError` 403. The message of a bare `Error` goes to the terminal. **Throw a subclass for anything that is not a sentence for the person.** `packages/core/src/lib/github-client.ts` throws bare `Error`s with URLs, and is safe only because no route reaches it.
 
 ## Gotchas
 
