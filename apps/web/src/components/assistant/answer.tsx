@@ -151,10 +151,16 @@ const revealWords = (part: string, at: number) => {
  *  cumulative WORD count is stable instead — a closing `**` that finally lands
  *  re-splits the line around itself without changing how many words are on it,
  *  because the marker's characters belong to the word they are attached to. */
+const BR = /<br\s*\/?>\n?/gi;
+
 const renderInline = (text: string, reveal = false) => {
-	const parts = text.split(
-		/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
-	);
+	// Models write `<br>` for a line break. Replace it after the split, so that
+	// a `*...*` span over a `<br>` stays one span.
+	const parts = text
+		.split(
+			/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
+		)
+		.map((part) => part.replace(BR, "\n"));
 	let cursor = 0;
 	return parts.map((part, index) => {
 		const at = cursor;
