@@ -1,66 +1,33 @@
 # packages/core
 
-`@farmer/core` — the business logic, the database and the jobs. This file covers
-the whole package; read the root `CLAUDE.md` first for the commands and the
-lint rules.
-
-**Boundary rule:** `packages/core` never imports TanStack/React, because it must
-stay runnable from another process. All business logic lives in `src/services/`,
-one file per aggregate. Every exported service function takes an explicit
-`ctx: { organizationId, userId }` (`src/services/types.ts`) as its first
-argument — **tenancy is a parameter, never ambient**.
+`@farmer/core` — the business logic, the database and the jobs. Read the root
+`CLAUDE.md` first for the commands, the lint rules and the boundary rule.
 
 ## Layout
 
-`packages/core` layout:
-- `src/db/` — `drizzle-orm/postgres-js` client (`index.ts`, resolved lazily — see Testing) + schema:
-  - `schema/auth.ts` — better-auth-owned: user/session/account/verification/organization/member/invitation, plus the plugin tables (`oauthApplication`/`oauthAccessToken`/`oauthConsent` for MCP, the device codes for the CLI). CLI-generated, see `auth:generate`.
-  - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry (a synced meeting also carries `syncedDate/syncedDurationSeconds/syncedDescription`, what the calendar last said — the meeting engine is a per-field merge against them, see `docs/domains/automation.md`).
-  - `schema/people.ts` — memberProfile (`claimPendingSince`: a Harvest import's membership the person has not accepted yet), memberTypeHistory (effective-dated `memberType`), teamLeadPerson, invitationEmail (whether an invite email reached the provider; it sits here because `invitation` is CLI-generated).
-  - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
-  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, commitDetachTombstone, pullRequestEventDetachTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
-  - `schema/github.ts` — orgGithubInstallation, projectGithubRepo, timeEntryGithubCommit, timeEntryGithubPrActivity (one row per pull request EVENT — opened, merged, closed, reviewed — not per PR).
-  - `schema/slack.ts` — slackInstallation, memberSlackIdentity, slackReminderLog.
-  - `schema/notifications.ts` — pushSubscription, notificationSettings (`remindersChannel`: the Slack kinds to the app or to Slack).
-  - `schema/mobile.ts` — mobileDevice (a person's phone for native push; **no `organization_id`**, the third exception after `pushSubscription` and `runningTimer` — see `docs/domains/mobile.md`).
-  - `schema/import.ts` — importRun, importMapping (what each Harvest import created, so undo removes exactly that).
-  - `schema/assistant.ts` — assistantSettings, assistantConversation, assistantMessage.
-  - `schema/webhooks.ts` — webhookEndpoint, webhookEvent (the outbox: one row per thing that happened), webhookDelivery (one row per ATTEMPT, and the queue at the same time).
-  - `schema/instance.ts` — instanceSetting (one row per instance setting, keyed by its environment variable name; a secret is sealed) and instanceOAuthProvider. No organization column: they belong to the deployment.
-  - `schema/api-tokens.ts` — apiToken (a person's API tokens, keyed on the PERSON like a session; `organization_id` is set only for a token bound to one workspace — see `docs/domains/api-tokens.md`).
-  - `schema/audit.ts` — auditEvent (append-only: a trigger refuses an UPDATE; no foreign key to `user`, so names are snapshots — see `docs/domains/audit-log.md`).
-  - `schema/timer.ts` — runningTimer (**unique on the PERSON, not on the workspace** — the one deliberate exception to the tenancy rule, and the header says why), timerSettings.
-- `src/services/` — one file per aggregate: access, account, api-tokens (Preferences → API tokens; `authenticate` is the one function without a `Ctx`, like the session lookup it sits beside — see `docs/domains/api-tokens.md`), assistant, clients, compliance, day-assembly, filing-rules, github, google-calendar, harvest-import, holidays, hour-fund, import-claims (a Harvest import's pending claims, answered by the person they name), instance-settings (the loader and the Infrastructure pages; no `Ctx`, like platform-admins), integration-settings, members, mobile-devices (a person's phones for native push; per person, so a `PersonCtx` — see `docs/domains/mobile.md`), notifications, org-context (the slug-to-Ctx membership check MCP and the CLI share), org-settings, organization, platform-admins (the one service with no `Ctx` — it is instance-level, not tenanted), projects, recurring-block-rules, reminder-settings, reports, sessions (Preferences → Signed-in devices), slack, tasks, team-leads, time-entries, timers (the stopwatch — see `docs/domains/timer.md`), uploads, working-hours. Shared modules: `guards.ts`, `ledger.ts`, `unfiled.ts`, `notify.ts`, `native-push.ts` (the native push transport and the Live Activity sends), `events.ts` (the outbound sibling of `notify` — see Notifications below), `audit.ts` (the audit log's write seam, `recordAudit` and `recordSecurityEvent` — see `docs/domains/audit-log.md`), `reminder-recipients.ts`, `member-joined.ts` (the Slack match and `member.added` that every way of joining runs), `context.ts`, `db-ctx.ts`, `ports.ts`, `day-fill.ts`, `pr-reviews.ts` (the review-block rules the commit engine and the day assembler share), `types.ts`, and the two tool registries `assistant-tools.ts` + `mcp-tools.ts`.
-- `src/schema/` — Zod input schemas, one module per aggregate, shared by the RHF form resolver, the server function `.validator()`, the REST handlers (`api/v1` and the CLI's API) and the assistant/MCP tool parameters. Range inputs carry their own ceilings (62 days for a time-entry range, 366 for a report), so a caller cannot ask for a full-table scan by widening the dates. **Don't re-validate by hand at a new call site** — that is how a caller ends up bypassing the ceiling.
-- `src/api/` — exported as `@farmer/core/api`: the REST API's response shapes and the projection functions that build them, plus `MIN_CLI_VERSION` and the CLI's error codes. Types-only imports, because the CLI binary imports it at runtime.
-- `src/lib/` — `time.ts` (UTC-in/display-zone-out durations and timezones on `date-fns`/`@date-fns/tz`; **the only place timezone math should happen**), `working-day.ts`, `day-plan.ts`, `automation-window.ts`, `org-time.ts`, `org-country.ts`, `task-taxonomy.ts` (task groups, the standard org tasks and Harvest name aliases — shared by the seed and the import), `task-rules.ts`, `search.ts` (the list filter the web app and the CLI share), `report-period.ts` + `report-format.ts` (report arithmetic the browser also needs), the integration clients (`github-client.ts`, `google-calendar-client.ts`, `slack-client.ts`, `openrouter-client.ts`, `push-relay.ts` — one push to the mobile push relay), `github-activity.ts` (pure: which day a pull request event belongs to, and whose it is), `http.ts`, `oauth-state.ts`, `secret-box.ts` (encryption at rest for the Slack bot token, the OpenRouter key and the instance settings, rotated through `BETTER_AUTH_SECRETS` — see `docs/domains/integrations.md` and `docs/domains/deployment.md`), `instance-settings.ts` (the registry and the synchronous `setting()` reader — see Instance settings below), `single-org.ts`, `dev-auth.ts`, the deployment flags `assistant-flag.ts` + `mcp-flag.ts` + `cli-flag.ts`, `uploads.ts` (browser-safe) + `storage.ts` (server-only), `slug.ts`, `email.ts`, `json.ts`. `harvest/` is the Harvest CSV parser and import planner — pure, because it runs in a browser Web Worker.
-- `src/jobs/` — exported as `@farmer/core/jobs`. `scheduler.ts` is the runner, `worker.ts` a standalone process entry; `automation-sync.ts`, `log-reminders.ts`, `slack-reminders.ts`, `timer-sweep.ts`, `upload-sweep.ts`, `audit-sweep.ts` and `webhook-delivery.ts` are one tick of work each.
-- `src/test/harness.ts` — see Testing.
+`src/db/` (the schema), `src/services/` (one file per aggregate), `src/schema/` (Zod inputs), `src/api/`, `src/lib/` and `src/jobs/`. The notes that a file list cannot show:
+
+- `src/db/index.ts` resolves the `drizzle-orm/postgres-js` client lazily — see Testing.
+- `schema/auth.ts` is better-auth-owned and CLI-generated (`auth:generate`). It also holds the plugin tables: `oauthApplication`/`oauthAccessToken`/`oauthConsent` for MCP, the device codes for the CLI. `invitationEmail` sits in `schema/people.ts` because `invitation` is CLI-generated.
+- **Tables with no `organization_id`, on purpose:** `pushSubscription`, `runningTimer` (`schema/timer.ts`, **unique on the PERSON, not on the workspace**, and the header says why) and `mobileDevice` (`schema/mobile.ts`, see `docs/domains/mobile.md`). `instanceSetting` (one row per setting, keyed by its environment variable name; a secret is sealed) and `instanceOAuthProvider` (`schema/instance.ts`) belong to the deployment. `apiToken` is keyed on the PERSON like a session, and `organization_id` is set only for a token bound to one workspace (`docs/domains/api-tokens.md`). `auditEvent` is append-only: a trigger refuses an UPDATE, and it has no foreign key to `user`, so names are snapshots (`docs/domains/audit-log.md`).
+- `timeEntryGithubPrActivity` holds one row per pull request EVENT (opened, merged, closed, reviewed), not per PR. `webhookDelivery` holds one row per ATTEMPT and is the queue at the same time. A synced meeting carries `syncedDate/syncedDurationSeconds/syncedDescription`, what the calendar last said; the meeting engine is a per-field merge against them (`docs/domains/automation.md`).
+- **Services without a `Ctx`:** `platform-admins` and `instance-settings` (instance-level, not tenanted), and `apiTokensService.authenticate`, like the session lookup it sits beside. `mobile-devices` takes a `PersonCtx`, because a phone belongs to a person. `org-context` is the slug-to-Ctx membership check that MCP and the CLI share. `member-joined.ts` is the Slack match and `member.added` that every way of joining runs. `pr-reviews.ts` holds the review-block rules that the commit engine and the day assembler share.
+- Shared with other code: `lib/search.ts` is the list filter of the web app and the CLI. `lib/report-period.ts` and `lib/report-format.ts` are report arithmetic that the browser also needs. `lib/task-taxonomy.ts` (task groups, the standard org tasks, Harvest name aliases) is shared by the seed and the import.
+- `src/schema/` is shared by the RHF form resolver, the server function `.validator()`, the REST handlers (`api/v1` and the CLI's API) and the assistant/MCP tool parameters. Range inputs carry their own ceilings (62 days for a time-entry range, 366 for a report), so a caller cannot ask for a full-table scan by widening the dates. **Don't re-validate by hand at a new call site** — that is how a caller ends up bypassing the ceiling.
+- `src/api/` is exported as `@farmer/core/api`: the REST API's response shapes and their projection functions, plus `MIN_CLI_VERSION` and the CLI's error codes. Types-only imports, because the CLI binary imports it at runtime. The published mobile app parses these shapes: a new required field fails the parse in an old app, so deploy the server before a `mobile-v*` tag that needs it (`apps/mobile/CLAUDE.md`).
+- `lib/time.ts` is **the only place timezone math should happen** (UTC in, display zone out, on `date-fns`/`@date-fns/tz`). `lib/uploads.ts` is browser-safe and `lib/storage.ts` server-only. `lib/harvest/` and `lib/github-activity.ts` are pure; `lib/harvest/` runs in a browser Web Worker. `lib/secret-box.ts` encrypts the Slack bot token, the OpenRouter key and the instance settings at rest, rotated through `BETTER_AUTH_SECRETS` (`docs/domains/integrations.md`, `docs/domains/deployment.md`).
+- `src/jobs/` is exported as `@farmer/core/jobs`: `scheduler.ts` is the runner, `worker.ts` a standalone process entry, and each other file is one tick of work.
 
 ## Authorization
 
-**Three independent axes, and `services/access.service.ts` is the only place that knows the matrix.**
+The full matrix is in `docs/domains/authorization.md`. Read it before you change who can see or do what. The rules:
 
-- **One org role:** Admin (better-auth's `member.role` = `owner` | `admin`, both mapping to the single Admin tier). There is deliberately no super-admin.
-- **A per-assignment project role:** `member` | `team_lead` | `pm` on `projectMember`. The same person is PM on one project and a plain member on another, so a project role is never a property of the person. An inactive assignment (`active = false`) grants nothing.
-- **A people list:** `team_lead_person` rows, edited by an Admin on the People page (`team-leads.service.ts`). Having people on your list is what makes you a Team Lead — there is no flag. A Team Lead sees everything about their people: their time on every project, Tracking, time off. `accessService.peopleScope` is the people-shaped scope (Tracking, Absence); `Access.canViewPerson` the per-person check.
-
-**Rank on a project is `heldAs`, not the raw row.** `roleOn()` returns the assignment as stored — admins are not synthesised into a role, so a "your projects" filter still works — and `heldAs()` returns the effective role that screens and gates read. A Team Lead holds PM rank only on a project where their own assignment is `team_lead`; a `member` assignment never widens (`rankOf`), and `peopleScope` adds project rosters only from projects held at PM rank. **Role changes are capped at the caller's rank:** `Access.canActOnProjectRole(projectId, role, targetLeadsPeople)` lets a non-admin assign a role, or act on someone who holds it, only up to their own `heldAs` rank — and it ranks the target the same way, so `team_lead` counts as PM for somebody with a people list (`accessService.leadsPeople`), on an active row. `projectsService.assignMember`/`removeMember` enforce it. `apps/web/src/lib/project-access.ts` mirrors only the caller's half for the UI: it compares the raw role and knows nothing about the target's list, so the service is what refuses a list-holder. Managing project members and creating projects both need `team_lead` rank or above.
-
-**A project can be open to the whole organization** (`project.openToOrg`, the switch on its Team page, PM or Admin). Every member may then track on it without an assignment — the org's Internal project, which a new hire should not wait to be added to. It grants Member rank and nothing else: `canTrackOn` and `scopeFor("member")` include it, while `roleOn`/`heldAs`/`assignments()` stay null for it, so a Member sees their own hours and no team, totals or money. Two assignment reads deliberately ignore it: `reposForUser` (GitHub commits are attribution, not access) and `projectIdsForUser` (a PM of an open project is not PM of everyone's absence).
-
-**Membership is a precondition, not a capability.** `accessService.resolve` throws `NotAMemberError` when the caller has no membership row, rather than describing them as "nobody". A Ctx is built from `session.activeOrganizationId`, which is stamped when the workspace is entered and never revisited, so without this an ex-member's session still answered every org-wide read that filters only on `organizationId`. `orgMiddleware` and `resolveApiOrgContext` resolve `Access` at the boundary for the same reason, which also warms the request's memo.
-
-- **A pending claim is not a membership for the person.** A `member` row whose `memberProfile.claimPendingSince` is set was made by a Harvest import, and the person has not accepted it. `resolve` throws `NotAMemberError` for it, `membersService.getRole` answers null, `orgContextService.organizationsFor` and the session hook leave it out, and `deliveryBlocks` holds it back (`claim-pending`). The org side reads the row as before. `importClaimsService.accept` / `decline` (the caller's own `Ctx`) end it; see `docs/domains/authentication.md`.
-
-`accessService.resolve(ctx)` returns an `Access` — four parallel queries (membership, assignments, lead list, open projects), then answered from memory. Resolve it **once per request** via `ctxAccess(ctx)` (`services/context.ts`), which memoizes it on the Ctx.
-
-A Member sees strictly their own entries and gets every report scoped to themselves, so nobody is refused a report; on a project page a Member sees their own hours, never the project's totals or contributors. A PM adds project config and the two money fields on their projects. `scopeFor(role)` returns `null` for admins meaning "unscoped" — callers translate that into no project filter rather than a 200-id `IN` list, and an empty array is a real answer meaning "nothing".
-
-`server/auth.ts`'s `getMyAccess` flattens this for the client to gate UI with. It is **not** authorization — every service re-resolves `Access` server-side and asserts.
-
-Two gates that read as one and are not: `assertTaskAvailable` (guards.ts) asks whether a TASK may be used on a project; `assertCanTrackOn` asks whether this PERSON may write there. Anything that creates time entries needs both. `recurringBlockRulesService` runs both at create **and on every materializing pass** (plus project status and task archival), because a rule outlives the assignment, project and task that made it valid; a rule that no longer applies is skipped, not deleted.
-
+- **`services/access.service.ts` is the only place that knows the matrix.** Three independent axes: one org role (Admin), a per-assignment project role, and a people list (the Team Lead).
+- **Rank on a project is `heldAs`, not the raw row.** Role changes are capped at the caller's rank (`Access.canActOnProjectRole`).
+- **Membership is a precondition, not a capability.** `accessService.resolve` throws `NotAMemberError` for a caller with no membership row, and for a pending Harvest import claim.
+- Resolve `Access` **once per request** via `ctxAccess(ctx)` (`services/context.ts`). `scopeFor(role)` returns `null` for "unscoped", and an empty array means "nothing".
+- `getMyAccess` (`server/auth.ts`) is **not** authorization. Every service re-resolves `Access` server-side and asserts.
+- Anything that creates time entries needs both `assertTaskAvailable` (may this TASK go on the project) and `assertCanTrackOn` (may this PERSON write there).
 
 ## The ledger
 
@@ -74,19 +41,15 @@ Two gates that read as one and are not: `assertTaskAvailable` (guards.ts) asks w
 
 **A task can require a note** — `assertDescribed` (guards.ts) on `descriptionRequiredFor` (`lib/task-rules.ts`). Absence, Break, fill blocks and the week grid (`setWeekCell`) are exempt.
 
+`timeEntriesService.listRange` writes on read by default: it recomputes (and drops) each day's fill block against the rows just read, bounded to the automation window. `listRange(ctx, range, { persist: false })` is the read-only variant, and `/home`, the MCP server and the assistant use it.
 
 ## Targets and Tracking
 
-`compliance.service.ts` turns logged time into the numbers people act on — the home page, the timesheet's targets strip, the Tracking report and the reminders all read it.
+`compliance.service.ts` turns logged time into the numbers people act on. The target comes from the month's hour fund, prorated by working days. Read `docs/domains/compliance.md` before you change a target, a verdict or a day mark. The rules:
 
-- **The target comes from the month's hour fund** (`monthlyHourFund`), prorated by working days: weekdays minus public holidays, so a day is 8h. Expected (`hour-fund.service.ts`) is the fund minus absence days × 8. There is no per-member weekly target (migration `0051` dropped it); working hours (`memberWorkingHoursDay`) only shape fill blocks, time-off spans and when a reminder reaches someone.
-- **Total = work + time off**, compared against the target *so far*. Working days elapsed are counted strictly **before** today (the whole month once it is over), and the verdict reads `totalSoFarSeconds` through today, so the day in progress never counts against anyone.
-- **Person type decides who has a target** (`memberType`, effective-dated through `memberTypeHistory`): hourly students and contractors have none without an override; overhead employees and archived people are never listed.
-- **No hour fund means no verdict**, not "on track": the nudge sends nothing, and the digest and preview say no fund is set (`reminder-recipients.ts`).
-- **The goal a person reads includes today** (issue #105). `PeriodTarget.targetThroughTodaySeconds` is the target so far plus today's own working day, so Monday reads 8h, not 0. The verdict, `status` and `targetSoFarSeconds` still count only days before today, as Tracking and the reminders do. The gap's color follows the verdict, so hours still due from today never show red beside an "On track" pill.
-- `complianceService.myTargets` returns week and month `PeriodTarget`s for `components/targets.tsx`. The service takes an optional `{ now }` so a test can pin the date — every figure is a fraction of the period elapsed.
-- **A short day is marked only while its week is behind** (`lib/day-marks.ts`, issue #58). The timesheet's week strip and the home page's week chart both read `weekDayMarks`: a working day is `done`, `short`, or `covered` — under a day's worth, but the rest of the week (weekends included) has made up for it, and a covered day shows no label. A past day is held to the week tile's own yardstick, so it is never red beside a tile that says on track; today also counts its own day's worth, or it would go quiet every morning for anyone exactly on target.
-
+- **No hour fund means no verdict**, not "on track".
+- The verdict counts only working days **before** today, so the day in progress never counts against anyone. The goal a person reads includes today (`targetThroughTodaySeconds`).
+- A service that reads the date takes an optional `{ now }`, so a test can pin it.
 
 ## Tasks
 
@@ -98,26 +61,20 @@ Engines resolve tasks by **`systemKey`**, never by name (`meeting`, `development
 
 **A person can switch tasks off** (Preferences → Your tasks, `hiddenTask`; `tasksService.hiddenIds` / `setHidden` / `showAll` / `hideAll`). It is per person per org and stored as what is hidden, so a task added later reaches everyone. It only narrows the web task picker, which filters itself: `listForProject`, `assertTaskAvailable`, reports, the API and the engines never read it, and a switched-off task can still be logged.
 
-
 ## Notifications
 
-`services/notify.ts` — `notify(recipient, event)` is the single way anything tells a person anything. The recipient is always an `(organizationId, userId)` pair, so membership is checked on every channel; a `KINDS` table says which channels a kind uses and which `notificationSettings` column gates it. Adding a channel is one adapter plus one row in that table. The channels are `push` (web push), `native` (the mobile app, through the relay) and `slack`; a kind with `appInsteadOfSlack` goes to the app instead of Slack, and back to Slack when every native push fails (`docs/domains/mobile.md`). Never throws — it returns which channels delivered. Substitutable via `setNotifyAdaptersForTests`. `notificationsService.sendPush` is the push *transport* and is not a call site: push subscriptions belong to a device, so nothing there can know which org is speaking.
+Read `docs/domains/notifications.md` before you change `notify.ts`, a reminder job or `reminder-recipients.ts`. The rules:
 
-**Reminders are configured per org on Settings → Reminders** (`reminderSettingsService`: `get`, `update`, `preview`; design in `docs/plans/reminder-settings.md`). A missing `reminderSettings` row is the defaults. Who gets a reminder is decided in one place, `services/reminder-recipients.ts`, which both jobs and the preview call — so the preview cannot disagree with what the job then sends.
+- **`notify(recipient, event)` (`services/notify.ts`) is the single way anything tells a person anything.** It never throws; it returns which channels delivered. `notificationsService.sendPush` is the push *transport* and is not a call site.
+- **Who gets a reminder is decided in one place**, `services/reminder-recipients.ts`, which both jobs and the preview call.
+- **Telling another SYSTEM something is `emitEvent`** (`services/events.ts`): one `webhook_event` row in the caller's transaction. `jobs/webhook-delivery.ts` does the sending (`docs/domains/webhooks.md`).
+- **The Tracking rule is the reminders' rule** (`complianceService.trackingForReminderJob`). Nothing on `reminderSettings` decides who is behind.
 
-- **`KINDS` rows carry a `reminder` flag, and `deliveryBlocks()` holds reminder kinds back** from, in order: non-members, people with a pending import claim (every kind, not only reminders), archived people, people who have never signed in (no `account` row) and people who opted out. The never-signed-in gate is on by default; `reminderSettings.includeNeverSignedIn` turns it off. A test person therefore needs an `account` row unless the fixture sets that flag.
-- **`timer-dropped` is the one kind that is not a reminder and has no preference column.** A timer the sweep dropped logged nothing, so the person has to hear about it; the read path (`timersService.get`, and every surface that calls it) is the promise and the push plus the Slack message are the courtesy. See `docs/domains/timer.md`.
-- **Both jobs read org-level state once per org**, not once per member, and both take `{ now }`. The Slack job ticks every 15 minutes, skips a kind that already ran today or is not due before any heavy query, and checks the delivery gates before it claims `slackReminderLog` — so a blocked person does not burn the day's claim. An undelivered DM marks the claim row for a retry (`retry`, with the count in `attempts`, at most three a day, so a restart does not reset it), unless the channel answers `"unreachable"` (`ChannelResult` in `notify.ts`: no Slack match, or a code in `RECIPIENT_REFUSALS`, `lib/slack-client.ts`) — then the claim stays and nothing counts as failed. A refused bot token (`CREDENTIAL_REFUSALS`) is recorded on the installation by `slackService.rejectToken`, and the job ends the org's pass after that send. `forgetSlackReminderRunsForTests()` clears its in-memory record of the day's runs.
-**Telling another SYSTEM something is `services/events.ts`**, the same shape one
-step further out: `emitEvent(ctx, kind, build)` writes one `webhook_event` row in
-the caller's transaction and returns, and `jobs/webhook-delivery.ts` does the
-sending. `build` is a function rather than a payload because almost no org has an
-endpoint and all of them write time entries — see `docs/domains/webhooks.md`,
-which also says which writes deliberately emit nothing (every automation engine,
-and the Harvest import).
+## Members
 
-- **The Tracking rule is the reminders' rule.** `complianceService.trackingForReminderJob` is what the nudge, the month-end "only behind" option and the digest read; a person is nudged when the rule calls them *behind* (see Targets and Tracking) by more than `orgSettings.trackingTolerancePct` (default 5). Nothing on `reminderSettings` decides who is behind, and the nudge never goes out on a weekend or a public holiday.
+**Never read the org roster through better-auth's `auth.api.listMembers`.** It throws in an organization over 100 people, which a Harvest import makes routine — archived people count towards the total. `membersService.roster` (`members.service.ts`) queries the tables directly and is what `server/members.ts`'s `listMembers` server fn calls; `auth/index.ts` also raises `membershipLimit` to 10,000 for the paths that still go through better-auth. Don't confuse either with `projectsService.listMembers`, which is a per-project assignment read.
 
+**Keep better-auth's `bearer` plugin off** (`auth/index.ts`). With it, every server function would accept an `Authorization` header. See `apps/cli/CLAUDE.md` and `docs/domains/api-tokens.md`.
 
 ## Instance settings
 
@@ -128,7 +85,6 @@ and the Harvest import).
 - **`lib/instance-settings.ts` imports nothing**, so the flags and `storage.ts` stay importable without a database, and `lib/` never reaches into `services/` for a value.
 - **Tests:** `setInstanceSettingsForTests(values)` replaces the stored half for a file, and `undefined` restores it. The environment still wins, and Bun loads the developer's `.env` into the suite, so a test that needs a name unlocked deletes the variable and puts it back after. The loaded snapshot is module state that outlives a file's database: a file that writes settings through the service clears it in `afterAll` (`replaceSettingsSnapshot(new Map())`).
 
-
 ## Ports and outbound calls
 
 `services/ports.ts` — `calendarSource()`, `commitSource()` and `pullRequestSource()`, the substitutable seam the sync engines read through. The production adapter is the real service; tests install an in-memory one (`setCalendarSourceForTests`, `setCommitSourceForTests`, …).
@@ -137,10 +93,9 @@ and the Harvest import).
 
 **Never log a raw caught error.** Log `loggableError(error)` (`lib/loggable-error.ts`), or `loggableErrorLine(error)` for a string. A Drizzle error holds the query parameters in its message and its stack: a session token, an email, a relay id. The helper keeps the class, the code and the constraint, and drops the rest for a database error. Give PostHog `withoutQueryValues(error)` for the same reason.
 
-
 ## Testing
 
-`bun test` from `packages/core` (or `bun run test` from the root). Test files sit beside the code as `*.test.ts`. `apps/cli` has its own `bun test` (the duration and date parsers, the table format, the device flow and the API client against an injected `fetch`). `apps/web` has none, so `api-route.ts` and the routes are untested — which is why everything testable about the CLI's API (the membership check, the projections, the version compare, the flag) lives in `packages/core`.
+`bun test` from `packages/core` (or `bun run test` from the root). Test files sit beside the code as `*.test.ts`. `apps/cli` and `apps/web` have their own `bun test` suites. The web suite tests its `lib/` and `server/` helpers, and some `server/*.test.ts` files drive the real REST route handlers for the guards. Most routes and the pages have no test.
 
 `createTestDb()` (`src/test/harness.ts`) gives each test file an empty, freshly migrated **PGLite** (real Postgres, in-process WASM) and points the `db` proxy at it for the file's duration — no DATABASE_URL, no container, no cleanup. `src/db/index.ts` resolves its handle lazily for this reason. **One engine is shared for the whole run and re-schema'd per file**, because a `WebAssembly.Memory` never shrinks: per-file engines made the suite's footprint the sum of every database it had opened (~11GB), which a 7GB CI runner answers with SIGKILL. `bunfig.toml` preloads `src/test/preload.ts` to close that engine at the end — a live handle at exit is exit code 99 and a red CI for a suite where nothing failed.
 
@@ -148,33 +103,11 @@ Fixture rules:
 - The harness runs the migrations but **not** `db/seed-tasks.ts`, so Vacation and Sick Leave don't exist unless you insert them. Migrations already seed **Meeting** and **Break** (`0024`) and **Paid Leave** (`0038`); inserting those again violates `task_site_name_uidx` — look them up by `systemKey`.
 - Site-scoped tasks are unique on both name and `systemKey`, so seed Vacation once in `beforeAll`, not per test.
 - A single multi-row insert of a few thousand rows overruns PGLite's bind-parameter handling and kills the instance for the rest of the FILE. Chunk at ~500.
-- A person needs an `account` row to receive a reminder (see Notifications).
+- A person needs an `account` row to receive a reminder (`docs/domains/notifications.md`).
 - Pin the clock with `{ now }` where a service takes it (`compliance`, both reminder jobs, `runAutomationsForUser`) rather than depending on today's date.
 
 The services that turn logged time into a number somebody acts on — `reports`, `compliance`, `hour-fund` — are pinned on properties rather than outputs: a detail's total stays whole when its rows hit the cap, Team Lead scoping holds on every tab, a null fund is not zero, `prefillYear` never clobbers a hand-entered figure.
 
-**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested; the engines read it through `test/calendar.ts`'s `fakeCalendar`); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub setup callback (`connectInstallation` behind it is covered in `github.test.ts`); `notificationsService.sendPush` beyond which subscriptions it keeps and drops (the test replaces `web-push`'s send); and everything in `apps/web`. Member role changes have no service function; `services/audit-security.test.ts` drives better-auth's `updateMemberRole` for the audit row it writes, and nothing else about them is tested.
+**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested; the engines read it through `test/calendar.ts`'s `fakeCalendar`); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub setup callback (`connectInstallation` behind it is covered in `github.test.ts`); `notificationsService.sendPush` beyond which subscriptions it keeps and drops (the test replaces `web-push`'s send). Member role changes have no service function; `services/audit-security.test.ts` drives better-auth's `updateMemberRole` for the audit row it writes, and nothing else about them is tested.
 
-
-## The subsystems documented elsewhere
-
-Each of these is a narrative too long to carry here. Read the one you are about
-to change before you change it.
-
-- `docs/domains/automation.md` — `jobs/automation-sync.ts`, the recurring-block,
-  meeting and GitHub commit/PR engines, the window policy, the filing rules.
-- `docs/domains/assistant.md` — `assistant.service.ts` and `assistant-tools.ts`.
-- `docs/domains/mcp-server.md` — `mcp-tools.ts`, the same registry over HTTP.
-- `docs/domains/integrations.md` — the GitHub, Google Calendar and Slack
-  credentials and the services that hold them.
-- `docs/domains/authentication.md` — better-auth, the login flow, single-org mode.
-- `docs/domains/harvest-import.md` — `harvest-import.service.ts` and `lib/harvest/`.
-- `docs/domains/uploads.md` — `lib/storage.ts`, `uploads.service.ts`, the sweep.
-- `docs/domains/webhooks.md` — `services/events.ts`, `webhooks.service.ts`,
-  `jobs/webhook-delivery.ts`, the signature and the SSRF guard.
-- `docs/domains/audit-log.md` — `services/audit.ts`, the better-auth audit
-  hooks, the sweep and the coverage test.
-- `docs/domains/timer.md` — `timers.service.ts`, `jobs/timer-sweep.ts`, the
-  stopwatch's one row per person.
-- `docs/domains/deployment.md` — the instance settings, the env flags and how
-  the jobs are hosted.
+The subsystems with a long narrative are in the root `CLAUDE.md` table ("Where the rest lives"). Read the one you are about to change before you change it.
