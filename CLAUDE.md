@@ -71,11 +71,11 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 - **`.oxfmtrc.json`** — tabs, double quotes, width 80, `sortImports`. It also formats JSON and CSS. Nothing lints CSS.
 - **`oxlint.config.ts`** — four layers, ignoring `.claude/**`, `tools/oxlint/**`, `routeTree.gen.ts`, `src/db/schema/auth.ts` and `dist`:
   1. `plugins` + `categories.correctness` (react, react-hooks, jsx-a11y, typescript, oxc, import).
-  2. **anti-slop** (vendored at `tools/oxlint/anti-slop/`, from [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop)): fifteen rules that reject low-evidence TypeScript — `unknown` in a contract, a `Record<string, unknown>` value type, a hand-rolled `typeof` narrowing where a parse belongs, a type assertion with no stated invariant. All `error`, and the tree is clean of them.
-  3. **stella** (vendored at `tools/oxlint/stella/`, from [stella's `.oxlint-plugins`](https://github.com/stella/stella/tree/main/.oxlint-plugins), Apache-2.0): `no-vacuous-throw-assertion` (an argument-less `.toThrow()` passes for any thrown value), `no-document-cookie`, `require-suppression-description`, `no-foreign-directive` and `no-partial-record-satisfies`. The other ~126 upstream rules were measured against this repo and skipped: domain-specific, already covered, or already passing.
+  2. **anti-slop** (`tools/oxlint/anti-slop/`): fifteen rules that reject low-evidence TypeScript — `unknown` in a contract, a `Record<string, unknown>` value type, a hand-rolled `typeof` narrowing where a parse belongs, a type assertion with no stated invariant. All `error`, and the tree is clean of them.
+  3. **stella** (`tools/oxlint/stella/`): five rules, among them `no-vacuous-throw-assertion` (an argument-less `.toThrow()` passes for any thrown value) and `require-suppression-description`.
   4. A handful of named rules and overrides — among them the `no-restricted-imports` override that keeps `apps/cli` off the server graph (see `apps/cli/CLAUDE.md`). See the comments in the file.
 
-**Both plugins are vendored, not depended on — those files are ours to edit.** Three anti-slop rules carry a `Local amendment to the upstream rule` comment saying why (Zod's `.shape`; a `.catch()` handler's parameter is `unknown`; leading comments on an `export const` attach to the ExportNamedDeclaration). Read the comment before "fixing" one back. Provenance for the stella rules is in `tools/oxlint/stella/index.ts`, so a re-sync stays a diff.
+**Both plugins are vendored, not depended on — those files are ours to edit.** A rule with a `Local amendment to the upstream rule` comment says why it differs. Read the comment before "fixing" one back. The sources, the licence and the amendments are in `tools/oxlint/README.md`.
 
 **Every suppression needs a reason.** A bare `oxlint-disable` fails the build. The reason goes inline as a `-- <why>` trailer, or as a prose comment on the line above; the directive must be the **last** comment line either way.
 
@@ -108,8 +108,8 @@ The split is deliberate: `packages/core` must stay reusable from another process
 
 **Boundary rule:** `packages/core` never imports TanStack/React. All business logic lives in `src/services/`, one file per aggregate. Every exported service function takes an explicit `ctx: { organizationId, userId }` (`src/services/types.ts`) as its first argument — **tenancy is a parameter, never ambient** — so the same function is callable from a server function, a REST route, a background job or an MCP tool.
 
-`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`:
-`packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and `apps/cli/CLAUDE.md`. They
+`packages/core`, `apps/web`, `apps/cli`, `apps/site` and `apps/mobile` each
+carry their own `CLAUDE.md`. They
 hold the layout of the workspace and the rules that only apply inside it.
 Claude Code loads a nested file when it touches a file in that folder. Codex
 and similar tools read the `AGENTS.md` symlinks on the path from the root to
@@ -135,11 +135,17 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/audit-log.md` | `services/audit.ts`, `recordAudit` / `recordSecurityEvent`, the better-auth audit hooks, the Audit log page, or any new service function that changes an organization |
 | `docs/domains/mobile.md` | `mobile-devices.service.ts`, `native-push.ts`, `lib/push-relay.ts`, the `native` channel in `notify.ts`, `api/v1/me/devices` or the timer's Live Activity |
-| `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
+| `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag, PostHog, or the stale-chunk reload (`lib/stale-chunk.ts`) |
+| `docs/domains/authorization.md` | `access.service.ts`, `guards.ts`, `team-leads.service.ts`, `services/context.ts`, `lib/project-access.ts`, or who can see or do what |
+| `docs/domains/compliance.md` | `compliance.service.ts`, `hour-fund.service.ts`, `lib/day-marks.ts`, `components/targets.tsx` |
+| `docs/domains/notifications.md` | `services/notify.ts`, `reminder-recipients.ts`, `reminder-settings.service.ts`, `jobs/log-reminders.ts`, `jobs/slack-reminders.ts` |
+| `docs/domains/rest-api.md` | `server/api-route.ts`, `lib/posthog-api.ts`, or a new `api/v1` route |
+| `docs/domains/cli-distribution.md` | `routes/cli/`, `server/cli-install.ts`, `server/cli-releases.ts`, `farmer update`, or `.github/workflows/cli-release.yml` |
+| `docs/domains/display.md` | `styles.css`, `lib/theme.ts`, `lib/display-prefs.ts`, `lib/popup-layer.ts`, or a popup component |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds
-the plans for the audit log, the instance settings migration and the reminder
-settings.
+the plans for the audit log, the instance settings migration, the reminder
+settings, the mobile app and mobile parity.
 
 ## Rules that survive the split
 
@@ -157,9 +163,9 @@ is in the file named beside it.
 
 ## Gotchas
 
-- **Never read the org roster through better-auth's `auth.api.listMembers`.** It throws in an organization over 100 people, which a Harvest import makes routine — archived people count towards the total. `membersService.roster` (`members.service.ts`) queries the tables directly and is what `server/members.ts`'s `listMembers` server fn calls; `auth/index.ts` also raises `membershipLimit` to 10,000 for the paths that still go through better-auth. Don't confuse either with `projectsService.listMembers`, which is a per-project assignment read.
+- **Never read the org roster through better-auth's `auth.api.listMembers`.** It throws in an organization over 100 people. Use `membersService.roster` (see "Members" in `packages/core/CLAUDE.md`).
 - Bun does not walk up parent directories for `.env` in a workspace — `bun run` inside `packages/core` or `apps/web` won't see the root `.env`. Each workspace package has a symlink to the root `.env`; do the same for any new workspace that reads the environment.
-- `timeEntriesService.listRange` still performs writes on read by default — it recomputes (and drops) each day's fill block against the rows just read, bounded to the automation window. That is deliberate and commented, but a GET is not idempotent, including through the web app, `api/v1` time-entries and `farmer today`. `listRange(ctx, range, { persist: false })` is the read-only variant: it returns the same rows and stores nothing. `/home`, the MCP server's `list_time_entries` and the assistant use it, because an agent loop re-reads a range far harder than a person opens a screen.
+- `timeEntriesService.listRange` still performs writes on read by default, so a GET is not idempotent, including through the web app, `api/v1` time-entries and `farmer today`. `listRange(ctx, range, { persist: false })` is the read-only variant. Use it where an agent loop re-reads a range (see "The ledger" in `packages/core/CLAUDE.md`).
 
 ## Agent skills
 
