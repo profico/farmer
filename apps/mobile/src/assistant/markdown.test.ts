@@ -145,6 +145,12 @@ describe("parseInline", () => {
 		]);
 	});
 
+	test("a <br> is a line break, also inside an italic span", () => {
+		expect(parseInline("*one,<br>two<BR />three*")).toEqual([
+			{ kind: "italic", text: "one,\ntwo\nthree" },
+		]);
+	});
+
 	test("a link that is not a web link does not open", () => {
 		expect(parseInline("[x](javascript:alert(1))")[0]).toMatchObject({
 			kind: "link",
