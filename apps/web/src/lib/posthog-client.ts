@@ -44,6 +44,15 @@ export function startPostHog({
 				capture_unhandled_rejections: true,
 				capture_console_errors: false,
 			},
+			// A client value wins over the project's remote setting, so vitals are
+			// on here for every project. Attribution names the element behind a
+			// slow LCP, INP or CLS. Soft navigations make each router change its
+			// own measurement (Chrome only; other browsers measure the page load).
+			capture_performance: {
+				web_vitals: true,
+				web_vitals_attribution: true,
+				__preview_web_vitals_soft_navs: true,
+			},
 			before_send: (event) =>
 				event && isResizeObserverLoop(event) ? null : event,
 			debug: import.meta.env.DEV,
@@ -55,4 +64,25 @@ export function startPostHog({
 		sendStaleChunkReports(posthog, browserEnv().storage);
 	}
 	return posthog;
+}
+
+/**
+ * Report a server function call that never got an answer.
+ *
+ * `fetch` rejects with a `TypeError` when the network fails (Firefox: "NetworkError when
+ * attempting to fetch resource", Chrome: "Failed to fetch"). The error has
+ * no URL, so the event names the function. It is a plain event, not an
+ * exception, because the same rejection can reach the unhandled-rejection
+ * capture too. The caller rethrows the error.
+ */
+export function reportServerFnNetworkError(
+	error: TypeError,
+	serverFnName: string,
+): void {
+	if (!posthog.__loaded) return;
+	posthog.capture("server_fn_network_error", {
+		server_fn_name: serverFnName,
+		message: error.message,
+		online: navigator.onLine,
+	});
 }

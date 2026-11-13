@@ -210,6 +210,37 @@ export const reportServerFnError = async (
 	});
 };
 
+/**
+ * Report a server function that took long, whether it threw or not.
+ *
+ * The caller does not await this and checks the threshold. The person comes
+ * from the session, as in `reportServerFnError`.
+ */
+export const reportSlowServerFn = async (
+	headers: Headers,
+	fn: { name: string; filename: string },
+	call: { durationMs: number; threw: boolean },
+): Promise<void> => {
+	const { auth } = await import("@farmer/core/auth");
+	const session = await auth.api.getSession({ headers }).catch(() => null);
+	const userId = session?.user.id ?? null;
+	const properties = {
+		organization_id: session?.session.activeOrganizationId ?? null,
+		server_fn_name: fn.name,
+		server_fn_file: fn.filename,
+		duration_ms: Math.round(call.durationMs),
+		threw: call.threw,
+	};
+	getPostHogClient()?.capture({
+		distinctId: userId ?? "server-fn-anonymous",
+		event: "server_fn_slow",
+		// No person to attach to: do not mint a profile for the bucket id.
+		properties: userId
+			? properties
+			: { ...properties, $process_person_profile: false },
+	});
+};
+
 /** A server function that failed with an error not worded for the person.
  *  The properties name the function, never its input. Scrubbed as
  *  `captureApiFailure` is. */

@@ -4,6 +4,8 @@ import {
 	createStart,
 } from "@tanstack/react-start";
 
+import { reportServerFnNetworkError } from "./lib/posthog-client";
+
 /**
  * Bring the instance's settings up to date before any handler reads one.
  *
@@ -72,8 +74,18 @@ const passThrough = <T>({ next }: { next: () => Promise<T> }) => next();
 
 // Both server-only imports stay inside this callback: TanStack strips it from
 // the client bundle, and a top-level import is not stripped.
-const captureFailureMiddleware = createMiddleware({ type: "function" }).server(
-	async (args) => {
+const captureFailureMiddleware = createMiddleware({ type: "function" })
+	.client(async ({ next, serverFnMeta }) => {
+		try {
+			return await next();
+		} catch (error) {
+			if (error instanceof TypeError) {
+				reportServerFnNetworkError(error, serverFnMeta.id);
+			}
+			throw error;
+		}
+	})
+	.server(async (args) => {
 		// A failed import must not fail the call: the call then runs uncaptured.
 		const modules = await Promise.all([
 			import("@tanstack/react-start/server"),
@@ -85,8 +97,7 @@ const captureFailureMiddleware = createMiddleware({ type: "function" }).server(
 		if (!modules) return passThrough(args);
 		const [{ getRequestHeaders }, { captureFailure }] = modules;
 		return captureFailure(args, getRequestHeaders);
-	},
-);
+	});
 
 export const startInstance = createStart(() => ({
 	requestMiddleware: [csrfMiddleware, instanceSettingsMiddleware],
