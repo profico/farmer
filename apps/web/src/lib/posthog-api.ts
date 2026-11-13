@@ -184,58 +184,104 @@ export const claimServerFnError = (error: Error): boolean => {
 	return true;
 };
 
-/**
- * Report the error of a server function, if it is a fault.
- *
- * The caller does not await this: a metric must not delay the answer, and
- * the session lookup is one more query on a pool that may be the fault. The
- * claim comes first and runs before any `await`, so the inner and the outer
- * middleware of a nested call cannot both pass it. `headers` are read by the
- * caller, while the request context is still current.
- */
-export const reportServerFnError = async (
-	error: Error,
-	headers: Headers,
-	fn: { name: string; filename: string },
-): Promise<void> => {
-	if (!claimServerFnError(error)) return;
-	if (!(await isServerFnFault(error))) return;
+export type ServerFnCall = {
+	/** The error that the call threw, if it is an `Error`. */
+	error: Error | null;
+	/** The duration of a call at or over the slow threshold, else null. */
+	slowMs: number | null;
+	threw: boolean;
+};
+
+const slowReported = new WeakSet<Headers>();
+
+/** The error, when this call is the first to report it and it is a fault. */
+const claimFault = async (error: Error | null): Promise<Error | null> => {
+	if (!error || !claimServerFnError(error)) return null;
+	return (await isServerFnFault(error)) ? error : null;
+};
+
+/** The duration, when this request has not sent a slow event yet. */
+const claimSlow = (headers: Headers, slowMs: number | null): number | null => {
+	if (slowMs === null || slowReported.has(headers)) return null;
+	slowReported.add(headers);
+	return slowMs;
+};
+
+const sessionPerson = async (headers: Headers) => {
 	const { auth } = await import("@farmer/core/auth");
 	const session = await auth.api.getSession({ headers }).catch(() => null);
-	captureServerFnFailure(error, {
+	return {
 		userId: session?.user.id ?? null,
 		organizationId: session?.session.activeOrganizationId ?? null,
-		fn: fn.name,
-		file: fn.filename,
-	});
+	};
 };
 
 /**
- * Report a server function that took long, whether it threw or not.
+ * Report a server function call: its error, if it is a fault, and its
+ * duration, if it is slow.
  *
- * The caller does not await this and checks the threshold. The person comes
- * from the session, as in `reportServerFnError`.
+ * The caller does not await this: a metric must not delay the answer, and
+ * the session lookup is one more query on a pool that may be the fault, so
+ * it runs one time for both reports and only when one of them is due. The
+ * claims come first and run before any `await`, so the inner and the outer
+ * middleware of a nested call cannot both pass them. A request sends one
+ * slow event: its `headers` are the same object in a nested call. `headers`
+ * are read by the caller, while the request context is still current.
  */
-export const reportSlowServerFn = async (
+export const reportServerFnCall = async (
 	headers: Headers,
-	fn: { name: string; filename: string },
-	call: { durationMs: number; threw: boolean },
+	fn: { id: string; name: string; filename: string },
+	call: ServerFnCall,
 ): Promise<void> => {
-	const { auth } = await import("@farmer/core/auth");
-	const session = await auth.api.getSession({ headers }).catch(() => null);
-	const userId = session?.user.id ?? null;
+	// Both claims start before the first `await`.
+	const pendingFault = claimFault(call.error);
+	const slowMs = claimSlow(headers, call.slowMs);
+	const fault = await pendingFault;
+	if (!fault && slowMs === null) return;
+	const person = await sessionPerson(headers);
+	if (fault) {
+		captureServerFnFailure(fault, {
+			...person,
+			fn: fn.name,
+			file: fn.filename,
+		});
+	}
+	if (slowMs !== null) {
+		captureSlowServerFn({
+			...person,
+			id: fn.id,
+			fn: fn.name,
+			file: fn.filename,
+			durationMs: slowMs,
+			threw: call.threw,
+		});
+	}
+};
+
+/** A server function that took long. The properties name the function,
+ *  never its input. */
+export const captureSlowServerFn = (ctx: {
+	userId: string | null;
+	organizationId: string | null;
+	id: string;
+	fn: string;
+	file: string;
+	durationMs: number;
+	threw: boolean;
+}): void => {
 	const properties = {
-		organization_id: session?.session.activeOrganizationId ?? null,
-		server_fn_name: fn.name,
-		server_fn_file: fn.filename,
-		duration_ms: Math.round(call.durationMs),
-		threw: call.threw,
+		organization_id: ctx.organizationId,
+		server_fn_id: ctx.id,
+		server_fn_name: ctx.fn,
+		server_fn_file: ctx.file,
+		duration_ms: Math.round(ctx.durationMs),
+		threw: ctx.threw,
 	};
 	getPostHogClient()?.capture({
-		distinctId: userId ?? "server-fn-anonymous",
+		distinctId: ctx.userId ?? "server-fn-anonymous",
 		event: "server_fn_slow",
 		// No person to attach to: do not mint a profile for the bucket id.
-		properties: userId
+		properties: ctx.userId
 			? properties
 			: { ...properties, $process_person_profile: false },
 	});

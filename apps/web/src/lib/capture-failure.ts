@@ -1,3 +1,5 @@
+import type { ServerFnCall } from "./posthog-api";
+
 /**
  * Send the unexpected failure of a server function to PostHog error tracking.
  *
@@ -7,7 +9,8 @@
  * is logged and dropped. Only a fault is captured: see `isServerFnFault`. The
  * person is read from the session because the middleware runs before
  * `orgMiddleware`, so it has no `ctx`. A call that takes `SLOW_SERVER_FN_MS`
- * or more is reported the same way, as a `server_fn_slow` event.
+ * or more is reported in the same way, as a `server_fn_slow` event, also
+ * when it throws.
  *
  * `start.ts` reaches this module with a deferred `import()` inside the
  * middleware callback, which TanStack strips from the client bundle. A static
@@ -19,69 +22,51 @@ export const captureFailure = async <T>(
 		serverFnMeta,
 	}: {
 		next: () => Promise<T>;
-		serverFnMeta: { name: string; filename: string };
+		serverFnMeta: { id: string; name: string; filename: string };
 	},
 	readHeaders: () => Headers,
-	now: () => number = () => performance.now(),
 ): Promise<T> => {
-	const start = now();
+	const start = performance.now();
+	let error: Error | null = null;
+	let threw = false;
 	try {
-		const result = await next();
-		reportIfSlow(now() - start, false, serverFnMeta, readHeaders);
-		return result;
-	} catch (error) {
-		reportIfSlow(now() - start, true, serverFnMeta, readHeaders);
-		if (error instanceof Error) {
-			reportInBackground(error, serverFnMeta, readHeaders);
-		}
-		throw error;
+		return await next();
+	} catch (thrown) {
+		threw = true;
+		if (thrown instanceof Error) error = thrown;
+		throw thrown;
+	} finally {
+		const durationMs = performance.now() - start;
+		reportInBackground(
+			{
+				error,
+				threw,
+				slowMs: durationMs >= SLOW_SERVER_FN_MS ? durationMs : null,
+			},
+			serverFnMeta,
+			readHeaders,
+		);
 	}
 };
 
 /** A call at or over this duration is sent as a `server_fn_slow` event. */
 export const SLOW_SERVER_FN_MS = 1000;
 
-type FnMeta = { name: string; filename: string };
-
-const logCaptureFailure = (captureError: Error) =>
-	console.error("server function capture failed", captureError);
-
-/** Run a deferred report. It never throws and nothing awaits it. */
-const inBackground = (
+const reportInBackground = (
+	call: ServerFnCall,
+	meta: { id: string; name: string; filename: string },
 	readHeaders: () => Headers,
-	report: (
-		posthogApi: typeof import("./posthog-api"),
-		headers: Headers,
-	) => Promise<void>,
 ): void => {
+	if (!call.error && call.slowMs === null) return;
+	const fail = (captureError: Error) =>
+		console.error("server function capture failed", captureError);
 	try {
 		// Read at once, while the request context is current.
 		const headers = readHeaders();
 		void import("./posthog-api")
-			.then((posthogApi) => report(posthogApi, headers))
-			.catch(logCaptureFailure);
+			.then(({ reportServerFnCall }) => reportServerFnCall(headers, meta, call))
+			.catch(fail);
 	} catch (captureError) {
 		console.error("server function capture failed", captureError);
 	}
-};
-
-const reportInBackground = (
-	error: Error,
-	meta: FnMeta,
-	readHeaders: () => Headers,
-): void =>
-	inBackground(readHeaders, ({ reportServerFnError }, headers) =>
-		reportServerFnError(error, headers, meta),
-	);
-
-const reportIfSlow = (
-	durationMs: number,
-	threw: boolean,
-	meta: FnMeta,
-	readHeaders: () => Headers,
-): void => {
-	if (durationMs < SLOW_SERVER_FN_MS) return;
-	inBackground(readHeaders, ({ reportSlowServerFn }, headers) =>
-		reportSlowServerFn(headers, meta, { durationMs, threw }),
-	);
 };

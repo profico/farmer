@@ -67,23 +67,37 @@ export function startPostHog({
 	return posthog;
 }
 
+/** The call signature of `fetch`, as TanStack's `CustomFetch` has it. */
+type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+
 /**
- * Report a server function call that never got an answer.
+ * A `fetch` that reports a server function call that got no answer.
  *
  * `fetch` rejects with a `TypeError` when the network fails (Firefox:
  * "NetworkError when attempting to fetch resource", Chrome: "Failed to
- * fetch"). The error has no URL, so the event names the function. It is a plain event, not an
- * exception, because the same rejection can reach the unhandled-rejection
- * capture too. The caller rethrows the error.
+ * fetch"). The error has no URL, so the event names the function by its id,
+ * which the server build maps to a name. It wraps the `fetch` itself, not
+ * the call of the function: a `TypeError` that a handler threw on the server,
+ * and a non-2xx answer, are not network failures. The event is a plain
+ * event, not an exception, because the same rejection can reach the
+ * unhandled-rejection capture too. The error is rethrown unchanged.
  */
-export function reportServerFnNetworkError(
-	error: TypeError,
-	serverFnName: string,
-): void {
-	if (!posthog.__loaded) return;
-	posthog.capture("server_fn_network_error", {
-		server_fn_name: serverFnName,
-		message: error.message,
-		online: navigator.onLine,
-	});
+export function fetchReportingNetworkErrors(
+	serverFnId: string,
+	baseFetch: FetchFn = globalThis.fetch,
+): FetchFn {
+	return async (input, init) => {
+		try {
+			return await baseFetch(input, init);
+		} catch (error) {
+			if (error instanceof TypeError && posthog.__loaded) {
+				posthog.capture("server_fn_network_error", {
+					server_fn_id: serverFnId,
+					message: error.message,
+					online: navigator.onLine,
+				});
+			}
+			throw error;
+		}
+	};
 }
