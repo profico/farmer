@@ -44,6 +44,16 @@ export function startPostHog({
 				capture_unhandled_rejections: true,
 				capture_console_errors: false,
 			},
+			// A client value wins over the project's remote setting, so vitals are
+			// on here for every project. The default attribution (INP and LCP) names
+			// the element behind a slow metric. CLS stays out, because its
+			// attribution keeps detached DOM nodes and can leak memory in an SPA.
+			// Soft navigations make each router change its own measurement
+			// (Chrome only; other browsers measure the page load).
+			capture_performance: {
+				web_vitals: true,
+				__preview_web_vitals_soft_navs: true,
+			},
 			before_send: (event) =>
 				event && isResizeObserverLoop(event) ? null : event,
 			debug: import.meta.env.DEV,
@@ -55,4 +65,39 @@ export function startPostHog({
 		sendStaleChunkReports(posthog, browserEnv().storage);
 	}
 	return posthog;
+}
+
+/** The call signature of `fetch`, as TanStack's `CustomFetch` has it. */
+type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
+
+/**
+ * A `fetch` that reports a server function call that got no answer.
+ *
+ * `fetch` rejects with a `TypeError` when the network fails (Firefox:
+ * "NetworkError when attempting to fetch resource", Chrome: "Failed to
+ * fetch"). The error has no URL, so the event names the function by its id,
+ * which the server build maps to a name. It wraps the `fetch` itself, not
+ * the call of the function: a `TypeError` that a handler threw on the server,
+ * and a non-2xx answer, are not network failures. The event is a plain
+ * event, not an exception, because the same rejection can reach the
+ * unhandled-rejection capture too. The error is rethrown unchanged.
+ */
+export function fetchReportingNetworkErrors(
+	serverFnId: string,
+	baseFetch: FetchFn = globalThis.fetch,
+): FetchFn {
+	return async (input, init) => {
+		try {
+			return await baseFetch(input, init);
+		} catch (error) {
+			if (error instanceof TypeError && posthog.__loaded) {
+				posthog.capture("server_fn_network_error", {
+					server_fn_id: serverFnId,
+					message: error.message,
+					online: navigator.onLine,
+				});
+			}
+			throw error;
+		}
+	};
 }
