@@ -151,6 +151,13 @@ describe("parseInline", () => {
 		]);
 	});
 
+	test("a <br> in a code span stays literal", () => {
+		expect(parseInline("`a<br>b`<br>c")).toEqual([
+			{ kind: "code", text: "a<br>b" },
+			{ kind: "text", text: "\nc" },
+		]);
+	});
+
 	test("a link that is not a web link does not open", () => {
 		expect(parseInline("[x](javascript:alert(1))")[0]).toMatchObject({
 			kind: "link",

@@ -335,7 +335,9 @@ export const parseInline = (text: string): Inline[] => {
 	// Models write `<br>` for a line break. Replace it after the split, so that
 	// a `*...*` span over a `<br>` stays one span.
 	for (const raw of text.split(INLINE)) {
-		const part = raw.replace(/<br\s*\/?>\n?/gi, "\n");
+		const part = raw.startsWith("`")
+			? raw
+			: raw.replace(/<br\s*\/?>\n?/gi, "\n");
 		if (part === "") continue;
 		if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
 			parts.push({ kind: "code", text: part.slice(1, -1) });
