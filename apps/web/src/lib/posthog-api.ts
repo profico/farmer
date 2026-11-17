@@ -190,6 +190,8 @@ export type ServerFnCall = {
 	/** The duration of a call at or over the slow threshold, else null. */
 	slowMs: number | null;
 	threw: boolean;
+	/** The call had not ended when it was reported. */
+	pending: boolean;
 };
 
 const slowReported = new WeakSet<Headers>();
@@ -254,6 +256,7 @@ export const reportServerFnCall = async (
 			file: fn.filename,
 			durationMs: slowMs,
 			threw: call.threw,
+			pending: call.pending,
 		});
 	}
 };
@@ -268,6 +271,7 @@ export const captureSlowServerFn = (ctx: {
 	file: string;
 	durationMs: number;
 	threw: boolean;
+	pending: boolean;
 }): void => {
 	const properties = {
 		organization_id: ctx.organizationId,
@@ -276,6 +280,7 @@ export const captureSlowServerFn = (ctx: {
 		server_fn_file: ctx.file,
 		duration_ms: Math.round(ctx.durationMs),
 		threw: ctx.threw,
+		pending: ctx.pending,
 	};
 	getPostHogClient()?.capture({
 		distinctId: ctx.userId ?? "server-fn-anonymous",

@@ -107,6 +107,38 @@ describe("slow server functions", () => {
 			expect(sent).toMatchObject([{ properties: { threw: true } }]);
 		}));
 
+	/** A call that ends after `endMs` real time; the pending mark is `markMs`. */
+	const lateCall = async (markMs: number, endMs: number, headers: Headers) => {
+		await captureFailure(
+			{
+				next: () => Bun.sleep(endMs).then(() => 1),
+				serverFnMeta: META,
+			},
+			() => headers,
+			markMs,
+		);
+	};
+
+	test("a call still pending at the mark sends one pending event", () =>
+		withClient(async () => {
+			await lateCall(10, 60, new Headers());
+			const sent = await waitForEventOf(10);
+			// The finish of the same call sends no second event.
+			await Bun.sleep(50);
+			expect(events()).toHaveLength(1);
+			expect(sent[0]).toMatchObject({
+				event: "server_fn_slow",
+				properties: { server_fn_id: "abc", duration_ms: 10, pending: true },
+			});
+		}));
+
+	test("a call that ends before the mark sends no pending event", () =>
+		withClient(async () => {
+			await lateCall(50, 1, new Headers());
+			await Bun.sleep(100);
+			expect(events()).toHaveLength(0);
+		}));
+
 	test("two slow calls of one request send one event", () =>
 		withClient(async () => {
 			const headers = new Headers();
