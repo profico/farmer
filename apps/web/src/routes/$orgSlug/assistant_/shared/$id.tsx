@@ -163,17 +163,20 @@ function SharedChatPage() {
 		<PageFull>
 			<div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 py-6">
 				<div className="flex flex-wrap items-center gap-3 rounded-card bg-inset px-3.5 py-3 text-sm">
-					<InfoIcon weight="regular" className="size-4 shrink-0 text-ink-2" />
-					<Avatar size="sm">
-						{data.sharedBy.image && (
-							<AvatarImage src={data.sharedBy.image} alt="" />
-						)}
-						<AvatarFallback>{data.sharedBy.name.slice(0, 1)}</AvatarFallback>
-					</Avatar>
-					<p className="min-w-0 flex-1">
-						Shared by {data.sharedBy.name} on <When date={data.sharedAt} />. It
-						can show data that you cannot normally see.
-					</p>
+					{/* The min width wraps the buttons to their own row on a phone. */}
+					<div className="flex min-w-[min(100%,20rem)] flex-1 items-center gap-3">
+						<InfoIcon weight="regular" className="size-4 shrink-0 text-ink-2" />
+						<Avatar size="sm">
+							{data.sharedBy.image && (
+								<AvatarImage src={data.sharedBy.image} alt="" />
+							)}
+							<AvatarFallback>{data.sharedBy.name.slice(0, 1)}</AvatarFallback>
+						</Avatar>
+						<p className="min-w-0 flex-1">
+							Shared by {data.sharedBy.name} on <When date={data.sharedAt} />.
+							It can show data that you cannot normally see.
+						</p>
+					</div>
 					<OpenInApp orgSlug={orgSlug} id={id} />
 					{isAdmin && <StopSharing orgSlug={orgSlug} id={id} />}
 				</div>
