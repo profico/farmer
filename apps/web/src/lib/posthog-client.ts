@@ -67,6 +67,19 @@ export function startPostHog({
 	return posthog;
 }
 
+// Firefox and Safari reject an in-flight fetch with a `TypeError` on unload.
+let unloading = false;
+export function watchUnload(target: EventTarget): void {
+	target.addEventListener("pagehide", () => {
+		unloading = true;
+	});
+	// A page that returns from the back/forward cache is alive again.
+	target.addEventListener("pageshow", () => {
+		unloading = false;
+	});
+}
+if (globalThis.window) watchUnload(globalThis.window);
+
 /** The call signature of `fetch`, as TanStack's `CustomFetch` has it. */
 type FetchFn = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
 
@@ -90,7 +103,13 @@ export function fetchReportingNetworkErrors(
 		try {
 			return await baseFetch(input, init);
 		} catch (error) {
-			if (error instanceof TypeError && posthog.__loaded) {
+			if (
+				error instanceof TypeError &&
+				posthog.__loaded &&
+				!unloading &&
+				!(init?.signal ?? (input instanceof Request ? input.signal : null))
+					?.aborted
+			) {
 				posthog.capture("server_fn_network_error", {
 					server_fn_id: serverFnId,
 					message: error.message,

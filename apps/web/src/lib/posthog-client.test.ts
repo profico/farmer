@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import posthog from "posthog-js";
 
-import { fetchReportingNetworkErrors } from "./posthog-client";
+import { fetchReportingNetworkErrors, watchUnload } from "./posthog-client";
 
 describe("fetchReportingNetworkErrors", () => {
 	const capture = spyOn(posthog, "capture").mockImplementation(() => undefined);
@@ -40,6 +40,35 @@ describe("fetchReportingNetworkErrors", () => {
 
 		expect(await callWith(() => Promise.resolve(answer))).toBe(answer);
 		expect(capture).not.toHaveBeenCalled();
+	});
+
+	test("a rejection after the caller aborted sends nothing", async () => {
+		const error = new TypeError("Load failed");
+		const controller = new AbortController();
+		controller.abort();
+		const base = () => Promise.reject(error);
+
+		const result = await fetchReportingNetworkErrors("abc", base)(
+			"/_serverFn/abc",
+			{ signal: controller.signal },
+		).catch((e: Error) => e);
+
+		expect(result).toBe(error);
+		expect(capture).not.toHaveBeenCalled();
+	});
+
+	test("a rejection while the page unloads sends nothing until pageshow", async () => {
+		const page = new EventTarget();
+		watchUnload(page);
+		const error = new TypeError("NetworkError when attempting to fetch");
+
+		page.dispatchEvent(new Event("pagehide"));
+		expect(await callWith(() => Promise.reject(error))).toBe(error);
+		expect(capture).not.toHaveBeenCalled();
+
+		page.dispatchEvent(new Event("pageshow"));
+		expect(await callWith(() => Promise.reject(error))).toBe(error);
+		expect(capture).toHaveBeenCalledTimes(1);
 	});
 
 	test("an aborted fetch sends nothing", async () => {
