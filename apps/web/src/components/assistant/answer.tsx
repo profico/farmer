@@ -141,6 +141,8 @@ const revealWords = (part: string, at: number) => {
 	));
 };
 
+const BR = /<br\s*\/?>\n?/gi;
+
 /** Inline `code`, **bold**, *italic*, [links](…) and `[[date]]` citations, in
  *  one pass so none of them can swallow another.
  *
@@ -151,8 +153,6 @@ const revealWords = (part: string, at: number) => {
  *  cumulative WORD count is stable instead — a closing `**` that finally lands
  *  re-splits the line around itself without changing how many words are on it,
  *  because the marker's characters belong to the word they are attached to. */
-const BR = /<br\s*\/?>\n?/gi;
-
 const renderInline = (text: string, reveal = false) => {
 	// Models write `<br>` for a line break. Replace it after the split, so that
 	// a `*...*` span over a `<br>` stays one span.
