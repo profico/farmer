@@ -21,7 +21,7 @@ import {
 } from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
-	weekStart: dayKeySchema.optional(),
+	weekStart: dayKeySchema.optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/$orgSlug/time/week")({
