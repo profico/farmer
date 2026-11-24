@@ -241,7 +241,17 @@ export function DayView({
 				/>
 			</div>
 
-			<div className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
+			{/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a click on the empty space under the list opens Log time; the add row is the keyboard path */}
+			<div
+				className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8"
+				onClick={(event) => {
+					if (event.target !== event.currentTarget) return;
+					// The add row is the only button directly in this box.
+					event.currentTarget
+						.querySelector<HTMLButtonElement>(":scope > button")
+						?.click();
+				}}
+			>
 				{/* No AnimatePresence: a row's delete collapse is owned by the row
 				    itself (see EntryBlockRow). Presence only knows that a row left,
 				    not why — so stepping to another day, which replaces every entry
