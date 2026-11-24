@@ -141,6 +141,8 @@ const revealWords = (part: string, at: number) => {
 	));
 };
 
+const BR = /<br\s*\/?>\n?/gi;
+
 /** Inline `code`, **bold**, *italic*, [links](…) and `[[date]]` citations, in
  *  one pass so none of them can swallow another.
  *
@@ -152,9 +154,13 @@ const revealWords = (part: string, at: number) => {
  *  re-splits the line around itself without changing how many words are on it,
  *  because the marker's characters belong to the word they are attached to. */
 const renderInline = (text: string, reveal = false) => {
-	const parts = text.split(
-		/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
-	);
+	// Models write `<br>` for a line break. Replace it after the split, so that
+	// a `*...*` span over a `<br>` stays one span.
+	const parts = text
+		.split(
+			/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
+		)
+		.map((part) => (part.startsWith("`") ? part : part.replace(BR, "\n")));
 	let cursor = 0;
 	return parts.map((part, index) => {
 		const at = cursor;
@@ -307,7 +313,8 @@ function AnswerTable({
 		return [
 			alignClass[column?.align ?? "left"],
 			column?.numeric === true ? "tabular-nums" : "",
-			column?.wraps === false ? "whitespace-nowrap" : "",
+			// Both keep a `<br>` break. Only `pre` stops a wrap.
+			column?.wraps === false ? "whitespace-pre" : "whitespace-pre-line",
 			// A floor under the PROSE column only, for the phone: five columns
 			// cannot all fit there, and prose is the only one allowed to shrink, so
 			// it collapses into a two-word ribbon forty lines deep while every short
@@ -560,7 +567,7 @@ export function Answer({
 					return (
 						<div
 							key={key}
-							className="mt-1 font-medium text-ink first:mt-0 [&:not(:first-child)]:pt-0.5"
+							className="mt-1 whitespace-pre-line font-medium text-ink first:mt-0 [&:not(:first-child)]:pt-0.5"
 						>
 							{renderInline(block.text, reveal)}
 						</div>
@@ -578,7 +585,9 @@ export function Answer({
 									<span className="shrink-0 text-ink-3 tabular-nums">
 										{itemIndex + 1}.
 									</span>
-									<span className="min-w-0">{renderInline(item, reveal)}</span>
+									<span className="min-w-0 whitespace-pre-line">
+										{renderInline(item, reveal)}
+									</span>
 								</li>
 							))}
 						</ol>
@@ -597,7 +606,9 @@ export function Answer({
 										aria-hidden
 										className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-3"
 									/>
-									<span className="min-w-0">{renderInline(item, reveal)}</span>
+									<span className="min-w-0 whitespace-pre-line">
+										{renderInline(item, reveal)}
+									</span>
 								</li>
 							))}
 						</ul>
