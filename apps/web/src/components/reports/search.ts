@@ -26,38 +26,49 @@ const monthKey = z.string().regex(/^\d{4}-\d{2}$/);
 // Week and Custom; `preset` widens or narrows it, and `from`/`to` carry a week
 // or a custom range.
 export const periodSearch = {
-	month: monthKey.optional(),
-	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
-	from: dayKeySchema.optional(),
-	to: dayKeySchema.optional(),
+	month: monthKey.optional().catch(undefined),
+	preset: z
+		.enum(["week", "month", "quarter", "year", "custom"])
+		.optional()
+		.catch(undefined),
+	from: dayKeySchema.optional().catch(undefined),
+	to: dayKeySchema.optional().catch(undefined),
 };
 const periodSearchSchema = z.object(periodSearch);
 export type PeriodSearch = z.infer<typeof periodSearchSchema>;
 
 export const searchSchema = z.object({
-	// A tab that no longer exists (a bookmark to a removed report, a typo) is
-	// treated as no tab at all and lands on Time, rather than failing the whole
-	// route's search validation and showing the error page.
+	// A bad value (an old bookmark, a typo) reads as absent. A refused search
+	// param would fail the whole route and show the error page.
 	tab: z
 		.enum(["time", "overtime", "compliance", "absence"])
 		.optional()
 		.catch(undefined),
 	// The Time tab's own sub-grouping, mirroring Harvest's three tabs.
-	group: z.enum(["clients", "projects", "teammates"]).optional(),
+	group: z
+		.enum(["clients", "projects", "teammates"])
+		.optional()
+		.catch(undefined),
 	...periodSearch,
 	// "Active projects only".
 	active: searchFlag,
 	// The Breakdown: the entries behind a number, under up to four filters, in
 	// one of five groupings. Filters are ids so a link survives a rename.
-	view: z.literal("breakdown").optional(),
+	view: z.literal("breakdown").optional().catch(undefined),
 	client: z.string().optional(),
 	project: z.string().optional(),
 	task: z.string().optional(),
 	person: z.string().optional(),
-	by: z.enum(["client", "project", "task", "teammate", "date"]).optional(),
+	by: z
+		.enum(["client", "project", "task", "teammate", "date"])
+		.optional()
+		.catch(undefined),
 	// The Absence report's view: one kind of time-off, or "other" for
 	// everything that is not vacation. Absent = all of it.
-	type: z.enum(["vacation", "sick", "paid", "other"]).optional(),
+	type: z
+		.enum(["vacation", "sick", "paid", "other"])
+		.optional()
+		.catch(undefined),
 });
 
 export type Search = z.infer<typeof searchSchema>;
