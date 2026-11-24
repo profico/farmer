@@ -21,7 +21,7 @@ import {
 } from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
-	date: dayKeySchema.optional(),
+	date: dayKeySchema.optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/$orgSlug/time/")({

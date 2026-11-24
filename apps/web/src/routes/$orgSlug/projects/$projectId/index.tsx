@@ -47,7 +47,7 @@ const PROJECT_GROUPS = ["teammate", "task", "date"] as const;
 
 const searchSchema = z.object({
 	...periodSearch,
-	by: z.enum(PROJECT_GROUPS).optional(),
+	by: z.enum(PROJECT_GROUPS).optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/$orgSlug/projects/$projectId/")({
