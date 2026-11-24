@@ -15,6 +15,7 @@ import {
 // `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
 // stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useRef } from "react";
 import { toast } from "sonner";
 
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
@@ -71,6 +72,9 @@ export function DayView({
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const timedEntryId = useTimedEntryId(orgSlug);
+	// A drag that ends on the empty space also clicks it; only a press that
+	// started there opens Log time.
+	const pressedEmpty = useRef(false);
 	// Read without suspending: the strip's "short" marks are a courtesy, and the
 	// day must never wait on them.
 	const { data: targets } = useQuery({
@@ -244,8 +248,12 @@ export function DayView({
 			{/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a click on the empty space under the list opens Log time; the add row is the keyboard path */}
 			<div
 				className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8"
+				onPointerDown={(event) => {
+					pressedEmpty.current = event.target === event.currentTarget;
+				}}
 				onClick={(event) => {
-					if (event.target !== event.currentTarget) return;
+					if (event.target !== event.currentTarget || !pressedEmpty.current)
+						return;
 					// The add row is the only button directly in this box.
 					event.currentTarget
 						.querySelector<HTMLButtonElement>(":scope > button")
