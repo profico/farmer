@@ -1,6 +1,6 @@
 // Rewind: a person's year in review, opened every December.
 //
-// Pure and browser-safe. The home page decides whether to offer a Rewind and
+// Pure and browser-safe. The web app's nav decides whether to offer a Rewind and
 // the service decides whether to answer one, and the two must agree on the
 // same day, so both read the rules from here.
 
@@ -19,7 +19,7 @@ export const isRewindOpen = (year: number, today: string): boolean =>
 	year < yearOf(today) ||
 	(year === yearOf(today) && monthOf(today) >= REWIND_OPENS_MONTH);
 
-/** The Rewind the home page offers on `today`, or null. This year's through
+/** The Rewind the nav offers on `today`, or null. This year's through
  *  December, and last year's through January, so somebody back from the
  *  holidays still finds it. */
 export const featuredRewindYear = (today: string): number | null => {

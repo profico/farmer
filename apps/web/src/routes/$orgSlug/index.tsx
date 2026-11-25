@@ -17,7 +17,6 @@ import { AutoTrackedList } from "#/components/org-home/auto-tracked.tsx";
 import { SelectedDayEntries } from "#/components/org-home/day-entries.tsx";
 import { OrgHomeStatBand } from "#/components/org-home/stat-band.tsx";
 import { WeekChart } from "#/components/org-home/week-chart.tsx";
-import { RewindBanner } from "#/components/rewind/rewind-banner.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
@@ -145,7 +144,6 @@ function OrgHome() {
 		<Page className="flex flex-col">
 			<GithubReconnectBanner orgSlug={organization.slug} />
 			<AutoTrackNag orgSlug={organization.slug} />
-			<RewindBanner orgSlug={organization.slug} today={today} />
 			<PageHeader
 				eyebrow={formatDayKey(today)}
 				title={`${greetingForHour(hour)}, ${firstName}`}

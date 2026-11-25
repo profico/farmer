@@ -143,7 +143,8 @@ export async function drawShareCard(
 		ctx.fillText(tile.label.toUpperCase(), x, y + 84);
 		ctx.letterSpacing = "0px";
 		ctx.globalAlpha = 1;
-		fitText(ctx, tile.value, x, y + 190, tileW - 96, 88, 56);
+		// 48px is the floor that still fits "The Weekend Warrior" in a tile.
+		fitText(ctx, tile.value, x, y + 190, tileW - 96, 88, 48);
 	});
 
 	ctx.globalAlpha = 0.5;

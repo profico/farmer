@@ -122,9 +122,8 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
 					transition={heightTransition}
-					// An inset card, the same shape as GithubReconnectBanner and
-					// RewindBanner, because all three share one slot and any two of
-					// them can be up at once. This box used to bleed to the island's
+					// An inset card, the same shape as GithubReconnectBanner, because
+					// the two share one slot and can be up at once. This box used to bleed to the island's
 					// own edge on a negative top margin, which only held while it was
 					// the first thing on the page: with the reconnect banner above it
 					// the margin pulled it 28px up and over that banner's text.
