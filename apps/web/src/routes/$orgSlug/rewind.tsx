@@ -21,11 +21,12 @@ import {
 } from "#/components/rewind/rewind-story.tsx";
 import { THEMES } from "#/components/rewind/slides.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { markRewindSeen } from "#/lib/rewind-entry.ts";
 import { browserEnv, reloadIfStaleChunk } from "#/lib/stale-chunk.ts";
 import { myRewindQuery } from "#/queries/rewind.ts";
 
 const searchSchema = z.object({
-	// No year: the one the home page would offer, else last year's.
+	// No year: the one the sidebar would offer, else last year's.
 	year: z.number().int().min(2000).max(2100).optional().catch(undefined),
 	// Development only — the server drops it in production. Reads the year as
 	// of that day, so December's projection can be looked at in any month.
@@ -76,8 +77,18 @@ function useClose() {
 	const canGoBack = useCanGoBack();
 	const navigate = useNavigate();
 	return () => {
-		if (canGoBack) router.history.back();
-		else void navigate({ to: "/$orgSlug", params: { orgSlug } });
+		if (canGoBack) {
+			// `history.back()` takes no options, so the flag goes on the router.
+			// oxlint-disable-next-line react/immutability -- the router is a mutable instance, and its next load reads this flag
+			router.shouldViewTransition = true;
+			router.history.back();
+		} else {
+			void navigate({
+				to: "/$orgSlug",
+				params: { orgSlug },
+				viewTransition: true,
+			});
+		}
 	};
 }
 
@@ -134,6 +145,7 @@ function OpenRewind({
 	const { data: rewind } = useSuspenseQuery(
 		myRewindQuery(orgSlug, { year, asOf }),
 	);
+	useEffect(() => markRewindSeen(year), [year]);
 	return (
 		<RewindStory
 			rewind={rewind}

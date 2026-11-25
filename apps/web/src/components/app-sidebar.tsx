@@ -1,3 +1,4 @@
+import { featuredRewindYear } from "@farmer/core/lib/rewind";
 import {
 	ArrowUpRightIcon,
 	CaretDoubleLeftIcon,
@@ -6,6 +7,7 @@ import {
 	ChatCircleDotsIcon,
 	GithubLogoIcon,
 	MoonIcon,
+	RewindIcon,
 	SignOutIcon,
 	SunIcon,
 	UserSwitchIcon,
@@ -56,6 +58,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "#/components/ui/tooltip.tsx";
+import { useToday } from "#/hooks/use-today.ts";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { stopImpersonating } from "#/lib/impersonation.ts";
@@ -77,6 +80,7 @@ import {
 	SETTINGS_ITEM,
 	WORK_ITEMS,
 } from "#/lib/nav-items.ts";
+import { REWIND_GRADIENT, useRewindSeen } from "#/lib/rewind-entry.ts";
 import { useTheme } from "#/lib/theme.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
@@ -506,6 +510,11 @@ export function AppSidebar({
 							{impersonating !== null && (
 								<ImpersonationRow name={impersonating} collapsed={collapsed} />
 							)}
+							<RewindRow
+								orgSlug={orgSlug}
+								timezone={timezone}
+								collapsed={collapsed}
+							/>
 							<CollapseToggle
 								collapsed={navCollapsed}
 								hidden={panel !== null || navForced}
@@ -787,6 +796,73 @@ function ImpersonationRow({
 			/>
 			<TooltipContent side="right" sideOffset={8} hidden={!collapsed}>
 				Impersonating {name} — stop
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/**
+ * The way in to the Rewind, through December and January only
+ * (`featuredRewindYear`). Bright until this device opens it once, then a plain
+ * row. `.rewind-entry` in styles.css morphs it into the story.
+ */
+function RewindRow({
+	orgSlug,
+	timezone,
+	collapsed,
+}: {
+	orgSlug: string;
+	timezone: string;
+	collapsed: boolean;
+}) {
+	const year = featuredRewindYear(useToday(timezone));
+	const seen = useRewindSeen(year);
+	if (year === null) return null;
+	const label = `Your ${year} Rewind`;
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Link
+						to="/$orgSlug/rewind"
+						params={{ orgSlug }}
+						search={{ year }}
+						viewTransition
+						// Only on the rail: expanded, the visible label is the name.
+						aria-label={collapsed ? label : undefined}
+						className={cn(
+							navRowClass,
+							!seen &&
+								"text-[#fbf8ff] transition-[filter,transform] hover:text-[#fbf8ff] hover:brightness-110",
+						)}
+					>
+						{/* The part that grows into the story: the ground alone, so the
+						    label is not blown up with it. */}
+						<span
+							aria-hidden
+							className="rewind-entry absolute inset-0 rounded-xl"
+							style={{ background: seen ? undefined : REWIND_GRADIENT }}
+						/>
+						<RewindIcon
+							weight={seen ? "regular" : "fill"}
+							className="relative size-4.5 shrink-0"
+							style={seen ? undefined : { color: "#ffd27a" }}
+						/>
+						<span className="nav-label">
+							<span className="min-w-0 flex-1 truncate text-base">
+								Rewind {year}
+							</span>
+							{!seen && (
+								<span className="shrink-0 rounded-full bg-[#ffd27a] px-1.5 py-0.5 text-2xs leading-none font-medium text-[#1b1a17]">
+									New
+								</span>
+							)}
+						</span>
+					</Link>
+				}
+			/>
+			<TooltipContent side="right" sideOffset={8} hidden={!collapsed}>
+				{label}
 			</TooltipContent>
 		</Tooltip>
 	);

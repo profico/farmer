@@ -95,6 +95,18 @@ describe("the slides", () => {
 		);
 	});
 
+	test("a year pattern names the persona before the task group", () => {
+		const streak = { days: 30, from: "2025-01-06", to: "2025-02-14" };
+		expect(personaFor({ ...year, longestStreak: streak }).title).toBe(
+			"The Marathoner",
+		);
+		expect(personaFor({ ...year, weekendDaysWorked: 10 }).title).toBe(
+			"The Weekend Warrior",
+		);
+		const even = year.months.map((m) => ({ ...m, seconds: 130 * 3600 }));
+		expect(personaFor({ ...year, months: even }).title).toBe("The Steady Hand");
+	});
+
 	test("the shared text holds the summary", () => {
 		expect(shareText(year)).toContain("Biggest month: June");
 		expect(shareText(year)).toContain("Hours: 1,600");

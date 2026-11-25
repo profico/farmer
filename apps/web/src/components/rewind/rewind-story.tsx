@@ -265,6 +265,7 @@ export function RewindFrame({
 				aria-label={label}
 				tabIndex={-1}
 				className="fixed inset-0 z-100 m-0 flex size-full max-h-none max-w-none flex-col overflow-hidden border-0 p-0 outline-none select-none"
+				data-rewind
 				initial={false}
 				animate={{ backgroundColor: theme.bg, color: theme.fg }}
 				transition={{ duration: 0.6, ease: EASE }}

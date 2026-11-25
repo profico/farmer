@@ -5,6 +5,19 @@ import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
 import { easeOut } from "#/lib/motion.ts";
 
+import {
+	daysHeadline,
+	githubHeadline,
+	type Headline as HeadlineText,
+	hoursHeadline,
+	monthsHeadline,
+	projectsHeadline,
+	tasksHeadline,
+	wordsHeadline,
+	yearChange,
+} from "./headlines.ts";
+import { personaFor } from "./personas.ts";
+
 // The slides of a Rewind. Each is a full screen of one color and one idea,
 // set large: the serif names the moment, the mono carries the number.
 
@@ -150,27 +163,75 @@ function CountUp({
 
 function Eyebrow({ children }: { children: ReactNode }) {
 	return (
-		<Rise className="text-sm font-medium tracking-[0.18em] uppercase opacity-75">
+		<Rise className="flex items-center gap-3 text-sm font-medium tracking-[0.18em] uppercase opacity-75">
+			<span aria-hidden className="h-px w-8 shrink-0 bg-current" />
 			{children}
 		</Rise>
 	);
 }
 
-function Headline({ children }: { children: ReactNode }) {
-	return (
-		<Rise className="serif text-5xl leading-[0.95] text-balance sm:text-7xl">
-			{children}
-		</Rise>
-	);
-}
+const HEADLINE_SIZE = {
+	lg: "clamp(2.75rem, calc(9 * var(--vw)), 5.75rem)",
+	// For a slide that has a list or a chart under its headline.
+	md: "clamp(2.25rem, calc(6.5 * var(--vw)), 4rem)",
+};
 
-function Big({ children }: { children: ReactNode }) {
+/** A serif headline. With `line`, its `mark` is set in italic accent. */
+function Headline({
+	line,
+	theme,
+	size = "lg",
+	children,
+}: {
+	line?: HeadlineText;
+	theme?: RewindTheme;
+	size?: keyof typeof HEADLINE_SIZE;
+	children?: ReactNode;
+}) {
 	return (
 		<Rise
-			className="mono leading-none"
-			// Sized to the viewport: the number is the slide.
+			className="serif leading-[0.95] tracking-[-0.015em] text-balance"
+			style={{ fontSize: HEADLINE_SIZE[size] }}
 		>
+			{line ? <Accented line={line} theme={theme} /> : children}
+		</Rise>
+	);
+}
+
+function Accented({
+	line,
+	theme,
+}: {
+	line: HeadlineText;
+	theme?: RewindTheme;
+}) {
+	const at = line.mark ? line.text.indexOf(line.mark) : -1;
+	if (!line.mark || at < 0) return line.text;
+	return (
+		<>
+			{line.text.slice(0, at)}
+			<em className="italic" style={{ color: theme?.accent }}>
+				{line.mark}
+			</em>
+			{line.text.slice(at + line.mark.length)}
+		</>
+	);
+}
+
+/** The slide's number, sized to the viewport, with its unit set beside it. */
+function Big({
+	children,
+	unit,
+	theme,
+}: {
+	children: ReactNode;
+	unit?: string;
+	theme?: RewindTheme;
+}) {
+	return (
+		<Rise className="flex flex-wrap items-baseline gap-x-4 leading-none">
 			<span
+				className="mono"
 				style={{
 					fontSize: "clamp(5rem, calc(22 * var(--vw)), 13rem)",
 					letterSpacing: "-0.06em",
@@ -178,6 +239,17 @@ function Big({ children }: { children: ReactNode }) {
 			>
 				{children}
 			</span>
+			{unit && (
+				<span
+					className="serif italic"
+					style={{
+						fontSize: "clamp(2.5rem, calc(8 * var(--vw)), 5rem)",
+						color: theme?.accent,
+					}}
+				>
+					{unit}
+				</span>
+			)}
 		</Rise>
 	);
 }
@@ -233,7 +305,7 @@ export function IntroSlide({
 					{rewind.year}
 				</span>
 			</Rise>
-			<Line>{firstName}, this was your year in hours.</Line>
+			<Line>{firstName}, here is your year, hour by hour.</Line>
 			{!rewind.complete && (
 				<Note>
 					The year is not over yet. What is still to come is projected from your
@@ -262,32 +334,34 @@ export function HoursSlide({
 	rewind: Rewind;
 	theme: RewindTheme;
 }) {
-	const previous = rewind.previousYearWorkedSeconds;
-	const change =
-		previous != null
-			? Math.round(((rewind.workedSeconds - previous) / previous) * 100)
-			: null;
+	const workingDays = Math.round(rewind.workedSeconds / 28_800);
+	const headline = hoursHeadline({
+		year: rewind.year,
+		change: yearChange(
+			rewind.workedSeconds,
+			rewind.projectedWorkedSeconds,
+			rewind.previousYearWorkedSeconds,
+		),
+		complete: rewind.complete,
+		workingDays,
+	});
 	return (
 		<Stagger className="flex flex-col gap-5">
-			<Eyebrow>You logged</Eyebrow>
-			<Big>
+			<Eyebrow>The total</Eyebrow>
+			<Big
+				unit={wholeHours(rewind.workedSeconds) === "1" ? "hour" : "hours"}
+				theme={theme}
+			>
 				<CountUp value={rewind.workedSeconds} unit="hours" />
 			</Big>
-			<Headline>hours of work.</Headline>
-			<Line>
-				That is{" "}
-				<Mark theme={theme}>
-					{plural(Math.round(rewind.workedSeconds / 28_800), "working day")}
-				</Mark>{" "}
-				back to back.
-				{change != null && change !== 0 && (
-					<>
-						{" "}
-						{change > 0 ? `${change}% more` : `${-change}% less`} than in{" "}
-						{rewind.year - 1}.
-					</>
-				)}
-			</Line>
+			<Headline line={headline} theme={theme} />
+			{workingDays > 0 && (
+				<Line>
+					That is{" "}
+					<Mark theme={theme}>{plural(workingDays, "working day")}</Mark> back
+					to back.
+				</Line>
+			)}
 			{rewind.projectedWorkedSeconds != null && (
 				<Note>
 					At your pace, you finish {rewind.year} at about{" "}
@@ -308,17 +382,15 @@ export function DaysSlide({
 	const streak = rewind.longestStreak;
 	return (
 		<Stagger className="flex flex-col gap-5">
-			<Eyebrow>You showed up on</Eyebrow>
-			<Big>
+			<Eyebrow>Days at work</Eyebrow>
+			<Big unit={rewind.daysWorked === 1 ? "day" : "days"} theme={theme}>
 				<CountUp value={rewind.daysWorked} />
 			</Big>
-			<Headline>days.</Headline>
-			{streak && streak.days > 1 && (
+			<Headline line={daysHeadline(streak?.days ?? null)} theme={theme} />
+			{streak && streak.days >= 5 && (
 				<Line>
-					Your longest run was{" "}
-					<Mark theme={theme}>{plural(streak.days, "working day")}</Mark> in a
-					row, from {SHORT_DAY.format(dayOf(streak.from))} to{" "}
-					{SHORT_DAY.format(dayOf(streak.to))}.
+					From {SHORT_DAY.format(dayOf(streak.from))} to{" "}
+					{SHORT_DAY.format(dayOf(streak.to))}, without a gap.
 				</Line>
 			)}
 			{rewind.weekendDaysWorked > 0 && (
@@ -353,10 +425,14 @@ export function MonthsSlide({
 	return (
 		<Stagger className="flex flex-col gap-8">
 			<Eyebrow>Month by month</Eyebrow>
-			<Headline>
-				<Mark theme={theme}>{monthName(busiest.month)}</Mark> was your biggest
-				month.
-			</Headline>
+			<Headline
+				size="md"
+				theme={theme}
+				line={monthsHeadline(
+					monthName(busiest.month),
+					rewind.months.map((m) => m.seconds),
+				)}
+			/>
 			<Rise>
 				<div
 					className="flex items-end gap-1.5 sm:gap-3"
@@ -426,22 +502,23 @@ export function BigDaySlide({
 	const strongest = rewind.weekdays.indexOf(Math.max(...rewind.weekdays));
 	return (
 		<Stagger className="flex flex-col gap-6">
-			<Eyebrow>Your biggest day</Eyebrow>
+			<Eyebrow>Your longest day</Eyebrow>
 			{day && (
-				<>
-					<Headline>{LONG_DAY.format(dayOf(day.date))}</Headline>
-					<Line>
-						<Mark theme={theme}>{tenthHours(day.seconds)} hours</Mark> in one
-						day.
-					</Line>
-				</>
+				<Headline
+					theme={theme}
+					line={{
+						text: `${tenthHours(day.seconds)} hours, on ${LONG_DAY.format(dayOf(day.date))}.`,
+						mark: `${tenthHours(day.seconds)} hours`,
+					}}
+				/>
 			)}
 			<Line>
-				{weekdayName(strongest)}s were your strongest day of the week.
+				<Mark theme={theme}>{weekdayName(strongest)}s</Mark> carried the most
+				hours of the week.
 			</Line>
 			{rewind.overtimeSeconds > 0 && (
 				<Note>
-					{wholeHours(rewind.overtimeSeconds)} hours of it was overtime.
+					{wholeHours(rewind.overtimeSeconds)} hours of the year were overtime.
 				</Note>
 			)}
 		</Stagger>
@@ -456,9 +533,15 @@ export function ProjectsSlide({
 	theme: RewindTheme;
 }) {
 	const top = rewind.projects[0]?.seconds ?? 1;
+	const headline = projectsHeadline({
+		topName: rewind.projects[0]?.name ?? "",
+		share: top / Math.max(1, rewind.workedSeconds),
+		projectCount: rewind.projectCount,
+	});
 	return (
 		<Stagger className="flex flex-col gap-7">
 			<Eyebrow>Where your hours went</Eyebrow>
+			<Headline size="md" line={headline} theme={theme} />
 			<div className="flex flex-col gap-5">
 				{rewind.projects.map((p, i) => (
 					<Rise key={p.id} className="flex items-center gap-4">
@@ -524,9 +607,17 @@ export function TasksSlide({
 	theme: RewindTheme;
 }) {
 	const total = Math.max(1, rewind.workedSeconds);
+	const lead = rewind.groups[0];
 	return (
 		<Stagger className="flex flex-col gap-7">
 			<Eyebrow>How you spent it</Eyebrow>
+			{lead && (
+				<Headline
+					size="md"
+					theme={theme}
+					line={tasksHeadline(lead.group, lead.seconds / total)}
+				/>
+			)}
 			<Rise>
 				<div className="flex h-5 overflow-hidden rounded-full">
 					{rewind.groups.map((g, i) => (
@@ -587,18 +678,25 @@ export function WordsSlide({
 	rewind: Rewind;
 	theme: RewindTheme;
 }) {
-	const most = rewind.words[0]?.count ?? 1;
+	const [first, ...rest] = rewind.words;
+	const most = first?.count ?? 1;
 	return (
 		<Stagger className="flex flex-col gap-6">
-			<Eyebrow>Your year in {rewind.words.length} words</Eyebrow>
+			<Eyebrow>In your own words</Eyebrow>
+			{first && (
+				<Headline
+					size="md"
+					theme={theme}
+					line={wordsHeadline(first.word, first.count)}
+				/>
+			)}
 			<div className="flex flex-col">
-				{rewind.words.map((w, i) => (
+				{rest.map((w) => (
 					<Rise key={w.word} className="flex items-baseline gap-4">
 						<span
 							className="serif leading-[1.05]"
 							style={{
-								fontSize: `clamp(2.5rem, ${6 + (w.count / most) * 6}vw, ${4 + (w.count / most) * 4}rem)`,
-								color: i === 0 ? theme.accent : undefined,
+								fontSize: `clamp(2rem, calc(${4 + (w.count / most) * 5} * var(--vw)), ${3 + (w.count / most) * 3}rem)`,
 							}}
 						>
 							{w.word}
@@ -607,7 +705,7 @@ export function WordsSlide({
 					</Rise>
 				))}
 			</div>
-			<Note>The words you wrote most in your notes.</Note>
+			<Note>Then these. All from your notes.</Note>
 		</Stagger>
 	);
 }
@@ -627,8 +725,15 @@ export function GithubSlide({
 	].filter((f) => f.value > 0);
 	return (
 		<Stagger className="flex flex-col gap-8">
-			<Eyebrow>From GitHub</Eyebrow>
-			<Headline>You shipped.</Headline>
+			<Eyebrow>On GitHub</Eyebrow>
+			<Headline
+				size="md"
+				theme={theme}
+				line={githubHeadline({
+					commits: rewind.commits,
+					...rewind.pullRequests,
+				})}
+			/>
 			<div className="grid grid-cols-2 gap-x-6 gap-y-8">
 				{figures.map((f) => (
 					<Rise key={f.label}>
@@ -659,18 +764,27 @@ export function TimeOffSlide({
 	const { vacationDays, sickDays, otherDays, aheadDays } = rewind.timeOff;
 	const days = (n: number) =>
 		`${numbers.format(n)} ${n === 1 ? "day" : "days"}`;
+	// The first kind of leave the person took is the headline.
+	const kinds = [
+		{ n: vacationDays, label: "of vacation." },
+		{ n: sickDays, label: "of sick leave. Hope you are well." },
+		{ n: otherDays, label: "of other leave." },
+	].filter((kind) => kind.n > 0);
+	const [lead, ...others] = kinds;
 	return (
 		<Stagger className="flex flex-col gap-6">
-			<Eyebrow>Time away</Eyebrow>
-			{vacationDays > 0 && (
-				<Headline>
-					<Mark theme={theme}>{days(vacationDays)}</Mark> of vacation.
-				</Headline>
+			<Eyebrow>Time off</Eyebrow>
+			{lead && (
+				<Headline
+					theme={theme}
+					line={{ text: `${days(lead.n)} ${lead.label}`, mark: days(lead.n) }}
+				/>
 			)}
-			{sickDays > 0 && (
-				<Line>{days(sickDays)} of sick leave. Hope you are well.</Line>
-			)}
-			{otherDays > 0 && <Line>{days(otherDays)} of other leave.</Line>}
+			{others.map((kind) => (
+				<Line key={kind.label}>
+					{days(kind.n)} {kind.label}
+				</Line>
+			))}
 			{aheadDays > 0 ? (
 				<Note>Still ahead of you: {days(aheadDays)}. Enjoy it.</Note>
 			) : (
@@ -679,45 +793,6 @@ export function TimeOffSlide({
 		</Stagger>
 	);
 }
-
-const PERSONAS = {
-	engineering: {
-		title: "The Builder",
-		line: "Most of your year went into making things.",
-	},
-	product: {
-		title: "The Strategist",
-		line: "You spent the year deciding what gets made, and why.",
-	},
-	learning: {
-		title: "The Scholar",
-		line: "You gave more hours to learning than most people plan to.",
-	},
-	general: {
-		title: "The All-Rounder",
-		line: "No single lane. A bit of everything, all year.",
-	},
-	time_off: {
-		title: "The Traveller",
-		line: "A year well rested.",
-	},
-} satisfies Record<
-	Rewind["groups"][number]["group"],
-	{ title: string; line: string }
->;
-
-/** Who the year says you are: the Connector when meetings took over a third
- *  of it, otherwise the group most of the hours went to. */
-export const personaFor = (rewind: Rewind) => {
-	if (rewind.meetingSeconds / Math.max(1, rewind.workedSeconds) > 1 / 3) {
-		return {
-			title: "The Connector",
-			line: "A third of your year was meetings. The calendar knows you well.",
-		};
-	}
-	const group = rewind.groups[0]?.group ?? "general";
-	return PERSONAS[group];
-};
 
 export function PersonaSlide({
 	rewind,
@@ -729,7 +804,7 @@ export function PersonaSlide({
 	const persona = personaFor(rewind);
 	return (
 		<Stagger className="flex flex-col gap-6">
-			<Eyebrow>Your {rewind.year}, in one name</Eyebrow>
+			<Eyebrow>If your {rewind.year} had a name</Eyebrow>
 			<Rise>
 				<span
 					className="serif block leading-[0.85] text-balance"
@@ -780,6 +855,15 @@ export function SummarySlide({
 	return (
 		<Stagger className="flex flex-col gap-8">
 			<Eyebrow>Farmer Rewind {rewind.year}</Eyebrow>
+			<Headline
+				size="md"
+				theme={theme}
+				line={
+					rewind.complete
+						? { text: `That was ${rewind.year}.`, mark: String(rewind.year) }
+						: { text: `${rewind.year}, so far.`, mark: "so far" }
+				}
+			/>
 			{/* The card settles in as one piece, a slow fade with no travel: after
 			    a dozen slides of movement the last one holds still. The gap is
 			    the rule: each tile is painted the slide's color over a grid
@@ -799,7 +883,7 @@ export function SummarySlide({
 						<div className="text-xs tracking-[0.16em] uppercase opacity-60">
 							{t.label}
 						</div>
-						<div className="serif mt-2 truncate text-3xl sm:text-4xl">
+						<div className="serif mt-2 line-clamp-2 text-3xl leading-[1.05] text-balance sm:text-4xl">
 							{t.value}
 						</div>
 					</div>

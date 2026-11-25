@@ -2776,3 +2776,40 @@ html {
   border-top-width: 0;
   padding-top: 0;
 }
+
+/* The Rewind row in the sidebar grows into the story, and shrinks back on
+ * close (`viewTransition` in `app-sidebar.tsx` and the route's `useClose`).
+ * The name is CSS, not React state: the browser reads it at each capture, and
+ * the row gives it up only while the story is in the DOM (two names abort the
+ * transition). `cover` keeps both snapshots unstretched while the box changes
+ * shape. */
+.rewind-entry,
+dialog[data-rewind] {
+  view-transition-name: rewind;
+}
+:root:has(dialog[data-rewind]) .rewind-entry {
+  view-transition-name: none;
+}
+::view-transition-group(rewind) {
+  animation-duration: var(--dur-long);
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(rewind),
+::view-transition-new(rewind) {
+  height: 100%;
+  object-fit: cover;
+}
+/* The pseudo-elements hang off <html>, not under it, so the `*` rules of
+ * "Less movement" do not reach them. */
+:root[data-motion='reduce']::view-transition-group(*),
+:root[data-motion='reduce']::view-transition-old(*),
+:root[data-motion='reduce']::view-transition-new(*) {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

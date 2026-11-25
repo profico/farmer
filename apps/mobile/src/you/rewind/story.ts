@@ -146,14 +146,112 @@ const PERSONAS = new Map([
 	["time_off", { title: "The Traveller", line: "A year well rested." }],
 ]);
 
-/** Who the year says you are: the Connector when meetings took more than a
- *  third of it, else the group that got the most hours. */
-export const personaFor = (rewind: Rewind) => {
-	if (rewind.meetingSeconds / Math.max(1, rewind.workedSeconds) > 1 / 3) {
-		return {
-			title: "The Connector",
-			line: "A third of your year was meetings. The calendar knows you well.",
-		};
+type Persona = { title: string; line: string };
+
+/** The monthly totals of the months with work, the projection included. */
+const workedMonths = (rewind: Rewind) =>
+	rewind.months
+		.map((m) => ({ month: m.month, seconds: m.seconds + m.projectedSeconds }))
+		.filter((m) => m.seconds > 0);
+
+const meanOf = (months: { seconds: number }[]) =>
+	months.reduce((sum, m) => sum + m.seconds, 0) / months.length;
+
+type PersonaRule = (
+	rewind: Rewind,
+	share: (seconds: number) => number,
+) => Persona | null;
+
+// A copy of the web app's rules (`apps/web/src/components/rewind/personas.ts`):
+// change both. The first rule that fits wins.
+const PERSONA_RULES: PersonaRule[] = [
+	(r, share) =>
+		share(r.meetingSeconds) > 1 / 3
+			? {
+					title: "The Connector",
+					line: "A third of your year was meetings. The calendar knows you well.",
+				}
+			: null,
+	(r) =>
+		r.longestStreak && r.longestStreak.days >= 30
+			? {
+					title: "The Marathoner",
+					line: `${formatNumber(r.longestStreak.days)} working days in a row. You kept going.`,
+				}
+			: null,
+	(r, share) =>
+		share(r.codeReviewSeconds) >= 0.15 ||
+		(r.pullRequests.reviewed >= 20 &&
+			r.pullRequests.reviewed > r.pullRequests.opened)
+			? {
+					title: "The Reviewer",
+					line: "Your reviews kept everyone else's work moving.",
+				}
+			: null,
+	(r) =>
+		r.weekendDaysWorked >= 10
+			? {
+					title: "The Weekend Warrior",
+					line: `${formatNumber(r.weekendDaysWorked)} weekend days at work. The week was not enough.`,
+				}
+			: null,
+	(r, share) =>
+		share(r.overtimeSeconds) >= 0.1
+			? {
+					title: "The Closer",
+					line: "When it had to ship, you stayed until it did.",
+				}
+			: null,
+	(r, share) => {
+		const top = r.projects[0];
+		return top && r.projectCount > 1 && share(top.seconds) >= 0.7
+			? {
+					title: "The Loyalist",
+					line: `One project, nearly all year: ${top.name}.`,
+				}
+			: null;
+	},
+	(r, share) =>
+		r.projectCount >= 6 && share(r.projects[0]?.seconds ?? 0) < 0.35
+			? {
+					title: "The Juggler",
+					line: `${formatNumber(r.projectCount)} projects, and you kept every one of them in the air.`,
+				}
+			: null,
+	(r) => {
+		const months = workedMonths(r);
+		if (months.length < 3) return null;
+		const peak = months.reduce((best, m) =>
+			m.seconds > best.seconds ? m : best,
+		);
+		return peak.seconds >= meanOf(months) * 1.5
+			? {
+					title: "The Sprinter",
+					line: `${monthName(peak.month)} was a sprint. The rest of the year was the pace.`,
+				}
+			: null;
+	},
+	(r) => {
+		const months = workedMonths(r);
+		if (months.length < 10) return null;
+		const mean = meanOf(months);
+		return months.every((m) => Math.abs(m.seconds - mean) <= mean * 0.15)
+			? {
+					title: "The Steady Hand",
+					line: "Month after month, the same steady pace.",
+				}
+			: null;
+	},
+];
+
+/** Who the year says you are: the first rule that fits, else the group that
+ *  got the most hours. */
+export const personaFor = (rewind: Rewind): Persona => {
+	const share = (seconds: number) =>
+		seconds / Math.max(1, rewind.workedSeconds);
+	for (const rule of PERSONA_RULES) {
+		const persona = rule(rewind, share);
+		if (persona) return persona;
 	}
 	const group = rewind.groups[0]?.group ?? "general";
 	return PERSONAS.get(group) ?? ALL_ROUNDER;

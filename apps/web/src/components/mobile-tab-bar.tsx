@@ -1,6 +1,8 @@
+import { featuredRewindYear } from "@farmer/core/lib/rewind";
 import {
 	ChatCircleDotsIcon,
 	DotsThreeIcon,
+	RewindIcon,
 	SignOutIcon,
 } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
@@ -24,6 +26,7 @@ import {
 	DrawerTitle,
 } from "#/components/ui/drawer.tsx";
 import { useMediaQuery } from "#/hooks/use-media-query.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
@@ -36,6 +39,7 @@ import {
 	REPORTS_ITEM,
 	YOU_ITEMS,
 } from "#/lib/nav-items.ts";
+import { REWIND_GRADIENT, useRewindSeen } from "#/lib/rewind-entry.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
@@ -126,6 +130,8 @@ export function MobileTabBar({
 	// Unattributed time, on the tab that leads to the screen that files it —
 	// the same count and the same fetch as the sidebar's.
 	const unfiledCount = useUnfiledCount(orgSlug, timezone);
+	const rewindYear = featuredRewindYear(useToday(timezone));
+	const rewindSeen = useRewindSeen(rewindYear);
 
 	const handleLogout = async () => {
 		setMoreOpen(false);
@@ -210,7 +216,15 @@ export function MobileTabBar({
 								className="absolute inset-0 -z-10 rounded-full bg-muted"
 							/>
 						)}
-						<DotsThreeIcon weight="regular" className="size-[21px]" />
+						<span className="relative">
+							<DotsThreeIcon weight="regular" className="size-[21px]" />
+							{!rewindSeen && (
+								<span
+									aria-hidden
+									className="absolute -top-0.5 -right-1 size-2 rounded-full bg-[#cf553f]"
+								/>
+							)}
+						</span>
 						<span className="text-[10px] leading-none">More</span>
 					</button>
 				</div>
@@ -228,6 +242,14 @@ export function MobileTabBar({
 						</DrawerDescription>
 					</DrawerHeader>
 					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pt-1">
+						{rewindYear !== null && (
+							<RewindSheetLink
+								orgSlug={orgSlug}
+								year={rewindYear}
+								seen={rewindSeen}
+								onClick={() => setMoreOpen(false)}
+							/>
+						)}
 						{groups.map((group) => (
 							<div key={group.label} className="flex flex-col gap-1 pb-2">
 								{/* The same eyebrow the sidebar's groups carry, so the two
@@ -300,5 +322,39 @@ export function MobileTabBar({
 				/>
 			)}
 		</>
+	);
+}
+
+/** The phone's way in to the Rewind, at the top of the More sheet. */
+function RewindSheetLink({
+	orgSlug,
+	year,
+	seen,
+	onClick,
+}: {
+	orgSlug: string;
+	year: number;
+	seen: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<Link
+			to="/$orgSlug/rewind"
+			params={{ orgSlug }}
+			search={{ year }}
+			onClick={onClick}
+			className={cn(
+				"mt-2 flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-base transition-transform duration-(--dur-fast) active:scale-[0.97]",
+				seen ? "text-muted-foreground" : "text-[#fbf8ff]",
+			)}
+			style={seen ? undefined : { background: REWIND_GRADIENT }}
+		>
+			<RewindIcon
+				weight={seen ? "regular" : "fill"}
+				className="size-4.5"
+				style={seen ? undefined : { color: "#ffd27a" }}
+			/>
+			Your {year} Rewind
+		</Link>
 	);
 }
