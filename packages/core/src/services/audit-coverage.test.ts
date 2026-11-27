@@ -280,7 +280,12 @@ const SERVICES = {
 	slackService: {
 		service: slackService,
 		coverage: {
-			recorded: { completeInstall: true, disconnect: true, pingBehind: true },
+			recorded: {
+				completeInstall: true,
+				disconnect: true,
+				pingBehind: { via: "pingRow" },
+				pingAllBehind: { via: "tryPingRow" },
+			},
 			exempt: {
 				linkMember: "matches a person to their Slack account, no decision",
 				syncIdentities: "matches people to Slack accounts, no decision",

@@ -15,3 +15,8 @@ export const pingPersonInput = z.object({
 	userId: z.string().min(1),
 });
 export type PingPersonInput = z.infer<typeof pingPersonInput>;
+
+export const pingEveryoneBehindInput = z.object({
+	includeSlightlyBehind: z.boolean(),
+});
+export type PingEveryoneBehindInput = z.infer<typeof pingEveryoneBehindInput>;

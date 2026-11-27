@@ -39,10 +39,8 @@ export class PingTooSoonError extends UserFacingError {
 	}
 }
 
-/** The row of the person to ping, when the caller may see it and it is behind.
- *  Reads the Tracking report, so the caller's scope and the verdict are the
- *  ones the report shows. */
-const behindRowFor = async (ctx: Ctx, userId: string, now: Date) => {
+/** The caller's Tracking report rows for the org's current month. */
+const trackingRows = async (ctx: Ctx, now: Date) => {
 	const [year, month] = dayKeyInTz(now, await ctxTimezone(ctx))
 		.split("-")
 		.map(Number);
@@ -51,7 +49,16 @@ const behindRowFor = async (ctx: Ctx, userId: string, now: Date) => {
 		{ year: year ?? 0, month: month ?? 0 },
 		{ now },
 	);
-	const row = report.rows.find((r) => r.userId === userId);
+	return report.rows;
+};
+
+type TrackingRow = Awaited<ReturnType<typeof trackingRows>>[number];
+
+/** The row of the person to ping, when the caller may see it and it is behind.
+ *  Reads the Tracking report, so the caller's scope and the verdict are the
+ *  ones the report shows. */
+const behindRowFor = async (ctx: Ctx, userId: string, now: Date) => {
+	const row = (await trackingRows(ctx, now)).find((r) => r.userId === userId);
 	if (!row) throw new UserFacingError("You cannot see this person.");
 	if (row.status === null || row.status === "on_track") {
 		throw new UserFacingError("This person is not behind their target.");
@@ -131,6 +138,47 @@ const releasePing = (ctx: Ctx, userId: string) =>
 		);
 
 const CANNOT_REACH = "This person cannot be reached on Slack.";
+
+/** Ping one person of a batch. A failure is counted, never thrown. */
+const tryPingRow = async (
+	ctx: Ctx,
+	row: TrackingRow,
+	now: Date,
+): Promise<"sent" | "skipped" | "failed"> => {
+	try {
+		await pingRow(ctx, row, now);
+		return "sent";
+	} catch (error) {
+		if (error instanceof PingTooSoonError) return "skipped";
+		console.error("[slack] could not ping", {
+			organizationId: ctx.organizationId,
+			userId: row.userId,
+			error: loggableError(error),
+		});
+		return "failed";
+	}
+};
+
+/** Claim the ping, send it and record it. The caller has checked the row. */
+const pingRow = async (ctx: Ctx, row: TrackingRow, now: Date) => {
+	await claimPing(ctx, row.userId, now);
+	// The claim stays only when the message went out, also when a step
+	// before the send throws.
+	let result: Awaited<ReturnType<typeof sendPing>> | undefined;
+	try {
+		result = await sendPing(ctx, row.userId);
+	} finally {
+		if (result !== "sent") await releasePing(ctx, row.userId);
+	}
+	if (result === "unreachable") throw new UserFacingError(CANNOT_REACH);
+	if (result === "failed") {
+		throw new UserFacingError("The message could not be sent. Try again.");
+	}
+	await recordAudit(ctx, {
+		kind: "slack.pinged",
+		target: { type: "member", id: row.userId, label: row.name },
+	});
+};
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
@@ -629,23 +677,31 @@ export const slackService = {
 		if ((await pingBlocked(ctx.organizationId, [userId])).has(userId)) {
 			throw new UserFacingError(CANNOT_REACH);
 		}
-		await claimPing(ctx, userId, now);
-		// The claim stays only when the message went out, also when a step
-		// before the send throws.
-		let result: Awaited<ReturnType<typeof sendPing>> | undefined;
-		try {
-			result = await sendPing(ctx, userId);
-		} finally {
-			if (result !== "sent") await releasePing(ctx, userId);
+		await pingRow(ctx, row, now);
+	},
+
+	/** Ping everyone who is behind and pingable, one by one. With
+	 *  `includeSlightlyBehind` the slightly behind are pinged too. A person
+	 *  inside the cooldown counts as skipped. One failure never stops the rest. */
+	pingAllBehind: async (
+		ctx: Ctx,
+		opts: { includeSlightlyBehind?: boolean; now?: Date } = {},
+	): Promise<{ sent: number; skipped: number; failed: number }> => {
+		const now = opts.now ?? new Date();
+		const states = await slackService.pingStates(ctx, { now });
+		const result = { sent: 0, skipped: 0, failed: 0 };
+		if (states.people.length === 0) return result;
+		const pingedAt = new Map(states.people.map((p) => [p.userId, p.pingedAt]));
+		const cutoff = now.getTime() - PING_COOLDOWN_MS;
+		const wanted: (string | null)[] = ["behind"];
+		if (opts.includeSlightlyBehind) wanted.push("slightly_behind");
+		for (const row of await trackingRows(ctx, now)) {
+			if (!wanted.includes(row.status) || !pingedAt.has(row.userId)) continue;
+			const last = pingedAt.get(row.userId);
+			const inCooldown = last != null && last.getTime() >= cutoff;
+			result[inCooldown ? "skipped" : await tryPingRow(ctx, row, now)]++;
 		}
-		if (result === "unreachable") throw new UserFacingError(CANNOT_REACH);
-		if (result === "failed") {
-			throw new UserFacingError("The message could not be sent. Try again.");
-		}
-		await recordAudit(ctx, {
-			kind: "slack.pinged",
-			target: { type: "member", id: userId, label: row.name },
-		});
+		return result;
 	},
 
 	sendTest: async (ctx: Ctx, userId: string) => {

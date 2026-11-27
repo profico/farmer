@@ -1,5 +1,6 @@
-// `slackService.pingBehind`: a Slack DM to a person who is behind their target,
-// at most once in 24 hours, only by somebody who sees them on Tracking.
+// `slackService.pingBehind` and `pingAllBehind`: a Slack DM to a person who is
+// behind their target, at most once in 24 hours, only by somebody who sees them
+// on Tracking.
 
 import {
 	afterAll,
@@ -16,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member, organization, user } from "../db/schema/auth";
+import { task, timeEntry } from "../db/schema/domain";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { monthlyHourFund } from "../db/schema/settings";
 import {
@@ -42,6 +44,8 @@ const PLAIN = "u-ping-plain";
 const STRANGER = "u-ping-stranger";
 /** Behind, matched to Slack, and a Harvest import member who has not accepted. */
 const CLAIMING = "u-ping-claiming";
+/** Slightly behind: 85.25h of the 88h target so far, inside the 5% tolerance. */
+const SLIGHT = "u-ping-slight";
 
 const NOW = new Date("2026-04-16T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -67,7 +71,15 @@ beforeAll(async () => {
 			createdAt: new Date(),
 		})),
 	);
-	const everyone = [ADMIN, BEHIND, NO_TARGET, PLAIN, STRANGER, CLAIMING];
+	const everyone = [
+		ADMIN,
+		BEHIND,
+		NO_TARGET,
+		PLAIN,
+		STRANGER,
+		CLAIMING,
+		SLIGHT,
+	];
 	await db.insert(user).values(
 		everyone.map((id) => ({
 			id,
@@ -109,10 +121,32 @@ beforeAll(async () => {
 		})),
 	);
 	await db.insert(memberSlackIdentity).values(
-		[BEHIND, NO_TARGET, PLAIN, ADMIN, STRANGER, CLAIMING].map((userId) => ({
-			organizationId: userId === STRANGER ? OTHER_ORG : ORG,
-			userId,
-			slackUserId: `S-${userId}`,
+		[BEHIND, NO_TARGET, PLAIN, ADMIN, STRANGER, CLAIMING, SLIGHT].map(
+			(userId) => ({
+				organizationId: userId === STRANGER ? OTHER_ORG : ORG,
+				userId,
+				slackUserId: `S-${userId}`,
+			}),
+		),
+	);
+	const [dev] = await db
+		.insert(task)
+		.values({
+			scope: "organization" as const,
+			organizationId: ORG,
+			name: "Development",
+			systemKey: "development" as const,
+		})
+		.returning();
+	if (!dev) throw new Error("Failed to seed task");
+	await db.insert(timeEntry).values(
+		Array.from({ length: 11 }, (_, i) => ({
+			organizationId: ORG,
+			userId: SLIGHT,
+			taskId: dev.id,
+			date: `2026-04-${String(i + 1).padStart(2, "0")}`,
+			description: "seeded",
+			durationSeconds: 7.75 * 3600,
 		})),
 	);
 	await db.insert(memberProfile).values({
@@ -249,5 +283,70 @@ describe("pingBehind", () => {
 		expect(await db.query.slackPing.findFirst()).toBeUndefined();
 		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW });
 		expect(sent).toEqual([BEHIND]);
+	});
+});
+
+describe("pingAllBehind", () => {
+	const auditCount = async () =>
+		(
+			await db.query.auditEvent.findMany({
+				where: and(
+					eq(auditEvent.organizationId, ORG),
+					eq(auditEvent.kind, "slack.pinged"),
+				),
+			})
+		).length;
+
+	test("pings only the people who are behind, one audit entry each", async () => {
+		const before = await auditCount();
+		const result = await slackService.pingAllBehind(ctxOf(ADMIN), {
+			now: NOW,
+		});
+		expect(result).toEqual({ sent: 2, skipped: 0, failed: 0 });
+		// Not the slightly behind, not the person without a target, not the
+		// person notify holds back, not the caller.
+		expect([...sent].sort()).toEqual([BEHIND, PLAIN]);
+		expect((await auditCount()) - before).toBe(2);
+	});
+
+	test("includes the slightly behind when asked", async () => {
+		const result = await slackService.pingAllBehind(ctxOf(ADMIN), {
+			includeSlightlyBehind: true,
+			now: NOW,
+		});
+		expect(result).toEqual({ sent: 3, skipped: 0, failed: 0 });
+		expect([...sent].sort()).toEqual([BEHIND, PLAIN, SLIGHT]);
+	});
+
+	test("counts a person pinged inside 24 hours as skipped", async () => {
+		await slackService.pingBehind(ctxOf(ADMIN), BEHIND, { now: NOW });
+		sent.length = 0;
+		const result = await slackService.pingAllBehind(ctxOf(ADMIN), {
+			now: new Date(NOW.getTime() + HOUR),
+		});
+		expect(result).toEqual({ sent: 1, skipped: 1, failed: 0 });
+		expect(sent).toEqual([PLAIN]);
+	});
+
+	test("a failed send does not stop the others", async () => {
+		setNotifyAdaptersForTests({
+			slack: async (to: { userId: string }) => {
+				if (to.userId === BEHIND) return false;
+				sent.push(to.userId);
+				return true;
+			},
+		});
+		const result = await slackService.pingAllBehind(ctxOf(ADMIN), {
+			includeSlightlyBehind: true,
+			now: NOW,
+		});
+		expect(result).toEqual({ sent: 2, skipped: 0, failed: 1 });
+		expect([...sent].sort()).toEqual([PLAIN, SLIGHT]);
+		// The failed person keeps no claim, so a retry can reach them.
+		expect(
+			await db.query.slackPing.findFirst({
+				where: eq(slackPing.userId, BEHIND),
+			}),
+		).toBeUndefined();
 	});
 });

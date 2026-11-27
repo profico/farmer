@@ -1,4 +1,8 @@
-import { monthReportInput, pingPersonInput } from "@farmer/core/schema";
+import {
+	monthReportInput,
+	pingEveryoneBehindInput,
+	pingPersonInput,
+} from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
 import { orgMiddleware } from "./auth";
@@ -43,4 +47,14 @@ export const pingPerson = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { slackService } = await import("@farmer/core/services");
 		return slackService.pingBehind(context.ctx, data.userId);
+	});
+
+// Pings each person who is behind, one by one. The service does the scope,
+// cooldown and per-person failures, and returns the counts.
+export const pingEveryoneBehind = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(pingEveryoneBehindInput)
+	.handler(async ({ data, context }) => {
+		const { slackService } = await import("@farmer/core/services");
+		return slackService.pingAllBehind(context.ctx, data);
 	});
