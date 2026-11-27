@@ -211,7 +211,7 @@ export function ComplianceTab({
 	for (const r of data.rows) if (r.status) counts[r.status] += 1;
 
 	return (
-		<div className="grid gap-6">
+		<div>
 			{/* The three numbers the table is read against, before the table. */}
 			<div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
 				<div>
@@ -254,7 +254,6 @@ export function ComplianceTab({
 			</div>
 
 			<ReportTable
-				columned
 				headers={[
 					{ label: "Person", sortKey: "name" },
 					{ label: "Work", sortKey: "work", numeric: true },
@@ -302,7 +301,7 @@ export function ComplianceTab({
 				empty="Nobody to track this month."
 			/>
 
-			<p className="max-w-[72ch] text-sm text-muted-foreground">
+			<p className="mt-6 max-w-[72ch] text-sm text-muted-foreground">
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
