@@ -256,7 +256,11 @@ function PingEveryoneButton({
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
 							disabled={total === 0 || ping.isPending}
-							onClick={() => ping.mutate()}
+							onClick={() => {
+								ping.mutate();
+								setOpen(false);
+								setInclude(null);
+							}}
 						>
 							Ping {total}
 						</AlertDialogAction>

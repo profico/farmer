@@ -39,9 +39,7 @@ export class PingTooSoonError extends UserFacingError {
 	}
 }
 
-/** The row of the person to ping, when the caller may see it and it is behind.
- *  Reads the Tracking report, so the caller's scope and the verdict are the
- *  ones the report shows. */
+/** The caller's Tracking report rows for the org's current month. */
 const trackingRows = async (ctx: Ctx, now: Date) => {
 	const [year, month] = dayKeyInTz(now, await ctxTimezone(ctx))
 		.split("-")
@@ -56,6 +54,9 @@ const trackingRows = async (ctx: Ctx, now: Date) => {
 
 type TrackingRow = Awaited<ReturnType<typeof trackingRows>>[number];
 
+/** The row of the person to ping, when the caller may see it and it is behind.
+ *  Reads the Tracking report, so the caller's scope and the verdict are the
+ *  ones the report shows. */
 const behindRowFor = async (ctx: Ctx, userId: string, now: Date) => {
 	const row = (await trackingRows(ctx, now)).find((r) => r.userId === userId);
 	if (!row) throw new UserFacingError("You cannot see this person.");
@@ -151,6 +152,7 @@ const tryPingRow = async (
 		if (error instanceof PingTooSoonError) return "skipped";
 		console.error("[slack] could not ping", {
 			organizationId: ctx.organizationId,
+			userId: row.userId,
 			error: loggableError(error),
 		});
 		return "failed";
