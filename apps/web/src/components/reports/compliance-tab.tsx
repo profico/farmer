@@ -12,11 +12,21 @@ import { toast } from "sonner";
 import { MenuPath } from "#/components/menu-path.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "#/components/ui/alert-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { pingStatesQuery, trackingReportQuery } from "#/queries/compliance.ts";
-import { pingPerson } from "#/server/compliance.ts";
+import { pingEveryoneBehind, pingPerson } from "#/server/compliance.ts";
 
 import {
 	byNumber,
@@ -106,6 +116,11 @@ const hoursAgo = (at: Date, now: number) => {
 	return hours < 1 ? "just now" : relative.format(-hours, "hour");
 };
 
+const isRecent = (
+	pingedAt: Date | null | undefined,
+	now: number,
+): pingedAt is Date => pingedAt != null && now - pingedAt.getTime() < DAY_MS;
+
 // Asks a person who is behind to track their time, by Slack DM. Disabled for a
 // day after a ping (the service refuses a second one in that time).
 function PingButton({
@@ -128,7 +143,7 @@ function PingButton({
 				queryKey: pingStatesQuery(orgSlug).queryKey,
 			}),
 	});
-	const recent = pingedAt != null && now - pingedAt.getTime() < DAY_MS;
+	const recent = isRecent(pingedAt, now);
 	return (
 		<Button
 			variant="outline"
@@ -141,8 +156,120 @@ function PingButton({
 	);
 }
 
+type Pingable = Map<string, Date | null>;
+
+// How many people a bulk ping would reach: behind, matched to Slack and not
+// pinged in the last day.
+function countPingable(rows: TrackingRow[], pingable: Pingable, now: number) {
+	const count = { behind: 0, slightly: 0 };
+	for (const r of rows) {
+		if (!pingable.has(r.userId) || isRecent(pingable.get(r.userId), now)) {
+			continue;
+		}
+		if (r.status === "behind") count.behind += 1;
+		else if (r.status === "slightly_behind") count.slightly += 1;
+	}
+	return count;
+}
+
+const pingSummary = (r: { sent: number; skipped: number; failed: number }) =>
+	[
+		`Pinged ${r.sent}`,
+		r.skipped > 0 && `${r.skipped} already pinged today`,
+		r.failed > 0 && `${r.failed} could not be reached`,
+	]
+		.filter(Boolean)
+		.join(" · ");
+
+// Pings everyone who is behind in one go, after a confirmation. The box adds
+// the slightly behind; it starts ticked when nobody is plain behind.
+function PingEveryoneButton({
+	rows,
+	pingable,
+	now,
+}: {
+	rows: TrackingRow[];
+	pingable: Pingable;
+	now: number;
+}) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const [open, setOpen] = useState(false);
+	const [include, setInclude] = useState<boolean | null>(null);
+	const { behind, slightly } = countPingable(rows, pingable, now);
+	const includeSlightly = slightly > 0 && (include ?? behind === 0);
+	const total = behind + (includeSlightly ? slightly : 0);
+	const ping = useMutation({
+		mutationFn: () =>
+			pingEveryoneBehind({
+				data: { includeSlightlyBehind: includeSlightly },
+			}),
+		onSuccess: (result) => {
+			const message = pingSummary(result);
+			if (result.sent === 0 && result.failed > 0) toast.error(message);
+			else toast.success(message);
+		},
+		onError: (error) => toast.error(error.message),
+		onSettled: () =>
+			queryClient.invalidateQueries({
+				queryKey: pingStatesQuery(orgSlug).queryKey,
+			}),
+	});
+	if (behind + slightly === 0) return null;
+	return (
+		<>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={ping.isPending}
+				onClick={() => setOpen(true)}
+			>
+				Ping everyone behind ({behind || slightly})
+			</Button>
+			<AlertDialog
+				open={open}
+				onOpenChange={(next) => {
+					setOpen(next);
+					if (!next) setInclude(null);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Ping {total} people on Slack?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Each person who is behind gets a Slack message asking them to
+							track their time. People pinged in the last 24 hours are left out.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{slightly > 0 && (
+						<label className="flex cursor-pointer items-center gap-2 text-sm">
+							<input
+								type="checkbox"
+								className="accent-primary"
+								checked={includeSlightly}
+								onChange={(e) => setInclude(e.target.checked)}
+							/>
+							Include slightly behind ({slightly})
+						</label>
+					)}
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							disabled={total === 0 || ping.isPending}
+							onClick={() => ping.mutate()}
+						>
+							Ping {total}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
+	);
+}
+
 /**
- * The Ping column's cell renderer, or null when the column is hidden.
+ * The Ping column's cell renderer and the data behind it, or null when the
+ * column is hidden.
  *
  * Who can be pinged: matched to Slack, in the caller's scope. The list is empty
  * when Slack is not connected, which hides the column. The server judges only
@@ -162,7 +289,7 @@ function usePingCell(year: number, month: number, complete: boolean) {
 		states?.year === year &&
 		states?.month === month;
 	if (!show) return null;
-	return (r: TrackingRow) => {
+	const cell = (r: TrackingRow) => {
 		const behind = r.status === "behind" || r.status === "slightly_behind";
 		const pingedAt = pingable.get(r.userId);
 		return (
@@ -177,6 +304,7 @@ function usePingCell(year: number, month: number, complete: boolean) {
 			</div>
 		);
 	};
+	return { cell, pingable, now: dataUpdatedAt };
 }
 
 export function ComplianceTab({
@@ -190,7 +318,7 @@ export function ComplianceTab({
 	const { data } = useSuspenseQuery(
 		trackingReportQuery(orgSlug, { year, month }),
 	);
-	const pingCell = usePingCell(year, month, data.complete);
+	const ping = usePingCell(year, month, data.complete);
 	// The report arrives worst first (status, then the biggest shortfall);
 	// that stays the default, and any column can take over — the delta column
 	// is the one people asked for, to find who is furthest ahead or behind.
@@ -262,10 +390,19 @@ export function ComplianceTab({
 					{ label: "Target so far", sortKey: "target", numeric: true },
 					{ label: "Δ", sortKey: "delta", numeric: true },
 					{ label: "Status", sortKey: "status" },
-					...(pingCell ? [{ label: "Ping" }] : []),
+					...(ping ? [{ label: "Ping" }] : []),
 				]}
 				sort={sort}
 				onSort={onSort}
+				actions={
+					ping && (
+						<PingEveryoneButton
+							rows={data.rows}
+							pingable={ping.pingable}
+							now={ping.now}
+						/>
+					)
+				}
 				rows={rows.map((r) => {
 					const label = r.status ? STATUS_LABEL[r.status] : null;
 					return {
@@ -293,7 +430,7 @@ export function ComplianceTab({
 									No target
 								</span>
 							),
-							...(pingCell ? [pingCell(r)] : []),
+							...(ping ? [ping.cell(r)] : []),
 						],
 						searchFields: [r.name, r.memberType],
 					};

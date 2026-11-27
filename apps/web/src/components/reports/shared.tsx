@@ -395,12 +395,15 @@ export function ReportTable<K extends string>({
 	empty,
 	sort,
 	onSort,
+	actions,
 }: {
 	headers: ReportTableHeader<K>[];
 	rows: ReportTableRow[];
 	empty: string;
 	sort?: Sort<K>;
 	onSort?: (key: K, numeric: boolean) => void;
+	/** Buttons on the right of the search box's row. */
+	actions?: React.ReactNode;
 }) {
 	// The box only appears once some row actually carries searchable text — a
 	// table nobody wired up (e.g. a trend's fixed run of months) renders exactly
@@ -422,14 +425,19 @@ export function ReportTable<K extends string>({
 	}
 	return (
 		<>
-			{searchable && (
-				<SearchInput
-					value={query}
-					onValueChange={setQuery}
-					className="mt-6 w-full sm:w-56"
-				/>
+			{(searchable || actions) && (
+				<div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+					{searchable && (
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							className="w-full sm:w-56"
+						/>
+					)}
+					{actions && <div className="ml-auto">{actions}</div>}
+				</div>
 			)}
-			<Table containerClassName={searchable ? "mt-3" : "mt-6"}>
+			<Table containerClassName={searchable || actions ? "mt-3" : "mt-6"}>
 				<TableHeader>
 					<TableRow>
 						{headers.map((h, i) =>
