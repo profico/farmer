@@ -395,18 +395,12 @@ export function ReportTable<K extends string>({
 	empty,
 	sort,
 	onSort,
-	// Set by a tab that puts its tables side by side at xl (Tracking). Up to that
-	// point the table bleeds edge-to-edge like every other table in the app; once
-	// the grid splits, the negative margin would run each table under its
-	// neighbour, so from xl it sits inside its own column instead.
-	columned = false,
 }: {
 	headers: ReportTableHeader<K>[];
 	rows: ReportTableRow[];
 	empty: string;
 	sort?: Sort<K>;
 	onSort?: (key: K, numeric: boolean) => void;
-	columned?: boolean;
 }) {
 	// The box only appears once some row actually carries searchable text — a
 	// table nobody wired up (e.g. a trend's fixed run of months) renders exactly
@@ -435,16 +429,7 @@ export function ReportTable<K extends string>({
 					className="mt-6 w-full sm:w-56"
 				/>
 			)}
-			<Table
-				className={cn(
-					columned &&
-						"xl:[&_td:first-child]:pl-2 xl:[&_td:last-child]:pr-2 xl:[&_th:first-child]:pl-2 xl:[&_th:last-child]:pr-2",
-				)}
-				containerClassName={cn(
-					searchable ? "mt-3" : "mt-6",
-					columned && "xl:mx-0",
-				)}
-			>
+			<Table containerClassName={searchable ? "mt-3" : "mt-6"}>
 				<TableHeader>
 					<TableRow>
 						{headers.map((h, i) =>

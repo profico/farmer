@@ -226,7 +226,11 @@ function ModelPicker({
 			autoHighlight
 			disabled={disabled}
 		>
-			<ComboboxTrigger className="w-64" aria-label="Default model">
+			<ComboboxTrigger
+				className="w-64"
+				aria-label="Default model"
+				title={selected?.value}
+			>
 				<ComboboxValue placeholder="Pick a model">
 					{(item: ModelItem | null) =>
 						item ? (
@@ -237,12 +241,21 @@ function ModelPicker({
 					}
 				</ComboboxValue>
 			</ComboboxTrigger>
-			<ComboboxContent searchPlaceholder="Search models…">
+			<ComboboxContent
+				searchPlaceholder="Search models…"
+				className="w-auto max-w-[min(32rem,calc(100vw-2rem))] min-w-(--popup-anchor-width)"
+			>
 				<ComboboxEmpty>No model matches.</ComboboxEmpty>
 				<ComboboxList>
 					{(item: ModelItem) => (
 						<ComboboxItem key={item.value} value={item}>
-							<span className="truncate">{item.label}</span>
+							{/* Variants share a name; the id is what tells them apart. */}
+							<span className="flex min-w-0 flex-col">
+								<span>{item.label}</span>
+								<span className="mono text-xs break-all text-muted-foreground">
+									{item.value}
+								</span>
+							</span>
 						</ComboboxItem>
 					)}
 				</ComboboxList>
